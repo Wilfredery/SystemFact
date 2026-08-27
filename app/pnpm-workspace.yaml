@@ -1,0 +1,6 @@
+# pnpm settings (pnpm 11+)
+# allowBuilds: permite la ejecución de scripts de build (lifecycle) de dependencias.
+# pnpm 11 usa allowBuilds (mapa name -> true), no onlyBuiltDependencies (era pnpm 9/10).
+# Ver: https://pnpm.io/settings
+allowBuilds:
+  unrs-resolver: true
