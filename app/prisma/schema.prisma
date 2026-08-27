@@ -1,7 +1,15 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// ============================================================
+// SystemFact — Prisma schema
+// Fuente: docs/erd.dbml (ERD v4.7 CONGELADO, 2026-08-20)
+// Mapeo 1:1 del DBML. Ver docs/erd.md para notas de diseño.
+//
+// Convenciones:
+//  - Montos de dinero y tasas ITBIS: @db.Decimal(12, 2)
+//  - Cantidades: @db.Decimal(12, 3)
+//  - Timestamps: UTC timestamptz (AGENTS.md: America/Santo_Domingo
+//    solo capa de presentación/cálculo).
+//  - varchar sin longitud en DBML -> @db.VarChar(255) por defecto.
+// ============================================================
 
 generator client {
   provider = "prisma-client"
@@ -10,4 +18,733 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ------------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------------
+
+enum TipoCliente {
+  MINORISTA
+  MAYORISTA
+  CREDITO
+
+  @@map("TipoCliente")
+}
+
+enum TipoNcfFactura {
+  B01
+  B02
+
+  @@map("TipoNcfFactura")
+}
+
+enum TipoNcfSecuencia {
+  B01
+  B02
+  B03
+  B04
+  B11
+
+  @@map("TipoNcfSecuencia")
+}
+
+enum TipoNcfCompra {
+  B01
+  B11
+
+  @@map("TipoNcfCompra")
+}
+
+enum EstadoDocumento {
+  VIGENTE
+  CANCELADA
+  ANULADA
+
+  @@map("EstadoDocumento")
+}
+
+enum EstadoVenta {
+  BORRADOR
+  CONFIRMADA
+  CANCELADA
+
+  @@map("EstadoVenta")
+}
+
+enum EstadoCompra {
+  BORRADOR
+  PENDIENTE
+  RECIBIDA
+  PAGADA
+  CANCELADA
+
+  @@map("EstadoCompra")
+}
+
+enum MetodoPago {
+  EFECTIVO
+
+  @@map("MetodoPago")
+}
+
+enum EstadoPago {
+  REGISTRADO
+  APLICADO
+  REVERTIDO
+
+  @@map("EstadoPago")
+}
+
+enum TipoPago {
+  COBRO
+  REEMBOLSO
+
+  @@map("TipoPago")
+}
+
+enum TipoProveedor {
+  FORMAL
+  INFORMAL
+
+  @@map("TipoProveedor")
+}
+
+enum TipoPersona {
+  FISICA
+  JURIDICA
+
+  @@map("TipoPersona")
+}
+
+enum TipoCompra {
+  MERCANCIA
+  SERVICIO_PROFESIONAL
+  SERVICIO_TECNICO
+  ALQUILER
+
+  @@map("TipoCompra")
+}
+
+enum TipoDocumentoAnulacion {
+  FACTURA
+  NOTA_CREDITO
+  NOTA_DEBITO
+
+  @@map("TipoDocumentoAnulacion")
+}
+
+enum DescuentoTipo {
+  PORCENTAJE
+  MONTO
+
+  @@map("DescuentoTipo")
+}
+
+enum TipoMovimiento {
+  ENTRADA_COMPRA
+  SALIDA_VENTA
+  ENTRADA_DEVOLUCION
+  SALIDA_MERMA
+  AJUSTE
+  REPOSICION_CANCELACION
+  SALIDA_CANCELACION_COMPRA
+
+  @@map("TipoMovimiento")
+}
+
+enum TipoReposicion {
+  VENDIBLE
+  DANADO
+
+  @@map("TipoReposicion")
+}
+
+enum AccionAuditoria {
+  CREAR
+  ACTUALIZAR
+  CANCELAR
+  ANULAR
+  PAGAR
+  AJUSTAR
+  LOGIN
+  LOGOUT
+
+  @@map("AccionAuditoria")
+}
+
+// ------------------------------------------------------------
+// TABLAS
+// ------------------------------------------------------------
+
+model Empresa {
+  id                Int      @id @default(autoincrement())
+  nombreComercial   String   @db.VarChar(255)
+  rnc               String   @unique @db.VarChar(255)
+  razonSocial       String   @db.VarChar(255)
+  direccionFiscal   String   @db.VarChar(255)
+  telefono          String   @db.VarChar(255)
+  correo            String   @db.VarChar(255)
+  logo              String   @db.VarChar(255)
+  regimenFiscal     String   @db.VarChar(255)
+  activa            Boolean  @default(true)
+  facturaAutomatica Boolean  @default(false) // true: emitir NCF al confirmar venta (atómico); false: diferido (0..1)
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(6)
+
+  sucursales             Sucursal[]
+  usuarios               Usuario[]
+  clientes               Cliente[]
+  proveedores            Proveedor[]
+  categorias             Categoria[]
+  productos              Producto[]
+  facturas               Factura[]
+  ncfSecuencias          NcfSecuencia[]
+  configuracionesEmpresa ConfiguracionEmpresa[]
+  anulaciones            Anulacion[]
+  notasCredito           NotaCredito[]
+  notasDebito            NotaDebito[]
+  compras                Compra[]
+  pagos                  Pago[]
+  pagosProveedor         PagoProveedor[]
+  movimientosAuditoria   MovimientoAuditoria[]
+  ventas                 Venta[]
+
+  @@map("EMPRESA")
+}
+
+model Sucursal {
+  id        Int      @id @default(autoincrement())
+  empresaId Int
+  nombre    String   @db.VarChar(255)
+  direccion String   @db.VarChar(255)
+  telefono  String   @db.VarChar(255)
+  activa    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  empresa        Empresa               @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  usuarios       Usuario[]
+  inventarios    Inventario[]
+  ventas         Venta[]
+  compras        Compra[]
+  pagos          Pago[]
+  pagosProveedor PagoProveedor[]
+  facturas       Factura[]
+  notasCredito   NotaCredito[]
+  notasDebito    NotaDebito[]
+  movAuditoria   MovimientoAuditoria[]
+
+  @@map("SUCURSAL")
+}
+
+model Usuario {
+  id            Int      @id @default(autoincrement())
+  empresaId     Int
+  sucursalId    Int
+  nombre        String   @db.VarChar(255)
+  nombreUsuario String   @unique @db.VarChar(255) // login por código único (ADR-014)
+  passwordHash  String   @db.VarChar(255)
+  email         String?  @db.VarChar(255) // opcional, NO único (solo avisos/recuperación)
+  activo        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  empresa  Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+
+  roles                      UsuarioRol[]
+  ventasRegistradas          Venta[]                @relation("VentaRegistrada")
+  ventasDescuentoAutorizado  Venta[]                @relation("VentaDescuentoAutorizado")
+  detallesVentaDescuentoAuth DetalleVenta[]         @relation("DetalleVentaDescuentoAutorizado")
+  facturas                   Factura[]
+  notasCredito               NotaCredito[]
+  notasDebito                NotaDebito[]
+  compras                    Compra[]
+  pagosRealizados            Pago[]                 @relation("PagoRealizado")
+  reembolsosAutorizados      Pago[]                 @relation("PagoReembolsoAutorizado")
+  pagosProveedor             PagoProveedor[]
+  anulacionesRealizadas      Anulacion[]            @relation("AnulacionRealizada")
+  anulacionesAutorizadas     Anulacion[]            @relation("AnulacionAutorizada")
+  movimientosAuditoria       MovimientoAuditoria[]
+  movimientosInventario      MovimientoInventario[]
+
+  @@map("USUARIO")
+}
+
+model Rol {
+  id          Int     @id @default(autoincrement())
+  nombre      String  @db.VarChar(255)
+  descripcion String  @db.VarChar(255)
+  activo      Boolean @default(true)
+
+  usuarios UsuarioRol[]
+
+  @@map("ROL")
+}
+
+model UsuarioRol {
+  usuarioId Int
+  rolId     Int
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  rol     Rol     @relation(fields: [rolId], references: [id], onDelete: Restrict)
+
+  @@id([usuarioId, rolId]) // PK compuesta, sin id artificial (v4.7)
+  @@map("USUARIO_ROL")
+}
+
+model Cliente {
+  id                   Int         @id @default(autoincrement())
+  empresaId            Int
+  nombre               String      @db.VarChar(255)
+  telefono             String      @db.VarChar(255)
+  direccion            String      @db.VarChar(255)
+  identificacionFiscal String?     @db.VarChar(255) // opcional (consumidor final no la tiene); UK por empresa -> múltiples NULL permitidos
+  tipoCliente          TipoCliente
+  esConsumidorFinal    Boolean     @default(false) // true: cliente genérico "Consumidor Final" de la empresa (uno por empresa)
+  creditoHabilitado    Boolean     @default(false)
+  limiteCredito        Decimal     @db.Decimal(12, 2)
+  plazoCreditoDias     Int
+  activo               Boolean     @default(true)
+  createdAt            DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime    @updatedAt @db.Timestamptz(6)
+
+  empresa      Empresa       @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  ventas       Venta[]
+  facturas     Factura[]
+  notasCredito NotaCredito[]
+  notasDebito  NotaDebito[]
+
+  @@unique([empresaId, identificacionFiscal])
+  // TODO migración: UK parcial ... (empresaId) WHERE esConsumidorFinal = true
+  // (un solo Consumidor Final por empresa) — definida en la migración SQL (SQL crudo).
+  @@map("CLIENTE")
+}
+
+model Proveedor {
+  id            Int           @id @default(autoincrement())
+  empresaId     Int
+  nombre        String        @db.VarChar(255)
+  contacto      String        @db.VarChar(255)
+  telefono      String        @db.VarChar(255)
+  rnc           String?       @db.VarChar(255) // opcional; UK por empresa -> múltiples NULL permitidos
+  tipoProveedor TipoProveedor // determina B11 / ITBIS 100% (03, §8)
+  tipoPersona   TipoPersona // determina ISR 15% (03, §8)
+  activo        Boolean       @default(true)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(6)
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  compras Compra[]
+
+  @@unique([empresaId, rnc]) // RNC único por empresa; nullable -> múltiples NULL permitidos
+  @@map("PROVEEDOR")
+}
+
+model Categoria {
+  id        Int      @id @default(autoincrement())
+  empresaId Int
+  nombre    String   @db.VarChar(255)
+  activa    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  empresa   Empresa    @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  productos Producto[]
+
+  @@unique([empresaId, nombre]) // categoría única por empresa (v4.1)
+  @@map("CATEGORIA")
+}
+
+model Producto {
+  id            Int      @id @default(autoincrement())
+  empresaId     Int
+  categoriaId   Int
+  nombre        String   @db.VarChar(255)
+  codigo        String   @db.VarChar(255)
+  codigoBarras  String   @db.VarChar(255)
+  unidadMedida  String   @db.VarChar(255)
+  unidadEmpaque String   @db.VarChar(255)
+  stockMinimo   Int // umbral configurable POR PRODUCTO (11, 2.2.4); KPIs Bajo stock/Agotados
+  precioCompra  Decimal  @db.Decimal(12, 2)
+  precioVenta   Decimal  @db.Decimal(12, 2)
+  costoPromedio Decimal  @db.Decimal(12, 2) // único por producto (empresa); se actualiza al recibir compra (03, §6)
+  tasaItbis     Decimal  @db.Decimal(12, 2) // 18/16/0 (Ley 30-26); referencia, se congela por línea
+  activo        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  empresa             Empresa              @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  categoria           Categoria            @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
+  inventarios         Inventario[]
+  detallesVenta       DetalleVenta[]
+  detallesCompra      DetalleCompra[]
+  detallesNotaCredito DetalleNotaCredito[]
+
+  @@unique([empresaId, codigo]) // código de producto único por empresa
+  @@map("PRODUCTO")
+}
+
+model Inventario {
+  id         Int      @id @default(autoincrement())
+  sucursalId Int
+  productoId Int
+  cantidad   Decimal  @db.Decimal(12, 3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  sucursal    Sucursal               @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  producto    Producto               @relation(fields: [productoId], references: [id], onDelete: Restrict)
+  movimientos MovimientoInventario[]
+
+  @@unique([sucursalId, productoId]) // inventario POR SUCURSAL (03, §5)
+  @@map("INVENTARIO")
+}
+
+model Venta {
+  id                     Int           @id @default(autoincrement())
+  empresaId              Int
+  sucursalId             Int
+  usuarioId              Int
+  clienteId              Int
+  fecha                  DateTime      @db.Timestamptz(6)
+  estado                 EstadoVenta
+  subtotal               Decimal       @db.Decimal(12, 2)
+  descuento              Decimal       @db.Decimal(12, 2)
+  descuentoTipo          DescuentoTipo
+  descuentoAutorizadoPor Int? // opcional: quien autorizó el descuento (Admin o Despachador con permiso)
+  itbis                  Decimal       @db.Decimal(12, 2)
+  total                  Decimal       @db.Decimal(12, 2)
+  createdAt              DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime      @updatedAt @db.Timestamptz(6)
+
+  empresa                       Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  sucursal                      Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  usuario                       Usuario  @relation("VentaRegistrada", fields: [usuarioId], references: [id], onDelete: Restrict)
+  descuentoAutorizadoPorUsuario Usuario? @relation("VentaDescuentoAutorizado", fields: [descuentoAutorizadoPor], references: [id], onDelete: Restrict)
+  cliente                       Cliente  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+
+  detalles              DetalleVenta[]
+  factura               Factura?               @relation("FacturaVenta")
+  movimientosInventario MovimientoInventario[]
+
+  @@map("VENTA")
+}
+
+model DetalleVenta {
+  id                     Int           @id @default(autoincrement())
+  ventaId                Int
+  productoId             Int
+  cantidad               Decimal       @db.Decimal(12, 3)
+  precioUnitario         Decimal       @db.Decimal(12, 2)
+  descuentoLinea         Decimal       @db.Decimal(12, 2)
+  descuentoTipo          DescuentoTipo
+  descuentoAutorizadoPor Int? // opcional: autorizador del descuento de línea
+  tasaItbis              Decimal       @db.Decimal(12, 2) // congelada al momento de la venta
+  itbisLinea             Decimal       @db.Decimal(12, 2)
+  subtotalLinea          Decimal       @db.Decimal(12, 2)
+
+  venta                         Venta    @relation(fields: [ventaId], references: [id], onDelete: Restrict)
+  producto                      Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
+  descuentoAutorizadoPorUsuario Usuario? @relation("DetalleVentaDescuentoAutorizado", fields: [descuentoAutorizadoPor], references: [id], onDelete: Restrict)
+
+  @@map("DETALLE_VENTA")
+}
+
+model Factura {
+  id                 Int             @id @default(autoincrement())
+  ventaId            Int? // 0..1: la factura puede diferirse de la venta; UK ventaId = una venta se factura UNA sola vez
+  empresaId          Int
+  sucursalId         Int
+  clienteId          Int
+  usuarioId          Int // emisor de la factura (trazabilidad)
+  tipoNcf            TipoNcfFactura // solo B01/B02; B03/B04 son entidades propias
+  ncf                String          @db.VarChar(255)
+  correlativoInterno String          @db.VarChar(255)
+  estado             EstadoDocumento // VIGENTE/CANCELADA/ANULADA; PENDIENTE/PARCIAL/PAGADA se derivan de los pagos (ADR-017)
+  subtotalGravado    Decimal         @db.Decimal(12, 2)
+  itbis              Decimal         @db.Decimal(12, 2)
+  subtotalExento     Decimal         @db.Decimal(12, 2)
+  descuento          Decimal         @db.Decimal(12, 2)
+  total              Decimal         @db.Decimal(12, 2)
+  fechaEmision       DateTime        @db.Timestamptz(6)
+  createdAt          DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime        @updatedAt @db.Timestamptz(6) // trazabilidad del cambio de estado (v4.1)
+
+  venta    Venta?   @relation("FacturaVenta", fields: [ventaId], references: [id], onDelete: Restrict)
+  empresa  Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  cliente  Cliente  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  pagos        Pago[]
+  notasCredito NotaCredito[] @relation("NotaCreditoFacturaOriginal")
+  notasDebito  NotaDebito[]  @relation("NotaDebitoFacturaOriginal")
+
+  @@unique([empresaId, ncf]) // NCF único por empresa (fiscal)
+  @@unique([ventaId])
+  @@map("FACTURA")
+}
+
+model NotaCredito {
+  id                Int             @id @default(autoincrement())
+  facturaOriginalId Int
+  empresaId         Int
+  sucursalId        Int
+  clienteId         Int
+  usuarioId         Int // quién emite la nota
+  ncf               String          @db.VarChar(255)
+  estado            EstadoDocumento // VIGENTE/CANCELADA/ANULADA
+  motivo            String          @db.VarChar(255)
+  monto             Decimal         @db.Decimal(12, 2)
+  itbis             Decimal         @db.Decimal(12, 2)
+  fechaEmision      DateTime        @db.Timestamptz(6)
+  createdAt         DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime        @updatedAt @db.Timestamptz(6)
+
+  facturaOriginal Factura  @relation("NotaCreditoFacturaOriginal", fields: [facturaOriginalId], references: [id], onDelete: Restrict)
+  empresa         Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  sucursal        Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  cliente         Cliente  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  usuario         Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  detalles              DetalleNotaCredito[]
+  movimientosInventario MovimientoInventario[]
+
+  @@unique([empresaId, ncf]) // NCF único por empresa (fiscal)
+  @@map("NOTA_CREDITO")
+}
+
+model DetalleNotaCredito {
+  id             Int            @id @default(autoincrement())
+  notaCreditoId  Int
+  productoId     Int
+  cantidad       Decimal        @db.Decimal(12, 3)
+  precioUnitario Decimal        @db.Decimal(12, 2)
+  tasaItbis      Decimal        @db.Decimal(12, 2) // congelada al momento de la devolución (coherente con venta/compra)
+  itbis          Decimal        @db.Decimal(12, 2)
+  subtotalLinea  Decimal        @db.Decimal(12, 2)
+  tipoReposicion TipoReposicion // VENDIBLE -> entrada / DANADO -> merma
+
+  notaCredito NotaCredito @relation(fields: [notaCreditoId], references: [id], onDelete: Restrict)
+  producto    Producto    @relation(fields: [productoId], references: [id], onDelete: Restrict)
+
+  @@map("DETALLE_NOTA_CREDITO")
+}
+
+model NotaDebito {
+  id                Int             @id @default(autoincrement())
+  facturaOriginalId Int
+  empresaId         Int
+  sucursalId        Int
+  clienteId         Int
+  usuarioId         Int // quién emite la nota
+  ncf               String          @db.VarChar(255) // siempre B03
+  estado            EstadoDocumento // VIGENTE/CANCELADA/ANULADA
+  motivo            String          @db.VarChar(255)
+  monto             Decimal         @db.Decimal(12, 2)
+  itbis             Decimal         @db.Decimal(12, 2)
+  fechaEmision      DateTime        @db.Timestamptz(6)
+  createdAt         DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime        @updatedAt @db.Timestamptz(6)
+
+  facturaOriginal Factura  @relation("NotaDebitoFacturaOriginal", fields: [facturaOriginalId], references: [id], onDelete: Restrict)
+  empresa         Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  sucursal        Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  cliente         Cliente  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  usuario         Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@unique([empresaId, ncf]) // NCF único por empresa (fiscal)
+  @@map("NOTA_DEBITO")
+}
+
+model Pago {
+  id                Int        @id @default(autoincrement())
+  facturaId         Int
+  empresaId         Int
+  sucursalId        Int
+  usuarioId         Int
+  metodoPago        MetodoPago
+  monto             Decimal    @db.Decimal(12, 2)
+  fecha             DateTime   @db.Timestamptz(6)
+  estado            EstadoPago
+  tipo              TipoPago // COBRO / REEMBOLSO (devolución en efectivo)
+  autorizadoPor     Int? // opcional: quién autorizó un REEMBOLSO (03, §10); null en COBRO
+  correlativoRecibo Int // referencia del recibo de cobro imprimible (04, §6)
+  createdAt         DateTime   @default(now()) @db.Timestamptz(6)
+
+  factura              Factura  @relation(fields: [facturaId], references: [id], onDelete: Restrict)
+  empresa              Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  sucursal             Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  usuario              Usuario  @relation("PagoRealizado", fields: [usuarioId], references: [id], onDelete: Restrict)
+  autorizadoPorUsuario Usuario? @relation("PagoReembolsoAutorizado", fields: [autorizadoPor], references: [id], onDelete: Restrict)
+
+  @@unique([empresaId, correlativoRecibo]) // secuencia de recibo única por empresa (v4.1)
+  @@map("PAGO")
+}
+
+model PagoProveedor {
+  id         Int        @id @default(autoincrement())
+  compraId   Int
+  empresaId  Int
+  sucursalId Int
+  usuarioId  Int
+  metodoPago MetodoPago // EFECTIVO en V1; sin cierreCajaId (no hay entidad CIERRE_CAJA en V1)
+  monto      Decimal    @db.Decimal(12, 2)
+  fecha      DateTime   @db.Timestamptz(6)
+  estado     EstadoPago
+  createdAt  DateTime   @default(now()) @db.Timestamptz(6)
+
+  compra   Compra   @relation(fields: [compraId], references: [id], onDelete: Restrict)
+  empresa  Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@map("PAGO_PROVEEDOR")
+}
+
+model Compra {
+  id                 Int            @id @default(autoincrement())
+  empresaId          Int
+  sucursalId         Int
+  proveedorId        Int
+  usuarioId          Int
+  tipoNcf            TipoNcfCompra? // B01 (formal) o B11 (informal); opcional hasta recibir comprobante
+  ncf                String?        @db.VarChar(255) // comprobante B01/B11 de la compra; opcional
+  correlativoInterno String         @db.VarChar(255) // trazabilidad interna de la compra
+  tipoCompra         TipoCompra // clasificación fiscal de la retención ISR/ITBIS (03, §8)
+  estado             EstadoCompra
+  subtotal           Decimal        @db.Decimal(12, 2)
+  subtotalGravado    Decimal        @db.Decimal(12, 2)
+  itbis              Decimal        @db.Decimal(12, 2) // crédito fiscal ITBIS de compras a formales (03, §8)
+  subtotalExento     Decimal        @db.Decimal(12, 2)
+  retencionIsr       Decimal        @db.Decimal(12, 2)
+  retencionItbis     Decimal        @db.Decimal(12, 2)
+  total              Decimal        @db.Decimal(12, 2)
+  fecha              DateTime       @db.Timestamptz(6)
+  createdAt          DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime       @updatedAt @db.Timestamptz(6) // trazabilidad del cambio de estado (v4.1)
+
+  empresa   Empresa   @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  sucursal  Sucursal  @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  proveedor Proveedor @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  detalles              DetalleCompra[]
+  pagosProveedor        PagoProveedor[]
+  movimientosInventario MovimientoInventario[]
+
+  @@unique([empresaId, ncf]) // NCF único por empresa (fiscal)
+  @@map("COMPRA")
+}
+
+model DetalleCompra {
+  id            Int     @id @default(autoincrement())
+  compraId      Int
+  productoId    Int
+  cantidad      Decimal @db.Decimal(12, 3)
+  costoUnitario Decimal @db.Decimal(12, 2)
+  tasaItbis     Decimal @db.Decimal(12, 2) // congelada al momento de la compra
+  itbisLinea    Decimal @db.Decimal(12, 2)
+  subtotalLinea Decimal @db.Decimal(12, 2)
+
+  compra   Compra   @relation(fields: [compraId], references: [id], onDelete: Restrict)
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
+
+  @@map("DETALLE_COMPRA")
+}
+
+model MovimientoInventario {
+  id               Int            @id @default(autoincrement())
+  inventarioId     Int // implica (sucursalId, productoId) por UK de INVENTARIO
+  ventaId          Int? // opcional: causa salida
+  compraId         Int? // opcional: causa entrada
+  notaCreditoId    Int? // opcional: causa reposición
+  tipoMovimiento   TipoMovimiento
+  motivo           String         @db.VarChar(255)
+  cantidadMovida   Decimal        @db.Decimal(12, 3) // delta del movimiento (cantidadAnterior + cantidadMovida = cantidadNueva)
+  cantidadAnterior Decimal        @db.Decimal(12, 3)
+  cantidadNueva    Decimal        @db.Decimal(12, 3)
+  usuarioId        Int
+  fecha            DateTime       @db.Timestamptz(6)
+
+  inventario  Inventario   @relation(fields: [inventarioId], references: [id], onDelete: Restrict)
+  venta       Venta?       @relation(fields: [ventaId], references: [id], onDelete: Restrict)
+  compra      Compra?      @relation(fields: [compraId], references: [id], onDelete: Restrict)
+  notaCredito NotaCredito? @relation(fields: [notaCreditoId], references: [id], onDelete: Restrict)
+  usuario     Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@map("MOVIMIENTO_INVENTARIO")
+}
+
+model NcfSecuencia {
+  id              Int              @id @default(autoincrement())
+  empresaId       Int
+  tipoNcf         TipoNcfSecuencia // B01-B04 + B11: facturas, notas y compras a informales
+  rangoInicio     Int
+  rangoFin        Int
+  secuenciaActual Int
+  vigenciaInicio  DateTime         @db.Timestamptz(6)
+  vigenciaFin     DateTime         @db.Timestamptz(6)
+  activa          Boolean          @default(true)
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+
+  @@unique([empresaId, tipoNcf]) // secuencias NCF por tipo y por empresa (03, §8/§14); asignación con row lock
+  @@map("NCF_SECUENCIA")
+}
+
+model ConfiguracionEmpresa {
+  id             Int      @id @default(autoincrement())
+  empresaId      Int
+  clave          String   @db.VarChar(255) // TASA_ITBIS, RET_ISR_15, RET_ISR_2, RET_ITBIS_100, RET_ITBIS_30, DESC_MAX, PLAZO_DEVOLUCION, PLAZO_CREDITO
+  valor          String   @db.VarChar(255)
+  vigenciaInicio DateTime @db.Timestamptz(6) // ITBIS parametrizable con vigencia (05, §15)
+  vigenciaFin    DateTime @db.Timestamptz(6)
+  activa         Boolean  @default(true)
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+
+  @@unique([empresaId, clave, vigenciaInicio]) // una config activa por clave y vigencia (v4.1)
+  @@map("CONFIGURACION_EMPRESA")
+}
+
+model Anulacion {
+  id            Int                    @id @default(autoincrement())
+  empresaId     Int
+  tipoDocumento TipoDocumentoAnulacion // FACTURA / NOTA_CREDITO / NOTA_DEBITO
+  documentoId   Int // id polimórfico del documento anulado
+  motivo        String                 @db.VarChar(255) // motivo obligatorio desde catálogo (04, §9)
+  anuladaPor    Int // SOLO Administrador anula (04, §9)
+  autorizadaPor Int? // opcional: 2º nivel para montos > RD$10,000 o fuera del mismo día
+  fechaHora     DateTime               @db.Timestamptz(6)
+  createdAt     DateTime               @default(now()) @db.Timestamptz(6)
+
+  empresa              Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  anuladaPorUsuario    Usuario  @relation("AnulacionRealizada", fields: [anuladaPor], references: [id], onDelete: Restrict)
+  autorizadaPorUsuario Usuario? @relation("AnulacionAutorizada", fields: [autorizadaPor], references: [id], onDelete: Restrict)
+
+  @@unique([tipoDocumento, documentoId]) // un documento se anula UNA sola vez (v4.1)
+  @@map("ANULACION")
+}
+
+model MovimientoAuditoria {
+  id            Int             @id @default(autoincrement())
+  empresaId     Int
+  sucursalId    Int? // opcional: filtro por sucursal (05, §17); null para acciones de empresa
+  usuarioId     Int
+  fechaHora     DateTime        @db.Timestamptz(6)
+  accion        AccionAuditoria
+  entidad       String          @db.VarChar(255)
+  idEntidad     String          @db.VarChar(255)
+  valorAnterior String?         @db.VarChar(255)
+  valorNuevo    String?         @db.VarChar(255)
+  motivo        String?         @db.VarChar(255)
+
+  empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  sucursal Sucursal? @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  usuario  Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  // Auditoría append-only: sin UPDATE/DELETE en Prisma (03, §13).
+  @@map("MOVIMIENTO_AUDITORIA")
 }
