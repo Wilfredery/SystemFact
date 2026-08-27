@@ -3,4 +3,9 @@
 # pnpm 11 usa allowBuilds (mapa name -> true), no onlyBuiltDependencies (era pnpm 9/10).
 # Ver: https://pnpm.io/settings
 allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  msgpackr-extract: true
+  prisma: true
   unrs-resolver: true
+  workerd: false
