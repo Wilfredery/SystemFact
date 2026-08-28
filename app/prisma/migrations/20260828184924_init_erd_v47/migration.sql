@@ -1,0 +1,715 @@
+-- CreateEnum
+CREATE TYPE "TipoCliente" AS ENUM ('MINORISTA', 'MAYORISTA', 'CREDITO');
+
+-- CreateEnum
+CREATE TYPE "TipoNcfFactura" AS ENUM ('B01', 'B02');
+
+-- CreateEnum
+CREATE TYPE "TipoNcfSecuencia" AS ENUM ('B01', 'B02', 'B03', 'B04', 'B11');
+
+-- CreateEnum
+CREATE TYPE "TipoNcfCompra" AS ENUM ('B01', 'B11');
+
+-- CreateEnum
+CREATE TYPE "EstadoDocumento" AS ENUM ('VIGENTE', 'CANCELADA', 'ANULADA');
+
+-- CreateEnum
+CREATE TYPE "EstadoVenta" AS ENUM ('BORRADOR', 'CONFIRMADA', 'CANCELADA');
+
+-- CreateEnum
+CREATE TYPE "EstadoCompra" AS ENUM ('BORRADOR', 'PENDIENTE', 'RECIBIDA', 'PAGADA', 'CANCELADA');
+
+-- CreateEnum
+CREATE TYPE "MetodoPago" AS ENUM ('EFECTIVO');
+
+-- CreateEnum
+CREATE TYPE "EstadoPago" AS ENUM ('REGISTRADO', 'APLICADO', 'REVERTIDO');
+
+-- CreateEnum
+CREATE TYPE "TipoPago" AS ENUM ('COBRO', 'REEMBOLSO');
+
+-- CreateEnum
+CREATE TYPE "TipoProveedor" AS ENUM ('FORMAL', 'INFORMAL');
+
+-- CreateEnum
+CREATE TYPE "TipoPersona" AS ENUM ('FISICA', 'JURIDICA');
+
+-- CreateEnum
+CREATE TYPE "TipoCompra" AS ENUM ('MERCANCIA', 'SERVICIO_PROFESIONAL', 'SERVICIO_TECNICO', 'ALQUILER');
+
+-- CreateEnum
+CREATE TYPE "TipoDocumentoAnulacion" AS ENUM ('FACTURA', 'NOTA_CREDITO', 'NOTA_DEBITO');
+
+-- CreateEnum
+CREATE TYPE "DescuentoTipo" AS ENUM ('PORCENTAJE', 'MONTO');
+
+-- CreateEnum
+CREATE TYPE "TipoMovimiento" AS ENUM ('ENTRADA_COMPRA', 'SALIDA_VENTA', 'ENTRADA_DEVOLUCION', 'SALIDA_MERMA', 'AJUSTE', 'REPOSICION_CANCELACION', 'SALIDA_CANCELACION_COMPRA');
+
+-- CreateEnum
+CREATE TYPE "TipoReposicion" AS ENUM ('VENDIBLE', 'DANADO');
+
+-- CreateEnum
+CREATE TYPE "AccionAuditoria" AS ENUM ('CREAR', 'ACTUALIZAR', 'CANCELAR', 'ANULAR', 'PAGAR', 'AJUSTAR', 'LOGIN', 'LOGOUT');
+
+-- CreateTable
+CREATE TABLE "EMPRESA" (
+    "id" SERIAL NOT NULL,
+    "nombreComercial" VARCHAR(255) NOT NULL,
+    "rnc" VARCHAR(255) NOT NULL,
+    "razonSocial" VARCHAR(255) NOT NULL,
+    "direccionFiscal" VARCHAR(255) NOT NULL,
+    "telefono" VARCHAR(255) NOT NULL,
+    "correo" VARCHAR(255) NOT NULL,
+    "logo" VARCHAR(255) NOT NULL,
+    "regimenFiscal" VARCHAR(255) NOT NULL,
+    "activa" BOOLEAN NOT NULL DEFAULT true,
+    "facturaAutomatica" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "EMPRESA_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SUCURSAL" (
+    "id" SERIAL NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "nombre" VARCHAR(255) NOT NULL,
+    "direccion" VARCHAR(255) NOT NULL,
+    "telefono" VARCHAR(255) NOT NULL,
+    "activa" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "SUCURSAL_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "USUARIO" (
+    "id" SERIAL NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "nombre" VARCHAR(255) NOT NULL,
+    "nombreUsuario" VARCHAR(255) NOT NULL,
+    "passwordHash" VARCHAR(255) NOT NULL,
+    "email" VARCHAR(255),
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "USUARIO_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ROL" (
+    "id" SERIAL NOT NULL,
+    "nombre" VARCHAR(255) NOT NULL,
+    "descripcion" VARCHAR(255) NOT NULL,
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "ROL_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "USUARIO_ROL" (
+    "usuarioId" INTEGER NOT NULL,
+    "rolId" INTEGER NOT NULL,
+
+    CONSTRAINT "USUARIO_ROL_pkey" PRIMARY KEY ("usuarioId","rolId")
+);
+
+-- CreateTable
+CREATE TABLE "CLIENTE" (
+    "id" SERIAL NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "nombre" VARCHAR(255) NOT NULL,
+    "telefono" VARCHAR(255) NOT NULL,
+    "direccion" VARCHAR(255) NOT NULL,
+    "identificacionFiscal" VARCHAR(255),
+    "tipoCliente" "TipoCliente" NOT NULL,
+    "esConsumidorFinal" BOOLEAN NOT NULL DEFAULT false,
+    "creditoHabilitado" BOOLEAN NOT NULL DEFAULT false,
+    "limiteCredito" DECIMAL(12,2) NOT NULL,
+    "plazoCreditoDias" INTEGER NOT NULL,
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "CLIENTE_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PROVEEDOR" (
+    "id" SERIAL NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "nombre" VARCHAR(255) NOT NULL,
+    "contacto" VARCHAR(255) NOT NULL,
+    "telefono" VARCHAR(255) NOT NULL,
+    "rnc" VARCHAR(255),
+    "tipoProveedor" "TipoProveedor" NOT NULL,
+    "tipoPersona" "TipoPersona" NOT NULL,
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "PROVEEDOR_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "CATEGORIA" (
+    "id" SERIAL NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "nombre" VARCHAR(255) NOT NULL,
+    "activa" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "CATEGORIA_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PRODUCTO" (
+    "id" SERIAL NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "categoriaId" INTEGER NOT NULL,
+    "nombre" VARCHAR(255) NOT NULL,
+    "codigo" VARCHAR(255) NOT NULL,
+    "codigoBarras" VARCHAR(255) NOT NULL,
+    "unidadMedida" VARCHAR(255) NOT NULL,
+    "unidadEmpaque" VARCHAR(255) NOT NULL,
+    "stockMinimo" INTEGER NOT NULL,
+    "precioCompra" DECIMAL(12,2) NOT NULL,
+    "precioVenta" DECIMAL(12,2) NOT NULL,
+    "costoPromedio" DECIMAL(12,2) NOT NULL,
+    "tasaItbis" DECIMAL(12,2) NOT NULL,
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "PRODUCTO_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "INVENTARIO" (
+    "id" SERIAL NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "cantidad" DECIMAL(12,3) NOT NULL,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "INVENTARIO_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "VENTA" (
+    "id" SERIAL NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "clienteId" INTEGER NOT NULL,
+    "fecha" TIMESTAMPTZ(6) NOT NULL,
+    "estado" "EstadoVenta" NOT NULL,
+    "subtotal" DECIMAL(12,2) NOT NULL,
+    "descuento" DECIMAL(12,2) NOT NULL,
+    "descuentoTipo" "DescuentoTipo" NOT NULL,
+    "descuentoAutorizadoPor" INTEGER,
+    "itbis" DECIMAL(12,2) NOT NULL,
+    "total" DECIMAL(12,2) NOT NULL,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "VENTA_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DETALLE_VENTA" (
+    "id" SERIAL NOT NULL,
+    "ventaId" INTEGER NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "cantidad" DECIMAL(12,3) NOT NULL,
+    "precioUnitario" DECIMAL(12,2) NOT NULL,
+    "descuentoLinea" DECIMAL(12,2) NOT NULL,
+    "descuentoTipo" "DescuentoTipo" NOT NULL,
+    "descuentoAutorizadoPor" INTEGER,
+    "tasaItbis" DECIMAL(12,2) NOT NULL,
+    "itbisLinea" DECIMAL(12,2) NOT NULL,
+    "subtotalLinea" DECIMAL(12,2) NOT NULL,
+
+    CONSTRAINT "DETALLE_VENTA_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "FACTURA" (
+    "id" SERIAL NOT NULL,
+    "ventaId" INTEGER,
+    "empresaId" INTEGER NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "clienteId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "tipoNcf" "TipoNcfFactura" NOT NULL,
+    "ncf" VARCHAR(255) NOT NULL,
+    "correlativoInterno" VARCHAR(255) NOT NULL,
+    "estado" "EstadoDocumento" NOT NULL,
+    "subtotalGravado" DECIMAL(12,2) NOT NULL,
+    "itbis" DECIMAL(12,2) NOT NULL,
+    "subtotalExento" DECIMAL(12,2) NOT NULL,
+    "descuento" DECIMAL(12,2) NOT NULL,
+    "total" DECIMAL(12,2) NOT NULL,
+    "fechaEmision" TIMESTAMPTZ(6) NOT NULL,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "FACTURA_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "NOTA_CREDITO" (
+    "id" SERIAL NOT NULL,
+    "facturaOriginalId" INTEGER NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "clienteId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "ncf" VARCHAR(255) NOT NULL,
+    "estado" "EstadoDocumento" NOT NULL,
+    "motivo" VARCHAR(255) NOT NULL,
+    "monto" DECIMAL(12,2) NOT NULL,
+    "itbis" DECIMAL(12,2) NOT NULL,
+    "fechaEmision" TIMESTAMPTZ(6) NOT NULL,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "NOTA_CREDITO_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DETALLE_NOTA_CREDITO" (
+    "id" SERIAL NOT NULL,
+    "notaCreditoId" INTEGER NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "cantidad" DECIMAL(12,3) NOT NULL,
+    "precioUnitario" DECIMAL(12,2) NOT NULL,
+    "tasaItbis" DECIMAL(12,2) NOT NULL,
+    "itbis" DECIMAL(12,2) NOT NULL,
+    "subtotalLinea" DECIMAL(12,2) NOT NULL,
+    "tipoReposicion" "TipoReposicion" NOT NULL,
+
+    CONSTRAINT "DETALLE_NOTA_CREDITO_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "NOTA_DEBITO" (
+    "id" SERIAL NOT NULL,
+    "facturaOriginalId" INTEGER NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "clienteId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "ncf" VARCHAR(255) NOT NULL,
+    "estado" "EstadoDocumento" NOT NULL,
+    "motivo" VARCHAR(255) NOT NULL,
+    "monto" DECIMAL(12,2) NOT NULL,
+    "itbis" DECIMAL(12,2) NOT NULL,
+    "fechaEmision" TIMESTAMPTZ(6) NOT NULL,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "NOTA_DEBITO_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PAGO" (
+    "id" SERIAL NOT NULL,
+    "facturaId" INTEGER NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "metodoPago" "MetodoPago" NOT NULL,
+    "monto" DECIMAL(12,2) NOT NULL,
+    "fecha" TIMESTAMPTZ(6) NOT NULL,
+    "estado" "EstadoPago" NOT NULL,
+    "tipo" "TipoPago" NOT NULL,
+    "autorizadoPor" INTEGER,
+    "correlativoRecibo" INTEGER NOT NULL,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "PAGO_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PAGO_PROVEEDOR" (
+    "id" SERIAL NOT NULL,
+    "compraId" INTEGER NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "metodoPago" "MetodoPago" NOT NULL,
+    "monto" DECIMAL(12,2) NOT NULL,
+    "fecha" TIMESTAMPTZ(6) NOT NULL,
+    "estado" "EstadoPago" NOT NULL,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "PAGO_PROVEEDOR_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "COMPRA" (
+    "id" SERIAL NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "sucursalId" INTEGER NOT NULL,
+    "proveedorId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "tipoNcf" "TipoNcfCompra",
+    "ncf" VARCHAR(255),
+    "correlativoInterno" VARCHAR(255) NOT NULL,
+    "tipoCompra" "TipoCompra" NOT NULL,
+    "estado" "EstadoCompra" NOT NULL,
+    "subtotal" DECIMAL(12,2) NOT NULL,
+    "subtotalGravado" DECIMAL(12,2) NOT NULL,
+    "itbis" DECIMAL(12,2) NOT NULL,
+    "subtotalExento" DECIMAL(12,2) NOT NULL,
+    "retencionIsr" DECIMAL(12,2) NOT NULL,
+    "retencionItbis" DECIMAL(12,2) NOT NULL,
+    "total" DECIMAL(12,2) NOT NULL,
+    "fecha" TIMESTAMPTZ(6) NOT NULL,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "COMPRA_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DETALLE_COMPRA" (
+    "id" SERIAL NOT NULL,
+    "compraId" INTEGER NOT NULL,
+    "productoId" INTEGER NOT NULL,
+    "cantidad" DECIMAL(12,3) NOT NULL,
+    "costoUnitario" DECIMAL(12,2) NOT NULL,
+    "tasaItbis" DECIMAL(12,2) NOT NULL,
+    "itbisLinea" DECIMAL(12,2) NOT NULL,
+    "subtotalLinea" DECIMAL(12,2) NOT NULL,
+
+    CONSTRAINT "DETALLE_COMPRA_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "MOVIMIENTO_INVENTARIO" (
+    "id" SERIAL NOT NULL,
+    "inventarioId" INTEGER NOT NULL,
+    "ventaId" INTEGER,
+    "compraId" INTEGER,
+    "notaCreditoId" INTEGER,
+    "tipoMovimiento" "TipoMovimiento" NOT NULL,
+    "motivo" VARCHAR(255) NOT NULL,
+    "cantidadMovida" DECIMAL(12,3) NOT NULL,
+    "cantidadAnterior" DECIMAL(12,3) NOT NULL,
+    "cantidadNueva" DECIMAL(12,3) NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "fecha" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "MOVIMIENTO_INVENTARIO_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "NCF_SECUENCIA" (
+    "id" SERIAL NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "tipoNcf" "TipoNcfSecuencia" NOT NULL,
+    "rangoInicio" INTEGER NOT NULL,
+    "rangoFin" INTEGER NOT NULL,
+    "secuenciaActual" INTEGER NOT NULL,
+    "vigenciaInicio" TIMESTAMPTZ(6) NOT NULL,
+    "vigenciaFin" TIMESTAMPTZ(6) NOT NULL,
+    "activa" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "NCF_SECUENCIA_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "CONFIGURACION_EMPRESA" (
+    "id" SERIAL NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "clave" VARCHAR(255) NOT NULL,
+    "valor" VARCHAR(255) NOT NULL,
+    "vigenciaInicio" TIMESTAMPTZ(6) NOT NULL,
+    "vigenciaFin" TIMESTAMPTZ(6) NOT NULL,
+    "activa" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "CONFIGURACION_EMPRESA_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ANULACION" (
+    "id" SERIAL NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "tipoDocumento" "TipoDocumentoAnulacion" NOT NULL,
+    "documentoId" INTEGER NOT NULL,
+    "motivo" VARCHAR(255) NOT NULL,
+    "anuladaPor" INTEGER NOT NULL,
+    "autorizadaPor" INTEGER,
+    "fechaHora" TIMESTAMPTZ(6) NOT NULL,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ANULACION_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "MOVIMIENTO_AUDITORIA" (
+    "id" SERIAL NOT NULL,
+    "empresaId" INTEGER NOT NULL,
+    "sucursalId" INTEGER,
+    "usuarioId" INTEGER NOT NULL,
+    "fechaHora" TIMESTAMPTZ(6) NOT NULL,
+    "accion" "AccionAuditoria" NOT NULL,
+    "entidad" VARCHAR(255) NOT NULL,
+    "idEntidad" VARCHAR(255) NOT NULL,
+    "valorAnterior" VARCHAR(255),
+    "valorNuevo" VARCHAR(255),
+    "motivo" VARCHAR(255),
+
+    CONSTRAINT "MOVIMIENTO_AUDITORIA_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "EMPRESA_rnc_key" ON "EMPRESA"("rnc");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "USUARIO_nombreUsuario_key" ON "USUARIO"("nombreUsuario");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CLIENTE_empresaId_identificacionFiscal_key" ON "CLIENTE"("empresaId", "identificacionFiscal");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PROVEEDOR_empresaId_rnc_key" ON "PROVEEDOR"("empresaId", "rnc");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CATEGORIA_empresaId_nombre_key" ON "CATEGORIA"("empresaId", "nombre");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PRODUCTO_empresaId_codigo_key" ON "PRODUCTO"("empresaId", "codigo");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "INVENTARIO_sucursalId_productoId_key" ON "INVENTARIO"("sucursalId", "productoId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "FACTURA_empresaId_ncf_key" ON "FACTURA"("empresaId", "ncf");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "FACTURA_ventaId_key" ON "FACTURA"("ventaId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "NOTA_CREDITO_empresaId_ncf_key" ON "NOTA_CREDITO"("empresaId", "ncf");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "NOTA_DEBITO_empresaId_ncf_key" ON "NOTA_DEBITO"("empresaId", "ncf");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PAGO_empresaId_correlativoRecibo_key" ON "PAGO"("empresaId", "correlativoRecibo");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "COMPRA_empresaId_ncf_key" ON "COMPRA"("empresaId", "ncf");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "NCF_SECUENCIA_empresaId_tipoNcf_key" ON "NCF_SECUENCIA"("empresaId", "tipoNcf");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CONFIGURACION_EMPRESA_empresaId_clave_vigenciaInicio_key" ON "CONFIGURACION_EMPRESA"("empresaId", "clave", "vigenciaInicio");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ANULACION_tipoDocumento_documentoId_key" ON "ANULACION"("tipoDocumento", "documentoId");
+
+-- AddForeignKey
+ALTER TABLE "SUCURSAL" ADD CONSTRAINT "SUCURSAL_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "USUARIO" ADD CONSTRAINT "USUARIO_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "USUARIO" ADD CONSTRAINT "USUARIO_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "SUCURSAL"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "USUARIO_ROL" ADD CONSTRAINT "USUARIO_ROL_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "USUARIO_ROL" ADD CONSTRAINT "USUARIO_ROL_rolId_fkey" FOREIGN KEY ("rolId") REFERENCES "ROL"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CLIENTE" ADD CONSTRAINT "CLIENTE_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PROVEEDOR" ADD CONSTRAINT "PROVEEDOR_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CATEGORIA" ADD CONSTRAINT "CATEGORIA_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PRODUCTO" ADD CONSTRAINT "PRODUCTO_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PRODUCTO" ADD CONSTRAINT "PRODUCTO_categoriaId_fkey" FOREIGN KEY ("categoriaId") REFERENCES "CATEGORIA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "INVENTARIO" ADD CONSTRAINT "INVENTARIO_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "SUCURSAL"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "INVENTARIO" ADD CONSTRAINT "INVENTARIO_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "PRODUCTO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "VENTA" ADD CONSTRAINT "VENTA_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "VENTA" ADD CONSTRAINT "VENTA_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "SUCURSAL"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "VENTA" ADD CONSTRAINT "VENTA_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "VENTA" ADD CONSTRAINT "VENTA_descuentoAutorizadoPor_fkey" FOREIGN KEY ("descuentoAutorizadoPor") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "VENTA" ADD CONSTRAINT "VENTA_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "CLIENTE"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DETALLE_VENTA" ADD CONSTRAINT "DETALLE_VENTA_ventaId_fkey" FOREIGN KEY ("ventaId") REFERENCES "VENTA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DETALLE_VENTA" ADD CONSTRAINT "DETALLE_VENTA_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "PRODUCTO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DETALLE_VENTA" ADD CONSTRAINT "DETALLE_VENTA_descuentoAutorizadoPor_fkey" FOREIGN KEY ("descuentoAutorizadoPor") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FACTURA" ADD CONSTRAINT "FACTURA_ventaId_fkey" FOREIGN KEY ("ventaId") REFERENCES "VENTA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FACTURA" ADD CONSTRAINT "FACTURA_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FACTURA" ADD CONSTRAINT "FACTURA_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "SUCURSAL"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FACTURA" ADD CONSTRAINT "FACTURA_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "CLIENTE"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FACTURA" ADD CONSTRAINT "FACTURA_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "NOTA_CREDITO" ADD CONSTRAINT "NOTA_CREDITO_facturaOriginalId_fkey" FOREIGN KEY ("facturaOriginalId") REFERENCES "FACTURA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "NOTA_CREDITO" ADD CONSTRAINT "NOTA_CREDITO_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "NOTA_CREDITO" ADD CONSTRAINT "NOTA_CREDITO_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "SUCURSAL"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "NOTA_CREDITO" ADD CONSTRAINT "NOTA_CREDITO_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "CLIENTE"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "NOTA_CREDITO" ADD CONSTRAINT "NOTA_CREDITO_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DETALLE_NOTA_CREDITO" ADD CONSTRAINT "DETALLE_NOTA_CREDITO_notaCreditoId_fkey" FOREIGN KEY ("notaCreditoId") REFERENCES "NOTA_CREDITO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DETALLE_NOTA_CREDITO" ADD CONSTRAINT "DETALLE_NOTA_CREDITO_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "PRODUCTO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "NOTA_DEBITO" ADD CONSTRAINT "NOTA_DEBITO_facturaOriginalId_fkey" FOREIGN KEY ("facturaOriginalId") REFERENCES "FACTURA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "NOTA_DEBITO" ADD CONSTRAINT "NOTA_DEBITO_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "NOTA_DEBITO" ADD CONSTRAINT "NOTA_DEBITO_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "SUCURSAL"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "NOTA_DEBITO" ADD CONSTRAINT "NOTA_DEBITO_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "CLIENTE"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "NOTA_DEBITO" ADD CONSTRAINT "NOTA_DEBITO_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PAGO" ADD CONSTRAINT "PAGO_facturaId_fkey" FOREIGN KEY ("facturaId") REFERENCES "FACTURA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PAGO" ADD CONSTRAINT "PAGO_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PAGO" ADD CONSTRAINT "PAGO_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "SUCURSAL"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PAGO" ADD CONSTRAINT "PAGO_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PAGO" ADD CONSTRAINT "PAGO_autorizadoPor_fkey" FOREIGN KEY ("autorizadoPor") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PAGO_PROVEEDOR" ADD CONSTRAINT "PAGO_PROVEEDOR_compraId_fkey" FOREIGN KEY ("compraId") REFERENCES "COMPRA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PAGO_PROVEEDOR" ADD CONSTRAINT "PAGO_PROVEEDOR_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PAGO_PROVEEDOR" ADD CONSTRAINT "PAGO_PROVEEDOR_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "SUCURSAL"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PAGO_PROVEEDOR" ADD CONSTRAINT "PAGO_PROVEEDOR_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "COMPRA" ADD CONSTRAINT "COMPRA_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "COMPRA" ADD CONSTRAINT "COMPRA_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "SUCURSAL"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "COMPRA" ADD CONSTRAINT "COMPRA_proveedorId_fkey" FOREIGN KEY ("proveedorId") REFERENCES "PROVEEDOR"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "COMPRA" ADD CONSTRAINT "COMPRA_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DETALLE_COMPRA" ADD CONSTRAINT "DETALLE_COMPRA_compraId_fkey" FOREIGN KEY ("compraId") REFERENCES "COMPRA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DETALLE_COMPRA" ADD CONSTRAINT "DETALLE_COMPRA_productoId_fkey" FOREIGN KEY ("productoId") REFERENCES "PRODUCTO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MOVIMIENTO_INVENTARIO" ADD CONSTRAINT "MOVIMIENTO_INVENTARIO_inventarioId_fkey" FOREIGN KEY ("inventarioId") REFERENCES "INVENTARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MOVIMIENTO_INVENTARIO" ADD CONSTRAINT "MOVIMIENTO_INVENTARIO_ventaId_fkey" FOREIGN KEY ("ventaId") REFERENCES "VENTA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MOVIMIENTO_INVENTARIO" ADD CONSTRAINT "MOVIMIENTO_INVENTARIO_compraId_fkey" FOREIGN KEY ("compraId") REFERENCES "COMPRA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MOVIMIENTO_INVENTARIO" ADD CONSTRAINT "MOVIMIENTO_INVENTARIO_notaCreditoId_fkey" FOREIGN KEY ("notaCreditoId") REFERENCES "NOTA_CREDITO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MOVIMIENTO_INVENTARIO" ADD CONSTRAINT "MOVIMIENTO_INVENTARIO_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "NCF_SECUENCIA" ADD CONSTRAINT "NCF_SECUENCIA_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CONFIGURACION_EMPRESA" ADD CONSTRAINT "CONFIGURACION_EMPRESA_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ANULACION" ADD CONSTRAINT "ANULACION_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ANULACION" ADD CONSTRAINT "ANULACION_anuladaPor_fkey" FOREIGN KEY ("anuladaPor") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ANULACION" ADD CONSTRAINT "ANULACION_autorizadaPor_fkey" FOREIGN KEY ("autorizadaPor") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MOVIMIENTO_AUDITORIA" ADD CONSTRAINT "MOVIMIENTO_AUDITORIA_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EMPRESA"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MOVIMIENTO_AUDITORIA" ADD CONSTRAINT "MOVIMIENTO_AUDITORIA_sucursalId_fkey" FOREIGN KEY ("sucursalId") REFERENCES "SUCURSAL"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MOVIMIENTO_AUDITORIA" ADD CONSTRAINT "MOVIMIENTO_AUDITORIA_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "USUARIO"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
