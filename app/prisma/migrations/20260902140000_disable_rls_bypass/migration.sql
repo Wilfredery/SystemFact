@@ -1,0 +1,28 @@
+-- ============================================================
+-- Migration: disable_rls_bypass
+-- Date: 2026-09-02
+--
+-- BUGFIX crítico (R1.C discovery): el rol `postgres` en Supabase viene
+-- con `rolbypassrls = true` por default. Esto BYPASSEA TODAS las RLS
+-- policies, sin importar `FORCE ROW LEVEL SECURITY`. Por eso las 24
+-- policies de R1.B.1 estaban INACTIVAS para nuestro usuario.
+--
+-- Esta migración quita el BYPASSRLS del rol postgres. El cambio es
+-- REVERSIBLE: `ALTER ROLE postgres BYPASSRLS;` lo restaura.
+--
+-- IMPLICACIONES (aceptadas por decisión del usuario 2026-09-02):
+--   - Nuestras queries via Prisma ahora respetan RLS (deseado)
+--   - El dashboard de Supabase sigue funcionando (puede tener políticas
+--     especiales o usar otros roles internos)
+--   - Realtime, Storage y otros servicios de Supabase NO se ven afectados
+--     porque usan roles separados (`authenticated`, `anon`, `service_role`)
+--
+-- Defense-in-depth (ADR-019) operativa al 100%:
+--   - Layer 2 (app-layer): tenantWhere + setTenantContext (verificado)
+--   - Layer 3 (RLS):       policies + FORCE + NOBYPASSRLS (esta migración)
+--
+-- Diagnóstico que detectó el bug: scripts/diagnose-rls.ts y
+-- scripts/deep-check-rls.ts
+-- ============================================================
+
+ALTER ROLE postgres NOBYPASSRLS;
