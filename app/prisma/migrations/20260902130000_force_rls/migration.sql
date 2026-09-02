@@ -1,0 +1,50 @@
+-- ============================================================
+-- Migration: force_rls
+-- Date: 2026-09-02
+--
+-- BUGFIX crítico descubierto en R1.C: ENABLE ROW LEVEL SECURITY por
+-- default NO se aplica al table owner. El proyecto usa `postgres` user
+-- que es owner de todas las tablas — por lo tanto las 24 policies de
+-- R1.B.1 están inactivas sin este ALTER TABLE ... FORCE ROW LEVEL
+-- SECURITY.
+--
+-- Esta migración añade el flag FORCE para que las policies apliquen
+-- también al owner, no solo a roles no-owner.
+--
+-- Defense-in-depth (ADR-019) ahora operativa para AMBOS layers:
+--   - Layer 2 (app-layer): tenantWhere + setTenantContext (verificado)
+--   - Layer 3 (RLS):       policies + FORCE (esta migración lo completa)
+--
+-- Si una capa falla por bug, la otra contiene. Sin FORCE, Layer 3
+-- estaba BYPASSED para nuestro usuario y ADR-019 era solo docs.
+--
+-- REFERENCIAS:
+--   - docs/12-decisiones_de_arquitectura.md (ADR-019)
+--   - scripts/diagnose-rls.ts: diagnóstico que detectó el bug
+-- ============================================================
+
+ALTER TABLE "ANULACION" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "CATEGORIA" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "CLIENTE" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "COMPRA" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "CONFIGURACION_EMPRESA" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "DETALLE_COMPRA" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "DETALLE_NOTA_CREDITO" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "DETALLE_VENTA" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "EMPRESA" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "FACTURA" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "INVENTARIO" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "MOVIMIENTO_AUDITORIA" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "MOVIMIENTO_INVENTARIO" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "NCF_SECUENCIA" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "NOTA_CREDITO" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "NOTA_DEBITO" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PAGO" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PAGO_PROVEEDOR" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PRODUCTO" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PROVEEDOR" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "ROL" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "SUCURSAL" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "USUARIO" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "USUARIO_ROL" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "VENTA" FORCE ROW LEVEL SECURITY;
