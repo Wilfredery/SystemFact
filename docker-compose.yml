@@ -1,0 +1,38 @@
+# Docker Compose for local development.
+#
+# - postgres:16 container matches Supabase's Postgres 16 to keep behavior consistent.
+# - Port 5433 (not 5432) to avoid conflicts with the native Windows PostgreSQL service.
+# - restart: unless-stopped so the container survives Docker Desktop restarts.
+# - healthcheck ensures we know when the service is actually ready (not just "Up").
+# - Named volume (sf-pgdata) preserves data across container recreations.
+#
+# Usage:
+#   docker compose up -d        # start
+#   docker compose down         # stop (keeps volume)
+#   docker compose down -v      # stop AND wipe data
+#   docker compose logs -f postgres  # tail logs
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: sf-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - sf-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  sf-pgdata:
+    name: sf-pgdata
+    external: true
