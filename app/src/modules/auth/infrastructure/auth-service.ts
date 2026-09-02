@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
+import { setLoginFlow } from "@/modules/tenant/infrastructure/tenant-runtime";
 import {
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_USUARIO_INACTIVO,
@@ -59,9 +60,17 @@ export async function loginWithCredenciales(
   // 2. Authorize the mapped USUARIO row: must exist and be active.
   //    The synthetic email fails closed if no Supabase user matches, so a
   //    missing or inactive USUARIO row maps to the same generic error.
-  const usuario = await prisma.usuario.findUnique({
-    where: { nombreUsuario },
-    select: { id: true, activo: true, nombre: true },
+  //
+  //    NOTA (ADR-019 / R1.B): cuando RLS esté activo, este findUnique se
+  //    ejecuta SIN contexto de tenant todavía. Se activa la flag
+  //    `app.is_login_flow` para que la policy de USUARIO lo permita
+  //    (resuelve el problema gallina-huevo del path de auth).
+  const usuario = await prisma.$transaction(async (tx) => {
+    await setLoginFlow(tx);
+    return tx.usuario.findUnique({
+      where: { nombreUsuario },
+      select: { id: true, activo: true, nombre: true },
+    });
   });
 
   if (usuario === null || !usuario.activo) {
@@ -115,15 +124,21 @@ export async function getCurrentUser(
   }
   const nombreUsuario = email.slice(0, -SYNTHETIC_EMAIL_SUFFIX.length);
 
-  const usuario = await prisma.usuario.findUnique({
-    where: { nombreUsuario },
-    select: {
-      nombre: true,
-      nombreUsuario: true,
-      activo: true,
-      empresa: { select: { id: true, nombreComercial: true } },
-      sucursal: { select: { id: true, nombre: true } },
-    },
+  // NOTA (ADR-019 / R1.B): cuando RLS esté activo, este findUnique se ejecuta
+  // sin contexto de tenant (el TenantCtx es lo que estamos resolviendo).
+  // Se activa `app.is_login_flow` para que la policy de USUARIO lo permita.
+  const usuario = await prisma.$transaction(async (tx) => {
+    await setLoginFlow(tx);
+    return tx.usuario.findUnique({
+      where: { nombreUsuario },
+      select: {
+        nombre: true,
+        nombreUsuario: true,
+        activo: true,
+        empresa: { select: { id: true, nombreComercial: true } },
+        sucursal: { select: { id: true, nombre: true } },
+      },
+    });
   });
 
   if (usuario === null || !usuario.activo) {
