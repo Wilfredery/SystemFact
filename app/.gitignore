@@ -44,4 +44,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-/src/generated/prisma
+# verification output captures (scratch)
+/combined_evidence.txt
+/*_out.txt
+/*_output.txt
+/*_raw.txt
+/*_clean.txt
+/*_empty.txt
