@@ -1,6 +1,7 @@
 -- ============================================================
 -- Migration: create_app_role
 -- Date: 2026-09-02
+-- Updated: 2026-09-02 — password set OUT-OF-BAND (security)
 --
 -- Crea el rol dedicado systemfact_app con NO BYPASSRLS, para que
 -- las queries de la app respeten las RLS policies (ADR-019).
@@ -9,6 +10,16 @@
 -- sin error (CREATE ROLE gated por IF NOT EXISTS, GRANTs son
 -- idempotentes por naturaleza).
 --
+-- IMPORTANTE — Password NO se setea aquí:
+--   Esta migration crea el rol SIN password. El password debe setearse
+--   out-of-band (nunca en el repo):
+--     - Local dev: ver SETUP-LOCAL.md sección "Roles y permisos"
+--     - Supabase prod: secrets manager del equipo de operaciones
+--   Si tu BD local quedó con el password legacy hardcoded de versiones
+--   anteriores, rotalo:
+--     ALTER ROLE systemfact_app WITH PASSWORD '<nuevo>';
+--   y actualiza DATABASE_URL en .env. NO commitees el nuevo password.
+--
 -- Historia:
 --   - En Supabase, este rol fue creado vía Supabase MCP apply_migration
 --     (no como archivo Prisma) antes de que existiera esta migration.
@@ -16,15 +27,13 @@
 --   - Esta migration unifica ambos caminos y permite `migrate reset`
 --     sin perder el rol.
 --
--- IMPORTANTE: si RLS ya estaba activo en la BD (via migraciones previas),
--- el GRANT funciona como está. Si no, esta migration no agrega RLS.
 -- El bypass de postgres role se maneja en 20260902140000_disable_rls_bypass.
 -- ============================================================
 
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'systemfact_app') THEN
-    CREATE ROLE systemfact_app WITH LOGIN PASSWORD 'SF_App_2026' NOSUPERUSER NOBYPASSRLS;
+    CREATE ROLE systemfact_app WITH LOGIN NOSUPERUSER NOBYPASSRLS;
   END IF;
 END $$;
 

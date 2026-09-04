@@ -31,7 +31,7 @@ docker inspect --format "{{.State.Health.Status}}" sf-postgres
 # → healthy
 
 # 3. Configurar .env (una vez, ver app/.env.example)
-#    DATABASE_URL=postgresql://systemfact_app:SF_App_2026@localhost:5433/postgres
+#    DATABASE_URL=postgresql://systemfact_app:<password>@localhost:5433/postgres
 #    DIRECT_URL=postgresql://postgres:devpass@localhost:5433/postgres
 
 # 4. Aplicar migrations
@@ -57,13 +57,45 @@ npx tsx scripts/diagnose-rls.ts  # control positivo de RLS
 
 | Rol | Uso | Password |
 |---|---|---|
-| `postgres` | Owner. Migrations, ALTER ROLE, DDL admin | `devpass` |
-| `systemfact_app` | App runtime. NOBYPASSRLS, RLS enforced | `SF_App_2026` |
+| `postgres` | Owner. Migrations, ALTER ROLE, DDL admin | `devpass` (solo local — Supabase prod lo maneja el dashboard) |
+| `systemfact_app` | App runtime. NOBYPASSRLS, RLS enforced | **Out-of-band** (ver abajo) |
+
+### Password de `systemfact_app` — política out-of-band
+
+El password de `systemfact_app` **NO vive en el repo** (ni en migrations, ni en
+`.env.example`, ni en este documento). Razones:
+- Defense-in-depth (ADR-019) se rompe si el password es público: cualquiera
+  puede conectar con `psql` directo y bypass la app.
+- Una vez commiteado, queda en git history aunque se borre del archivo.
+
+**Setup local (cada developer lo hace UNA vez):**
+
+```bash
+# 1. Aplicá las migrations (crean el rol SIN password)
+cd app && pnpm prisma migrate deploy
+
+# 2. Elegí un password local y setéalo out-of-band
+psql -h localhost -p 5433 -U postgres -d postgres \
+  -c "ALTER ROLE systemfact_app WITH PASSWORD '<tu-password-local>'"
+
+# 3. Poné el MISMO password en .env (este archivo está en .gitignore)
+#    DATABASE_URL=postgresql://systemfact_app:<tu-password-local>@localhost:5433/postgres
+```
+
+**Rotación (si venís de una versión vieja con password hardcoded):**
+
+```bash
+psql -h localhost -p 5433 -U postgres -d postgres \
+  -c "ALTER ROLE systemfact_app WITH PASSWORD '<nuevo>'"
+# Luego actualizá DATABASE_URL en .env. NO commitees el nuevo password.
+```
 
 **Reglas**:
 - `DIRECT_URL` usa `postgres` (puede hacer DDL, ALTER ROLE, CREATE ROLE)
 - `DATABASE_URL` usa `systemfact_app` (queries de la app, RLS aplica)
-- La migration `20260902150000_create_app_role` crea el rol idempotentemente
+- `env.ts` valida al startup que `DATABASE_URL` NO use un rol superuser —
+  si lo hace, la app falla rápido con un error claro
+- La migration `20260902150000_create_app_role` crea el rol idempotentemente sin password
 - La migration `20260902140000_disable_rls_bypass` quita BYPASSRLS al rol postgres (en Supabase)
 
 ## Workflow diario

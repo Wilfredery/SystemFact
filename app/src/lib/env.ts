@@ -21,6 +21,52 @@ const serverSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is required"),
 });
 
+/**
+ * Roles whose connection string MUST NOT be used as DATABASE_URL because they
+ * bypass RLS policies (either via SUPERUSER, BYPASSRLS, or owning the tables).
+ * Only `DIRECT_URL` (used by `prisma migrate`) is allowed to use these.
+ *
+ * If you find yourself wanting to set DATABASE_URL to one of these to debug
+ * something, do it via a separate shell variable and a one-off script —
+ * never via `.env` committed to the repo.
+ */
+const SUPERUSER_LIKE_ROLES = new Set([
+  "postgres",
+  "postgresql",
+  "root",
+  "admin",
+  "dbo",
+  "sa",
+]);
+
+function assertAppRoleUrl(url: string, label: string): void {
+  // Parse defensively — a malformed URL should fail with a clear error,
+  // not silently pass through to the driver adapter.
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(
+      `${label} is not a valid URL. Check your .env file against .env.example.`,
+    );
+  }
+  // Postgres URLs can use `postgresql://` or `postgres://`. Both parse the same.
+  if (parsed.protocol !== "postgresql:" && parsed.protocol !== "postgres:") {
+    throw new Error(
+      `${label} must use the postgresql:// or postgres:// scheme (got "${parsed.protocol}").`,
+    );
+  }
+  const username = decodeURIComponent(parsed.username).toLowerCase();
+  if (SUPERUSER_LIKE_ROLES.has(username)) {
+    throw new Error(
+      `${label} uses role "${username}" which bypasses RLS policies. ` +
+        `Use the dedicated application role (e.g. systemfact_app) so that ` +
+        `multi-tenancy isolation is enforced at the database level. ` +
+        `For migrations, use DIRECT_URL with the privileged role.`,
+    );
+  }
+}
+
 const publicSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
@@ -37,6 +83,10 @@ function parseServer() {
         `Check your .env file against .env.example.`,
     );
   }
+  // Defense in depth (ADR-019): DATABASE_URL must use a non-superuser role
+  // so that RLS policies are enforced. DIRECT_URL is allowed to use the
+  // privileged role because it's only used by `prisma migrate`.
+  assertAppRoleUrl(parsed.data.DATABASE_URL, "DATABASE_URL");
   return parsed.data;
 }
 
