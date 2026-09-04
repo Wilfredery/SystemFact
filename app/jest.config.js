@@ -16,12 +16,17 @@ const config = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
-  testMatch: ["<rootDir>/src/**/*.test.ts", "<rootDir>/src/**/*.spec.ts"],
+  testMatch: [
+    "<rootDir>/src/**/*.test.ts",
+    "<rootDir>/src/**/*.spec.ts",
+    "<rootDir>/tools/**/*.test.ts",
+  ],
   testPathIgnorePatterns: [
     "/node_modules/",
     "/.next/",
     "/src/generated/",
-    "/scripts/",
+    "<rootDir>/scripts/",
+    "/withTenantTransaction\\.test\\.ts$",
   ],
   // Surface tsconfig's strict settings so tests catch the same type errors
   // as the production build.

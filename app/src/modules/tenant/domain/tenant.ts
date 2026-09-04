@@ -3,7 +3,7 @@
  *
  * Contiene:
  *   - `TenantCtx`: tipo inmutable con el contexto de tenant del request actual.
- *   - `TenantFilter`: intención de filtrado a nivel de dominio (tagged union),
+ *   - `TenantFilter`: intención de filtrado a nivel de dominio,
  *     agnóstica de la capa de infraestructura (no expone semántica de Prisma).
  *   - `buildTenantContext(usuario, roles)`: constructor puro del contexto.
  *   - `tenantFilter(ctx)`: traduce un TenantCtx a un TenantFilter de dominio.
@@ -31,13 +31,13 @@
  *
  * Invariantes:
  *   - `empresaId` siempre presente (no nulo).
- *   - `sucursalId` es `null` SOLO cuando `esAdmin === true` y el Administrador
- *     opera a nivel de empresa (P6 de `docs/20-Respreguntas_jefe_seguridad_auth.md`).
+ *   - `sucursalId` siempre presente (no nulo). El modo Admin empresa-wide
+ *     (P6) fue cerrado: todo usuario opera sobre una sucursal concreta.
  *   - `esAdmin` se deriva de los roles del USUARIO (no es un flag separado).
  */
 export type TenantCtx = {
   readonly empresaId: number;
-  readonly sucursalId: number | null;
+  readonly sucursalId: number;
   readonly usuarioId: number;
   readonly esAdmin: boolean;
 };
@@ -45,24 +45,18 @@ export type TenantCtx = {
 /**
  * Intención de filtrado multi-tenant a nivel de dominio.
  *
- * Tagged union: hace explícito si el filtro aplica a nivel de empresa
- * (Administrador empresa-wide) o a nivel de sucursal concreta.
+ * Siempre incluye `empresaId` y `sucursalId`. El filtro a nivel de empresa
+ * (`scope: "company"`) fue removido porque P6 cerró el modo Admin empresa-wide.
  *
  * Este tipo es AGNÓSTICO de Prisma. La traducción a la forma que Prisma
  * consume (con `sucursalId` opcional) vive en `../infrastructure/tenant-where.ts`.
  * Esa separación evita que el dominio "leakee" semántica de query de Prisma
  * (donde `sucursalId?: number` distingue "ignorar" de "match null").
  */
-export type TenantFilter =
-  | {
-      readonly scope: "company";
-      readonly empresaId: number;
-    }
-  | {
-      readonly scope: "branch";
-      readonly empresaId: number;
-      readonly sucursalId: number;
-    };
+export type TenantFilter = {
+  readonly empresaId: number;
+  readonly sucursalId: number;
+};
 
 /**
  * Constructor puro del TenantCtx desde datos ya resueltos.
@@ -86,8 +80,8 @@ export function buildTenantContext(
 /**
  * Traduce un `TenantCtx` a un `TenantFilter` de dominio.
  *
- * Si `sucursalId` es `null` (Admin empresa-wide), produce `scope: "company"`.
- * Si tiene sucursal, produce `scope: "branch"` con el id de sucursal.
+ * Siempre produce `{ empresaId, sucursalId }`. El branch de Admin empresa-wide
+ * (`scope: "company"`) fue eliminado en la decisión P6.
  *
  * Para tablas hijas sin `empresaId` propio (`DETALLE_VENTA`,
  * `DETALLE_COMPRA`, `DETALLE_NOTA_CREDITO`, `MOVIMIENTO_INVENTARIO`)
@@ -100,11 +94,7 @@ export function buildTenantContext(
 export function tenantFilter(
   ctx: TenantCtx,
 ): TenantFilter {
-  if (ctx.sucursalId === null) {
-    return { scope: "company", empresaId: ctx.empresaId };
-  }
   return {
-    scope: "branch",
     empresaId: ctx.empresaId,
     sucursalId: ctx.sucursalId,
   };

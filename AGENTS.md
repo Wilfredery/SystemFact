@@ -26,6 +26,7 @@ These rules derive from the canonical engineering constitution in the project do
 
 ## Security (non-negotiable)
 - **Multi-tenancy ALWAYS**: every context-aware query filters by `empresaId` (+ `sucursalId` where applicable). A query without that filter is a critical bug. #1 risk is cross-tenant data leakage.
+- **Server Actions MUST wrap DB access in `withTenantTransaction(ctx, fn)`**: the wrapper opens a Prisma transaction, sets the RLS GUCs (`app.current_empresa_id`, `app.current_sucursal_id`, `app.current_usuario_id`, `app.current_es_admin`) with `set_config(..., true)` as the first statement, and delegates to the callback. See `docs/19-directivas_desarrollo.md` §3.1 for the full convention. Enforced defense-in-depth by the project-local ESLint rule `systemfact/server-action-must-wrap-tenant` (wired in `app/eslint.config.mjs`, scoped to `src/**/actions.ts(x)`).
 - **Server-side authorization on every action**: verify role + company + assigned branch on the server. Hiding UI buttons is NOT security.
 - **Access identifier = `nombreUsuario`/unique code** (ADR-014): email is NEVER a credential. Supabase Auth uses internal synthetic emails (`<nombreUsuario>@users.systemfact.internal`), never exposed in UI.
 - **Granular authorization** against the role/permission matrix; default is deny-by-default.

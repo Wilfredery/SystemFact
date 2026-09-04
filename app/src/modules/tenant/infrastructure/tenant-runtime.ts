@@ -21,12 +21,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import { buildTenantContext, type TenantCtx } from "@/modules/tenant/domain/tenant";
-
-/**
- * Sufijo del email sintético que Supabase Auth usa para mapear cada
- * `nombreUsuario` (ADR-014). Nunca se muestra al usuario en la UI.
- */
-const SYNTHETIC_EMAIL_SUFFIX = "@users.systemfact.internal";
+import { decodeNombreUsuario } from "@/modules/auth/domain/synthetic-email";
 
 /**
  * Setea el contexto de tenant en la sesión Postgres de la transacción.
@@ -50,12 +45,10 @@ export async function setTenantContext(
   tx: Prisma.TransactionClient,
   ctx: TenantCtx,
 ): Promise<void> {
-  await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${ctx.empresaId.toString()}, true)`;
-  if (ctx.sucursalId !== null) {
-    await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${ctx.sucursalId.toString()}, true)`;
-  }
-  await tx.$executeRaw`SELECT set_config('app.current_usuario_id', ${ctx.usuarioId.toString()}, true)`;
-  await tx.$executeRaw`SELECT set_config('app.current_es_admin', ${ctx.esAdmin ? "true" : "false"}, true)`;
+  await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${String(ctx.empresaId)}, true)`;
+  await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${String(ctx.sucursalId)}, true)`;
+  await tx.$executeRaw`SELECT set_config('app.current_usuario_id', ${String(ctx.usuarioId)}, true)`;
+  await tx.$executeRaw`SELECT set_config('app.current_es_admin', ${String(ctx.esAdmin)}, true)`;
 }
 
 /**
@@ -100,8 +93,12 @@ export async function getCurrentTenantContext(
   if (user === null) return null;
 
   const email = user.email ?? "";
-  if (!email.endsWith(SYNTHETIC_EMAIL_SUFFIX)) return null;
-  const nombreUsuario = email.slice(0, -SYNTHETIC_EMAIL_SUFFIX.length);
+  let nombreUsuario: string;
+  try {
+    nombreUsuario = decodeNombreUsuario(email);
+  } catch {
+    return null;
+  }
 
   // NOTA (ADR-019 / R1.B): con RLS activo, este findUnique NO tiene contexto
   // de tenant (lo estamos construyendo). Se activa `app.is_login_flow` para

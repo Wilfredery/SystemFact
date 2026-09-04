@@ -2,7 +2,7 @@
  * Unit tests — funciones puras del módulo de dominio tenant.
  *
  * Cobertura:
- *   - `tenantFilter(ctx)` con y sin sucursalId (Admin empresa-wide).
+ *   - `tenantFilter(ctx)` siempre retorna empresaId + sucursalId.
  *   - `buildTenantContext(usuario, roles)` con y sin rol Administrador.
  *   - Inmutabilidad y shape de TenantCtx.
  *
@@ -19,7 +19,7 @@ import {
 } from "@/modules/tenant/domain/tenant";
 
 describe("tenantFilter", () => {
-  it("produce scope=branch con empresaId + sucursalId cuando el usuario tiene sucursal asignada", () => {
+  it("produce empresaId + sucursalId cuando el usuario tiene sucursal asignada", () => {
     const ctx: TenantCtx = {
       empresaId: 1,
       sucursalId: 10,
@@ -28,24 +28,12 @@ describe("tenantFilter", () => {
     };
     const filter = tenantFilter(ctx);
     expect(filter).toEqual({
-      scope: "branch",
       empresaId: 1,
       sucursalId: 10,
     });
   });
 
-  it("produce scope=company solo con empresaId cuando el Administrador opera a nivel de empresa", () => {
-    const ctx: TenantCtx = {
-      empresaId: 1,
-      sucursalId: null,
-      usuarioId: 100,
-      esAdmin: true,
-    };
-    const filter = tenantFilter(ctx);
-    expect(filter).toEqual({ scope: "company", empresaId: 1 });
-  });
-
-  it("produce scope=branch con sucursalId=0 si el ID válido es 0 (no usamos truthy check)", () => {
+  it("produce empresaId + sucursalId=0 si el ID válido es 0 (no usamos truthy check)", () => {
     // El ERD usa Int autoincrement que en Postgres arranca en 1, pero el tipo
     // permite 0. Verificamos que NO usamos un check truthy.
     const ctx: TenantCtx = {
@@ -55,7 +43,6 @@ describe("tenantFilter", () => {
       esAdmin: true,
     };
     expect(tenantFilter(ctx)).toEqual({
-      scope: "branch",
       empresaId: 1,
       sucursalId: 0,
     });
@@ -72,35 +59,6 @@ describe("tenantFilter", () => {
     const b = tenantFilter(ctx);
     expect(a).not.toBe(b);
     expect(a).toEqual(b);
-  });
-
-  it("el resultado es estructuralmente discriminable por scope (tagged union funciona)", () => {
-    const branchCtx: TenantCtx = {
-      empresaId: 1,
-      sucursalId: 10,
-      usuarioId: 100,
-      esAdmin: false,
-    };
-    const companyCtx: TenantCtx = {
-      empresaId: 1,
-      sucursalId: null,
-      usuarioId: 100,
-      esAdmin: true,
-    };
-    const branchFilter = tenantFilter(branchCtx);
-    const companyFilter = tenantFilter(companyCtx);
-
-    // El consumidor puede hacer pattern matching basado en scope.
-    if (branchFilter.scope === "branch") {
-      expect(branchFilter.sucursalId).toBe(10);
-    } else {
-      throw new Error("expected scope=branch");
-    }
-    if (companyFilter.scope === "company") {
-      expect(companyFilter.empresaId).toBe(1);
-    } else {
-      throw new Error("expected scope=company");
-    }
   });
 });
 
@@ -179,19 +137,8 @@ describe("TenantCtx shape", () => {
 });
 
 describe("TenantFilter shape", () => {
-  it("scope=company tiene exactamente 2 campos", () => {
-    const f: TenantFilter = { scope: "company", empresaId: 1 };
-    expect(Object.keys(f).sort()).toEqual(["empresaId", "scope"].sort());
-  });
-
-  it("scope=branch tiene exactamente 3 campos", () => {
-    const f: TenantFilter = {
-      scope: "branch",
-      empresaId: 1,
-      sucursalId: 10,
-    };
-    expect(Object.keys(f).sort()).toEqual(
-      ["empresaId", "scope", "sucursalId"].sort(),
-    );
+  it("tiene exactamente 2 campos", () => {
+    const f: TenantFilter = { empresaId: 1, sucursalId: 10 };
+    expect(Object.keys(f).sort()).toEqual(["empresaId", "sucursalId"].sort());
   });
 });

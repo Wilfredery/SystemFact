@@ -6,9 +6,9 @@
  * el campo" de "match null"). Mantener esta traducción en el dialecto de
  * infraestructura preserva al dominio de detalles del ORM.
  *
- * El dominio produce `TenantFilter` (tagged union: scope=company / scope=branch)
- * vía `tenantFilter(ctx)`. Esta función toma ese intent de dominio y lo
- * convierte a la forma que `prisma.<tabla>.findMany({ where })` consume.
+ * El dominio produce `TenantFilter` vía `tenantFilter(ctx)`. Esta función toma
+ * ese intent de dominio y lo convierte a la forma que
+ * `prisma.<tabla>.findMany({ where })` consume.
  *
  * Tests de esta función son integration (R1.C) — el shape de salida se valida
  * junto con queries reales contra Supabase con RLS activo.
@@ -32,8 +32,10 @@ export type PrismaTenantWhere = {
 /**
  * Traduce un `TenantFilter` de dominio a la forma `where` que Prisma consume.
  *
- *   - `scope: "company"`  → `{ empresaId }` (sin sucursalId)
- *   - `scope: "branch"`   → `{ empresaId, sucursalId }`
+ * Como `TenantFilter` siempre incluye `sucursalId` (P6 cerró el modo empresa),
+ * el resultado por defecto incluye ambos campos. El caller puede omitir
+ * `sucursalId` cuando la policy RLS de la tabla no lo requiera pasando
+ * `omitSucursalId = true`.
  *
  * Para tablas hijas sin `empresaId` propio, el call site debe combinar este
  * filtro con la navegación de relación Prisma:
@@ -44,8 +46,11 @@ export type PrismaTenantWhere = {
  *   });
  *   ```
  */
-export function tenantWhere(filter: TenantFilter): PrismaTenantWhere {
-  if (filter.scope === "company") {
+export function tenantWhere(
+  filter: TenantFilter,
+  omitSucursalId = false,
+): PrismaTenantWhere {
+  if (omitSucursalId) {
     return { empresaId: filter.empresaId };
   }
   return { empresaId: filter.empresaId, sucursalId: filter.sucursalId };

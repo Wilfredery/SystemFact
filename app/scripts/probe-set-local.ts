@@ -90,12 +90,13 @@ async function probe() {
   console.log("");
 
   // ─────────────────────────────────────────────────────────────────────
-  // Test 3: Admin empresa-wide (sucursalId=null) → sucursalId NO se setea.
+  // Test 3: Admin con sucursal asignada → sucursalId SÍ se setea.
+  // P6 cerró el modo Admin empresa-wide; todo usuario opera sobre una sucursal.
   // ─────────────────────────────────────────────────────────────────────
-  console.log("Test 3: Admin empresa-wide → sucursalId no se setea (queda NULL/'')");
+  console.log("Test 3: Admin con sucursal asignada → sucursalId se setea");
   const adminCtx: TenantCtx = {
     empresaId: 1,
-    sucursalId: null,
+    sucursalId: 1,
     usuarioId: 100,
     esAdmin: true,
   };
@@ -104,7 +105,7 @@ async function probe() {
     const r1 = await tx.$queryRaw<Row[]>`SELECT current_setting('app.current_empresa_id', true) AS v`;
     allOk = fmt("app.current_empresa_id", "1", r1[0]?.v ?? null) && allOk;
     const r2 = await tx.$queryRaw<Row[]>`SELECT current_setting('app.current_sucursal_id', true) AS v`;
-    allOk = fmt("app.current_sucursal_id", "UNSET", r2[0]?.v ?? null) && allOk;
+    allOk = fmt("app.current_sucursal_id", "1", r2[0]?.v ?? null) && allOk;
   });
   console.log("");
 
