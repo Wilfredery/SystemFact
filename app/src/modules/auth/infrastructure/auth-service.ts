@@ -7,16 +7,10 @@ import {
   messageFor,
   type AuthErrorCode,
 } from "@/modules/auth/domain/errors";
-
-/**
- * Synthetic email derived from `nombreUsuario` (ADR-014).
- * Supabase Auth maps each SystemFact user to one internal email.
- */
-export const SYNTHETIC_EMAIL_SUFFIX = "@users.systemfact.internal";
-
-export function buildSyntheticEmail(nombreUsuario: string): string {
-  return `${nombreUsuario}${SYNTHETIC_EMAIL_SUFFIX}`;
-}
+import {
+  buildSyntheticEmail,
+  decodeNombreUsuario,
+} from "@/modules/auth/domain/synthetic-email";
 
 export type AuthResult =
   | { ok: true }
@@ -119,10 +113,12 @@ export async function getCurrentUser(
 
   // The synthetic email encodes the nombreUsuario (ADR-014).
   const email = user.email ?? "";
-  if (!email.endsWith(SYNTHETIC_EMAIL_SUFFIX)) {
+  let nombreUsuario: string;
+  try {
+    nombreUsuario = decodeNombreUsuario(email);
+  } catch {
     return null;
   }
-  const nombreUsuario = email.slice(0, -SYNTHETIC_EMAIL_SUFFIX.length);
 
   // NOTA (ADR-019 / R1.B): cuando RLS esté activo, este findUnique se ejecuta
   // sin contexto de tenant (el TenantCtx es lo que estamos resolviendo).

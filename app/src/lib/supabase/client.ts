@@ -1,4 +1,4 @@
-import { createServerClient, parseCookieHeader } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { serverEnv } from "@/lib/env";
 
@@ -18,7 +18,10 @@ export async function createClient() {
     {
       cookies: {
         getAll() {
-          return parseCookieHeader(cookieStore.toString());
+          // @supabase/ssr 0.5+ accepts the typed shape directly.
+          // The previous parseCookieHeader(cookieStore.toString()) round-trip
+          // dropped cookies with `=` in their value (base64 JWTs).
+          return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
           try {

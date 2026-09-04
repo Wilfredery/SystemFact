@@ -36,6 +36,8 @@ const loginInputSchema = z.object({
  * Signature follows `useActionState` (previous state, then the form data),
  * which drives the client-side pending/error state on the login form.
  */
+// Auth actions operate on Supabase Auth, not tenant data; tenant wrapper not required.
+// eslint-disable-next-line systemfact/server-action-must-wrap-tenant
 export async function login(
   _prevState: LoginResult,
   formData: FormData,
@@ -62,6 +64,7 @@ export async function login(
 /**
  * Closes the current session and redirects to the login page.
  */
+// eslint-disable-next-line systemfact/server-action-must-wrap-tenant
 export async function logoutAction(): Promise<void> {
   const supabase = await createClient();
   await logout(supabase);
@@ -71,6 +74,7 @@ export async function logoutAction(): Promise<void> {
 /**
  * Returns the authenticated user's context, or null when logged out.
  */
+// eslint-disable-next-line systemfact/server-action-must-wrap-tenant
 export async function getCurrentUserContext(): Promise<CurrentUserContext | null> {
   const supabase = await createClient();
   return getCurrentUser(supabase);
