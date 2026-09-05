@@ -15,6 +15,7 @@ import {
   NO_AUTORIZADO,
   SESION_INVALIDA,
   VALIDATION_ERROR,
+  messageFor,
   type ProductoErrorCode,
 } from "../domain/errors";
 
@@ -38,14 +39,13 @@ function error(code: ProductoErrorCode, message: string): ActionResult<never> {
 // The tenant context must be resolved from the Supabase session (an auth read,
 // not tenant-DB access) BEFORE withTenantTransaction can receive it, so the
 // wrapper cannot be the literal first statement. All authorization and every
-// Prisma call still run inside the wrapper below. Documented per-line exception
-// sanctioned by REQ-LINT-005 / LINT-005-B.
+// Prisma call still run inside the wrapper below.
 export async function crearProductoAction(
   input: unknown,
 ): Promise<ActionResult<{ id: number; codigo: string }>> {
   const parseResult = zCrearProductoInput.safeParse(input);
   if (!parseResult.success) {
-    return error(VALIDATION_ERROR, parseResult.error.message);
+    return error(VALIDATION_ERROR, messageFor(VALIDATION_ERROR));
   }
 
   const supabase = await createClient();
@@ -86,9 +86,9 @@ export async function crearProductoAction(
   });
 }
 
-// Same documented exception as crearProductoAction: the tenant context is
-// resolved from the session before withTenantTransaction can receive it; the
-// listing query and audit write all run inside the wrapper. REQ-LINT-005.
+// Same setup as crearProductoAction: the tenant context is resolved from the
+// session before withTenantTransaction can receive it; the listing query and
+// audit write all run inside the wrapper.
 export async function listarProductosAction(
   query: unknown,
 ): Promise<
@@ -100,7 +100,7 @@ export async function listarProductosAction(
 > {
   const parseResult = zListarProductosQuery.safeParse(query);
   if (!parseResult.success) {
-    return error(VALIDATION_ERROR, parseResult.error.message);
+    return error(VALIDATION_ERROR, messageFor(VALIDATION_ERROR));
   }
 
   const supabase = await createClient();
