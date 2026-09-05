@@ -1,0 +1,25 @@
+project: systemfact
+description: "Modular monolith ERP for Dominican Republic invoicing (NCF, ITBIS, ISR retentions, multi-tenant). Stack: Next.js 16, TS strict, Tailwind 4, pnpm, Supabase + Prisma."
+
+testing:
+  command: "pnpm test"
+  strict_tdd: false
+  frameworks: ["jest", "playwright"]
+  coverage_priority:
+    - fiscal-domain
+    - critical-integration
+    - e2e
+    - ui
+
+persistence: hybrid
+artifact_stores:
+  - openspec
+  - engram
+
+language:
+  conversation: "es"
+  artifacts: "en"
+
+delivery_strategy: ask-on-risk
+review_budget_lines: 800
+preflight_captured_at: "2026-09-02"
