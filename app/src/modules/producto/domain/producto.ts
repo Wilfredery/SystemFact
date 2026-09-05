@@ -56,9 +56,7 @@ export interface Producto {
  * @throws {ProductoDomainError} con code VIGENCIA_INVALIDA cuando
  *   vigenteHasta < vigenteDesde (código único del catálogo domain/errors).
  */
-export function buildProductoItbis(
-  itbis: Omit<ProductoItbis, "exento">,
-): ProductoItbis {
+export function buildProductoItbis(itbis: ProductoItbis): ProductoItbis {
   if (
     itbis.vigenteHasta !== null &&
     itbis.vigenteHasta.getTime() < itbis.vigenteDesde.getTime()

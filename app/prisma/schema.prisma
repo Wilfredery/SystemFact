@@ -169,6 +169,7 @@ enum AccionAuditoria {
   AJUSTAR
   LOGIN
   LOGOUT
+  LEER
 
   @@map("AccionAuditoria")
 }

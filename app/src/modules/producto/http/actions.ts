@@ -25,8 +25,7 @@ export type ActionResult<T> =
 // Same role domain for listing: reads are operational actions too. REQ-PROD-007
 // establishes the verify-role + verify-company + verify-assigned-branch chain,
 // and the listing path must not be a downgraded read-only bypass of it.
-const ROLES_CREAR_PRODUCTO = ["Administrador", "Operador"];
-const ROLES_LISTAR_PRODUCTOS = ["Administrador", "Operador"];
+const ROLES_GESTION_PRODUCTOS = ["Administrador", "Operador"];
 
 function ok<T>(data: T): ActionResult<T> {
   return { ok: true, data };
@@ -60,7 +59,7 @@ export async function crearProductoAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_CREAR_PRODUCTO,
+      ROLES_GESTION_PRODUCTOS,
     );
     if (!permitido) {
       return error(NO_AUTORIZADO, "No tiene permisos para crear productos");
@@ -115,7 +114,7 @@ export async function listarProductosAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_LISTAR_PRODUCTOS,
+      ROLES_GESTION_PRODUCTOS,
     );
     if (!permitido) {
       return error(NO_AUTORIZADO, "No tiene permisos para listar productos");

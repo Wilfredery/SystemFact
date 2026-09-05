@@ -34,7 +34,7 @@ export type CrearProductoResult =
 // valor con 11 dígitos enteros (Decimal(12,2) admite hasta 9999999999.99).
 const MAGNITUD_MAX_PRECIO = new Decimal("10000000000");
 
-function isPrecioValido(precio: Decimal): boolean {
+function esPrecioValido(precio: Decimal): boolean {
   return (
     !precio.isNegative() &&
     precio.decimalPlaces() <= 2 &&
@@ -58,7 +58,7 @@ export async function crearProducto(
     return buildError(TASA_ITBIS_INVALIDA);
   }
 
-  if (!isPrecioValido(input.precioVenta)) {
+  if (!esPrecioValido(input.precioVenta)) {
     return buildError(PRECIO_BASE_INVALIDO);
   }
 

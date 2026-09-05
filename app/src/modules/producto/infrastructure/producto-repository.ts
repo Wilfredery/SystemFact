@@ -261,7 +261,7 @@ export async function registrarProductoListadoEnTx(
       sucursalId: ctx.sucursalId,
       usuarioId: ctx.usuarioId,
       fechaHora: new Date(),
-      accion: AccionAuditoria.ACTUALIZAR,
+      accion: AccionAuditoria.LEER,
       entidad: "Producto",
       idEntidad: String(page),
       valorAnterior: null,
