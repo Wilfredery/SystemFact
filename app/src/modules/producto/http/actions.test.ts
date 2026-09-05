@@ -11,6 +11,7 @@ import {
   NO_AUTORIZADO,
   SESION_INVALIDA,
   VALIDATION_ERROR,
+  messageFor,
   type ProductoErrorCode,
 } from "../domain/errors";
 
@@ -49,6 +50,7 @@ jest.mock("@/generated/prisma/client", () => {
 });
 
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 
 const mockCtx = {
   empresaId: 1,
@@ -117,6 +119,8 @@ describe("crearProductoAction", () => {
     if (result.ok) {
       expect(result.data).toEqual({ id: 1, codigo: "LAP001" });
     }
+    // All Prisma/audit work must run inside the tenant wrapper.
+    expect(withTenantTransaction).toHaveBeenCalled();
   });
 
   it("PROD-007-B: zod validation fails on missing codigo", async () => {
@@ -131,7 +135,11 @@ describe("crearProductoAction", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe(VALIDATION_ERROR);
+      // Catalog message, not the raw zod text.
+      expect(result.error.message).toBe(messageFor(VALIDATION_ERROR));
     }
+    // Validation blocks before any use-case delegation.
+    expect(crearProducto).not.toHaveBeenCalled();
   });
 
   it("PROD-007-C: ctx build fails returns UNAUTHORIZED", async () => {
@@ -207,7 +215,10 @@ describe("listarProductosAction", () => {
       expect(result.data.total).toBe(1);
       expect(result.data.page).toBe(1);
       expect(result.data.items[0].precioVenta).toBe("50000.00");
+      expect(result.data.items[0].tasaItbis).toBe("18");
     }
+    // All Prisma/audit work must run inside the tenant wrapper.
+    expect(withTenantTransaction).toHaveBeenCalled();
   });
 
   it("PROD-008-B: invalid query params returns VALIDATION_ERROR", async () => {
@@ -216,7 +227,23 @@ describe("listarProductosAction", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe(VALIDATION_ERROR);
+      // Catalog message, not the raw zod text.
+      expect(result.error.message).toBe(messageFor(VALIDATION_ERROR));
     }
+    // Validation blocks before any use-case delegation.
+    expect(listarProductos).not.toHaveBeenCalled();
+  });
+
+  it("PROD-008-B2: ctx build fails returns SESION_INVALIDA", async () => {
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
+
+    const result = await listarProductosAction({ page: 1, limit: 25 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(SESION_INVALIDA);
+    }
+    expect(listarProductos).not.toHaveBeenCalled();
   });
 
   it("PROD-008-C: unauthorized role returns FORBIDDEN", async () => {
