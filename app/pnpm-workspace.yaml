@@ -1,7 +1,14 @@
-# pnpm settings (pnpm 11+)
-# allowBuilds: permite la ejecución de scripts de build (lifecycle) de dependencias.
-# pnpm 11 usa allowBuilds (mapa name -> true), no onlyBuiltDependencies (era pnpm 9/10).
+# ============================================================
+# NOT a workspace — this file holds pnpm 11+ configuration only.
+# We are NOT a monorepo (no `packages:` field). The file exists solely
+# to register `allowBuilds` (lifecycle scripts that may run during install).
 # Ver: https://pnpm.io/settings
+#
+# If you need to add a package that runs build scripts (e.g. a new native
+# dependency), add it here — not in package.json#pnpm.allowBuilds.
+# ============================================================
+
+# pnpm 11 usa allowBuilds (mapa name -> true), no onlyBuiltDependencies (era pnpm 9/10).
 allowBuilds:
   '@prisma/engines': true
   esbuild: true

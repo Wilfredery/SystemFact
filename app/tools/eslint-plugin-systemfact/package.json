@@ -1,0 +1,14 @@
+{
+  "name": "eslint-plugin-systemfact",
+  "version": "0.1.0",
+  "description": "Project-local ESLint plugin for SystemFact conventions.",
+  "main": "./index.ts",
+  "type": "module",
+  "dependencies": {
+    "@typescript-eslint/utils": "^8.69.0"
+  },
+  "peerDependencies": {
+    "eslint": ">=9",
+    "typescript": ">=5"
+  }
+}
