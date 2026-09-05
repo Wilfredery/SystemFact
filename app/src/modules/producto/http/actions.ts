@@ -1,0 +1,144 @@
+"use server";
+
+import { Decimal } from "decimal.js";
+import { createClient } from "@/lib/supabase/client";
+import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
+import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import { crearProducto } from "../application/crear-producto";
+import { listarProductos } from "../application/listar-productos";
+import { tieneRolPermitidoEnTx } from "../infrastructure/producto-repository";
+import {
+  zCrearProductoInput,
+  zListarProductosQuery,
+} from "./validations";
+import {
+  NO_AUTORIZADO,
+  SESION_INVALIDA,
+  VALIDATION_ERROR,
+  type ProductoErrorCode,
+} from "../domain/errors";
+
+export type ActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: { code: ProductoErrorCode; message: string } };
+
+// Same role domain for listing: reads are operational actions too. REQ-PROD-007
+// establishes the verify-role + verify-company + verify-assigned-branch chain,
+// and the listing path must not be a downgraded read-only bypass of it.
+const ROLES_CREAR_PRODUCTO = ["Administrador", "Operador"];
+const ROLES_LISTAR_PRODUCTOS = ["Administrador", "Operador"];
+
+function ok<T>(data: T): ActionResult<T> {
+  return { ok: true, data };
+}
+
+function error(code: ProductoErrorCode, message: string): ActionResult<never> {
+  return { ok: false, error: { code, message } };
+}
+
+// The tenant context must be resolved from the Supabase session (an auth read,
+// not tenant-DB access) BEFORE withTenantTransaction can receive it, so the
+// wrapper cannot be the literal first statement. All authorization and every
+// Prisma call still run inside the wrapper below. Documented per-line exception
+// sanctioned by REQ-LINT-005 / LINT-005-B.
+// eslint-disable-next-line systemfact/server-action-must-wrap-tenant
+export async function crearProductoAction(
+  input: unknown,
+): Promise<ActionResult<{ id: number; codigo: string }>> {
+  const parseResult = zCrearProductoInput.safeParse(input);
+  if (!parseResult.success) {
+    return error(VALIDATION_ERROR, parseResult.error.message);
+  }
+
+  const supabase = await createClient();
+  const ctx = await getCurrentTenantContext(supabase);
+  if (ctx === null) {
+    return error(SESION_INVALIDA, "Sesión no válida");
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const permitido = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_CREAR_PRODUCTO,
+    );
+    if (!permitido) {
+      return error(NO_AUTORIZADO, "No tiene permisos para crear productos");
+    }
+
+    const parsed = parseResult.data;
+    const result = await crearProducto(tx, ctx, {
+      categoriaId: parsed.categoriaId,
+      codigo: parsed.codigo,
+      nombre: parsed.nombre,
+      descripcion: parsed.descripcion,
+      precioVenta: new Decimal(parsed.precioVenta),
+      itbisTasa: parsed.itbisTasa,
+      itbisVigenteDesde: parsed.itbisVigenteDesde,
+      itbisVigenteHasta: parsed.itbisVigenteHasta ?? null,
+      itbisAplicaRetencionITBIS: parsed.itbisAplicaRetencionITBIS,
+    });
+
+    if (!result.ok) {
+      return error(result.code, result.message);
+    }
+
+    return ok({ id: result.producto.id, codigo: result.producto.codigo });
+  });
+}
+
+// Same documented exception as crearProductoAction: the tenant context is
+// resolved from the session before withTenantTransaction can receive it; the
+// listing query and audit write all run inside the wrapper. REQ-LINT-005.
+// eslint-disable-next-line systemfact/server-action-must-wrap-tenant
+export async function listarProductosAction(
+  query: unknown,
+): Promise<
+  ActionResult<{
+    items: { id: number; codigo: string; nombre: string; precioVenta: string; tasaItbis: string }[];
+    total: number;
+    page: number;
+  }>
+> {
+  const parseResult = zListarProductosQuery.safeParse(query);
+  if (!parseResult.success) {
+    return error(VALIDATION_ERROR, parseResult.error.message);
+  }
+
+  const supabase = await createClient();
+  const ctx = await getCurrentTenantContext(supabase);
+  if (ctx === null) {
+    return error(SESION_INVALIDA, "Sesión no válida");
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const permitido = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_LISTAR_PRODUCTOS,
+    );
+    if (!permitido) {
+      return error(NO_AUTORIZADO, "No tiene permisos para listar productos");
+    }
+
+    const result = await listarProductos(tx, ctx, parseResult.data);
+
+    if (!result.ok) {
+      return error(result.code, result.message);
+    }
+
+    return ok({
+      items: result.data.items.map((p) => ({
+        id: p.id,
+        codigo: p.codigo,
+        nombre: p.nombre,
+        precioVenta: p.precioVenta.toFixed(2),
+        tasaItbis: p.itbis.tasa,
+      })),
+      total: result.data.total,
+      page: result.data.page,
+    });
+  });
+}
