@@ -41,7 +41,6 @@ function error(code: ProductoErrorCode, message: string): ActionResult<never> {
 // wrapper cannot be the literal first statement. All authorization and every
 // Prisma call still run inside the wrapper below. Documented per-line exception
 // sanctioned by REQ-LINT-005 / LINT-005-B.
-// eslint-disable-next-line systemfact/server-action-must-wrap-tenant
 export async function crearProductoAction(
   input: unknown,
 ): Promise<ActionResult<{ id: number; codigo: string }>> {
@@ -91,7 +90,6 @@ export async function crearProductoAction(
 // Same documented exception as crearProductoAction: the tenant context is
 // resolved from the session before withTenantTransaction can receive it; the
 // listing query and audit write all run inside the wrapper. REQ-LINT-005.
-// eslint-disable-next-line systemfact/server-action-must-wrap-tenant
 export async function listarProductosAction(
   query: unknown,
 ): Promise<
