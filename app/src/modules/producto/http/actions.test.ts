@@ -38,6 +38,16 @@ jest.mock("../infrastructure/producto-repository", () => ({
   tieneRolPermitidoEnTx: jest.fn(),
 }));
 
+// The generated Prisma client is ESM (uses import.meta.url) and cannot be
+// loaded by ts-jest in CommonJS mode. actions.ts only needs Prisma.Decimal,
+// which at runtime is a re-export of decimal.js — so the mock re-exports the
+// same value instead of loading the generated client.
+jest.mock("@/generated/prisma/client", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Decimal } = require("decimal.js");
+  return { Prisma: { Decimal } };
+});
+
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
 
 const mockCtx = {

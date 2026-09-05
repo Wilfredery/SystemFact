@@ -1,6 +1,6 @@
 "use server";
 
-import { Decimal } from "decimal.js";
+import { Prisma } from "@/generated/prisma/client";
 import { createClient } from "@/lib/supabase/client";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
@@ -71,7 +71,7 @@ export async function crearProductoAction(
       codigo: parsed.codigo,
       nombre: parsed.nombre,
       descripcion: parsed.descripcion,
-      precioVenta: new Decimal(parsed.precioVenta),
+      precioVenta: new Prisma.Decimal(parsed.precioVenta),
       itbisTasa: parsed.itbisTasa,
       itbisVigenteDesde: parsed.itbisVigenteDesde,
       itbisVigenteHasta: parsed.itbisVigenteHasta ?? null,
