@@ -9,6 +9,10 @@ export const NO_AUTORIZADO = "NO_AUTORIZADO";
 export const SESION_INVALIDA = "SESION_INVALIDA";
 export const CATEGORIA_INVALIDA = "CATEGORIA_INVALIDA";
 export const VALIDATION_ERROR = "VALIDATION_ERROR";
+export const PRODUCTO_NO_ENCONTRADO = "PRODUCTO_NO_ENCONTRADO";
+export const CONCURRENCIA_CONFLICTO = "CONCURRENCIA_CONFLICTO";
+export const PRODUCTO_YA_INACTIVO = "PRODUCTO_YA_INACTIVO";
+export const PRODUCTO_TIENE_MOVIMIENTOS = "PRODUCTO_TIENE_MOVIMIENTOS";
 
 export type ProductoErrorCode =
   | typeof CODIGO_PRODUCTO_DUPLICADO
@@ -21,7 +25,11 @@ export type ProductoErrorCode =
   | typeof NO_AUTORIZADO
   | typeof SESION_INVALIDA
   | typeof CATEGORIA_INVALIDA
-  | typeof VALIDATION_ERROR;
+  | typeof VALIDATION_ERROR
+  | typeof PRODUCTO_NO_ENCONTRADO
+  | typeof CONCURRENCIA_CONFLICTO
+  | typeof PRODUCTO_YA_INACTIVO
+  | typeof PRODUCTO_TIENE_MOVIMIENTOS;
 
 const MESSAGES: Record<ProductoErrorCode, string> = {
   [CODIGO_PRODUCTO_DUPLICADO]: "Ya existe un producto con ese código en la empresa",
@@ -35,6 +43,10 @@ const MESSAGES: Record<ProductoErrorCode, string> = {
   [SESION_INVALIDA]: "Sesión no válida o expirada",
   [CATEGORIA_INVALIDA]: "La categoría no existe en la empresa",
   [VALIDATION_ERROR]: "Datos de entrada inválidos",
+  [PRODUCTO_NO_ENCONTRADO]: "El producto no existe en la empresa",
+  [CONCURRENCIA_CONFLICTO]: "Otro usuario modificó el producto; recargue y reintente",
+  [PRODUCTO_YA_INACTIVO]: "El producto ya se encuentra inactivo",
+  [PRODUCTO_TIENE_MOVIMIENTOS]: "El producto tiene referencias activas y no puede desactivarse",
 };
 
 export function messageFor(code: ProductoErrorCode): string {
