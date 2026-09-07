@@ -275,18 +275,6 @@ export async function tieneRolPermitidoEnTx(
   return usuario.roles.some((r) => rolesPermitidos.includes(r.rol.nombre));
 }
 
-export async function categoriaPerteneceAEmpresa(
-  tx: PrismaTx,
-  empresaId: number,
-  categoriaId: number,
-): Promise<boolean> {
-  const row = await tx.categoria.findUnique({
-    where: { id: categoriaId },
-    select: { empresaId: true },
-  });
-  return row !== null && row.empresaId === empresaId;
-}
-
 export async function crearProductoEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,

@@ -2,10 +2,11 @@ import { Decimal } from "decimal.js";
 import { crearProducto } from "./crear-producto";
 import {
   existeCodigoEnEmpresa,
-  categoriaPerteneceAEmpresa,
   crearProductoEnTx,
   registrarProductoCreadoEnTx,
 } from "../infrastructure/producto-repository";
+// Design D3 (fase-3-2): helper relocated to the Categoria module.
+import { categoriaPerteneceAEmpresa } from "@/modules/categoria/infrastructure/categoria-repository";
 import {
   CODIGO_PRODUCTO_DUPLICADO,
   TASA_ITBIS_INVALIDA,
@@ -20,9 +21,12 @@ import type { CrearProductoInput } from "../infrastructure/producto-repository";
 
 jest.mock("../infrastructure/producto-repository", () => ({
   existeCodigoEnEmpresa: jest.fn(),
-  categoriaPerteneceAEmpresa: jest.fn(),
   crearProductoEnTx: jest.fn(),
   registrarProductoCreadoEnTx: jest.fn(),
+}));
+
+jest.mock("@/modules/categoria/infrastructure/categoria-repository", () => ({
+  categoriaPerteneceAEmpresa: jest.fn(),
 }));
 
 const ctx: TenantCtx = {

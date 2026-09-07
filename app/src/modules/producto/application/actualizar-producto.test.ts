@@ -3,10 +3,11 @@ import { actualizarProducto, type ActualizarProductoInput } from "./actualizar-p
 import {
   obtenerProductoPorId,
   existeCodigoEnEmpresa,
-  categoriaPerteneceAEmpresa,
   actualizarProductoEnTx,
   registrarProductoActualizadoEnTx,
 } from "../infrastructure/producto-repository";
+// Design D3 (fase-3-2): helper relocated to the Categoria module.
+import { categoriaPerteneceAEmpresa } from "@/modules/categoria/infrastructure/categoria-repository";
 import {
   CONCURRENCIA_CONFLICTO,
   PRODUCTO_NO_ENCONTRADO,
@@ -25,9 +26,12 @@ import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransac
 jest.mock("../infrastructure/producto-repository", () => ({
   obtenerProductoPorId: jest.fn(),
   existeCodigoEnEmpresa: jest.fn(),
-  categoriaPerteneceAEmpresa: jest.fn(),
   actualizarProductoEnTx: jest.fn(),
   registrarProductoActualizadoEnTx: jest.fn(),
+}));
+
+jest.mock("@/modules/categoria/infrastructure/categoria-repository", () => ({
+  categoriaPerteneceAEmpresa: jest.fn(),
 }));
 
 const ctx: TenantCtx = {

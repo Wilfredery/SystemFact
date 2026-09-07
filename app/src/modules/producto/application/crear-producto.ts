@@ -19,10 +19,11 @@ import {
 import type { CrearProductoInput } from "../infrastructure/producto-repository";
 import {
   existeCodigoEnEmpresa,
-  categoriaPerteneceAEmpresa,
   crearProductoEnTx,
   registrarProductoCreadoEnTx,
 } from "../infrastructure/producto-repository";
+// Design D3 (fase-3-2): category ownership belongs to the Categoria module.
+import { categoriaPerteneceAEmpresa } from "@/modules/categoria/infrastructure/categoria-repository";
 
 export type CrearProductoResult =
   | { ok: true; producto: Producto }
