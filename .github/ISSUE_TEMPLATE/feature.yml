@@ -1,0 +1,27 @@
+name: Feature request
+description: Propose a scoped product or engineering change.
+title: "feat: "
+labels:
+  - "type:feature"
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the desired behavior and why it is needed.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List the observable conditions that must be true.
+    validations:
+      required: true
+  - type: checkboxes
+    id: governance
+    attributes:
+      label: Governance
+      options:
+        - label: I confirm this request is scoped for this repository.
+          required: true
