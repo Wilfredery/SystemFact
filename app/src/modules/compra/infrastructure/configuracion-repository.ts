@@ -18,7 +18,6 @@
  * dependency-free reading here.
  */
 
-import { Prisma } from "@/generated/prisma/client";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import {
   CONFIG_RETENCION_FALTANTE,

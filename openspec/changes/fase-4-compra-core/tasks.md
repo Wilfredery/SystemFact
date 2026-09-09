@@ -49,8 +49,8 @@ User (maintainer) approved `size:exception` for a single PR. Commits stay groupe
 
 - [x] 3.1 Create `app/src/modules/compra/infrastructure/compra-repository.ts` — tenant-scoped CRUD via `PrismaTx`, line replacement, guarded `UPDATE ... WHERE id AND empresaId AND estado=<expected>` with affected-rows check, `EMPRESA` row lock (`SELECT ... FOR UPDATE`) then `MAX(cast numeric suffix)+1` formatted `CMP-%06d` per empresa, in-transaction audit writes, paginated list/detail (R: happy-path confirm, concurrent confirms).
 - [x] 3.2 Create `infrastructure/configuracion-repository.ts` — read `RET_ISR_15`, `RET_ISR_2`, `RET_ITBIS_100`, `RET_ITBIS_30` by empresa with `America/Santo_Domingo` validity window; missing/invalid applicable key → stable config error (R: missing key blocks confirm).
-- [ ] 3.3 Create `app/src/modules/compra/http/validations.ts` — Zod schemas mirroring draft/cancel/list inputs (R: invalid line, missing motivo).
-- [ ] 3.4 Create `http/actions.ts` — thin admin-only Server Actions: resolve session, verify Administrador server-side, `withTenantTransaction`, delegate to use cases; unique-`ncf` violation → `NFC_DUPLICADO`; pass ESLint `server-action-must-wrap-tenant` (R: non-admin invocation, valid draft saved).
+- [x] 3.3 Create `app/src/modules/compra/http/validations.ts` — Zod schemas mirroring draft/cancel/list inputs (R: invalid line, missing motivo).
+- [x] 3.4 Create `http/actions.ts` — thin admin-only Server Actions: resolve session, verify Administrador server-side, `withTenantTransaction`, delegate to use cases; unique-`ncf` violation → `NFC_DUPLICADO`; pass ESLint `server-action-must-wrap-tenant` (R: non-admin invocation, valid draft saved).
 
 ## Phase 4: Integration tests (real DB)
 

@@ -399,8 +399,11 @@ async function asignarCorrelativoSiguienteEnTx(
   // Clear ONLY the sucursal filter locally so the MAX spans every branch of
   // this empresa; the empresa boundary (app.current_empresa_id) stays enforced.
   await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', '', true)`;
-  const rows = await tx.$queryRaw<{ max: bigint | null }[]>`
-    SELECT MAX(CAST(SUBSTRING("correlativoInterno" FROM '([0-9]+)$') AS BIGINT)) AS max
+  // Cast to int so Prisma returns a JS number (no BigInt, which the app
+  // tsconfig target below ES2020 cannot emit as a literal). The empresa row is
+  // locked above, so this read is serialized against every other confirm.
+  const rows = await tx.$queryRaw<{ next: number }[]>`
+    SELECT (COALESCE(MAX(CAST(SUBSTRING("correlativoInterno" FROM '([0-9]+)$') AS BIGINT)), 0) + 1)::int AS next
     FROM "COMPRA"
     WHERE "empresaId" = ${empresaId}`;
   // Restore the acting branch context before any further tenant-scoped write.
@@ -408,8 +411,7 @@ async function asignarCorrelativoSiguienteEnTx(
     sucursalId,
   )}, true)`;
 
-  const current = rows[0]?.max ?? null;
-  const next = (current === null ? 0n : BigInt(current)) + 1n;
+  const next = rows[0]?.next ?? 1;
   return `CMP-${next.toString().padStart(6, "0")}`;
 }
 
@@ -590,6 +592,28 @@ export async function obtenerCompraDetalleEnTx(
       subtotalLinea: d(l.subtotalLinea),
     })),
   };
+}
+
+/**
+ * Role-based authorization lookup for compra Server Actions. Prisma access
+ * stays in infrastructure; only the boolean decision crosses back into `http/`.
+ * Scoped to the tenant: id + empresaId must both match. Same provenance as the
+ * categoria/producto/proveedor copies (centralization deferred — YAGNI).
+ */
+export async function tieneRolPermitidoEnTx(
+  tx: PrismaTx,
+  usuarioId: number,
+  empresaId: number,
+  rolesPermitidos: readonly string[],
+): Promise<boolean> {
+  const usuario = await tx.usuario.findUnique({
+    where: { id: usuarioId, empresaId },
+    select: {
+      roles: { select: { rol: { select: { nombre: true } } } },
+    },
+  });
+  if (usuario === null) return false;
+  return usuario.roles.some((r) => rolesPermitidos.includes(r.rol.nombre));
 }
 
 /**
