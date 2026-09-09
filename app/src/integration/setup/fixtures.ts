@@ -84,6 +84,29 @@ export interface TenantFixtureInventarios {
   readonly b1ProdB1: { readonly id: number };
 }
 
+/**
+ * Active suppliers for the purchase scenarios, covering the retention matrix
+ * (tipoProveedor × tipoPersona) for empresa A plus one empresa-B supplier for
+ * cross-tenant tests.
+ */
+export interface TenantFixtureProveedores {
+  readonly formalFisica: { readonly id: number };
+  readonly formalJuridica: { readonly id: number };
+  readonly informalFisica: { readonly id: number };
+  readonly informalJuridica: { readonly id: number };
+  readonly proveedorB: { readonly id: number };
+}
+
+/** Retention rate keys seeded for empresa A (percent-form values). */
+export interface TenantFixtureRetencion {
+  readonly empresaAIds: {
+    readonly RET_ISR_15: number;
+    readonly RET_ISR_2: number;
+    readonly RET_ITBIS_100: number;
+    readonly RET_ITBIS_30: number;
+  };
+}
+
 export interface TenantFixture {
   readonly empresaA: { readonly id: number };
   readonly empresaB: { readonly id: number };
@@ -93,6 +116,8 @@ export interface TenantFixture {
   readonly usuarios: TenantFixtureUsuarios;
   readonly productos: TenantFixtureProductos;
   readonly inventarios: TenantFixtureInventarios;
+  readonly proveedores: TenantFixtureProveedores;
+  readonly retencion: TenantFixtureRetencion;
 }
 
 const UNIQUE_SUFFIX = (): string =>
@@ -229,6 +254,79 @@ export async function seedTenantFixture(): Promise<TenantFixture> {
     },
   });
 
+  // --- Active suppliers covering the retention matrix (empresa A) + one for B ---
+  const crearProveedor = (
+    empresaId: number,
+    nombre: string,
+    tipoProveedor: "FORMAL" | "INFORMAL",
+    tipoPersona: "FISICA" | "JURIDICA",
+  ) =>
+    db.proveedor.create({
+      data: {
+        empresaId,
+        nombre,
+        contacto: nombre,
+        telefono: "0",
+        tipoProveedor,
+        tipoPersona,
+      },
+    });
+
+  const formalFisica = await crearProveedor(
+    empresaA.id,
+    `formal-fisica-${suffix}`,
+    "FORMAL",
+    "FISICA",
+  );
+  const formalJuridica = await crearProveedor(
+    empresaA.id,
+    `formal-juridica-${suffix}`,
+    "FORMAL",
+    "JURIDICA",
+  );
+  const informalFisica = await crearProveedor(
+    empresaA.id,
+    `informal-fisica-${suffix}`,
+    "INFORMAL",
+    "FISICA",
+  );
+  const informalJuridica = await crearProveedor(
+    empresaA.id,
+    `informal-juridica-${suffix}`,
+    "INFORMAL",
+    "JURIDICA",
+  );
+  const proveedorB = await crearProveedor(
+    empresaB.id,
+    `prov-b-${suffix}`,
+    "FORMAL",
+    "JURIDICA",
+  );
+
+  // --- Retention configuration for empresa A (wide validity window, percent) ---
+  const vigInicio = new Date("2000-01-01T00:00:00.000Z");
+  const vigFin = new Date("2099-12-31T23:59:59.000Z");
+  const crearConfig = (
+    empresaId: number,
+    clave: string,
+    valor: string,
+  ) =>
+    db.configuracionEmpresa.create({
+      data: {
+        empresaId,
+        clave,
+        valor,
+        vigenciaInicio: vigInicio,
+        vigenciaFin: vigFin,
+        activa: true,
+      },
+    });
+
+  const cfgIsr15 = await crearConfig(empresaA.id, "RET_ISR_15", "15");
+  const cfgIsr2 = await crearConfig(empresaA.id, "RET_ISR_2", "2");
+  const cfgItbis100 = await crearConfig(empresaA.id, "RET_ITBIS_100", "100");
+  const cfgItbis30 = await crearConfig(empresaA.id, "RET_ITBIS_30", "30");
+
   return {
     empresaA: { id: empresaA.id },
     empresaB: { id: empresaB.id },
@@ -248,6 +346,21 @@ export async function seedTenantFixture(): Promise<TenantFixture> {
       a1ProdA1: { id: inventarioA1.id },
       a2ProdA2Only: { id: inventarioA2.id },
       b1ProdB1: { id: inventarioB1.id },
+    },
+    proveedores: {
+      formalFisica: { id: formalFisica.id },
+      formalJuridica: { id: formalJuridica.id },
+      informalFisica: { id: informalFisica.id },
+      informalJuridica: { id: informalJuridica.id },
+      proveedorB: { id: proveedorB.id },
+    },
+    retencion: {
+      empresaAIds: {
+        RET_ISR_15: cfgIsr15.id,
+        RET_ISR_2: cfgIsr2.id,
+        RET_ITBIS_100: cfgItbis100.id,
+        RET_ITBIS_30: cfgItbis30.id,
+      },
     },
   };
 }

@@ -54,12 +54,12 @@ User (maintainer) approved `size:exception` for a single PR. Commits stay groupe
 
 ## Phase 4: Integration tests (real DB)
 
-- [ ] 4.1 Extend `app/src/integration/setup/fixtures.ts` — seed active suppliers (formal/informal × física/jurídica), retention config keys, purchase-ready products; expose via `TenantFixture` (R: valid draft saved).
-- [ ] 4.2 Create `src/integration/compra-confirm.integration.test.ts` — confirm → `PENDIENTE` + CMP number + exactly one audit row + zero `MovimientoInventario`; retry does not duplicate (R: happy-path confirm).
-- [ ] 4.3 Create `src/integration/compra-concurrency.integration.test.ts` — same draft confirmed twice in parallel (one succeeds, loser stable error, no duplicate effects); two drafts concurrent → distinct sequential correlativos (R: concurrent confirms).
-- [ ] 4.4 Create `src/integration/compra-config.integration.test.ts` — `RET_ITBIS_100` absent + informal supplier → confirm blocked, state stays `BORRADOR` (R: missing key blocks confirm).
-- [ ] 4.5 Create `src/integration/compra-tenant.integration.test.ts` — size 500 rejected, cross-empresa detail/list → not-found, deterministic order (R: bounds and isolation).
-- [ ] 4.6 Create `src/integration/compra-cancel.integration.test.ts` — motivo audited, inventory untouched, NCF slot retained; proveedor deactivation guard `tieneComprasNoCanceladas` first coverage (R: cancel scenarios).
+- [x] 4.1 Extend `app/src/integration/setup/fixtures.ts` — seed active suppliers (formal/informal × física/jurídica), retention config keys, purchase-ready products; expose via `TenantFixture` (R: valid draft saved).
+- [x] 4.2 Create `src/integration/compra-confirm.integration.test.ts` — confirm → `PENDIENTE` + CMP number + exactly one audit row + zero `MovimientoInventario`; retry does not duplicate (R: happy-path confirm).
+- [x] 4.3 Create `src/integration/compra-concurrency.integration.test.ts` — same draft confirmed twice in parallel (one succeeds, loser stable error, no duplicate effects); two drafts concurrent → distinct sequential correlativos (R: concurrent confirms).
+- [x] 4.4 Create `src/integration/compra-config.integration.test.ts` — `RET_ITBIS_100` absent + informal supplier → confirm blocked, state stays `BORRADOR` (R: missing key blocks confirm).
+- [x] 4.5 Create `src/integration/compra-tenant.integration.test.ts` — size 500 rejected, cross-empresa detail/list → not-found, deterministic order (R: bounds and isolation).
+- [x] 4.6 Create `src/integration/compra-cancel.integration.test.ts` — motivo audited, inventory untouched, NCF slot retained; proveedor deactivation guard `tieneComprasNoCanceladas` first coverage (R: cancel scenarios).
 
 ## Phase 5: Docs / cleanup
 
