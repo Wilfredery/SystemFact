@@ -10,7 +10,7 @@
     "postinstall": "prisma generate",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:integration": "jest --testPathPattern=integration",
+    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js -c jest.integration.config.js --runInBand --forceExit",
     "probe:set-local": "tsx scripts/probe-set-local.ts",
     "rls:verify": "tsx tools/scripts/verify-rls.ts",
     "rls:diagnose": "tsx scripts/diagnose-rls.ts",
@@ -30,6 +30,9 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@babel/plugin-transform-export-namespace-from": "^7.29.7",
+    "@babel/plugin-transform-modules-commonjs": "^7.29.7",
+    "@babel/preset-typescript": "^7.29.7",
     "@tailwindcss/postcss": "^4",
     "@types/jest": "^29.5.14",
     "@types/node": "^20",
@@ -38,6 +41,7 @@
     "@types/react-dom": "^19",
     "@typescript-eslint/rule-tester": "^8.69.0",
     "@typescript-eslint/utils": "^8.69.0",
+    "babel-jest": "^29.7.0",
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",

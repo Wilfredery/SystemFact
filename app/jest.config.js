@@ -27,6 +27,7 @@ const config = {
     "/src/generated/",
     "<rootDir>/scripts/",
     "/withTenantTransaction\\.test\\.ts$",
+    "/src/integration/",
   ],
   // Surface tsconfig's strict settings so tests catch the same type errors
   // as the production build.
