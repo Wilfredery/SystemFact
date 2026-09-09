@@ -10,6 +10,7 @@
 
 # pnpm 11 usa allowBuilds (mapa name -> true), no onlyBuiltDependencies (era pnpm 9/10).
 allowBuilds:
+  '@parcel/watcher': true
   '@prisma/engines': true
   esbuild: true
   msgpackr-extract: true
