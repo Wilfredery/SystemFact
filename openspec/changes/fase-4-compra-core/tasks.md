@@ -63,8 +63,8 @@ User (maintainer) approved `size:exception` for a single PR. Commits stay groupe
 
 ## Phase 5: Docs / cleanup
 
-- [ ] 5.1 Document seams (`InventoryEntryPort`, `INVENTORY_SOURCE.PURCHASE`, B11, `MovimientoInventario.compraId`) as later-phase-only in module header comment; note retention-config seeding as operational prerequisite in docs (R: 3.4b seams).
-- [ ] 5.2 Verify success criteria: no migration in commit, ESLint tenant rule green, `RECIBIDA/PAGADA` unreachable from use cases (grep domain/application for forbidden states).
+- [x] 5.1 Document seams (`InventoryEntryPort`, `INVENTORY_SOURCE.PURCHASE`, B11, `MovimientoInventario.compraId`) as later-phase-only in module header comment; note retention-config seeding as operational prerequisite in docs (R: 3.4b seams).
+- [x] 5.2 Verify success criteria: no migration in commit, ESLint tenant rule green, `RECIBIDA/PAGADA` unreachable from use cases (grep domain/application for forbidden states).
 
 ## Traceability
 
