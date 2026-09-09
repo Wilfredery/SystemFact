@@ -63,6 +63,10 @@ interface InventoryEntryPort {
 
 All rows are **N/A**: this adds a Server Action but no URL routing, shell, subprocess, VCS/PR automation, or executable-file classification boundary. No threat-matrix RED tests apply.
 
+## Ratified decision: all-branch cost aggregate READ GUC narrowing
+
+The company-wide weighted-average cost denominator requires stock across ALL branches, but `INVENTARIO` RLS binds reads to `app.current_sucursal_id`. A schema/RLS migration to widen reads was rejected (enums already ship; a migration would expand blast radius and violate the "no new migration" constraint). Ratified compromise (user, memory #692): the all-branch cost-aggregate **READ** transaction-locally narrows `app.current_sucursal_id` via `set_config(..., is_local => true)` — the `app.current_empresa_id` GUC is NEVER touched, so cross-tenant isolation (R6) is still enforced — and the session branch value is restored before any entry write. Entry writes therefore remain bound to the session branch, and the inventario spec's "no RLS GUC clearing in v1" carries this single read-only exception (spec updated accordingly). Tradeoff: a transaction-local read widening is a narrower, auditable exception vs. the rejected permanent policy change; it follows the W-1 cross-branch correlativo precedent from PR #9. If the aggregate query fails (GUC restore error), the transaction aborts and the whole receipt rolls back — there is no silent branch-local fallback.
+
 ## Migration / Rollout
 
 No migration required; `RECIBIDA`, `ENTRADA_COMPRA`, and `compraId` already exist. Seed retention configuration before enabling production confirmation/receipt. Tasks should forecast high risk against the 400-line budget: use chained PRs—(1) Inventario entry/cost plus seed, (2) Compra receive wiring and HTTP/tests.

@@ -304,6 +304,48 @@ describe("registrarEntradaCompra (real DB)", () => {
     expect(movs).toBe(0);
   });
 
+  it("serializes two concurrent receipts of the SAME product (no lost cost update)", async () => {
+    const db = getHarnessDb();
+    // Clean product with zero company-wide pre-receipt stock so the weighted
+    // average over both concurrent receipts is order-independent:
+    //   (10*100 + 10*200) / 20 = 150.00. Without the PRODUCTO row lock both
+    //   transactions would read CP=0/stock=0 and the last writer would win,
+    //   persisting 100.00 or 200.00 (a lost update) instead of 150.00.
+    const productoId = await crearProductoSinInventario(fixture, `SER-${Date.now()}`);
+    const compraA = await seedCompra(fixture);
+    const compraB = await seedCompra(fixture);
+
+    await Promise.all([
+      withTenantTransaction(ctx, (tx) =>
+        registrarEntradasCompra(tx, ctx, {
+          compraId: compraA,
+          motivo: "Recepción concurrente A",
+          lineas: [{ productoId, cantidad: "10.000", costoUnitarioSinItbis: "100.00" }],
+        }),
+      ),
+      withTenantTransaction(ctx, (tx) =>
+        registrarEntradasCompra(tx, ctx, {
+          compraId: compraB,
+          motivo: "Recepción concurrente B",
+          lineas: [{ productoId, cantidad: "10.000", costoUnitarioSinItbis: "200.00" }],
+        }),
+      ),
+    ]);
+
+    // Company-wide cost reflects BOTH receipts applied sequentially (serialized).
+    const producto = await db.producto.findUnique({ where: { id: productoId } });
+    expect(producto?.costoPromedio.toFixed(2)).toBe("150.00");
+    // Both inbound quantities landed (20 units) via two movements at the branch.
+    const inventario = await db.inventario.findFirst({
+      where: { sucursalId: ctx.sucursalId, productoId },
+    });
+    expect(inventario?.cantidad.toFixed(3)).toBe("20.000");
+    const movimientos = await db.movimientoInventario.count({
+      where: { inventarioId: inventario!.id },
+    });
+    expect(movimientos).toBe(2);
+  });
+
   it("the manual-adjustment path still never mutates costoPromedio (3.4a boundary)", async () => {
     const db = getHarnessDb();
     const productoId = fixture.productos.prodA1.id;
