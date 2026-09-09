@@ -4,7 +4,7 @@
 
 ### Requirement: Purchase receipt entry implementing InventoryEntryPort
 
-The module MUST expose `registrarEntradaCompra` as the implemented `applyEntry` port. For each line, inside the caller's tenant transaction: verify product ownership by the tenant, upsert and lock the branch inventory row with `SELECT ... FOR UPDATE`, add the positive quantity, append exactly one `MovimientoInventario` of type `ENTRADA_COMPRA` carrying `compraId` with before/after quantities, and append audit. Entries MUST target only the session-authorized branch (no RLS GUC clearing in v1); all writes MUST roll back atomically on any line failure.
+The module MUST expose `registrarEntradaCompra` as the implemented `applyEntry` port. For each line, inside the caller's tenant transaction: verify product ownership by the tenant, upsert and lock the branch inventory row with `SELECT ... FOR UPDATE`, add the positive quantity, append exactly one `MovimientoInventario` of type `ENTRADA_COMPRA` carrying `compraId` with before/after quantities, and append audit. Entries MUST target only the session-authorized branch (no RLS GUC clearing in v1, except the read-only company-wide cost-aggregate `app.current_sucursal_id` transaction-local narrowing ratified for 3.4b — see design; entry writes remain branch-bound); all writes MUST roll back atomically on any line failure.
 
 #### Scenario: Entry for unseen product
 
