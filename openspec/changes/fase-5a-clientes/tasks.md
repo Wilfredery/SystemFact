@@ -25,15 +25,15 @@ Chain strategy: stacked-to-main
 
 ## Phase 1: PR-5a.1 — Domain, Validator, Repository (mergeable to main independently)
 
-- [ ] 1.1 Migration commit FIRST (own commit, no code): `app/prisma/migrations/YYYYMMDDHHMMSS_cliente_credit_defaults/migration.sql` — `ALTER TABLE "CLIENTE" ALTER COLUMN "limiteCredito" SET DEFAULT 0; ALTER COLUMN "plazoCreditoDias" SET DEFAULT 30;`
-- [ ] 1.2 RED: `app/src/shared/domain/fiscal-id.test.ts` — fixtures `131045677` valid, `131045671` rejected; cédula `00123456795` valid, `00123456791` rejected; separators stripped (`131-04567-7`→pass); lengths 8/10/12 rejected pre-checksum; weights `RNC [7,9,8,6,5,4,3,2]` / `cédula [1,2,4,8,5,10,9,7,3,6]`, DV=11−Σ mod11, 11→0, 10→invalid (client-validators R1/R2)
-- [ ] 1.3 GREEN: `app/src/shared/domain/fiscal-id.ts` — pure, dependency-free `validarRnc`, `validarCedula`, `validarIdentificacionFiscal`; JSDoc documents open item: 11-digit corporate RNC DV variant NOT pinned, deferred to 5b/5c accountant (client-validators R3/R4)
-- [ ] 1.4 RED: `app/src/modules/cliente/domain/cliente.test.ts` — `validarReglasCredito`: creditoHabilitado/limite>0/tipoCliente credit-bearing with NULL or invalid fiscal ID ⇒ `CREDITO_REQUIERE_FISCAL_IDENTIDAD` (cliente R5)
-- [ ] 1.5 GREEN: `app/src/modules/cliente/domain/cliente.ts` — entity types, normalization, credit defaults (limite 0.00, plazo 30), limits (limite ≥0, plazo >0), `validarReglasCredito`
-- [ ] 1.6 Create `app/src/modules/cliente/domain/errors.ts` — `ClienteErrorCode`: 11 codes per design (DUPLICADA, FISCAL_INVALIDA, NO_ENCONTRADO, YA_INACTIVO, TIENE_VENTAS, CONCURRENCIA_CONFLICTO, CREDITO_REQUIERE_FISCAL_IDENTIDAD, NO_AUTORIZADO, SESION_INVALIDA, VALIDATION_ERROR, CONSUMIDOR_FINAL_PROTEGIDO) + `messageFor`; unit test maps all codes
-- [ ] 1.7 RED→GREEN: `app/src/modules/cliente/infrastructure/cliente-repository.ts` — all ops filter `empresaId`; `updateMany({id, empresaId, version})`; P2002→DUPLICADA mapping; `tieneVentasNoCanceladas(empresaId, clienteId)` counting `Venta.estado != CANCELADA`; Decimal-as-string/`Prisma.Decimal`, never float
-- [ ] 1.8 Create `app/src/modules/cliente/README.md` stub: module responsibility map + validator reuse contract
-- [ ] 1.9 Commit sequence: (a) migration (own commit), (b) validator + domain + tests, (c) repository + README. PR-5a.1 green CI then merge to `main`
+- [x] 1.1 Migration commit FIRST (own commit, no code): `app/prisma/migrations/YYYYMMDDHHMMSS_cliente_credit_defaults/migration.sql` — `ALTER TABLE "CLIENTE" ALTER COLUMN "limiteCredito" SET DEFAULT 0; ALTER COLUMN "plazoCreditoDias" SET DEFAULT 30;`
+- [x] 1.2 RED: `app/src/shared/domain/fiscal-id.test.ts` — fixtures `131045677` valid, `131045671` rejected; cédula `00123456795` valid, `00123456791` rejected; separators stripped (`131-04567-7`→pass); lengths 8/10/12 rejected pre-checksum; weights `RNC [7,9,8,6,5,4,3,2]` / `cédula [1,2,4,8,5,10,9,7,3,6]`, DV=11−Σ mod11, 11→0, 10→invalid (client-validators R1/R2)
+- [x] 1.3 GREEN: `app/src/shared/domain/fiscal-id.ts` — pure, dependency-free `validarRnc`, `validarCedula`, `validarIdentificacionFiscal`; JSDoc documents open item: 11-digit corporate RNC DV variant NOT pinned, deferred to 5b/5c accountant (client-validators R3/R4)
+- [x] 1.4 RED: `app/src/modules/cliente/domain/cliente.test.ts` — `validarReglasCredito`: creditoHabilitado/limite>0/tipoCliente credit-bearing with NULL or invalid fiscal ID ⇒ `CREDITO_REQUIERE_FISCAL_IDENTIDAD` (cliente R5)
+- [x] 1.5 GREEN: `app/src/modules/cliente/domain/cliente.ts` — entity types, normalization, credit defaults (limite 0.00, plazo 30), limits (limite ≥0, plazo >0), `validarReglasCredito`
+- [x] 1.6 Create `app/src/modules/cliente/domain/errors.ts` — `ClienteErrorCode`: 11 codes per design (DUPLICADA, FISCAL_INVALIDA, NO_ENCONTRADO, YA_INACTIVO, TIENE_VENTAS, CONCURRENCIA_CONFLICTO, CREDITO_REQUIERE_FISCAL_IDENTIDAD, NO_AUTORIZADO, SESION_INVALIDA, VALIDATION_ERROR, CONSUMIDOR_FINAL_PROTEGIDO) + `messageFor`; unit test maps all codes
+- [x] 1.7 RED→GREEN: `app/src/modules/cliente/infrastructure/cliente-repository.ts` — all ops filter `empresaId`; `updateMany({id, empresaId, version})`; P2002→DUPLICADA mapping; `tieneVentasNoCanceladas(empresaId, clienteId)` counting `Venta.estado != CANCELADA`; Decimal-as-string/`Prisma.Decimal`, never float
+- [x] 1.8 Create `app/src/modules/cliente/README.md` stub: module responsibility map + validator reuse contract
+- [x] 1.9 Commit sequence: (a) migration (own commit), (b) validator + domain + tests, (c) repository + README. PR-5a.1 green CI then merge to `main` — commits landed on `feat/fase-5a-clientes` (validator and domain split into separate bisectable units); CI/merge remains after verify
 
 ## Phase 2: PR-5a.2 — Use Cases, HTTP, Seed, Integration (base = post-PR-5a.1 main)
 
