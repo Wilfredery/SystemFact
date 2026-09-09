@@ -244,6 +244,44 @@ describe("recibirCompra (real DB)", () => {
     expect(movs).toBe(0);
   });
 
+  it("same-tenant wrong-branch receive is rejected with a typed error and zero writes", async () => {
+    // Purchase belongs to branch A2 (created + confirmed by an admin acting at A2).
+    const productoId = await crearProductoSinInventario(fixture, `WB-${Date.now()}`);
+    const ctxA2: TenantCtx = {
+      empresaId: fixture.empresaA.id,
+      sucursalId: fixture.sucursalA2.id,
+      usuarioId: fixture.usuarios.adminA.id,
+      esAdmin: true,
+    };
+    const compraId = await crearYConfirmar(ctxA2, fixture, [productoId]);
+
+    // Session at branch A1 (same tenant, different branch) attempts the receipt.
+    // OBSERVED behavior, asserted deliberately: the `compra_isolation` RLS policy
+    // matches `empresaId` AND `sucursalId` with NO es_admin bypass, so even an
+    // Administrador session at A1 never SEES the A2 purchase — `leerCompraEnTx`
+    // returns null and `recibirCompra` short-circuits to the typed
+    // COMPRA_NO_ENCONTRADA BEFORE the application-level
+    // `compra.sucursalId !== ctx.sucursalId` guard (COMPRA_SUCURSAL_INVALIDA)
+    // can fire; that guard is a defense-in-depth backstop only reachable when a
+    // read path widens branch visibility. RLS rejection is the stricter outcome
+    // and is proven here at the real-DB level (unit/http tests cover the
+    // guard's typed mapping).
+    const result = await withTenantTransaction(ctx, (tx) =>
+      recibirCompra(tx, ctx, { id: compraId }),
+    );
+    expect(result.ok === false && result.code).toBe("COMPRA_NO_ENCONTRADA");
+
+    const db = getHarnessDb();
+    // Zero side effects: state untouched, no movements, no stock rows, no reweight.
+    expect((await db.compra.findUnique({ where: { id: compraId } }))?.estado).toBe(
+      "PENDIENTE",
+    );
+    expect(await db.movimientoInventario.count({ where: { compraId } })).toBe(0);
+    expect(await db.inventario.count({ where: { productoId } })).toBe(0);
+    const prod = await db.producto.findUnique({ where: { id: productoId } });
+    expect(prod?.costoPromedio.toFixed(2)).toBe("0.00");
+  });
+
   it("cancel-after-receipt stays frozen: cancelar on a RECIBIDA purchase → TRANSICION_INVALIDA", async () => {
     const productoId = await crearProductoSinInventario(fixture, `CAN-${Date.now()}`);
     const compraId = await crearYConfirmar(ctx, fixture, [productoId]);

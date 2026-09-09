@@ -84,7 +84,7 @@ describe("compra action guard rejects non-admin (real DB)", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error.code).toBe(NO_AUTORIZADO);
+      expect(result.error?.code).toBe(NO_AUTORIZADO);
     }
     expect(await db.compra.count({ where: { empresaId: fixture.empresaA.id } })).toBe(countBefore);
   });
