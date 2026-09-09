@@ -23,6 +23,11 @@ export const CONCURRENCIA_CONFLICTO = "CONCURRENCIA_CONFLICTO";
 export const NFC_DUPLICADO = "NFC_DUPLICADO";
 export const NO_AUTORIZADO = "NO_AUTORIZADO";
 export const SESION_INVALIDA = "SESION_INVALIDA";
+// fase-3-4b receipt wiring: branch scoping for `recibirCompra` and the stable
+// bridge code that maps any inventario entry failure into compra's catalog so
+// inventario's internal codes never leak to the HTTP contract.
+export const COMPRA_SUCURSAL_INVALIDA = "COMPRA_SUCURSAL_INVALIDA";
+export const INVENTARIO_ENTRADA_RECHAZADA = "INVENTARIO_ENTRADA_RECHAZADA";
 
 export type CompraErrorCode =
   | typeof VALIDATION_ERROR
@@ -38,7 +43,9 @@ export type CompraErrorCode =
   | typeof CONCURRENCIA_CONFLICTO
   | typeof NFC_DUPLICADO
   | typeof NO_AUTORIZADO
-  | typeof SESION_INVALIDA;
+  | typeof SESION_INVALIDA
+  | typeof COMPRA_SUCURSAL_INVALIDA
+  | typeof INVENTARIO_ENTRADA_RECHAZADA;
 
 const MESSAGES: Record<CompraErrorCode, string> = {
   [VALIDATION_ERROR]: "Datos de entrada inválidos",
@@ -58,6 +65,10 @@ const MESSAGES: Record<CompraErrorCode, string> = {
   [NFC_DUPLICADO]: "Ya existe una compra con ese NCF en la empresa",
   [NO_AUTORIZADO]: "No tiene permisos para realizar esta acción",
   [SESION_INVALIDA]: "Sesión no válida o expirada",
+  [COMPRA_SUCURSAL_INVALIDA]:
+    "La compra pertenece a otra sucursal; solo puede recibirse en su propia sucursal",
+  [INVENTARIO_ENTRADA_RECHAZADA]:
+    "No se pudo registrar la entrada de inventario; la recepción fue cancelada",
 };
 
 export function messageFor(code: CompraErrorCode): string {

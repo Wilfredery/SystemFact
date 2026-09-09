@@ -45,7 +45,7 @@ import type {
   TipoCompra as TipoCompraCore,
   TipoPersona,
 } from "../domain/compra";
-import { ESTADO_COMPRA } from "../domain/compra";
+import { ESTADO_COMPRA, estadoCompraDesdeDb } from "../domain/compra";
 
 /** A stored purchase line, quantities/costs/rates as Decimal strings. */
 export interface CompraLineaPersistida {
@@ -64,6 +64,8 @@ export interface CompraLeida {
   readonly ncf: string | null;
   readonly tipoNcf: TipoNcfCompraCore | null;
   readonly proveedorId: number;
+  /** The branch that owns the purchase — required by the receipt branch guard. */
+  readonly sucursalId: number;
   readonly lineas: readonly CompraLineaPersistida[];
 }
 
@@ -150,12 +152,23 @@ export interface CrearCompraPersistencia {
 }
 
 // --- enum mapping helpers (domain string ↔ frozen Prisma enum) ---
+
+/**
+ * Total, exhaustive WRITE-direction mapper domain→DB for the states this module
+ * can write. Every `EstadoCompraCore` member is handled explicitly and there is
+ * NO default, so the compiler rejects a new state that lacks a case — the
+ * mapping can never silently drift. `PAGADA` is not a `EstadoCompraCore` value
+ * (no path to it), so it cannot be produced here. The READ direction uses the
+ * pure `estadoCompraDesdeDb` domain mapper.
+ */
 function aPrismaEstado(estado: EstadoCompraCore): EstadoCompra {
   switch (estado) {
     case ESTADO_COMPRA.BORRADOR:
       return EstadoCompra.BORRADOR;
     case ESTADO_COMPRA.PENDIENTE:
       return EstadoCompra.PENDIENTE;
+    case ESTADO_COMPRA.RECIBIDA:
+      return EstadoCompra.RECIBIDA;
     case ESTADO_COMPRA.CANCELADA:
       return EstadoCompra.CANCELADA;
   }
@@ -232,6 +245,7 @@ export async function leerCompraEnTx(
       ncf: true,
       tipoNcf: true,
       proveedorId: true,
+      sucursalId: true,
       detalles: {
         select: {
           productoId: true,
@@ -245,12 +259,15 @@ export async function leerCompraEnTx(
   if (row === null) return null;
   return {
     id: row.id,
-    estado: row.estado as EstadoCompraCore,
+    // Total, exhaustive DB→domain mapping: RECIBIDA maps, PAGADA fails loud
+    // (never a silent coercion — no `as EstadoCompraCore` cast remains).
+    estado: estadoCompraDesdeDb(row.estado),
     correlativoInterno: row.correlativoInterno,
     tipoCompra: row.tipoCompra as TipoCompraCore,
     ncf: row.ncf,
     tipoNcf: row.tipoNcf as TipoNcfCompraCore | null,
     proveedorId: row.proveedorId,
+    sucursalId: row.sucursalId,
     lineas: row.detalles.map((d) => ({
       productoId: d.productoId,
       cantidad: new Prisma.Decimal(d.cantidad).toString(),
@@ -478,6 +495,32 @@ export async function cancelarCompraEnTx(
     data: { estado: EstadoCompra.CANCELADA },
   });
   return { cancelled: result.count > 0 };
+}
+
+/**
+ * Guarded `PENDIENTE → RECIBIDA` receive. ONE `UPDATE ... WHERE id AND empresaId
+ * AND estado='PENDIENTE'` with an affected-rows check is the idempotency/
+ * concurrency control: a duplicate click or a losing concurrent race updates
+ * zero rows (`{ recibido: false }`) and the caller performs NO inventory call,
+ * so stock/movement/cost can never be applied twice. `Compra` has no `version`
+ * column, so the `estado='PENDIENTE'` predicate is the optimistic lock. The
+ * update is uncommitted: any later failure in the same transaction rolls it
+ * back together with the inventory writes.
+ */
+export async function recibirCompraEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  compraId: number,
+): Promise<{ recibido: boolean }> {
+  const result = await tx.compra.updateMany({
+    where: {
+      id: compraId,
+      empresaId: ctx.empresaId,
+      estado: EstadoCompra.PENDIENTE,
+    },
+    data: { estado: EstadoCompra.RECIBIDA },
+  });
+  return { recibido: result.count > 0 };
 }
 
 /** Deterministic, tenant-scoped paginated listing (id desc tie-break). */
