@@ -125,6 +125,34 @@ pnpm prisma migrate deploy
 # 4. Volver a local para seguir iterando
 ```
 
+## Seed de configuración de retención (tenants reales)
+
+La confirmación de compras lee cuatro claves de `ConfiguracionEmpresa`
+(`RET_ISR_15`, `RET_ISR_2`, `RET_ITBIS_100`, `RET_ITBIS_30`) y, si falta la clave
+aplicable, falla con `CONFIG_RETENCION_FALTANTE`. Hasta la fase 3.4b solo los
+fixtures de integración sembraban esas claves, por lo que UN TENANT DE
+PRODUCCIÓN NO PODÍA CONFIRMAR NI RECIBIR COMPRAS.
+
+Este seed crea/provisiona esas claves para TODAS las empresas como una fila
+activa por clave, con ventana de vigencia amplia. Es **idempotente**: volver a
+ejecutarlo actualiza la misma fila (unique `empresaId_clave_vigenciaInicio`) y no
+duplica. Las tasas siguen siendo config-driven — el seed NO introduce fallbacks
+hardcodeados en dominio/aplicación y NO toca los fixtures de integración.
+
+```bash
+# Desde app/, con DIRECT_URL (rol operador/superuser) o DATABASE_URL en .env:
+pnpm seed:retencion
+# → OK: seeded 4 retention keys for N empresa(s) (idempotent).
+```
+
+> Nota de rol: el seed recorre todas las empresas, así que necesita una conexión
+> sin contexto de un solo tenant (el rol `systemfact_app` está acotado por RLS).
+> En local usa `DIRECT_URL` (`postgres`); en Supabase prod, ejecuta el seed con
+> una conexión de servicio/operador que pueda escribir `CONFIGURACION_EMPRESA`
+> de todas las empresas.
+
+Sembrar antes de habilitar la recepción de compras en un entorno nuevo.
+
 ## Comandos útiles
 
 ```bash
