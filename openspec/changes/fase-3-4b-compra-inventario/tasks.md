@@ -37,15 +37,15 @@ PR-1 is independently mergeable: inventario side has no compile-time dependency 
 
 ## Phase 2: PR-2 — Compra receive wiring (RED tests first)
 
-- [ ] 2.1 RED unit `app/src/modules/compra/domain/compra.test.ts`: add `RECIBIDA` to `ESTADO_COMPRA`; `transicionarRecibir` (PENDIENTE→RECIBIDA only); cancel-of-RECIBIDA ⇒ `TRANSICION_INVALIDA`; exhaustive mapper with `assertNever` — unknown state fails loud, no `as EstadoCompraCore` cast remains.
-- [ ] 2.2 Modify `app/src/modules/compra/domain/compra.ts` + `errors.ts`: add `RECIBIDA`, receipt transition, exact `InventoryEntryInput`/port types, bridge code `INVENTARIO_ENTRADA_RECHAZADA`. Retire 3.4b seam comment block.
-- [ ] 2.3 Modify `app/src/modules/compra/infrastructure/compra-repository.ts`: select `sucursalId` in `leerCompraEnTx`; exhaustive 5-state mapper; guarded receive update `updateMany WHERE estado='PENDIENTE' AND empresaId`.
-- [ ] 2.4 Create `app/src/modules/compra/application/recibir-compra.ts` (GREEN): branch guard (`ctx.sucursalId` = compra branch ⇒ typed error otherwise), guarded update (0 rows ⇒ `CONCURRENCIA_CONFLICTO`, zero inventory calls), per-line `applyEntry`, map Inventario failures to bridge code, audit, result `{ id, estado: "RECIBIDA" }`.
-- [ ] 2.5 Modify `app/src/modules/compra/http/{validations,actions}.ts`: `recibirCompraAction` — zod `{ id: positive int }`, ctx, one `withTenantTransaction`, `tieneRolPermitidoEnTx(["Administrador"])`; no nested tenant tx.
-- [ ] 2.6 RED→GREEN integration (real DB): R4 duplicate click ⇒ conflict, stock/movements/cost unchanged; concurrent receipts race ⇒ exactly one commits; wrong state/branch ⇒ typed error, zero writes; happy path ⇒ RECIBIDA, stock only at session branch, movement `compraId`, cost updated exactly once, one audit row.
-- [ ] 2.7 PR-2 docs: update `app/src/modules/compra/README.md` (receipt flow, remaining frozen seams: no `PAGADA`/B11).
+- [x] 2.1 RED unit `app/src/modules/compra/domain/compra.test.ts`: add `RECIBIDA` to `ESTADO_COMPRA`; `transicionarRecibir` (PENDIENTE→RECIBIDA only); cancel-of-RECIBIDA ⇒ `TRANSICION_INVALIDA`; exhaustive mapper with `assertNever` — unknown state fails loud, no `as EstadoCompraCore` cast remains.
+- [x] 2.2 Modify `app/src/modules/compra/domain/compra.ts` + `errors.ts`: add `RECIBIDA`, receipt transition, exact `InventoryEntryInput`/port types, bridge code `INVENTARIO_ENTRADA_RECHAZADA`. Retire 3.4b seam comment block.
+- [x] 2.3 Modify `app/src/modules/compra/infrastructure/compra-repository.ts`: select `sucursalId` in `leerCompraEnTx`; exhaustive 5-state mapper; guarded receive update `updateMany WHERE estado='PENDIENTE' AND empresaId`.
+- [x] 2.4 Create `app/src/modules/compra/application/recibir-compra.ts` (GREEN): branch guard (`ctx.sucursalId` = compra branch ⇒ typed error otherwise), guarded update (0 rows ⇒ `CONCURRENCIA_CONFLICTO`, zero inventory calls), per-line `applyEntry`, map Inventario failures to bridge code, audit, result `{ id, estado: "RECIBIDA" }`.
+- [x] 2.5 Modify `app/src/modules/compra/http/{validations,actions}.ts`: `recibirCompraAction` — zod `{ id: positive int }`, ctx, one `withTenantTransaction`, `tieneRolPermitidoEnTx(["Administrador"])`; no nested tenant tx.
+- [x] 2.6 RED→GREEN integration (real DB): R4 duplicate click ⇒ conflict, stock/movements/cost unchanged; concurrent receipts race ⇒ exactly one commits; wrong state/branch ⇒ typed error, zero writes; happy path ⇒ RECIBIDA, stock only at session branch, movement `compraId`, cost updated exactly once, one audit row. *(Green: 7/7 in `compra-recibir.integration.test.ts`; full integration 42/42 on `sf-postgres:5433`.)*
+- [x] 2.7 PR-2 docs: update `app/src/modules/compra/README.md` (receipt flow, remaining frozen seams: no `PAGADA`/B11).
 
 ## Phase 3: Verification
 
-- [ ] 3.1 Full gates: `pnpm -C app lint`, `tsc --noEmit`, unit + integration suites green; grep confirms no `as EstadoCompraCore`, no compra-module stock/cost writes.
-- [ ] 3.2 Verify every spec scenario above has a passing named test; verify no Prisma migration added.
+- [x] 3.1 Full gates: `pnpm -C app lint` (0 problems), `tsc --noEmit` (only the pre-existing unrelated `compra-non-admin.integration.test.ts:87`), unit 339/339 + integration 42/42 green; grep confirms no `as EstadoCompraCore` (code) and no compra-module stock/cost writes (only doc/comment mentions).
+- [x] 3.2 Verify every spec scenario above has a passing named test; verify no Prisma migration added (none created; `RECIBIDA`/`ENTRADA_COMPRA`/`compraId` already existed from PR-1).
