@@ -25,10 +25,12 @@ import { Decimal } from "decimal.js";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import {
+  CANTIDAD_INVALIDA,
   INVENTARIO_NO_ENCONTRADO,
   STOCK_INSUFICIENTE,
   InventarioDomainError,
 } from "../domain/errors";
+import { calcularNuevoCostoPromedioPorValor } from "../domain/costo-promedio";
 import type {
   InventarioStockRow,
   InventorySource,
@@ -283,6 +285,289 @@ export async function ajustarStockEnTx(
     previousQuantity: anterior.toFixed(3),
     newQuantity: nueva.toFixed(3),
   };
+}
+
+// ---------------------------------------------------------------------------
+// 3.4b purchase-entry path — fase-3-4b PR-1 (inventario side realization).
+// ---------------------------------------------------------------------------
+
+/** One received purchase line for the entry batch. */
+export interface EntradaCompraLinea {
+  readonly productoId: number;
+  /** Positive received quantity (a `Decimal(12,3)` string). */
+  readonly cantidad: string;
+  /** Unit cost EXCLUDING ITBIS (a `Decimal(12,2)` string), frozen at confirm. */
+  readonly costoUnitarioSinItbis: string;
+}
+
+export interface RegistrarEntradasCompraInput {
+  readonly compraId: number;
+  readonly motivo: string;
+  readonly lineas: readonly EntradaCompraLinea[];
+}
+
+/** A movement applied for one entry line, tagged with its product. */
+export interface EntradaMovimientoAplicado extends MovimientoAplicado {
+  readonly productoId: number;
+}
+
+/**
+ * Company-wide (all-branch) stock for one product inside the tenant.
+ *
+ * RLS NARROWING NOTE: `PRODUCTO.costoPromedio` is a single company-wide column,
+ * so the weighted-average DENOMINATOR must sum stock across ALL branches — but
+ * the `INVENTARIO` RLS policy hides rows outside the session branch while
+ * `app.current_sucursal_id` is bound. We widen the SUCURSAL GUC *transaction-
+ * locally for this aggregate READ ONLY* (`set_config(..., true)`, immediately
+ * restored), still anchored on the SAME `empresaId` so a cross-tenant row is
+ * never visible. Every subsequent ENTRY WRITE keeps the session-branch GUC, so
+ * stock is still landed only at `ctx.sucursalId` (spec: "entries target only
+ * the session-authorized branch"). This read-scoping does not redirect any
+ * entry to another branch; the alternative (a SECURITY DEFINER aggregate) is a
+ * schema migration, which this change forbids. Flagged for verify-phase
+ * ratification against the "no RLS GUC clearing in v1" line.
+ */
+async function stockTotalEmpresaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  productoId: number,
+): Promise<Decimal> {
+  await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', '', true)`;
+  try {
+    const rows = await tx.$queryRaw<{ total: string | null }[]>`
+      SELECT SUM(i."cantidad")::text AS total
+      FROM "INVENTARIO" i
+      JOIN "SUCURSAL" s ON s."id" = i."sucursalId"
+      WHERE i."productoId" = ${productoId}
+        AND s."empresaId" = ${ctx.empresaId}`;
+    return new Decimal(rows[0]?.total ?? "0");
+  } finally {
+    await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${String(ctx.sucursalId)}, true)`;
+  }
+}
+
+/**
+ * Lock the PRODUCTO row (`SELECT ... FOR UPDATE`, empresa-scoped) and return its
+ * current `costoPromedio`. The lock serializes competing receipts of the same
+ * product so the final cost equals sequential application (no lost update).
+ *
+ * @throws InventarioDomainError(INVENTARIO_NO_ENCONTRADO) if the product is
+ *   outside the tenant (also the cross-tenant rejection for this path).
+ */
+async function bloquearProductoEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  productoId: number,
+): Promise<Decimal> {
+  const rows = await tx.$queryRaw<{ costoPromedio: string }[]>`
+    SELECT "costoPromedio"::text AS "costoPromedio"
+    FROM "PRODUCTO"
+    WHERE "id" = ${productoId} AND "empresaId" = ${ctx.empresaId}
+    FOR UPDATE`;
+  if (rows.length === 0) {
+    throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, { productoId });
+  }
+  return new Decimal(rows[0].costoPromedio);
+}
+
+/** Append-only audit row for a purchase stock entry (CREAR: a new inbound). */
+async function registrarEntradaEnAuditoria(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  inventarioId: number,
+  anterior: string,
+  nueva: string,
+  motivo: string,
+): Promise<void> {
+  await tx.movimientoAuditoria.create({
+    data: {
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      usuarioId: ctx.usuarioId,
+      fechaHora: new Date(),
+      accion: AccionAuditoria.CREAR,
+      entidad: "Inventario",
+      idEntidad: String(inventarioId),
+      valorAnterior: anterior,
+      valorNuevo: nueva,
+      motivo,
+    },
+  });
+}
+
+/**
+ * Add one positive quantity to the session branch's inventory row, append the
+ * immutable `ENTRADA_COMPRA` movement (carrying `compraId`) and the audit row.
+ * The branch row is guaranteed to exist (upsert a zero row) and locked with
+ * `SELECT ... FOR UPDATE` before the write, mirroring the manual-adjust path.
+ */
+async function aplicarEntradaStockLineaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  linea: EntradaCompraLinea,
+  compraId: number,
+  motivo: string,
+): Promise<MovimientoAplicado> {
+  const ensured = await tx.inventario.upsert({
+    where: {
+      sucursalId_productoId: { sucursalId: ctx.sucursalId, productoId: linea.productoId },
+    },
+    update: {},
+    create: {
+      sucursalId: ctx.sucursalId,
+      productoId: linea.productoId,
+      cantidad: new Prisma.Decimal(0),
+    },
+    select: { id: true },
+  });
+
+  const locked = await tx.$queryRaw<{ cantidad: Prisma.Decimal }[]>`
+    SELECT "cantidad" FROM "INVENTARIO" WHERE "id" = ${ensured.id} FOR UPDATE`;
+  if (locked.length === 0) {
+    throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, {
+      inventarioId: ensured.id,
+    });
+  }
+
+  const anterior = new Decimal(locked[0].cantidad.toString());
+  const recibida = new Decimal(linea.cantidad);
+  // An entry is always additive; a negative line would corrupt the ledger and
+  // is rejected before any write (the manual non-negative invariant never
+  // applies here because entries only ever increase stock).
+  if (recibida.isNegative()) {
+    throw new InventarioDomainError(CANTIDAD_INVALIDA, {
+      productoId: linea.productoId,
+    });
+  }
+  const nueva = anterior.plus(recibida);
+
+  await tx.inventario.update({
+    where: { id: ensured.id },
+    data: { cantidad: new Prisma.Decimal(nueva) },
+  });
+
+  await tx.movimientoInventario.create({
+    data: {
+      inventarioId: ensured.id,
+      tipoMovimiento: TipoMovimiento.ENTRADA_COMPRA,
+      compraId,
+      motivo,
+      cantidadMovida: new Prisma.Decimal(recibida),
+      cantidadAnterior: new Prisma.Decimal(anterior),
+      cantidadNueva: new Prisma.Decimal(nueva),
+      usuarioId: ctx.usuarioId,
+      fecha: new Date(),
+    },
+  });
+
+  await registrarEntradaEnAuditoria(
+    tx,
+    ctx,
+    ensured.id,
+    anterior.toFixed(3),
+    nueva.toFixed(3),
+    motivo,
+  );
+
+  return {
+    inventoryId: ensured.id,
+    previousQuantity: anterior.toFixed(3),
+    newQuantity: nueva.toFixed(3),
+  };
+}
+
+/**
+ * Atomic purchase-receipt entry for a batch of lines, all inside the caller's
+ * `PrismaTx` (the surrounding `withTenantTransaction` supplies rollback). Three
+ * ordered phases guarantee that a rejected line changes NOTHING:
+ *
+ *   A. TENANT GUARD — every distinct product must belong to `ctx.empresaId`;
+ *      the first foreign product throws `INVENTARIO_NO_ENCONTRADO` before any
+ *      write, so a cross-tenant batch produces zero changes.
+ *   B. COST — per product in ASCENDING product-id order (deterministic, avoids
+ *      cross-tx deadlock): lock `PRODUCTO` (`FOR UPDATE`), read the company-wide
+ *      (all-branch) pre-receipt stock, and write ONE `costoPromedio` update per
+ *      product using the aggregate received quantity + ITBIS-exclusive value
+ *      (duplicate lines accumulate into a single, drift-free cost reweight).
+ *   C. STOCK — per original line, add the positive quantity at the session
+ *      branch (row-locked), append one `ENTRADA_COMPRA` movement carrying
+ *      `compraId` (before/after), and the audit row. One movement per line.
+ *
+ * `costoPromedio` is updated HERE and ONLY here on the purchase path; the manual
+ * adjustment path (`ajustarStockEnTx`) still never touches it (3.4a boundary).
+ */
+export async function registrarEntradasCompraEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  input: RegistrarEntradasCompraInput,
+): Promise<EntradaMovimientoAplicado[]> {
+  if (input.lineas.length === 0) {
+    return [];
+  }
+
+  // Aggregate received quantity and ITBIS-exclusive VALUE per product for the
+  // single cost update; reject a negative line magnitude up front (pure check,
+  // no DB touch).
+  const porProducto = new Map<
+    number,
+    { cantidad: Decimal; valor: Decimal }
+  >();
+  for (const linea of input.lineas) {
+    const cantidad = new Decimal(linea.cantidad);
+    if (cantidad.isNegative()) {
+      throw new InventarioDomainError(CANTIDAD_INVALIDA, {
+        productoId: linea.productoId,
+      });
+    }
+    const previo =
+      porProducto.get(linea.productoId) ??
+      { cantidad: new Decimal(0), valor: new Decimal(0) };
+    porProducto.set(linea.productoId, {
+      cantidad: previo.cantidad.plus(cantidad),
+      valor: previo.valor.plus(cantidad.times(new Decimal(linea.costoUnitarioSinItbis))),
+    });
+  }
+
+  const idsOrdenados = [...porProducto.keys()].sort((a, b) => a - b);
+
+  // Phase A: ownership guard for every product BEFORE any write.
+  for (const productoId of idsOrdenados) {
+    const posee = await productoExisteEnEmpresa(tx, ctx.empresaId, productoId);
+    if (!posee) {
+      throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, { productoId });
+    }
+  }
+
+  // Phase B: locked, company-wide weighted-average cost — one update per product.
+  for (const productoId of idsOrdenados) {
+    const cpActual = await bloquearProductoEnTx(tx, ctx, productoId);
+    const stockPrevio = await stockTotalEmpresaEnTx(tx, ctx, productoId);
+    const acc = porProducto.get(productoId)!;
+    const nuevoCP = calcularNuevoCostoPromedioPorValor({
+      stockTotalEmpresa: stockPrevio.toFixed(3),
+      costoPromedio: cpActual.toFixed(2),
+      cantidadRecibida: acc.cantidad.toFixed(3),
+      valorRecibidoSinItbis: acc.valor.toFixed(2),
+    });
+    await tx.producto.update({
+      where: { id: productoId },
+      data: { costoPromedio: new Prisma.Decimal(nuevoCP) },
+    });
+  }
+
+  // Phase C: per-line branch stock + ENTRADA_COMPRA movement + audit.
+  const resultados: EntradaMovimientoAplicado[] = [];
+  for (const linea of input.lineas) {
+    const mov = await aplicarEntradaStockLineaEnTx(
+      tx,
+      ctx,
+      linea,
+      input.compraId,
+      input.motivo,
+    );
+    resultados.push({ ...mov, productoId: linea.productoId });
+  }
+  return resultados;
 }
 
 /**
