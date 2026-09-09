@@ -67,6 +67,13 @@ export const zCancelarCompraInput = z.object({
 });
 export type CancelarCompraInputDto = z.infer<typeof zCancelarCompraInput>;
 
+// Receipt: identifies the purchase only. State/branch guards are the use case's
+// job (server-side), not the transport's.
+export const zRecibirCompraInput = z.object({
+  id: z.number().int().positive(),
+});
+export type RecibirCompraInputDto = z.infer<typeof zRecibirCompraInput>;
+
 export const zListarComprasQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   // max 100 is the hard pagination ceiling (19-directivas §Performance).

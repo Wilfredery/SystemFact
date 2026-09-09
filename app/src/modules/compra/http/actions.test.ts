@@ -12,13 +12,16 @@ import {
   crearCompraAction,
   confirmarCompraAction,
   cancelarCompraAction,
+  recibirCompraAction,
 } from "./actions";
 import { crearCompra } from "../application/crear-compra";
 import { confirmarCompra } from "../application/confirmar-compra";
 import { cancelarCompra } from "../application/cancelar-compra";
+import { recibirCompra } from "../application/recibir-compra";
 import { tieneRolPermitidoEnTx } from "../infrastructure/compra-repository";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import { CompraDomainError } from "../domain/errors";
 
 jest.mock("@/lib/supabase/client", () => ({ createClient: jest.fn() }));
 jest.mock("@/modules/tenant/infrastructure/tenant-runtime", () => ({
@@ -30,6 +33,7 @@ jest.mock("@/modules/tenant/infrastructure/withTenantTransaction", () => ({
 jest.mock("../application/crear-compra", () => ({ crearCompra: jest.fn() }));
 jest.mock("../application/confirmar-compra", () => ({ confirmarCompra: jest.fn() }));
 jest.mock("../application/cancelar-compra", () => ({ cancelarCompra: jest.fn() }));
+jest.mock("../application/recibir-compra", () => ({ recibirCompra: jest.fn() }));
 jest.mock("../infrastructure/compra-repository", () => ({
   tieneRolPermitidoEnTx: jest.fn(),
 }));
@@ -125,5 +129,56 @@ describe("cancelarCompraAction", () => {
     });
     const result = await cancelarCompraAction({ id: 7, motivo: "error" });
     expect(result).toEqual({ ok: true, data: { id: 7, estado: "CANCELADA" } });
+  });
+});
+
+describe("recibirCompraAction", () => {
+  it("rejects a non-positive id at the transport boundary before the session", async () => {
+    const result = await recibirCompraAction({ id: 0 });
+    expect(result.ok === false && result.error.code).toBe("VALIDATION_ERROR");
+    expect(getCurrentTenantContext).not.toHaveBeenCalled();
+    expect(recibirCompra).not.toHaveBeenCalled();
+  });
+
+  it("rejects a NON-admin server-side with NO use-case call", async () => {
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+    const result = await recibirCompraAction({ id: 7 });
+    expect(result.ok === false && result.error.code).toBe("NO_AUTORIZADO");
+    expect(recibirCompra).not.toHaveBeenCalled();
+  });
+
+  it("delegates a valid receive for an admin and returns the use-case data", async () => {
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (recibirCompra as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: { id: 7, estado: "RECIBIDA", movimientosAplicados: 2 },
+    });
+    const result = await recibirCompraAction({ id: 7 });
+    expect(result).toEqual({
+      ok: true,
+      data: { id: 7, estado: "RECIBIDA", movimientosAplicados: 2 },
+    });
+  });
+
+  it("passes through a typed branch/state error from the use case", async () => {
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (recibirCompra as jest.Mock).mockResolvedValue({
+      ok: false,
+      code: "COMPRA_SUCURSAL_INVALIDA",
+      message: "otra sucursal",
+    });
+    const result = await recibirCompraAction({ id: 7 });
+    expect(result.ok === false && result.error.code).toBe("COMPRA_SUCURSAL_INVALIDA");
+  });
+
+  it("maps a THROWN CompraDomainError (post-flip inventario rollback) to a typed result", async () => {
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (recibirCompra as jest.Mock).mockRejectedValue(
+      new CompraDomainError("INVENTARIO_ENTRADA_RECHAZADA", { compraId: 7 }),
+    );
+    // The transaction rolled back (throw), and the action surfaces a stable
+    // business error rather than an unhandled rejection.
+    const result = await recibirCompraAction({ id: 7 });
+    expect(result.ok === false && result.error.code).toBe("INVENTARIO_ENTRADA_RECHAZADA");
   });
 });
