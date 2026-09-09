@@ -66,6 +66,11 @@ User (maintainer) approved `size:exception` for a single PR. Commits stay groupe
 - [x] 5.1 Document seams (`InventoryEntryPort`, `INVENTORY_SOURCE.PURCHASE`, B11, `MovimientoInventario.compraId`) as later-phase-only in module header comment; note retention-config seeding as operational prerequisite in docs (R: 3.4b seams).
 - [x] 5.2 Verify success criteria: no migration in commit, ESLint tenant rule green, `RECIBIDA/PAGADA` unreachable from use cases (grep domain/application for forbidden states).
 
+## Post-verify remediation
+
+- [x] W-1 Create `src/integration/compra-correlativo-cross-branch.integration.test.ts` — two branches (A1/A2) of one empresa confirmed concurrently → unique sequential CMP correlativos, each compra keeps its own sucursalId.
+- [x] W-2 Create `src/integration/compra-non-admin.integration.test.ts` — Operador-role usuario hits the real `tieneRolPermitidoEnTx` guard inside `withTenantTransaction` → `NO_AUTORIZADO`, no compra row created.
+
 ## Traceability
 
 - Requirement draft lifecycle → 1.1–1.5, 2.1–2.2, 3.3–3.4, 4.1; totals → 1.3; retentions → 1.4, 2.3, 3.2, 4.4; confirm/correlativo → 1.2, 2.3, 3.1, 4.2–4.3; cancel → 2.4, 3.1, 4.6; listing → 2.5, 3.1, 4.5; admin-only → 3.4, 4.5; seams → 1.2, 5.1.
