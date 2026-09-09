@@ -38,7 +38,7 @@ On each receipt the module MUST update `PRODUCTO.costoPromedio` (company-wide, `
 
 - GIVEN stock 10 at branch A and 40 at branch B, a receipt of 50 units at 100.00 at A with current CP 80.00
 - WHEN the cost updates
-- THEN the pre-receipt company stock used is 50 (not branch A's 10), yielding CP = 86.67; a single-branch computation is a defect
+- THEN the pre-receipt company stock used is 50 (not branch A's 10), yielding CP = 90.00 ((50×80 + 50×100)/100); a single-branch-or-denominator computation is a defect
 
 #### Scenario: Concurrent receipts serialize
 
