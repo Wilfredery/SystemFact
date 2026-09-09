@@ -60,6 +60,43 @@ async function seedCompra(fixture: TenantFixture): Promise<number> {
   return compra.id;
 }
 
+/**
+ * Create a fresh empresa-A product with NO inventory rows in ANY branch and
+ * costoPromedio 0. The "first receipt sets CP to the net unit cost" and
+ * "duplicate lines aggregate over zero pre-receipt stock" scenarios require a
+ * company-wide-zero starting stock; the shared fixture's products all carry at
+ * least one branch inventory row, so a clean product must be created per test.
+ */
+async function crearProductoSinInventario(
+  fixture: TenantFixture,
+  codigo: string,
+): Promise<number> {
+  const db = getHarnessDb();
+  const base = await db.producto.findUnique({
+    where: { id: fixture.productos.prodA1.id },
+    select: { empresaId: true, categoriaId: true },
+  });
+  const producto = await db.producto.create({
+    data: {
+      empresaId: base!.empresaId,
+      categoriaId: base!.categoriaId,
+      nombre: codigo,
+      codigo,
+      codigoBarras: `BC-${codigo}`,
+      unidadMedida: "u",
+      unidadEmpaque: "c",
+      stockMinimo: 0,
+      precioCompra: new Prisma.Decimal(0),
+      precioVenta: new Prisma.Decimal(0),
+      costoPromedio: new Prisma.Decimal(0),
+      tasaItbis: new Prisma.Decimal(18),
+      itbisVigenteDesde: new Date(),
+    },
+    select: { id: true },
+  });
+  return producto.id;
+}
+
 describe("registrarEntradaCompra (real DB)", () => {
   let fixture: TenantFixture;
   let ctx: TenantCtx;
@@ -71,8 +108,9 @@ describe("registrarEntradaCompra (real DB)", () => {
 
   it("entry for an UNSEEN product creates the branch row + one ENTRADA_COMPRA movement with compraId", async () => {
     const compraId = await seedCompra(fixture);
-    // prodA2Only has no inventory row at A1 (it exists only at A2).
-    const productoId = fixture.productos.prodA2Only.id;
+    // A product with NO inventory row in ANY branch and CP 0, so the receipt is
+    // genuinely the first-ever company stock (denominator starts at zero).
+    const productoId = await crearProductoSinInventario(fixture, `SIN-${Date.now()}`);
 
     const result = await withTenantTransaction(ctx, (tx) =>
       registrarEntradaCompra(tx, ctx, {
@@ -164,7 +202,9 @@ describe("registrarEntradaCompra (real DB)", () => {
 
   it("duplicate product lines in one batch accumulate into ONE cost update but keep one movement per line", async () => {
     const db = getHarnessDb();
-    const productoId = fixture.productos.prodA2Only.id; // unseen at A1
+    // Clean product with zero company-wide pre-receipt stock so the aggregate
+    // weighted cost over both lines is exactly total value / total quantity.
+    const productoId = await crearProductoSinInventario(fixture, `DUP-${Date.now()}`);
     const compraId = await seedCompra(fixture);
 
     await withTenantTransaction(ctx, (tx) =>
