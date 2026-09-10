@@ -9,8 +9,55 @@ Confirmation, NCF consumption, inventory debit and payments are **reserved for
 5c** — no 5b code path reaches `CONFIRMADA`.
 
 > **PR status.** This is the **PR-1 (domain)** + **PR-2 (application /
-> infrastructure / http / venta-config / integration)** slice. The POS `ui/`
-> layer lands in PR-3 of `openspec/changes/fase-5b-venta-core/`.
+> infrastructure / http / venta-config / integration)** + **PR-3 (POS `ui/`
+> slice)** build. Confirmation, NCF, inventory and payments stay reserved for
+> 5c. See `openspec/changes/fase-5b-venta-core/`.
+
+## Penpot gate (task 3.1) — board-agnostic
+
+The `02-Venta` board is referenced only in `docs/17-plan_wireframes.md §3`
+(planning). No board export or design spec is committed in-repo, and no live
+Penpot instance was connected when PR-3 was implemented. Per the design's Open
+Question, the POS UI proceeded **board-agnostic**: layout follows design §6
+(Technical Approach) with no pixel-level reference, and the visual pass is
+deferred to 5c when the board is available.
+
+## UI layer (PR-3) — first interactive screen
+
+| File | Responsibility |
+|---|---|
+| `app/src/app/venta/page.tsx` | Server shell: resolves `TenantCtx` from the session (redirect `/login` when absent) and passes `esAdmin` down. No business logic. |
+| `ui/carro.ts` | Pure client cart model + transitions (`agregarAlCarrito`/`quitarDelCarrito`/`editarLinea`) and `calcularVistaPrevia`, which previews totals with the SAME pure domain calculators the server uses. |
+| `ui/PosScreen.tsx` | `"use client"` orchestrator: composes the panels, drives save/edit/cancel through the PR-2 actions, renders the warning banner + status. **Renders no confirm control.** |
+| `ui/ProductSearch.tsx` | Name/code search via `listarProductosAction`; add-to-cart. |
+| `ui/ClienteSelector.tsx` | Picker defaulting Consumidor Final (`clienteId: null` → resolved by the 5a seam at save); inline registration via `crearClienteAction`. |
+| `ui/CartTable.tsx` | Live cart lines with qty/price editing and per-line ITBIS. |
+| `ui/DiscountPanel.tsx` | Header discount, rendered only for `esAdmin` (UI gate; the cap + actor are server-side, R-V8). |
+| `ui/Totales.tsx` | Totals with the gravado/exento breakdown (returned-only figures, R-V6). |
+| `ui/DraftList.tsx` | "My drafts" (BORRADOR, own user) with Edit/Cancel wired to the PR-2 actions. In-place **Edit** is gated to zero-discount drafts (see below); discounted drafts are view/cancel-only. |
+| `ui/fecha.ts` | Santo Domingo presentation formatting (`Intl.DateTimeFormat` + `timeZone`, never `toLocaleString` with the browser zone). |
+| `ui/__tests__/venta-ui.spec.tsx` | jsdom + React Testing Library component tests for R-V14. |
+
+- **ADR-018 / R-V7 edit constraint:** a persisted discount stores only its
+  **resolved money** (`descuento`), so a `PORCENTAJE` draft's original percentage
+  is *not* recoverable from `obtenerVenta`. Re-editing it as `MONTO` would
+  silently change the frozen `descuentoTipo`, so the editor refuses non-zero
+  discounts (they can be cancelled and recreated instead). State rows are mapped
+  through `estadoVentaDesdeDb` (fail-loud) and compared against `ESTADO_VENTA` —
+  no free state strings in the UI.
+
+- **Design "UI totals":** the client imports the pure `domain/calculators` (no
+  DB deps) for a responsive preview; the save actions always recompute
+  authoritatively server-side inside `withTenantTransaction`.
+- **Accessibility / copy:** English screen copy; labelled controls, `role="alert"`
+  /`aria-live` for the warning banner, visible disabled state on the empty-cart
+  save guard. Kept intentionally simple (no grid/DnD/keyboard-macro extras).
+- **Test toolchain:** PR-3 added `@testing-library/react`, `@testing-library/dom`,
+  `@testing-library/jest-dom` and `jest-environment-jsdom` (the repo previously
+  had only the `node` environment). A `.tsx` ts-jest transform was wired into
+  `jest.config.js`; component tests opt into jsdom via their `@jest-environment`
+  docblock, so the global unit/integration environment is unchanged.
+- **Manual smoke checklist:** `app/SETUP-LOCAL.md` §"POS manual smoke checklist".
 
 ## Application / infrastructure / http layers (PR-2)
 

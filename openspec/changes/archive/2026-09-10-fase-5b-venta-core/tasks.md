@@ -57,10 +57,18 @@ Each PR merges to main independently; size:exception accepted per slice; rollbac
 
 ## Phase 3: PR-3 — POS UI slice
 
-- [ ] 3.1 GATE: verify Penpot `02-Venta` board exists and matches design; if unavailable, proceed board-agnostic (no code path change). (~0 diff)
-- [ ] 3.2 Create `app/src/app/venta/page.tsx` (server shell) + `modules/venta/ui/*` client components: ephemeral cart add/remove qty/price edit, product search with branch availability, live totals via pure calculator (per-line rate + gravado/exento breakdown). (~400 lines)
-- [ ] 3.3 Client picker defaulting "Consumidor Final", inline registration via existing `crearCliente` action; admin-gated discount panel (UI hide only; server re-enforcement is R-V2.6). (~150 lines)
-- [ ] 3.4 Reducer increments, inputs hidden from init and deletion, wait on `encerrado` hook (R-V1), `lineCount` child, reset-on-undo path completion. (~200 lines)
-- [ ] 3.5 Create `modules/venta/ui/__tests__/venta-ui.spec.ts`: 5 component suites (structured render and ux_contract). (~200 lines)
-- [ ] 3.6 CYPRESS: analyze jsdom config; cypress missing file 1024-jest singles with encrypted keys. (~130 lines)
-- [ ] 3.7 Verify `pnpm jest src/modules/venta/ui` green; manual smoke checklist (save→list→cancel visible, keyboard-lede deferred note) documented; Playwright deferred to 5c. (~0 diff)
+> **Gate note (3.1).** The Penpot `02-Venta` board is only referenced in
+> `docs/17-plan_wireframes.md §3` (planning). No board export/design spec exists
+> in-repo, and no live Penpot instance was connected to this apply session
+> (MCP returned "No Penpot instance connected"). Per the design Open Question,
+> PR-3 proceeded **board-agnostic** — the four-column POS layout follows design
+> §6 (Technical Approach) with no pixel-level reference. Outcome documented in
+> `app/src/modules/venta/README.md`.
+
+- [x] 3.1 GATE: verify Penpot `02-Venta` board exists; if unavailable, proceed board-agnostic (no code path change). (~0 diff — outcome above)
+- [x] 3.2 `app/src/app/venta/page.tsx` (server shell) + `modules/venta/ui/*` client components: ephemeral cart add/remove/qty/price edit, product search, live totals via the pure domain calculators (per-line ITBIS rate + gravado/exento breakdown). Availability surfaces through the save-time `STOCK_INSUFICIENTE` warning banner (no per-product stock read is exposed in 5b). 
+- [x] 3.3 Client picker defaulting "Consumidor Final" (submits `clienteId: null`, resolved by the save pipeline's 5a seam), inline registration via existing `crearClienteAction`; admin-gated discount panel (UI hide only; server re-enforcement is R-V8). 
+- [x] 3.4 Stock-warning banner fed by `STOCK_INSUFICIENTE` save payloads; "Save draft" disabled on an empty cart + "My drafts" list with edit/cancel; NO confirm/payment affordance rendered (R-V14, R-V9). In-place edit is gated to zero-discount drafts: a persisted `PORCENTAJE` discount stores only resolved money (R-V7/ADR-018) so the percentage is not recoverable and re-editing would silently collapse `descuentoTipo`; discounted drafts are view/cancel-only in 5b. State comes back through `estadoVentaDesdeDb` (fail-loud) and is compared against `ESTADO_VENTA`, never a free string.
+- [x] 3.5 Component tests `modules/venta/ui/__tests__/venta-ui.spec.tsx`: jsdom + React Testing Library; cart totals update on add/qty-edit/remove, CF default submits `null`, discount panel hidden for non-admin, warning banner on triggered warning, empty-cart disabled save, no-confirm invariant. 
+- [x] 3.6 Wire the component-test toolchain (added `@testing-library/*`, `jest-environment-jsdom`; tsx transform in `jest.config.js`) and document the manual smoke checklist in `app/SETUP-LOCAL.md`; Playwright E2E deferred to 5c. 
+- [x] 3.7 Verify `pnpm jest src/modules/venta/ui` green; smoke checklist (save→list→cancel, keyboard-led deferred note) documented. (~0 diff)

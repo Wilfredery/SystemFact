@@ -211,6 +211,55 @@ pnpm seed:venta
 
 Ejecutar **antes** de habilitar borradores con descuento en un entorno nuevo.
 
+## POS manual smoke checklist (fase 5b PR-3)
+
+Runbook for the first interactive screen (`/venta`). This is a **manual**
+verification pass; the automated coverage is the jsdom + React Testing Library
+suites in `src/modules/venta/ui/__tests__/venta-ui.spec.tsx`. Playwright E2E is
+deferred to fase 5c.
+
+Prerequisites (once per fresh local DB):
+
+```bash
+cd app
+pnpm prisma migrate deploy
+pnpm seed:retencion     # retention config (compra parity)
+pnpm seed:cliente       # per-empresa Consumidor Final (contado default)
+pnpm seed:venta         # DESC_MAX so discounted drafts can be saved
+pnpm dev                # Next.js dev server → http://localhost:3000
+```
+
+Then log in with a seeded/known `nombreUsuario` + password (ADR-014 — the
+access identifier is the username, never the email) and walk:
+
+1. **Open the POS** → go to `/venta`. Redirects to `/login` if the session is
+   invalid. Client picker shows **"Consumidor Final (default)"** selected.
+2. **Search a product** → type a name/code, click *Search*, confirm the result
+   shows its ITBIS rate; click *Add* → a cart line appears.
+3. **Live totals** → edit quantity/unit price; the Subtotal, ITBIS, gravado /
+   exento and Total update instantly (same domain calculators as the server).
+4. **Save draft (empty-cart guard)** → *Save draft* is **disabled** with zero
+   lines; after adding a line it enables. Save → success note + the draft
+   appears in **"My drafts"**; cart resets. (No confirm button exists.)
+5. **Client + inline registration** → *New client* → fill name/phone/address →
+   *Create and select* → the new client is chosen; a save posts it (the CF
+   default posts `clienteId: null`, resolved server-side via the 5a seam).
+6. **Admin discount gate** → as **Operador** the discount panel is hidden; as
+   **Administrador** it shows. A discount above `DESC_MAX` returns
+   `DESCUENTO_EXCEDE_MAXIMO` and writes nothing; a positive discount by a
+   non-admin returns `DESCUENTO_NO_AUTORIZADO` (server re-enforcement, R-V8).
+7. **Stock warning** → add more of a product than the branch holds and save →
+   the draft still saves **and** an amber *"Insufficient stock"* banner lists
+   requested vs available (R-V9; it is a warning, never a block).
+8. **My drafts → edit/cancel** → *Edit* loads the draft back into the cart
+   (*Update draft #id* re-saves); *Cancel* moves it to `CANCELADA` (no second
+   audit; state stays terminal).
+9. **No-confirm invariant** → confirm no *Confirmar* / *Cobrar* / payment
+   control is rendered anywhere on the screen (that is fase 5c scope).
+
+> Known V1 limitation: the screen is mouse/touch driven; full keyboard-led
+> operation is deferred (documented in R-V14).
+
 ## Comandos útiles
 
 
