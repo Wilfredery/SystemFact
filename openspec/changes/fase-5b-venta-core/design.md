@@ -22,6 +22,22 @@ Implement a four-layer `venta` module mirroring `compra`: pure Decimal-string fi
 
 Line calculation is `gross → resolved line discount → net base → header share → ITBIS`; F1–F4 are canonical fixtures. `leerConfigVentaEnTx` validates `DESC_MAX` only for positive discounts using the Santo Domingo date; missing/expired data returns `DESC_MAX_FALTANTE`.
 
+### ADR-018 note — `precioVenta` / line `precioUnitario` are ITBIS-exclusive (net base)
+
+Product and line prices are **net of ITBIS**: `subtotalBruto = round2(cantidad ×
+precioUnitario)` is the fiscal BASE, and the buyer pays `total = base + ITBIS`. A
+discount is applied to that net base **before** ITBIS (ADR-018), so `itbisLinea =
+round2((bruto − descuento) × tasa/100)`. This matches `producto.calcular-itbis` and
+the shipped `compra` engine (which store `subtotalLinea` = net base + `itbisLinea`
+separately), and avoids the reverse-rounding drift of an ITBIS-inclusive price
+(`base = total / (1 + tasa)` reintroduces rounding). Combined header-%-on-gross plus
+line-% proration is pinned by unit fixture **F5** in
+`domain/__tests__/calculators.spec.ts` (the header-% money basis is Σ GROSS
+subtotal; the proration denominator is Σ NET base), because F1–F4 never carry both a
+line discount and a header percentage at once. `subtotalGravado`/`subtotalExento`
+are returned by the calculator and **never stored** (no `VENTA` columns; 5c
+re-derives them for the Factura).
+
 ## File Changes
 
 | File | Action | Description |
@@ -41,7 +57,13 @@ type VentaSaveResult<T> = VentaResult<T> & { warnings?: readonly StockWarning[] 
 type StockWarning = { code: "STOCK_INSUFICIENTE"; productoId: number; available: string; requested: string };
 ```
 
-Create/update inputs use Decimal-compatible strings. Persist resolved money, `PORCENTAJE/0.00` for zero, frozen `tasaItbis`, and returned-only gravado/exento totals. The 13 pinned codes are exhaustive; unknown DB states fail loudly.
+Create/update inputs use Decimal-compatible strings. Persist resolved money, `PORCENTAJE/0.00` for zero, frozen `tasaItbis`, and returned-only gravado/exento totals. The 14 pinned venta business codes (R-V13: 12 venta-owned + 2 re-emitted
+`CLIENTE_*`; the earlier "13" counted the CLIENTE re-emit family as one group) are
+exhaustive; unknown DB states fail loudly. `DESC_MAX_FALTANTE` is NOT a domain
+code — it is owned by the `venta-config` read path
+(`infrastructure/config-repository.ts`) and composed into the sale-save contract by
+the application layer (`application/venta-guardado.ts`), so the domain catalog stays
+frozen at its 14 codes (ADR-013 purity).
 
 ## Testing Strategy
 

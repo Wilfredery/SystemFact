@@ -181,7 +181,38 @@ de empresa anterior a esta fase). El DDL de defaults de crédito
 (`limiteCredito` `0.00`, `plazoCreditoDias` `30`) ya quedó aplicado por la
 migración `20260909000000_cliente_credit_defaults` al correr `prisma migrate`.
 
+## Seed de configuración de venta (DESC_MAX)
+
+Toda empresa necesita una fila activa `DESC_MAX` en `CONFIGURACION_EMPRESA` para
+poder **guardar un borrador de venta con descuento positivo**: el lector
+`leerConfigVentaEnTx` es de *fallo duro* (no hay default legal, el tope nunca va
+hardcodeado) y devuelve `DESC_MAX_FALTANTE` con cero escrituras si la clave falta
+o su ventana de vigencia no cubre la fecha de venta. Un borrador **sin** descuento
+no lee esta clave, por lo que funciona sin seed.
+
+Este seed provisiona **exactamente una** fila activa `DESC_MAX` por empresa con el
+valor por defecto confirmado por negocio `4.00` (porcentaje, ajustable en BD sin
+desplegar código — R-C3) en una ventana amplia (`2000-01-01 … 2099-12-31`). Es
+**idempotente**: replicar la estrategia de `seed:retencion`, degrada a
+`activa=false` cualquier otra fila activa de la misma clave y hace *upsert* sobre
+la ventana canónica vía la unique compuesta `@@unique([empresaId, clave,
+vigenciaInicio])`, de modo que repetir el comando no duplica filas. No toca los
+fixtures de integración.
+
+```bash
+# Desde app/, con DIRECT_URL (rol operador/superuser) o DATABASE_URL en .env:
+pnpm seed:venta
+# → OK: seeded DESC_MAX=4.00 for N empresa(s) (idempotent).
+```
+
+> Nota de rol: igual que `seed:retencion` y `seed:cliente`, recorre todas las
+> empresas y necesita una conexión sin contexto de un solo tenant (usa
+> `DIRECT_URL` en local).
+
+Ejecutar **antes** de habilitar borradores con descuento en un entorno nuevo.
+
 ## Comandos útiles
+
 
 ```bash
 # Estado del container
