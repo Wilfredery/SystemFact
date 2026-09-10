@@ -8,9 +8,31 @@ branch stock warnings at draft save, and `DESC_MAX`-capped admin-only discounts.
 Confirmation, NCF consumption, inventory debit and payments are **reserved for
 5c** — no 5b code path reaches `CONFIRMADA`.
 
-> **PR status.** This is the **PR-1 (domain)** slice. The `application/`,
-> `infrastructure/`, `http/`, POS `ui/` layers and the integration suite land in
-> PR-2/PR-3 of `openspec/changes/fase-5b-venta-core/`.
+> **PR status.** This is the **PR-1 (domain)** + **PR-2 (application /
+> infrastructure / http / venta-config / integration)** slice. The POS `ui/`
+> layer lands in PR-3 of `openspec/changes/fase-5b-venta-core/`.
+
+## Application / infrastructure / http layers (PR-2)
+
+| Layer | File | Responsibility |
+|---|---|---|
+| application | `application/venta-service.ts` | `crearVenta` / `actualizarVenta` (full line-replace + client swap, guarded) / `cancelarVenta` / `listarVentas` / `obtenerVenta`. Thin orchestration; no `prisma.*`. |
+| application | `application/preparar-lineas-venta.ts` | One shared pre-write pipeline for both saves: line/rate/validity validation, server-side admin-only discount gate, `DESC_MAX` cap, computation and stock warnings. No writes. |
+| application | `application/resolver-cliente-venta.ts` | R-V10 client resolver: `null` → Consumidor Final via `getOrCreateConsumidorFinalEnTx` (5a seam); given id → empresa-scoped active check → typed `CLIENTE_*` codes. |
+| application | `application/venta-guardado.ts` | Composed sale-save result type (`VentaErrorCode` ∪ `DESC_MAX_FALTANTE`) so the domain catalog stays frozen at its 14 codes. |
+| infrastructure | `infrastructure/venta-repository.ts` | The only Prisma surface: tenant/branch-scoped reads, guarded `updateMany` (estado + `updatedAt` token), replace-lines, audit append, branch stock reads, role check. |
+| infrastructure | `infrastructure/config-repository.ts` | venta-config `leerConfigVentaEnTx`: hard-fail `DESC_MAX` read (R-C1); owns the `DESC_MAX_FALTANTE` code and `VentaConfigError`. |
+| http | `http/{validations,actions}.ts` | Zod transport boundary + thin `"use server"` actions wrapped in `withTenantTransaction` (ESLint `server-action-must-wrap-tenant`); CRUD roles Administrador + Operador. |
+| tools | `../../../tools/scripts/seed-venta-config.ts` | `pnpm seed:venta`: idempotent one-active-`DESC_MAX`-row-per-empresa seed (default `4.00`). |
+
+- **Concurrency (R-V3/R-V4):** guarded `updateMany ... WHERE estado='BORRADOR'`
+  with an affected-rows check is the lock. Because a draft edit leaves `estado`
+  at `BORRADOR`, the guarded update also pins the `updatedAt` snapshot read at the
+  pre-check — that token is what makes two parallel edits genuinely conflict
+  (no `version` column exists; `@updatedAt` advances on the winner's commit).
+- **Security (R-V8/R-V11):** the Administrador-only discount and every role check
+  run server-side inside the transaction; the tenant/branch filters pin both
+  `empresaId` and `sucursalId`; zod is never the authorization authority.
 
 ## Domain layer (pure — ADR-013)
 
