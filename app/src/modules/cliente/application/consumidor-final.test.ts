@@ -15,7 +15,11 @@ jest.mock("../infrastructure/cliente-repository", () => ({
   crearConsumidorFinalEnTx: jest.fn(),
 }));
 
-const tx = {} as unknown as PrismaTx;
+// A minimal fake transaction client. The seam drives its race guard through
+// `tenant/infrastructure/savepoint` (which issues `$executeRawUnsafe`), so these
+// tests assert the seam against the same raw command contract without a DB.
+const executeRawUnsafe = jest.fn().mockResolvedValue(1);
+const tx = { $executeRawUnsafe: executeRawUnsafe } as unknown as PrismaTx;
 
 function makeCF(id: number) {
   return {
@@ -64,6 +68,14 @@ describe("getOrCreateConsumidorFinalEnTx (reserved 5b seam)", () => {
     const result = await getOrCreateConsumidorFinalEnTx(tx, 1);
     expect(result.id).toBe(12);
     expect(crearConsumidorFinalEnTx).toHaveBeenCalledTimes(1);
+    // The refetch only works because the aborted-insert state was cleared via
+    // the savepoint: guard the recovery ORDER (SAVEPOINT before the insert,
+    // ROLLBACK TO before the refetch).
+    const commands = executeRawUnsafe.mock.calls.map((c) => c[0]);
+    expect(commands).toEqual([
+      "SAVEPOINT sf_cf_race_guard",
+      "ROLLBACK TO SAVEPOINT sf_cf_race_guard",
+    ]);
   });
 
   it("re-throws a non-duplicate domain error rather than swallowing it", async () => {
@@ -74,5 +86,37 @@ describe("getOrCreateConsumidorFinalEnTx (reserved 5b seam)", () => {
     await expect(getOrCreateConsumidorFinalEnTx(tx, 1)).rejects.toBeInstanceOf(
       ClienteDomainError,
     );
+  });
+
+  it("deactivates the savepoint guard on a top-level client (seed path: 25P01)", async () => {
+    // The maintenance seed passes a plain PrismaClient (no open transaction):
+    // SAVEPOINT fails with `25P01` ("can only be used in transaction blocks").
+    // The guard must deactivate and the refetch run WITHOUT any ROLLBACK TO,
+    // because a failed INSERT on a non-transactional client poisons nothing.
+    const fueraDeTx = Object.assign(
+      new Error(
+        "Invalid `prisma.$executeRawUnsafe()` invocation: Raw query failed. " +
+          "Code: `25P01`. Message: `SAVEPOINT can only be used in transaction blocks`",
+      ),
+      { name: "PrismaClientKnownRequestError", code: "P2010" },
+    );
+    const execute = jest
+      .fn()
+      .mockRejectedValueOnce(fueraDeTx) // SAVEPOINT probe fails
+      .mockResolvedValue(1);
+    const seedTx = { $executeRawUnsafe: execute } as unknown as PrismaTx;
+
+    (consumidorFinalEnEmpresa as jest.Mock)
+      .mockResolvedValueOnce(null) // first fetch: miss
+      .mockResolvedValueOnce(makeCF(13)); // refetch: winner
+    (crearConsumidorFinalEnTx as jest.Mock).mockRejectedValue(
+      new ClienteDomainError(CLIENTE_IDENTIFICACION_DUPLICADA),
+    );
+
+    const result = await getOrCreateConsumidorFinalEnTx(seedTx, 1);
+    expect(result.id).toBe(13);
+    // Only the probe ran — no RELEASE/ROLLBACK on a client without a block.
+    const commands = execute.mock.calls.map((c) => c[0]);
+    expect(commands).toEqual(["SAVEPOINT sf_cf_race_guard"]);
   });
 });
