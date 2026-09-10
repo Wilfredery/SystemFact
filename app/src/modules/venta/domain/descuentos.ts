@@ -71,7 +71,9 @@ export function normalizarDescuento(d: Descuento | null | undefined): Descuento 
  */
 export function validarFormaDescuento(d: Descuento): VentaErrorCode | null {
   if (!TIPOS_VALIDOS.has(d.descuentoTipo)) return DESCUENTO_INVALIDO;
-  if (!/^\d{1,9}(\.\d{1,2})?$/.test(d.descuentoValor.trim())) {
+  // Validate the RAW value (no trim): decimal.js rejects padded strings, so
+  // " 5.00" must be a typed DESCUENTO_INVALIDO, not a Decimal constructor throw.
+  if (!/^\d{1,9}(\.\d{1,2})?$/.test(d.descuentoValor)) {
     return DESCUENTO_INVALIDO;
   }
   const valor = new Decimal(d.descuentoValor);

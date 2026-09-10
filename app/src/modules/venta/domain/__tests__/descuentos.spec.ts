@@ -111,6 +111,7 @@ describe("shape validation & zero convention (R-V7)", () => {
     expect(validarFormaDescuento(monto("0.00"))).toBe("DESCUENTO_INVALIDO");
     expect(validarFormaDescuento(pct("abc"))).toBe("DESCUENTO_INVALIDO");
     expect(validarFormaDescuento(pct("-1"))).toBe("DESCUENTO_INVALIDO");
+    expect(validarFormaDescuento(pct(" 5.00"))).toBe("DESCUENTO_INVALIDO"); // padded: typed, not a Decimal throw
     expect(
       validarFormaDescuento({
         descuentoTipo: "MONTO" as unknown as Descuento["descuentoTipo"],

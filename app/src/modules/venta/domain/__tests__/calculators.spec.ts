@@ -17,6 +17,7 @@ import {
   type Descuento,
   type VentaLineaInput,
 } from "../venta";
+import { VentaDomainError } from "../errors";
 
 const LINEA_RE = /^-?\d{1,9}\.\d{2}$/;
 
@@ -146,6 +147,18 @@ describe("Fixture F4 — 100.00 @18% with header 4% (R-V8 boundary)", () => {
     expect(totales.subtotalGravado).toBe("96.00");
     expect(totales.itbis).toBe("17.28");
     expect(totales.total).toBe("113.28");
+  });
+
+  it("pipeline validates line shapes before calculating (LINEA_INVALIDA, not a Decimal throw)", () => {
+    // malformed numerics and unsupported rates surface the typed code
+    expect(() =>
+      calcularVenta(
+        [{ linea: inp(1, " 7 ", "3.33"), tasaItbis: "18" }],
+      ),
+    ).toThrow(VentaDomainError);
+    expect(() =>
+      calcularVenta([{ linea: inp(1, "1", "100.00"), tasaItbis: "7" }]),
+    ).toThrow(VentaDomainError);
   });
 });
 

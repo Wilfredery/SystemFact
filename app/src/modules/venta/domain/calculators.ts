@@ -15,7 +15,11 @@
  */
 
 import { Decimal } from "decimal.js";
-import { LINEA_INVALIDA, type VentaErrorCode } from "./errors";
+import {
+  LINEA_INVALIDA,
+  VentaDomainError,
+  type VentaErrorCode,
+} from "./errors";
 import {
   DESCUENTO_CERO,
   DESCUENTO_TIPO,
@@ -271,8 +275,12 @@ export function calcularVenta(
   entradas: readonly { linea: VentaLineaInput; tasaItbis: string }[],
   headerDiscount: Descuento = DESCUENTO_CERO,
 ): VentaTotalesCalculo {
-  const calculadas = entradas.map((e) =>
-    calcularLineaVenta(e.linea, e.tasaItbis),
-  );
+  const calculadas = entradas.map((e) => {
+    // Honor the documented contract: the pipeline validates before calculating
+    // (defense-in-depth; the application layer already validates per line).
+    const invalid = validarLineaVenta(e.linea, e.tasaItbis);
+    if (invalid !== null) throw new VentaDomainError(invalid);
+    return calcularLineaVenta(e.linea, e.tasaItbis);
+  });
   return calcularTotalesVenta(calculadas, headerDiscount);
 }
