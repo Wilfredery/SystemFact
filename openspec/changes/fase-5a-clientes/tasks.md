@@ -44,7 +44,7 @@ Chain strategy: stacked-to-main
 - [x] 2.5 RED: `app/src/integration/cliente-tenant.integration.test.ts` (real DB `sf-postgres:5433`, RLS on): (a) tenant PII isolation — foreign-row probe indistinguishable from unknown id (R1); (b) CF race/idempotency — 2 concurrent get-or-create ⇒ exactly one row; seed re-run no dup; CF hidden from operator list/detail; (c) optimistic lock conflict preserves newer data; (d) credit Admin-only (real role table) + credit⇒RNC zero-write failures + audit payload ≤255 + audit before/after; (e) guarded deactivate vs real `Venta` (CONFIRMADA blocks, CANCELADA frees) + CF-protect; (f) partial-UK reuse after deactivate; (g) rollback leaves no audit
 - [x] 2.6 GREEN: all 12 integration scenarios pass against the live DB
 - [x] 2.7 Docs: expanded `src/modules/cliente/README.md` (flow diagram, error catalog, CF provisioning, integration notes, audit VARCHAR-safety, `schema.prisma` drift resolution record) + `SETUP-LOCAL.md` `pnpm seed:cliente` section + migration-defaults note
-- [x] 2.8 Final verification: full unit (460) + integration (55) suites green, lint 0, tsc 0; PR-5a.2 ready to merge to `main` after verify/archive; closes fase-5a-clientes against 13 requirements / 20 scenarios
+- [x] 2.8 Final verification: full unit (460) + integration (55) suites green, lint 0, tsc 0; PR-5a.2 ready to merge to `main` after verify/archive; closes fase-5a-clientes against 16 requirements / 23 scenarios (actual `### Requirement:` / `#### Scenario:` heading counts in the two delta specs)
 
 ## Traceability
 

@@ -2,7 +2,7 @@
 
 ## Technical Approach
 
-Implement a four-layer `cliente` module by porting the proven proveedor patterns: pure domain rules, transaction-oriented application use cases, tenant-filtered Prisma infrastructure, and thin Server Actions. Add one dependency-free shared fiscal validator, credit cross-field validation before any write, real `Venta` deactivation probing, and hidden Consumidor Final provisioning. This satisfies the 13 requirements/20 scenarios in the two delta specs without adding sale or CxC behavior.
+Implement a four-layer `cliente` module by porting the proven proveedor patterns: pure domain rules, transaction-oriented application use cases, tenant-filtered Prisma infrastructure, and thin Server Actions. Add one dependency-free shared fiscal validator, credit cross-field validation before any write, real `Venta` deactivation probing, and hidden Consumidor Final provisioning. This satisfies the 16 requirements/23 scenarios in the two delta specs without adding sale or CxC behavior.
 
 ## Architecture Decisions
 
