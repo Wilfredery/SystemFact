@@ -19,6 +19,8 @@ const config = {
   testMatch: [
     "<rootDir>/src/**/*.test.ts",
     "<rootDir>/src/**/*.spec.ts",
+    "<rootDir>/src/**/*.test.tsx",
+    "<rootDir>/src/**/*.spec.tsx",
     "<rootDir>/tools/**/*.test.ts",
   ],
   testPathIgnorePatterns: [
@@ -43,6 +45,29 @@ const config = {
           strict: true,
           skipLibCheck: true,
           resolveJsonModule: true,
+          baseUrl: ".",
+          paths: { "@/*": ["src/*"] },
+          types: ["jest", "node"],
+        },
+      },
+    ],
+    // Component tests (fase 5b PR-3): the same ts-jest options plus the
+    // automatic JSX runtime, so `*.spec.tsx` files render with React Testing
+    // Library. The test files themselves opt into `jest-environment-jsdom`
+    // via their `@jest-environment` docblock — the global environment stays
+    // `node` (unit/integration convention).
+    "^.+\\.tsx$": [
+      "ts-jest",
+      {
+        tsconfig: {
+          target: "es2022",
+          module: "commonjs",
+          moduleResolution: "node",
+          esModuleInterop: true,
+          strict: true,
+          skipLibCheck: true,
+          resolveJsonModule: true,
+          jsx: "react-jsx",
           baseUrl: ".",
           paths: { "@/*": ["src/*"] },
           types: ["jest", "node"],
