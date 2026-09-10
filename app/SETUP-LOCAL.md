@@ -153,6 +153,34 @@ pnpm seed:retencion
 
 Sembrar antes de habilitar la recepción de compras en un entorno nuevo.
 
+## Seed de Consumidor Final (tenants reales)
+
+Cada empresa necesita exactamente UN cliente `esConsumidorFinal=true` (sin
+identificación fiscal) para las ventas a comprador no identificado (NCF B01/B02).
+Hasta la fase 5a ese registro solo lo creaban los fixtures de integración, por lo
+que un TENANT DE PRODUCCIÓN no tenía su Consumidor Final.
+
+Este seed crea/provisiona esa fila para TODAS las empresas vía el seam idempotente
+`getOrCreateConsumidorFinalEnTx` (busca → inserta → captura `P2002` → relee). Es
+**idempotente**: el índice único parcial `cliente_consumidor_final_uk`
+(`UNIQUE(empresaId) WHERE esConsumidorFinal`) garantiza exactamente una fila por
+empresa aunque se ejecute en paralelo. No toca los fixtures ni introduce lógica
+de venta.
+
+```bash
+# Desde app/, con DIRECT_URL (rol operador/superuser) o DATABASE_URL en .env:
+pnpm seed:cliente
+# → OK: ensured Consumidor Final for N empresa(s) (idempotent).
+```
+
+> Nota de rol: igual que `seed:retencion`, recorre todas las empresas y necesita
+> una conexión sin contexto de un solo tenant (usa `DIRECT_URL` en local).
+
+Ejecutar al habilitar clientes en un entorno nuevo (y tras cualquier alta manual
+de empresa anterior a esta fase). El DDL de defaults de crédito
+(`limiteCredito` `0.00`, `plazoCreditoDias` `30`) ya quedó aplicado por la
+migración `20260909000000_cliente_credit_defaults` al correr `prisma migrate`.
+
 ## Comandos útiles
 
 ```bash
