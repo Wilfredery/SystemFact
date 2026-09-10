@@ -122,6 +122,8 @@ export interface VentaListRow {
   readonly descuento: string;
   readonly clienteNombre: string;
   readonly usuarioNombre: string;
+  /** NCF of the linked invoice when the sale is CONFIRMADA; null otherwise. */
+  readonly ncf: string | null;
 }
 
 /** Detail projection with client name and full lines (same-tenant only). */
@@ -836,6 +838,9 @@ export async function listarVentasEnTx(
       descuento: true,
       cliente: { select: { nombre: true } },
       usuario: { select: { nombre: true } },
+      // One sale emits at most one invoice (1:1 `FacturaVenta`), so the list row
+      // can carry the NCF for CONFIRMADA rows without any N+1 (R-V12).
+      factura: { select: { ncf: true } },
     },
     orderBy: [{ fecha: "desc" }, { id: "desc" }],
     skip: (query.page - 1) * query.limit,
@@ -849,6 +854,7 @@ export async function listarVentasEnTx(
     descuento: new Prisma.Decimal(r.descuento).toString(),
     clienteNombre: r.cliente.nombre,
     usuarioNombre: r.usuario.nombre,
+    ncf: r.factura?.ncf ?? null,
   }));
 }
 

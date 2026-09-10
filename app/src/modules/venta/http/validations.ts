@@ -114,3 +114,11 @@ export const zObtenerVentaInput = z.object({
   id: z.number().int().positive(),
 });
 export type ObtenerVentaInputDto = z.infer<typeof zObtenerVentaInput>;
+
+// Confirm (R-V15): ONLY the sale id travels. The client, lines, rates, discounts
+// and totals are re-derived server-side from the persisted draft; nothing is
+// trusted from the wire (the server recomputes fiscally and emits the invoice).
+export const zConfirmarVentaInput = z.object({
+  id: z.number().int().positive(),
+});
+export type ConfirmarVentaInputDto = z.infer<typeof zConfirmarVentaInput>;

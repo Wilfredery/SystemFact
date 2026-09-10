@@ -42,7 +42,7 @@ Cancellation guards `CONFIRMADA→CANCELADA`, annuls linked `VIGENTE→ANULADA`,
 
 ## HTTP, UI and Seed
 
-Confirm/cancel Server Actions validate, authorize, and call the use cases inside `withTenantTransaction`; UI disables on first click, lets the server revalidate, surfaces the five errors, and shows the 90% banner in the POS status/warning area. `pnpm seed:ncf` upserts `{empresaId,tipoNcf,rangoInicio,rangoFin,vigenciaInicio,vigenciaFin,activa}` per empresa/type, with independent B01/B02 ranges, existing compound-upsert idempotency, and fail-fast overlap checks. Development uses a documented non-production range (100000000–100000999).
+Confirm/cancel Server Actions validate, authorize, and call the use cases inside `withTenantTransaction`; UI disables on first click, lets the server revalidate, surfaces the five errors, and shows the 90% banner in the POS status/warning area. `pnpm seed:ncf` upserts `{empresaId,tipoNcf,rangoInicio,rangoFin,vigenciaInicio,vigenciaFin,activa}` per empresa/type, with independent B01/B02 ranges, existing compound-upsert idempotency, and fail-fast overlap checks. _Deviation (reconciled at apply, PR-4): phase-1 drafts printed a 9-digit dev range (100000000–100000999) that spelled the NCF 12 characters long, but the canonical composition is `B<tipo 2d><%08d>` = 11 characters (R-N2, `consumir-ncf`). The landing seed uses ranges consistent with that composition: dev/local B01 `00000001–00000100` and B02 `00000101–00000200` per empresa (disjoint, DGII-plausible ≤ 99_999_999, `secuenciaActual = rangoInicio - 1`); production ranges load through the same seam._
 
 ## Testing Strategy
 

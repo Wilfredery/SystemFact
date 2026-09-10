@@ -211,12 +211,41 @@ pnpm seed:venta
 
 Ejecutar **antes** de habilitar borradores con descuento en un entorno nuevo.
 
-## POS manual smoke checklist (fase 5b PR-3)
+## Seed de secuencias NCF (B01/B02) — confirmación de ventas (fase 5c)
 
-Runbook for the first interactive screen (`/venta`). This is a **manual**
-verification pass; the automated coverage is the jsdom + React Testing Library
-suites in `src/modules/venta/ui/__tests__/venta-ui.spec.tsx`. Playwright E2E is
-deferred to fase 5c.
+Confirmar una venta (R-V15) consume una secuencia NCF de la empresa: sin rangos,
+el confirm falla con `NCF_SEC_INEXISTENTE`. Los rangos NO se crean en el código de
+la app (son concesión de la DGII por rango/tipo/empresa — §8/§14); este seed
+provisiona rangos **de desarrollo/local** por empresa con la composición canónica
+`B<tipo 2d><%08d>` (11 caracteres, R-N2): B01 `00000001–00000100` y B02
+`00000101–00000200`, con `secuenciaActual = rangoInicio - 1` (nada consumido).
+
+Es **idempotente** e incapaz de rewind: hace *upsert* sobre la unique compuesta
+`@@unique([empresaId, tipoNcf])`, nunca decrementa `secuenciaActual` (un NCF
+consumido jamás se devuelve) y falla rápido con un mensaje claro si la empresa ya
+tiene rangos **superpuestos** en el mismo tipo (un `NCF` nunca puede ambigüo, la
+lectura con lock depende de rangos disjuntos). Validado por unit tests
+(`tools/scripts/seed-ncf.test.ts`) e integración (`src/integration/seed-ncf.integration.test.ts`).
+
+```bash
+# Desde app/, con DIRECT_URL (rol operador/superuser) o DATABASE_URL en .env:
+pnpm seed:ncf
+# → OK: seeded NCF ranges (B01 00000001-00000100, B02 00000101-00000200) for N empresa(s).
+```
+
+> Nota de rol: igual que `seed:venta`, recorre todas las empresas y necesita una
+> conexión sin contexto de un solo tenant (usa `DIRECT_URL` en local).
+
+Ejecutar **antes** de confirmar la primera venta en un entorno nuevo. Los rangos
+B01/B02 son la única vía de emisión automática de factura en esta fase; en
+producción, los rangos reales se cargan por el mismo seam (el %08d admite hasta
+99.999.999 por tipo).
+
+## POS manual smoke checklist (fase 5b + 5c confirm)
+
+Runbook for the interactive screen (`/venta`). The automated coverage is the
+jsdom + React Testing Library suites (`src/modules/venta/ui/__tests__/venta-ui.spec.tsx`
+y `confirm-ui.spec.tsx`) plus the Playwright smoke (sección siguiente).
 
 Prerequisites (once per fresh local DB):
 
@@ -226,6 +255,7 @@ pnpm prisma migrate deploy
 pnpm seed:retencion     # retention config (compra parity)
 pnpm seed:cliente       # per-empresa Consumidor Final (contado default)
 pnpm seed:venta         # DESC_MAX so discounted drafts can be saved
+pnpm seed:ncf           # B01/B02 dev ranges so confirmation can consume (5c)
 pnpm dev                # Next.js dev server → http://localhost:3000
 ```
 
@@ -240,7 +270,7 @@ access identifier is the username, never the email) and walk:
    exento and Total update instantly (same domain calculators as the server).
 4. **Save draft (empty-cart guard)** → *Save draft* is **disabled** with zero
    lines; after adding a line it enables. Save → success note + the draft
-   appears in **"My drafts"**; cart resets. (No confirm button exists.)
+   appears in **"My drafts"**; cart resets.
 5. **Client + inline registration** → *New client* → fill name/phone/address →
    *Create and select* → the new client is chosen; a save posts it (the CF
    default posts `clienteId: null`, resolved server-side via the 5a seam).
@@ -251,14 +281,55 @@ access identifier is the username, never the email) and walk:
 7. **Stock warning** → add more of a product than the branch holds and save →
    the draft still saves **and** an amber *"Insufficient stock"* banner lists
    requested vs available (R-V9; it is a warning, never a block).
-8. **My drafts → edit/cancel** → *Edit* loads the draft back into the cart
-   (*Update draft #id* re-saves); *Cancel* moves it to `CANCELADA` (no second
-   audit; state stays terminal).
-9. **No-confirm invariant** → confirm no *Confirmar* / *Cobrar* / payment
-   control is rendered anywhere on the screen (that is fase 5c scope).
+8. **Confirm a draft (5c, R-V15)** → in *My drafts*, *Confirm draft N* is
+   single-shot (disables while in flight — a double-click never consumes twice).
+   Success flips the row to **CONFIRMADA** with its **NCF** (`B0200000101`-style)
+   and the status note carries the invoice. DB side: one `VENTA` `CONFIRMADA`,
+   one `FACTURA` `VIGENTE`, `NCF_SECUENCIA.secuenciaActual` avanzado, un
+   `MOVIMIENTO_INVENTARIO` `SALIDA_VENTA`. Con el 90% del rango consumido aparece
+   el banner ámbar *"NCF range at 90%"* (`NCF_UMBRAL_90`) — aviso, no bloqueo.
+   Con `facturaAutomatica=false`, sin stock duro o sin rango: `FACTURA_AUTOMATICA_FALTA`,
+   `STOCK_INSUFICIENTE_BLOQUEO`, `NCF_AGOTADA/VENCIDA/SEC_INEXISTENTE` (el draft
+   queda intacto — nada se quema).
+9. **Cancel draft vs Cancel sale** → *Cancel draft N* (BORRADOR) va a `CANCELADA`
+   sin efectos; *Cancel sale N* (CONFIRMADA) anula su factura (`VIGENTE → ANULADA`)
+   y repone stock (608). El NCF consumido jamás se revierte.
+10. **No-payment boundary** → confirm there is no *Cobrar* / payment control
+    anywhere (Fase 6 scope).
 
 > Known V1 limitation: the screen is mouse/touch driven; full keyboard-led
 > operation is deferred (documented in R-V14).
+
+## E2E Playwright (fase 5c — `pnpm e2e`)
+
+Un smoke end-to-end contra el stack real: login (Supabase Auth remoto) → POS →
+borrador → confirm → CONFIRMADA + NCF en pantalla → cadena observable completa
+en la BD local (venta, factura, secuencia, movimiento). Spec:
+`app/e2e/confirm-venta.spec.ts` (config en `app/playwright.config.ts`).
+
+> **Seed + DB caveat (documentado por contrato)**: el runtime de la app lee
+> Postgres LOCAL mientras la autenticación es Supabase REMOTA. El smoke necesita
+> un entorno dev completo, no solo npm install:
+
+| Prerequisito | Cómo |
+|---|---|
+| Postgres local arriba + migrations | `docker compose up -d` + `pnpm prisma migrate deploy` |
+| Datos sembrados (en orden) | `pnpm seed:venta` → `pnpm seed:ncf` → `pnpm seed:cliente` |
+| Usuario Supabase Auth espejo | un Auth user cuyo `nombreUsuario` exista en la BD local con sucursal y stock del producto |
+| Browser | `npx playwright install chromium` |
+
+Ejecución:
+
+```bash
+cd app
+E2E_USER=<nombreUsuario> E2E_PASSWORD=<supabase-cred> pnpm e2e
+# Opcional: E2E_PRODUCT (default "Arroz"), E2E_BASE_URL (default :3000)
+```
+
+El `beforeAll` valida las precondiciones (usuario con rol POS, empresa con
+`facturaAutomatica=true`, rangos B01/B02, producto con stock en la sucursal) y
+falla con el paso exacto a corregir. La suíte corre en serie (`workers: 1`):
+cada ejecución consume UNA secuencia real del rango B02.
 
 ## Comandos útiles
 

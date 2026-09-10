@@ -154,6 +154,58 @@ describe("venta-config DESC_MAX (real DB)", () => {
     expect(!r.ok && r.code).toBe("DESC_MAX_FALTANTE");
   });
 
+  it("R-V17: overlapping DESC_MAX windows resolve deterministically — newest vigenciaInicio wins", async () => {
+    // CodeRabbit F5: before this change the covering-window `findFirst` had NO
+    // ORDER BY, so a Postgres arbitrary-row pick decided the cap. Insert TWO
+    // active, overlapping rows (4.00 old, 25.00 new) and prove the draft reads
+    // the NEWEST window; then add a THIRD (1.00 newest of all) and prove the
+    // cap flips again — both directions pin `vigenciaInicio DESC`.
+    const db = getHarnessDb();
+    const empresaId = fixture!.empresaA.id;
+    await db.configuracionEmpresa.create({
+      data: {
+        empresaId,
+        clave: "DESC_MAX",
+        valor: "4.00",
+        vigenciaInicio: new Date("2000-01-01T00:00:00.000Z"),
+        vigenciaFin: new Date("2099-12-31T23:59:59.000Z"),
+        activa: true,
+      },
+    });
+    await db.configuracionEmpresa.create({
+      data: {
+        empresaId,
+        clave: "DESC_MAX",
+        valor: "25.00",
+        vigenciaInicio: new Date("2026-01-01T00:00:00.000Z"), // overlaps the 4.00 window
+        vigenciaFin: new Date("2099-12-31T23:59:59.000Z"),
+        activa: true,
+      },
+    });
+
+    // 10% ≤ 25% (newest) but > 4% (oldest): saving proves the NEW window won.
+    const ok10 = await guardarConCabecera(fixture!.usuarios.adminA.id, pct("10.00"));
+    expect(ok10.ok).toBe(true);
+
+    // Newest window now caps at 1.00 → the same 10% draft must fail.
+    await db.configuracionEmpresa.create({
+      data: {
+        empresaId,
+        clave: "DESC_MAX",
+        valor: "1.00",
+        vigenciaInicio: new Date("2026-06-01T00:00:00.000Z"),
+        vigenciaFin: new Date("2099-12-31T23:59:59.000Z"),
+        activa: true,
+      },
+    });
+    const fail = await guardarConCabecera(
+      fixture!.usuarios.adminA.id,
+      pct("10.00"),
+      new Date("2026-07-01T00:00:00.000Z"),
+    );
+    expect(!fail.ok && fail.code).toBe("DESCUENTO_EXCEDE_MAXIMO");
+  });
+
   it("triple-cap: a LINE discount over the cap fails EXCEDE_MAXIMO", async () => {
     const db = getHarnessDb();
     await seedVentaConfigParaEmpresa(db, fixture!.empresaA.id); // cap 4.00
