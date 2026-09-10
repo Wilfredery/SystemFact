@@ -28,16 +28,16 @@ Each PR merges to main independently; size:exception accepted per slice; rollbac
 
 ## Phase 1: PR-1 — Domain (calculators + entity + errors + caps)
 
-- [ ] 1.1 Create `app/src/modules/venta/domain/errors.ts`: `VentaErrorCode` pinning exactly R-V13 codes (13 codes incl. re-emitted CLIENTE_*; `STOCK_INSUFICIENTE` as warning type, never error) and `VentaResult<T>` / `VentaSaveResult<T>` / `StockWarning` contracts per design Interfaces. (~80 lines)
-- [ ] 1.2 Create `app/src/modules/venta/domain/venta.ts`: `EstadoVenta` (`BORRADOR/CANCELADA/CONFIRMADA`), exhaustive `estadoVentaDesdeDb` fail-loud mapping (R-V13 unknown-state → typed runtime error, never silent coercion). Freeze draft state set: no 5b path reaches `CONFIRMADA`. (~70 lines)
-- [ ] 1.3 RED unit `app/src/modules/venta/domain/__tests__/calculators.spec.ts`: fixture F2 exact assertions (R-V5) — net bases 18.31/20.13/25.80, ITBIS 3.30/3.22/0.00, stored 69.86/5.62/6.52/70.76. Write test first, then implement. (~60 lines test)
-- [ ] 1.4 Fixture F1 (R-V6): clean proration 3.00/4.00 shares, gravado 27.00 / exento 36.00, total 67.86. RED-first in same spec. (~30 lines)
-- [ ] 1.5 Fixture F3 (R-V6): remainder −0.01 to largest base (ties earliest): shares 2.62/1.75/2.63, ITBIS 7.85, total 80.85; identity `total = subtotal − descuento + itbis` holds exactly. (~35 lines)
-- [ ] 1.6 Fixture F4 (R-V8 boundary math, pure part): 100.00 @18% with 4% → base 96.00 / ITBIS 17.28 / total 113.28. (~20 lines)
-- [ ] 1.7 RED unit `__tests__/descuentos.spec.ts`: `validarDescuentosContraMaximo` triple-cap (line ≤ % of bruto, header % ≤ cap, total effective ≤ % of Σbruto) → `DESCUENTO_EXCEDE_MAXIMO`; over-base → `DESCUENTO_EXCEDE_BASE`; `DESCUENTO_INVALIDO` on MONTO 0.00 / shape mismatch; zero → `PORCENTAJE/0.00` + NULL autorizadoPor (R-V7). (~80 lines)
-- [ ] 1.8 Property-style rate/discount/line-order matrix (decimal.js strings, half-up 2dp, no floats) mixed 18/16/0 DGII matrix. (~60 lines)
-- [ ] 1.9 GREEN: implement `domain/calculators.ts` `calcularLineaVenta(input, tasa)` + `calcularTotalesVenta(lines, headerDiscount)` per R-V5 proration algorithm; return `subtotalGravado/subtotalExento` computed-never-stored. (~230 lines)
-- [ ] 1.10 Verify `pnpm jest src/modules/venta/domain` green; commit PR-1 (code+tests same commit). (~0 diff)
+- [x] 1.1 Create `app/src/modules/venta/domain/errors.ts`: `VentaErrorCode` pinning exactly R-V13 codes (13 codes incl. re-emitted CLIENTE_*; `STOCK_INSUFICIENTE` as warning type, never error) and `VentaResult<T>` / `VentaSaveResult<T>` / `StockWarning` contracts per design Interfaces. (~80 lines)
+- [x] 1.2 Create `app/src/modules/venta/domain/venta.ts`: `EstadoVenta` (`BORRADOR/CANCELADA/CONFIRMADA`), exhaustive `estadoVentaDesdeDb` fail-loud mapping (R-V13 unknown-state → typed runtime error, never silent coercion). Freeze draft state set: no 5b path reaches `CONFIRMADA`. (~70 lines)
+- [x] 1.3 RED unit `app/src/modules/venta/domain/__tests__/calculators.spec.ts`: fixture F2 exact assertions (R-V5) — net bases 18.31/20.13/25.80, ITBIS 3.30/3.22/0.00, stored 69.86/5.62/6.52/70.76. Write test first, then implement. (~60 lines test)
+- [x] 1.4 Fixture F1 (R-V6): clean proration 3.00/4.00 shares, gravado 27.00 / exento 36.00, total 67.86. RED-first in same spec. (~30 lines)
+- [x] 1.5 Fixture F3 (R-V6): remainder −0.01 to largest base (ties earliest): shares 2.62/1.75/2.63, ITBIS 7.85, total 80.85; identity `total = subtotal − descuento + itbis` holds exactly. (~35 lines)
+- [x] 1.6 Fixture F4 (R-V8 boundary math, pure part): 100.00 @18% with 4% → base 96.00 / ITBIS 17.28 / total 113.28. (~20 lines)
+- [x] 1.7 RED unit `__tests__/descuentos.spec.ts`: `validarDescuentosContraMaximo` triple-cap (line ≤ % of bruto, header % ≤ cap, total effective ≤ % of Σbruto) → `DESCUENTO_EXCEDE_MAXIMO`; over-base → `DESCUENTO_EXCEDE_BASE`; `DESCUENTO_INVALIDO` on MONTO 0.00 / shape mismatch; zero → `PORCENTAJE/0.00` + NULL autorizadoPor (R-V7). (~80 lines)
+- [x] 1.8 Property-style rate/discount/line-order matrix (decimal.js strings, half-up 2dp, no floats) mixed 18/16/0 DGII matrix. (~60 lines)
+- [x] 1.9 GREEN: implement `domain/calculators.ts` `calcularLineaVenta(input, tasa)` + `calcularTotalesVenta(lines, headerDiscount)` per R-V5 proration algorithm; return `subtotalGravado/subtotalExento` computed-never-stored. (~230 lines)
+- [x] 1.10 Verify `pnpm jest src/modules/venta/domain` green; commit PR-1 (code+tests same commit). (~0 diff)
 
 ## Phase 2: PR-2 — Application, venta-config, HTTP, integration
 
