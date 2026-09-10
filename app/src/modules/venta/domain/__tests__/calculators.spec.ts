@@ -163,6 +163,66 @@ describe("Fixture F4 — 100.00 @18% with header 4% (R-V8 boundary)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Fixture F5 (combined gross-vs-net) — header % + line % on the SAME draft.
+// None of F1–F4 pairs a line discount with a header percentage, so this pins the
+// design-frozen basis rule: the header % resolves on the aggregate GROSS subtotal
+// (Σ subtotalBruto), while the proration denominator is the aggregate NET base
+// (Σ baseLinea, post-line-discount). Hand-derived (half-up 2dp):
+//   L1: 1×100.00 @18%, line PORCENTAJE 10 → bruto 100.00, line disc 10.00,
+//       baseLinea 90.00
+//   L2: 1×100.00 @0% (exento), no line disc → bruto 100.00, baseLinea 100.00
+//   Σgross 200? No — L1/L2 above use 100/200 to keep the two bases unequal so the
+//   proration share is non-trivial:
+//   L1: 1×100.00 @18%, line PORCENTAJE 10 → bruto 100.00, line disc 10.00, base 90.00
+//   L2: 1×200.00 @0%                     → bruto 200.00, line disc  0.00, base 200.00
+//   Σgross = 300.00 ; Σnet(baseLinea) = 290.00
+//   header PORCENTAJE 10 on GROSS → D = round2(300×10/100) = 30.00
+//   shares on NET: round2(30×90/290)=round2(9.3103)=9.31 ;
+//                  round2(30×200/290)=round2(20.6897)=20.69 ; Σ=30.00 (no remainder)
+//   baseFinal: 90−9.31=80.69 (gravado) ; 200−20.69=179.31 (exento)
+//   itbis: round2(80.69×18/100)=round2(14.5242)=14.52 ; 0.00
+//   stored: subtotal 300.00, descuento (10 line + 30 header) 40.00, itbis 14.52,
+//           total = 300 − 40 + 14.52 = 274.52
+// If the header % had (wrongly) been applied on the NET base, D would be
+// round2(290×0.10)=29.00 with shares 9.00/20.00 and total 275.58 — the two bases
+// give DIFFERENT results, so this fixture unambiguously pins the GROSS basis for
+// the header-% money and the NET basis for proration.
+// ---------------------------------------------------------------------------
+describe("Fixture F5 — combined line % + header % (gross vs net basis, R-V6/R-V8)", () => {
+  const l1 = calcularLineaVenta(
+    inp(1, "1", "100.00", { descuentoTipo: DESCUENTO_TIPO.PORCENTAJE, descuentoValor: "10" }),
+    "18",
+  );
+  const l2 = calcularLineaVenta(inp(2, "1", "200.00"), "0");
+
+  it("header % resolves on GROSS; shares prorate on NET", () => {
+    const { lineas, totales } = calcularTotalesVenta([l1, l2], {
+      descuentoTipo: DESCUENTO_TIPO.PORCENTAJE,
+      descuentoValor: "10",
+    });
+    // Line-level net bases feeding the proration denominator.
+    expect(l1.baseLinea).toBe("90.00");
+    expect(l2.baseLinea).toBe("200.00");
+    // Header money on Σ gross (300 × 10%), NOT on Σ net (would be 29.00).
+    expect(totales.descuentoCabecera).toBe("30.00");
+    expect(lineas.map((l) => l.descuentoCabeceraLinea)).toEqual(["9.31", "20.69"]);
+    expect(lineas.map((l) => l.baseFinal)).toEqual(["80.69", "179.31"]);
+    expect(lineas.map((l) => l.itbisLinea)).toEqual(["14.52", "0.00"]);
+    expect(totales.subtotalGravado).toBe("80.69");
+    expect(totales.subtotalExento).toBe("179.31");
+    // Stored money: Σ line discounts (10) + header (30) = 40.00.
+    expect(totales.subtotal).toBe("300.00");
+    expect(totales.descuento).toBe("40.00");
+    expect(totales.itbis).toBe("14.52");
+    expect(totales.total).toBe("274.52"); // 300 − 40 + 14.52
+    // Identity holds exactly.
+    expect(
+      (Number(totales.subtotal) - Number(totales.descuento) + Number(totales.itbis)).toFixed(2),
+    ).toBe(totales.total);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Property-style matrix — 18/16/0 mix, decimal strings only, identities hold.
 // ---------------------------------------------------------------------------
 describe("Property-style matrix (R-V5 / R-V6 identities)", () => {
