@@ -14,6 +14,7 @@
     "probe:set-local": "tsx scripts/probe-set-local.ts",
     "rls:verify": "tsx tools/scripts/verify-rls.ts",
     "seed:retencion": "tsx tools/scripts/seed-retencion-config.ts",
+    "seed:cliente": "tsx tools/scripts/seed-consumidor-final.ts",
     "rls:diagnose": "tsx scripts/diagnose-rls.ts",
     "rls:deep-check": "tsx scripts/deep-check-rls.ts",
     "rls:inspect-columns": "tsx scripts/inspect-columns.ts"
