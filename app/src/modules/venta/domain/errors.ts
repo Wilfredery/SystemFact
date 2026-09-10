@@ -8,10 +8,11 @@
  * a blocking failure (spec R-V9).
  *
  * Scope note (R-V13): the enumeration below mirrors the exhaustive code list in
- * the venta spec. The design/tasks headline calls it "13 pinned codes" because it
- * groups the two re-emitted resolver codes (`CLIENTE_*`) as a single family; the
- * distinct stable-code constants the type must carry are 14 (12 venta-owned + 2
- * re-emitted), so that every spec scenario maps to a real code.
+ * the venta spec. Phase 5b pinned 14 codes (12 venta-owned + 2 re-emitted
+ * `CLIENTE_*`). Phase 5c confirm (R-V15) adds five more — three NCF-consume codes
+ * mapped from the ncf-engine port, one emission-gate code and one hard-stock
+ * block — for a frozen catalog of **19**. `STOCK_INSUFICIENTE` and
+ * `NCF_UMBRAL_90` stay WARNING channels, never catalog error codes.
  */
 
 // --- Stable code catalog (R-V13) ---
@@ -31,6 +32,20 @@ export const DESCUENTO_NO_AUTORIZADO = "DESCUENTO_NO_AUTORIZADO";
 // re-exports them so the sale HTTP contract speaks a single versioned catalog.
 export const CLIENTE_NO_ENCONTRADO = "CLIENTE_NO_ENCONTRADO";
 export const CLIENTE_INACTIVO = "CLIENTE_INACTIVO";
+// Phase 5c confirm codes (R-V15 / R-F1). The three `NCF_*` codes mirror the
+// ncf-engine consume port's `NcfConsumoErrorCode` so `confirmarVenta` can surface
+// a pre-consume failure in the SAME versioned catalog the sale speaks (the ncf
+// module owns the throw; venta owns the user-facing code).
+export const NCF_AGOTADA = "NCF_AGOTADA";
+export const NCF_VENCIDA = "NCF_VENCIDA";
+export const NCF_SEC_INEXISTENTE = "NCF_SEC_INEXISTENTE";
+// Emission gate: `Empresa.facturaAutomatica=false` blocks confirm before any NCF
+// is burned (R-F1, D1b — no deferred-emission path).
+export const FACTURA_AUTOMATICA_FALTA = "FACTURA_AUTOMATICA_FALTA";
+// Hard stock block at confirm (distinct from the draft-save `STOCK_INSUFICIENTE`
+// WARNING). The authoritative debit lands in 5c Phase 3 (`registrarSalidasVenta`);
+// the early HARD preview in confirm rejects with this same code before any burn.
+export const STOCK_INSUFICIENTE_BLOQUEO = "STOCK_INSUFICIENTE_BLOQUEO";
 
 export type VentaErrorCode =
   | typeof VENTA_NO_ENCONTRADO
@@ -46,7 +61,12 @@ export type VentaErrorCode =
   | typeof DESCUENTO_INVALIDO
   | typeof DESCUENTO_NO_AUTORIZADO
   | typeof CLIENTE_NO_ENCONTRADO
-  | typeof CLIENTE_INACTIVO;
+  | typeof CLIENTE_INACTIVO
+  | typeof NCF_AGOTADA
+  | typeof NCF_VENCIDA
+  | typeof NCF_SEC_INEXISTENTE
+  | typeof FACTURA_AUTOMATICA_FALTA
+  | typeof STOCK_INSUFICIENTE_BLOQUEO;
 
 const MESSAGES: Record<VentaErrorCode, string> = {
   [VENTA_NO_ENCONTRADO]: "La venta no existe en la empresa",
@@ -67,6 +87,14 @@ const MESSAGES: Record<VentaErrorCode, string> = {
     "Solo un administrador puede aplicar un descuento",
   [CLIENTE_NO_ENCONTRADO]: "El cliente no existe en la empresa",
   [CLIENTE_INACTIVO]: "El cliente está inactivo",
+  [NCF_AGOTADA]: "El rango de secuencias NCF está agotado; no se puede confirmar la venta",
+  [NCF_VENCIDA]: "El rango de secuencias NCF está vencido; no se puede confirmar la venta",
+  [NCF_SEC_INEXISTENTE]:
+    "No hay una secuencia NCF activa configurada para esta empresa y tipo",
+  [FACTURA_AUTOMATICA_FALTA]:
+    "La empresa no tiene facturación automática; active el parámetro para confirmar la venta",
+  [STOCK_INSUFICIENTE_BLOQUEO]:
+    "No hay suficiente existencias en la sucursal para confirmar la venta",
 };
 
 export function messageFor(code: VentaErrorCode): string {

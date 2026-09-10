@@ -83,10 +83,16 @@ describe("error catalog (R-V13)", () => {
       DESCUENTO_NO_AUTORIZADO,
       CLIENTE_NO_ENCONTRADO,
       "CLIENTE_INACTIVO",
+      // Phase 5c confirm codes (R-V15)
+      "NCF_AGOTADA",
+      "NCF_VENCIDA",
+      "NCF_SEC_INEXISTENTE",
+      "FACTURA_AUTOMATICA_FALTA",
+      "STOCK_INSUFICIENTE_BLOQUEO",
     ];
     for (const code of codes) {
       expect(messageFor(code)).toMatch(/\S/);
     }
-    expect(codes).toHaveLength(14);
+    expect(codes).toHaveLength(19);
   });
 });

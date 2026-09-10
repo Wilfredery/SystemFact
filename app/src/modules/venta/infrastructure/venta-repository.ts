@@ -28,6 +28,8 @@ import {
   AccionAuditoria,
   EstadoVenta,
   DescuentoTipo,
+  EstadoDocumento,
+  TipoNcfFactura,
 } from "@/generated/prisma/client";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
@@ -432,6 +434,262 @@ export async function cancelarVentaEnTx(
     data: { estado: EstadoVenta.CANCELADA },
   });
   return { cancelled: result.count > 0 };
+}
+
+// --- confirm / FACTURA emission (5c Phase 2) ------------------------------
+
+/**
+ * A sale header + persisted lines, read branch-scoped for `confirmarVenta`. The
+ * `WHERE empresaId AND sucursalId` predicate makes a foreign-branch sale a `null`
+ * (behaves exactly like not-found — zero disclosure of another branch's data,
+ * R-V15 "Foreign-branch sale not confirmable"). Line values cross as Decimal
+ * strings so the application layer recomputes the invoice without any float.
+ */
+export interface VentaParaConfirmar {
+  readonly id: number;
+  readonly estado: EstadoVentaCore;
+  readonly sucursalId: number;
+  readonly clienteId: number;
+  /** Server-frozen header money (identity terms for the invoice total). */
+  readonly subtotal: string;
+  readonly descuento: string;
+  readonly lineas: readonly {
+    readonly productoId: number;
+    readonly cantidad: string;
+    readonly tasaItbis: string;
+    /** Final net base persisted at draft (post line + header discounts). */
+    readonly subtotalLinea: string;
+    readonly itbisLinea: string;
+  }[];
+}
+
+/**
+ * Branch-guarded read of everything `confirmarVenta` needs: the current state
+ * (idempotency gate) plus persisted lines (hard stock preview + invoice
+ * re-derivation). `null` for a foreign tenant/branch id or a missing sale.
+ */
+export async function leerVentaParaConfirmarEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  ventaId: number,
+): Promise<VentaParaConfirmar | null> {
+  const row = await tx.venta.findFirst({
+    where: { id: ventaId, empresaId: ctx.empresaId, sucursalId: ctx.sucursalId },
+    select: {
+      id: true,
+      estado: true,
+      sucursalId: true,
+      clienteId: true,
+      subtotal: true,
+      descuento: true,
+      detalles: {
+        select: {
+          productoId: true,
+          cantidad: true,
+          tasaItbis: true,
+          subtotalLinea: true,
+          itbisLinea: true,
+        },
+      },
+    },
+  });
+  if (row === null) return null;
+  const money = (v: Prisma.Decimal): string => new Prisma.Decimal(v).toFixed(2);
+  return {
+    id: row.id,
+    estado: estadoVentaDesdeDb(row.estado),
+    sucursalId: row.sucursalId,
+    clienteId: row.clienteId,
+    subtotal: money(row.subtotal),
+    descuento: money(row.descuento),
+    lineas: row.detalles.map((l) => ({
+      productoId: l.productoId,
+      cantidad: new Prisma.Decimal(l.cantidad).toFixed(3),
+      tasaItbis: new Prisma.Decimal(l.tasaItbis).toString(),
+      subtotalLinea: money(l.subtotalLinea),
+      itbisLinea: money(l.itbisLinea),
+    })),
+  };
+}
+
+/** `Empresa.facturaAutomatica` — the emission gate (R-F1). Missing row → false. */
+export async function leerFacturaAutomaticaDeEmpresaEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+): Promise<boolean> {
+  const empresa = await tx.empresa.findFirst({
+    where: { id: empresaId },
+    select: { facturaAutomatica: true },
+  });
+  return empresa?.facturaAutomatica ?? false;
+}
+
+/**
+ * Client facts for NCF type eligibility (R-F2): the CF flag and the stored fiscal
+ * id. Empresa-scoped so a foreign id yields `null`.
+ */
+export async function leerClienteParaElegibilidadEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  clienteId: number,
+): Promise<
+  { readonly esConsumidorFinal: boolean; readonly identificacionFiscal: string | null } | null
+> {
+  const row = await tx.cliente.findFirst({
+    where: { id: clienteId, empresaId },
+    select: { esConsumidorFinal: true, identificacionFiscal: true },
+  });
+  return row;
+}
+
+/**
+ * Guarded `BORRADOR → CONFIRMADA` flip — the single-flip optimistic lock. Runs as
+ * ONE `UPDATE ... WHERE id AND empresaId AND sucursalId AND estado='BORRADOR'`
+ * (the compra cancel precedent). A zero-row result means a concurrent confirm
+ * already flipped the row: the caller MUST throw (never return) because the flip
+ * sits AFTER the NCF consume, so aborting the transaction un-burns the loser's
+ * sequence number and leaves exactly one invoice (R-V15 "Double-click is
+ * idempotent").
+ */
+export async function confirmarVentaFlipEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  ventaId: number,
+): Promise<{ flipUpdated: boolean }> {
+  const result = await tx.venta.updateMany({
+    where: {
+      id: ventaId,
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      estado: EstadoVenta.BORRADOR,
+    },
+    data: { estado: EstadoVenta.CONFIRMADA },
+  });
+  return { flipUpdated: result.count > 0 };
+}
+
+/** Invoice write payload: eligibility + recomputed Decimal-string amounts + NCF. */
+export interface FacturaPersistencia {
+  readonly ventaId: number;
+  readonly clienteId: number;
+  readonly usuarioId: number;
+  readonly sucursalId: number;
+  readonly tipoNcf: "B01" | "B02";
+  readonly ncf: string;
+  readonly correlativoInterno: string;
+  readonly subtotalGravado: string;
+  readonly subtotalExento: string;
+  readonly itbis: string;
+  readonly descuento: string;
+  readonly total: string;
+  readonly fechaEmision: Date;
+}
+
+/**
+ * Allocate the next per-empresa invoice correlativo `FAC-%06d` (R-F3 "Correlativo
+ * allocation is atomic"), mirroring the compra `CMP-%06d` precedent:
+ *   1. `SELECT ... FOR UPDATE` the EMPRESA row — the durable company-wide anchor.
+ *   2. Temporarily clear ONLY the sucursal GUC so the `MAX` spans every branch of
+ *      this empresa; the empresa boundary (`app.current_empresa_id`) stays pinned.
+ *   3. Read the company-wide MAX of the trailing digits and add one.
+ *   4. Restore the acting branch GUC in a `finally` — BEFORE the caller performs
+ *      the branch-scoped FACTURA write. The restore lives in `finally` (not inline)
+ *      so a failure inside the MAX read can never leak the cleared sucursal GUC
+ *      into a subsequent branch-scoped write (design RLS-restore risk, task 2.9).
+ * Integers cast `::int` so Prisma returns JS numbers (the ES2020 target cannot emit
+ * BigInt literals), matching `asignarCorrelativoSiguienteEnTx` in compra.
+ */
+export async function asignarCorrelativoFacturaEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  sucursalId: number,
+): Promise<string> {
+  await tx.$executeRaw`SELECT "id" FROM "EMPRESA" WHERE "id" = ${empresaId} FOR UPDATE`;
+  await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', '', true)`;
+  try {
+    const rows = await tx.$queryRaw<{ next: number }[]>`
+      SELECT (COALESCE(MAX(CAST(SUBSTRING("correlativoInterno" FROM '([0-9]+)$') AS BIGINT)), 0) + 1)::int AS next
+      FROM "FACTURA"
+      WHERE "empresaId" = ${empresaId}`;
+    const next = rows[0]?.next ?? 1;
+    return `FAC-${next.toString().padStart(6, "0")}`;
+  } finally {
+    // Always restore the acting branch before any downstream branch-scoped write.
+    await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${String(
+      sucursalId,
+    )}, true)`;
+  }
+}
+
+/**
+ * Insert the emission `FACTURA` (R-F1/R-F3/R-F4). `estado=VIGENTE`, linked 1:1 to
+ * the sale via the unique `ventaId`; `sucursalId` carries the acting branch (the
+ * sucursal GUC was restored by the allocator before this write). NO paid/balance
+ * column is written — payment state stays derived (ADR-017). Any failure here
+ * propagates as a throw (post-consume), rolling back the flip and the NCF too.
+ */
+export async function crearFacturaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  input: FacturaPersistencia,
+): Promise<{ id: number }> {
+  const created = await tx.factura.create({
+    data: {
+      ventaId: input.ventaId,
+      empresaId: ctx.empresaId,
+      sucursalId: input.sucursalId,
+      clienteId: input.clienteId,
+      usuarioId: input.usuarioId,
+      tipoNcf:
+        input.tipoNcf === "B01" ? TipoNcfFactura.B01 : TipoNcfFactura.B02,
+      ncf: input.ncf,
+      correlativoInterno: input.correlativoInterno,
+      estado: EstadoDocumento.VIGENTE,
+      subtotalGravado: new Prisma.Decimal(input.subtotalGravado),
+      subtotalExento: new Prisma.Decimal(input.subtotalExento),
+      itbis: new Prisma.Decimal(input.itbis),
+      descuento: new Prisma.Decimal(input.descuento),
+      total: new Prisma.Decimal(input.total),
+      fechaEmision: input.fechaEmision,
+    },
+    select: { id: true },
+  });
+  return { id: created.id };
+}
+
+/** The sale's already-existing invoice (idempotent-retry read), or `null`. */
+export async function leerFacturaDeVentaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  ventaId: number,
+): Promise<
+  | {
+      readonly id: number;
+      readonly ncf: string;
+      readonly tipoNcf: string;
+      readonly correlativoInterno: string;
+      readonly total: string;
+    }
+  | null
+> {
+  const row = await tx.factura.findFirst({
+    where: { ventaId, empresaId: ctx.empresaId, sucursalId: ctx.sucursalId },
+    select: {
+      id: true,
+      ncf: true,
+      tipoNcf: true,
+      correlativoInterno: true,
+      total: true,
+    },
+  });
+  if (row === null) return null;
+  return {
+    id: row.id,
+    ncf: row.ncf,
+    tipoNcf: row.tipoNcf,
+    correlativoInterno: row.correlativoInterno,
+    total: new Prisma.Decimal(row.total).toFixed(2),
+  };
 }
 
 // --- listing / detail ---
