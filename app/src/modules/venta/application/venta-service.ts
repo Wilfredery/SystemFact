@@ -15,9 +15,11 @@
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
+import { registrarReposicionCancelacion } from "@/modules/inventario/application/registrar-salidas-venta";
 import {
   ESTADO_VENTA,
   DESCUENTO_CERO,
+  transicionarCancelarConfirmada,
   type Descuento,
   type EstadoVentaDraft,
   type VentaLineaInput,
@@ -27,6 +29,7 @@ import {
   VENTA_NO_ENCONTRADO,
   CONCURRENCIA_CONFLICTO,
   messageFor,
+  VentaDomainError,
   type StockWarning,
   type VentaErrorCode,
   type VentaResult,
@@ -36,6 +39,11 @@ import {
   actualizarVentaBorradorEnTx,
   reemplazarLineasVentaEnTx,
   cancelarVentaEnTx,
+  cancelarVentaConfirmadaEnTx,
+  anularFacturaDeVentaEnTx,
+  leerFacturaVigenteDeVentaEnTx,
+  registrarAuditFacturaEnTx,
+  leerVentaParaConfirmarEnTx,
   leerVentaEnTx,
   listarVentasEnTx,
   contarVentasEnTx,
@@ -229,14 +237,26 @@ function cancelError(
   return { ok: false, code, message: messageFor(code) };
 }
 
+/** The default non-empty reposition reason when the operator supplies none. */
+const REPOSICION_MOTIVO_DEFECTO = "Cancelación de venta confirmada";
+
 /**
- * VENT-CANCEL: transition `BORRADOR → CANCELADA` via ONE guarded `updateMany`
- * (`WHERE id AND empresaId AND sucursalId AND estado='BORRADOR'`) plus an
- * affected-rows check. A draft read as already non-`BORRADOR` is `VENTA_INMUTABLE`
- * (the state was observed after a committed cancel); a read that saw `BORRADOR`
- * but whose guard then matched zero rows is `CONCURRENCIA_CONFLICTO` (a parallel
- * cancel won). Either way NO second audit row is appended and stock/NCF/config
- * remain untouched. The motivo is optional.
+ * VENT-CANCEL: cancel a sale. Two distinct, mutually-exclusive lifecycles
+ * (spec R-V16):
+ *
+ *   - DRAFT (`BORRADOR → CANCELADA`, R-V4, UNCHANGED): one guarded `updateMany`
+ *     (`WHERE estado='BORRADOR'`) + affected-rows check. No invoice, no movement,
+ *     no NCF — a draft never had fiscal or inventory effect.
+ *   - CONFIRMADA (`CONFIRMADA → CANCELADA`, R-V16 / 608): guarded flip, then the
+ *     linked `FACTURA` flips `VIGENTE → ANULADA` (never deleted), then the
+ *     stock is restored via `registrarReposicionCancelacion`, with audit rows for
+ *     BOTH reversals. The consumed NCF is NEVER rewound.
+ *
+ * A repeat cancel of an already-`CANCELADA` sale is the stable `VENTA_INMUTABLE`
+ * error (terminal state, zero effects); a lost flip race is `CONCURRENCIA_CONFLICTO`.
+ * Once the sale flip succeeds, every later failure (invoice not `VIGENTE`, or a
+ * reposition rejection) THROWS so the whole cancellation rolls back — a confirmed
+ * sale is never left half-reversed.
  */
 export async function cancelarVenta(
   tx: PrismaTx,
@@ -245,27 +265,107 @@ export async function cancelarVenta(
 ): Promise<CancelarVentaResult> {
   const venta = await leerVentaEnTx(tx, ctx, input.id);
   if (venta === null) return cancelError(VENTA_NO_ENCONTRADO);
-  if (venta.estado !== ESTADO_VENTA.BORRADOR) {
+  if (venta.estado === ESTADO_VENTA.CANCELADA) {
+    // Terminal: a repeated cancel is a stable no-op, never a double reversal.
     return cancelError(VENTA_INMUTABLE);
   }
 
-  const { cancelled } = await cancelarVentaEnTx(tx, ctx, input.id);
+  // --- DRAFT path (R-V4 / R-V16 "Draft-cancel path untouched"). ---
+  if (venta.estado === ESTADO_VENTA.BORRADOR) {
+    const { cancelled } = await cancelarVentaEnTx(tx, ctx, input.id);
+    if (!cancelled) {
+      // Raced with a concurrent cancel/confirm between the read and the guard.
+      return cancelError(CONCURRENCIA_CONFLICTO);
+    }
+    await registrarAuditVentaEnTx(
+      tx,
+      ctx,
+      "CANCELAR",
+      input.id,
+      { estado: ESTADO_VENTA.BORRADOR },
+      { estado: ESTADO_VENTA.CANCELADA },
+      input.motivo?.trim() ? input.motivo.trim() : null,
+    );
+    return { ok: true, data: { id: input.id, estado: ESTADO_VENTA.CANCELADA } };
+  }
+
+  // --- CONFIRMADA path (R-V16). ---
+  return cancelarVentaConfirmada(tx, ctx, input.id, input.motivo);
+}
+
+/**
+ * The confirmed-cancellation reversal (R-V16). Precondition: the caller read the
+ * sale as `CONFIRMADA`. Runs INSIDE the same tenant transaction and rolls back
+ * atomically on any throw. Returns a typed error ONLY for the pre-flip race; every
+ * post-flip failure throws so a half-reversed sale can never persist.
+ */
+async function cancelarVentaConfirmada(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  ventaId: number,
+  motivo: string | undefined,
+): Promise<CancelarVentaResult> {
+  const gate = transicionarCancelarConfirmada(ESTADO_VENTA.CONFIRMADA);
+  // `gate.estado` is `CANCELADA` by construction; the total switch documents that
+  // ONLY a CONFIRMADA sale can enter this path (draft/terminal are routed away).
+  void gate;
+
+  // 1. Guarded CONFIRMADA → CANCELADA. Zero rows = a concurrent cancel/confirm won
+  //    → typed conflict, and NOTHING else has run so there is nothing to roll back.
+  const { cancelled } = await cancelarVentaConfirmadaEnTx(tx, ctx, ventaId);
   if (!cancelled) {
-    // Raced with a concurrent cancel between the read and the guard.
     return cancelError(CONCURRENCIA_CONFLICTO);
   }
 
+  // 2. The sale is now CANCELADA under this transaction's lock. Every step below
+  //    THROWS on failure (never returns) so the flip, the annul, the reposition and
+  //    the audits all roll back together — a confirmed sale is never half-reversed.
+  const factura = await leerFacturaVigenteDeVentaEnTx(tx, ctx, ventaId);
+  if (factura === null) {
+    // A CONFIRMADA sale must own a VIGENTE invoice; its absence is an integrity
+    // conflict (e.g. already annulled) — never a silent double-annul.
+    throw new VentaDomainError(CONCURRENCIA_CONFLICTO, { ventaId });
+  }
+  const { annulled } = await anularFacturaDeVentaEnTx(tx, ctx, ventaId);
+  if (!annulled) {
+    // Lost the VIGENTE predicate after the read: abort so the flip rolls back.
+    throw new VentaDomainError(CONCURRENCIA_CONFLICTO, { facturaId: factura.id });
+  }
+
+  // 3. Restore branch stock: one REPOSICION_CANCELACION movement per persisted
+  //    line, positive deltas, under the SAME ascending-product-id locks as the
+  //    exit. Throws on a foreign product (post-flip → whole cancel rolls back).
+  const lineas = await leerVentaParaConfirmarEnTx(tx, ctx, ventaId);
+  const trimmed = motivo?.trim();
+  await registrarReposicionCancelacion(tx, ctx, {
+    ventaId,
+    motivo: trimmed && trimmed.length > 0 ? trimmed : REPOSICION_MOTIVO_DEFECTO,
+    lineas: (lineas?.lineas ?? []).map((l) => ({
+      productoId: l.productoId,
+      cantidad: l.cantidad,
+    })),
+  });
+
+  // 4. Audit BOTH reversals (sale flip + invoice annul), append-only, same tx.
   await registrarAuditVentaEnTx(
     tx,
     ctx,
     "CANCELAR",
-    input.id,
-    { estado: ESTADO_VENTA.BORRADOR },
+    ventaId,
+    { estado: ESTADO_VENTA.CONFIRMADA },
     { estado: ESTADO_VENTA.CANCELADA },
-    input.motivo?.trim() ? input.motivo.trim() : null,
+    trimmed && trimmed.length > 0 ? trimmed : REPOSICION_MOTIVO_DEFECTO,
+  );
+  await registrarAuditFacturaEnTx(
+    tx,
+    ctx,
+    factura.id,
+    { estado: "VIGENTE" },
+    { estado: "ANULADA" },
+    trimmed && trimmed.length > 0 ? trimmed : REPOSICION_MOTIVO_DEFECTO,
   );
 
-  return { ok: true, data: { id: input.id, estado: ESTADO_VENTA.CANCELADA } };
+  return { ok: true, data: { id: ventaId, estado: ESTADO_VENTA.CANCELADA } };
 }
 
 // --- List / Detail ---------------------------------------------------------

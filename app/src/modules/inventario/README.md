@@ -24,6 +24,34 @@ and the company-wide weighted-average cost.
 | Manual adjustment (`ajustar-inventario`) | Authorized signed-delta correction → row-locked stock change + `AJUSTE` movement + audit. **Never touches `costoPromedio`.** |
 | Listing (`listar-inventario`) | Branch-scoped, paginated, KPI-classified stock view. |
 | Purchase entry (`registrar-entrada-compra`) | **Implemented in fase-3-4b.** Realizes the reserved `InventoryEntryPort`: adds stock at the session branch, appends an `ENTRADA_COMPRA` movement carrying `compraId`, and updates the company-wide `costoPromedio`. |
+| Sale exit + reposition (`registrar-salidas-venta`) | **Implemented in fase-5c pr5c3.** Realizes the reserved `InventoryExitPort`: `registrarSalidasVenta` debits branch stock with one `SALIDA_VENTA` movement per line (carrying `ventaId`) and HARD-blocks a shortage; `registrarReposicionCancelacion` reverses a confirmed-sale cancel with one `REPOSICION_CANCELACION` movement. **Neither touches `costoPromedio`.** |
+
+## Sale exit and reposition (fase-5c pr5c3)
+
+`registrarSalidasVenta` is the authoritative post-consume stock block invoked as
+the FINAL step of `confirmarVenta`, and `registrarReposicionCancelacion` is its
+inverse on confirmed-sale cancellation. Both run inside the caller's `PrismaTx`
+(no nested transaction) and are **throw-on-reject** — a shortage aborts the whole
+confirm (un-burning the NCF) or the whole cancel, never a partial apply.
+
+`registrarSalidasVentaEnTx` mirrors the three-phase entry ordering so a concurrent
+confirm and exit on the same branch can never deadlock:
+
+1. **Ownership guard** — every distinct product must belong to `ctx.empresaId`;
+   the first foreign product throws `INVENTARIO_NO_ENCONTRADO` before any lock,
+   so a cross-tenant batch persists zero changes.
+2. **Hard availability** — per product in **ascending product-id order**, upsert +
+   `SELECT ... FOR UPDATE` the session branch's row and throw
+   `STOCK_INSUFICIENTE_BLOQUEO` `{productoId, available, requested}` when the
+   aggregate requested exceeds the now-locked quantity. Negatives are impossible.
+3. **Debit** — per line, reduce the running balance and append one immutable
+   `SALIDA_VENTA` movement (negative delta, before/after, `ventaId`) + audit.
+
+`registrarReposicionCancelacionEnTx` keeps the SAME lock order but the delta is
+positive (stock is credited), requires a **non-empty reason**, appends one
+`REPOSICION_CANCELACION` movement per line, and performs no availability check.
+Duplicate product lines accumulate into the aggregate check while still emitting
+one movement per line.
 
 ## Purchase entry and the cost boundary (fase-3-4b)
 
@@ -62,16 +90,16 @@ nuevoCP = (stockTotalEmpresa × CP + valorRecibidoSinITBIS) / (stockTotalEmpresa
 ### Cost boundary (unchanged)
 
 The manual-adjustment path (`ajustarStockEnTx`) still never reads or writes
-`costoPromedio`; only the purchase-entry path does. Locked by
-`ajustar-inventario.test.ts` and the integration "manual-adjustment never mutates
-costoPromedio" case.
+`costoPromedio`; nor does the sale exit or the reposition batch — only the
+purchase-entry path does. Locked by `ajustar-inventario.test.ts` and the
+integration "manual-adjustment never mutates costoPromedio" + "exit/reposition
+never mutates costoPromedio" cases.
 
 ## Seams still unimplemented
 
-Sale exit, return, and transfer callers and the `TipoReposicion` flows remain
-declared-only typed seams (`InventoryExitPort` etc.). fase-3-4b implements the
-**purchase entry** path only; the compra `recibirCompra` orchestration that
-consumes this port is a separate PR.
+Return and transfer callers and the `TipoReposicion` (VENDIBLE/DANADO) flows
+remain declared-only typed seams. fase-5c implements the **sale exit** and its
+**cancellation reposition**; the return/transfer consumers land in later fases.
 
 ## Tests
 
@@ -83,7 +111,10 @@ consumes this port is a separate PR.
 - **Integration (real DB `systemfact_test`, container `sf-postgres:5433`)**:
   `src/integration/inventario-entrada-compra.integration.test.ts` (unseen product,
   all-branch denominator, duplicate-line single cost, cross-tenant rejection,
-  mid-line rollback, cost boundary) and
+  mid-line rollback, cost boundary),
+  `src/integration/salidas-venta.integration.test.ts` (batch debit + `ventaId`,
+  mid-batch shortage rollback, concurrent-exit serialization, reposition restore +
+  reason, cross-tenant + cost boundary) and
   `src/integration/seed-retencion-config.integration.test.ts`.
 
 See `openspec/changes/fase-3-4b-compra-inventario/` for the contract and design.
