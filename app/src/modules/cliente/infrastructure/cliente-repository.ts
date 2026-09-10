@@ -6,7 +6,11 @@ import {
 import { Decimal } from "decimal.js";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
-import type { Cliente, TipoCliente } from "../domain/cliente";
+import {
+  CONSUMIDOR_FINAL,
+  type Cliente,
+  type TipoCliente,
+} from "../domain/cliente";
 import {
   CLIENTE_IDENTIFICACION_DUPLICADA,
   ClienteDomainError,
@@ -115,6 +119,63 @@ function buildWhere(
     where.OR = or;
   }
   return where;
+}
+
+/**
+ * Fetch the per-empresa Consumidor Final row, if any. This is the one internal
+ * read that INTENTIONALLY surfaces an `esConsumidorFinal=true` row (operator
+ * list/detail hide it via `buildWhere`). It backs the reserved 5b get-or-create
+ * seam and the idempotent seed: both key on `(empresaId, esConsumidorFinal)`,
+ * which the DB partial unique `cliente_consumidor_final_uk` caps at one row.
+ */
+export async function consumidorFinalEnEmpresa(
+  tx: PrismaTx,
+  empresaId: number,
+): Promise<Cliente | null> {
+  const row = await tx.cliente.findFirst({
+    where: { empresaId, esConsumidorFinal: true },
+    select: clienteSelect,
+  });
+  return row === null ? null : toDominioCliente(row);
+}
+
+/**
+ * Insert the frozen Consumidor Final row for one empresa. Takes `empresaId`
+ * directly (not a full TenantCtx) because the CF is a provisioning write that
+ * has no acting-user semantics: the seed runs under a maintenance connection
+ * and the reserved 5b sale seam runs inside an already-scoped transaction. The
+ * DB partial unique `cliente_consumidor_final_uk` (empresaId WHERE
+ * esConsumidorFinal) is the real guard; its P2002 maps to the duplicate code so
+ * a concurrent caller collapses to "already exists" and the seam refetches.
+ */
+export async function crearConsumidorFinalEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+): Promise<Cliente> {
+  try {
+    const row = await tx.cliente.create({
+      data: {
+        empresaId,
+        nombre: CONSUMIDOR_FINAL.nombre,
+        telefono: CONSUMIDOR_FINAL.telefono,
+        direccion: CONSUMIDOR_FINAL.direccion,
+        identificacionFiscal: CONSUMIDOR_FINAL.identificacionFiscal,
+        tipoCliente: CONSUMIDOR_FINAL.tipoCliente,
+        esConsumidorFinal: CONSUMIDOR_FINAL.esConsumidorFinal,
+        creditoHabilitado: CONSUMIDOR_FINAL.creditoHabilitado,
+        limiteCredito: CONSUMIDOR_FINAL.limiteCredito,
+        plazoCreditoDias: CONSUMIDOR_FINAL.plazoCreditoDias,
+        activo: true,
+      },
+      select: clienteSelect,
+    });
+    return toDominioCliente(row);
+  } catch (err) {
+    if (esDuplicadoFiscal(err)) {
+      throw new ClienteDomainError(CLIENTE_IDENTIFICACION_DUPLICADA);
+    }
+    throw err;
+  }
 }
 
 /**

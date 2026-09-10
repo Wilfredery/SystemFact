@@ -151,3 +151,24 @@ export function validarReglasCredito(input: {
     });
   }
 }
+
+/**
+ * Frozen shape of the per-empresa Consumidor Final row (cliente R2, design
+ * "CF provisioning"). This is the SINGLE source of truth so the seed script
+ * and the reserved 5b `getOrCreateConsumidorFinalEnTx` seam stay byte-identical
+ * and cannot drift. `limiteCredito` is the `Decimal(12,2)`-compatible STRING
+ * (never a float); the fiscal ID is null by design — CF is the only row
+ * allowed to omit it. `esConsumidorFinal=true` makes the DB partial unique
+ * `cliente_consumidor_final_uk` enforce "exactly one per empresa".
+ */
+export const CONSUMIDOR_FINAL = {
+  nombre: "Consumidor Final",
+  telefono: "N/A",
+  direccion: "N/A",
+  identificacionFiscal: null,
+  tipoCliente: TIPO_CLIENTE.MINORISTA,
+  esConsumidorFinal: true,
+  creditoHabilitado: false,
+  limiteCredito: LIMITE_CREDITO_DEFAULT,
+  plazoCreditoDias: PLAZO_CREDITO_DIAS_DEFAULT,
+} as const;
