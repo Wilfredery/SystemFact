@@ -108,7 +108,7 @@ async function checkPreconditions(): Promise<void> {
 async function login(page: Page): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Usuario").fill(E2E_USER);
-  await page.getByLabel("Password").fill(E2E_PASSWORD);
+  await page.getByLabel("Contraseña").fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await page.waitForURL("**/dashboard", { timeout: 20_000 });
 }
