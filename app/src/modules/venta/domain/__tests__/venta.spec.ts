@@ -89,10 +89,15 @@ describe("error catalog (R-V13)", () => {
       "NCF_SEC_INEXISTENTE",
       "FACTURA_AUTOMATICA_FALTA",
       "STOCK_INSUFICIENTE_BLOQUEO",
+      // Phase 5d return codes (task 1.5: 601-604)
+      "DEVOLUCION_FUERA_DE_PLAZO",
+      "CANTIDAD_EXCEDE_ORIGINAL",
+      "FACTURA_NO_VIGENTE",
+      "VENTA_NO_CONFIRMADA",
     ];
     for (const code of codes) {
       expect(messageFor(code)).toMatch(/\S/);
     }
-    expect(codes).toHaveLength(19);
+    expect(codes).toHaveLength(23);
   });
 });

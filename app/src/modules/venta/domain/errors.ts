@@ -11,8 +11,12 @@
  * the venta spec. Phase 5b pinned 14 codes (12 venta-owned + 2 re-emitted
  * `CLIENTE_*`). Phase 5c confirm (R-V15) adds five more — three NCF-consume codes
  * mapped from the ncf-engine port, one emission-gate code and one hard-stock
- * block — for a frozen catalog of **19**. `STOCK_INSUFICIENTE` and
- * `NCF_UMBRAL_90` stay WARNING channels, never catalog error codes.
+ * block — for a frozen catalog of **19**. Phase 5d devolucion adds four B04
+ * codes (`DEVOLUCION_FUERA_DE_PLAZO`, `CANTIDAD_EXCEDE_ORIGINAL`,
+ * `FACTURA_NO_VIGENTE`, `VENTA_NO_CONFIRMADA` — tasks 1.5, codes 601–604) for a
+ * frozen catalog of **23**.
+ * `STOCK_INSUFICIENTE` and `NCF_UMBRAL_90` stay WARNING channels, never catalog
+ * error codes.
  */
 
 // --- Stable code catalog (R-V13) ---
@@ -46,6 +50,14 @@ export const FACTURA_AUTOMATICA_FALTA = "FACTURA_AUTOMATICA_FALTA";
 // WARNING). The authoritative debit lands in 5c Phase 3 (`registrarSalidasVenta`);
 // the early HARD preview in confirm rejects with this same code before any burn.
 export const STOCK_INSUFICIENTE_BLOQUEO = "STOCK_INSUFICIENTE_BLOQUEO";
+// Phase 5d devolucion codes (tasks 1.5, codes 601–604). Four codes for the
+// B04 Nota de Crédito lifecycle: return window, cumulative cap, invoice state
+// and sale state. These live in the SAME frozen venta catalog (single error
+// contract, R-V13 extension).
+export const DEVOLUCION_FUERA_DE_PLAZO = "DEVOLUCION_FUERA_DE_PLAZO"; // 601
+export const CANTIDAD_EXCEDE_ORIGINAL = "CANTIDAD_EXCEDE_ORIGINAL"; // 602
+export const FACTURA_NO_VIGENTE = "FACTURA_NO_VIGENTE"; // 603
+export const VENTA_NO_CONFIRMADA = "VENTA_NO_CONFIRMADA"; // 604
 
 export type VentaErrorCode =
   | typeof VENTA_NO_ENCONTRADO
@@ -66,7 +78,11 @@ export type VentaErrorCode =
   | typeof NCF_VENCIDA
   | typeof NCF_SEC_INEXISTENTE
   | typeof FACTURA_AUTOMATICA_FALTA
-  | typeof STOCK_INSUFICIENTE_BLOQUEO;
+  | typeof STOCK_INSUFICIENTE_BLOQUEO
+  | typeof DEVOLUCION_FUERA_DE_PLAZO
+  | typeof CANTIDAD_EXCEDE_ORIGINAL
+  | typeof FACTURA_NO_VIGENTE
+  | typeof VENTA_NO_CONFIRMADA;
 
 const MESSAGES: Record<VentaErrorCode, string> = {
   [VENTA_NO_ENCONTRADO]: "La venta no existe en la empresa",
@@ -95,6 +111,14 @@ const MESSAGES: Record<VentaErrorCode, string> = {
     "La empresa no tiene facturación automática; active el parámetro para confirmar la venta",
   [STOCK_INSUFICIENTE_BLOQUEO]:
     "No hay suficiente existencias en la sucursal para confirmar la venta",
+  [DEVOLUCION_FUERA_DE_PLAZO]:
+    "La devolución excede el plazo máximo permitido desde la fecha de la factura",
+  [CANTIDAD_EXCEDE_ORIGINAL]:
+    "La cantidad a devolver excede la cantidad original de la factura",
+  [FACTURA_NO_VIGENTE]:
+    "La factura original no está vigente; no se puede devolver",
+  [VENTA_NO_CONFIRMADA]:
+    "La venta original no está confirmada; no se puede devolver",
 };
 
 export function messageFor(code: VentaErrorCode): string {
