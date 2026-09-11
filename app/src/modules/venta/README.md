@@ -66,7 +66,7 @@ deferred to 5c when the board is available.
 | application | `application/venta-service.ts` | `crearVenta` / `actualizarVenta` (full line-replace + client swap, guarded) / `cancelarVenta` / `listarVentas` / `obtenerVenta`. Thin orchestration; no `prisma.*`. |
 | application | `application/preparar-lineas-venta.ts` | One shared pre-write pipeline for both saves: line/rate/validity validation, server-side admin-only discount gate, `DESC_MAX` cap, computation and stock warnings. No writes. |
 | application | `application/resolver-cliente-venta.ts` | R-V10 client resolver: `null` → Consumidor Final via `getOrCreateConsumidorFinalEnTx` (5a seam); given id → empresa-scoped active check → typed `CLIENTE_*` codes. |
-| application | `application/venta-guardado.ts` | Composed sale-save result type (`VentaErrorCode` ∪ `DESC_MAX_FALTANTE`) so the domain catalog stays frozen at its 14 codes. |
+| application | `application/venta-guardado.ts` | Composed sale-save result type (`VentaErrorCode` ∪ `DESC_MAX_FALTANTE`) so the domain catalog stays frozen at its pinned codes (19 from 5c). |
 | infrastructure | `infrastructure/venta-repository.ts` | The only Prisma surface: tenant/branch-scoped reads, guarded `updateMany` (estado + `updatedAt` token), replace-lines, audit append, branch stock reads, role check. |
 | infrastructure | `infrastructure/config-repository.ts` | venta-config `leerConfigVentaEnTx`: hard-fail `DESC_MAX` read (R-C1); owns the `DESC_MAX_FALTANTE` code and `VentaConfigError`. |
 | http | `http/{validations,actions}.ts` | Zod transport boundary + thin `"use server"` actions wrapped in `withTenantTransaction` (ESLint `server-action-must-wrap-tenant`); CRUD roles Administrador + Operador. |
@@ -80,6 +80,44 @@ deferred to 5c when the board is available.
 - **Security (R-V8/R-V11):** the Administrador-only discount and every role check
   run server-side inside the transaction; the tenant/branch filters pin both
   `empresaId` and `sucursalId`; zod is never the authorization authority.
+
+## 5c Phase 2 — confirmation + FACTURA emission (`pr5c2`)
+
+`confirmarVenta` now closes the draft → confirmed → invoiced loop for one sale,
+reaching the previously-reserved `CONFIRMADA` state. Salidas (stock debit /
+movements), reposition, confirmed-cancel, UI and `seed:ncf` land in 5c phases 3–4
+— so a confirmed sale has its invoice but no `SALIDA_VENTA` rows yet.
+
+| Layer | File | Responsibility (5c PR-2) |
+|---|---|---|
+| domain | `domain/venta.ts` | + pure `transicionarConfirmar` (accepts only `BORRADOR` → `CONFIRMADA`; total switch, no default) next to the existing `puedeEditar`/`puedeCancelar`. |
+| domain | `domain/errors.ts` | Error catalog extended **14 → 19** (R-V13): `NCF_AGOTADA`, `NCF_VENCIDA`, `NCF_SEC_INEXISTENTE` (mapped from the ncf-engine consume port), `FACTURA_AUTOMATICA_FALTA` (emission gate) and `STOCK_INSUFICIENTE_BLOQUEO` (hard confirm block). `STOCK_INSUFICIENTE` and `NCF_UMBRAL_90` stay **warnings, never error codes**. |
+| application | `application/confirmar-venta.ts` | The confirm orchestration (order below). Runs in the caller's `tx`; never opens one. |
+| application | `application/elegibilidad-ncf.ts` | Pure `seleccionarTipoNcf`: B01 only for a non-CF client with a valid 9-digit RNC (via `shared/domain/fiscal-id.ts`, D6 unchanged); else B02, **fail-closed on degenerate data**. |
+| infrastructure | `infrastructure/venta-repository.ts` | Branch-guarded confirm read (`leerVentaParaConfirmarEnTx`), guarded `BORRADOR→CONFIRMADA` flip, `FACTURA(VIGENTE)` write, and the atomic `FAC-%06d` allocator. |
+
+- **Fixed confirm order (design "Interfaces", R-V15):** read + branch guard →
+  `transicionarConfirmar` → emission gate (`facturaAutomatica`, R-F1) → NCF-type
+  eligibility (R-F2) → **HARD stock preview** → `consumirNcfEnTx` → guarded flip
+  (`UPDATE ... WHERE estado='BORRADOR'` + affected-rows check) → recomputed
+  `FACTURA` → *(PR-3 salidas)* → warnings. The emission gate and the hard preview
+  run **before** the consume so `FACTURA_AUTOMATICA_FALTA` /
+  `STOCK_INSUFICIENTE_BLOQUEO` / a missing range return without burning a number.
+- **Throw-after-consume convention:** a failure **after** a successful consume MUST
+  `throw`, never `return` — that is how the burned sequence, the flip and the
+  invoice roll back together (transaction abort). Concretely: the guarded flip
+  losing a race `throw`s `CONCURRENCIA_CONFLICTO` (un-burning the loser's number),
+  so a double-click yields a single `CONFIRMADA` + exactly one `FACTURA` + one NCF.
+  Pre-consume rejections are the only ones returned as typed `VentaResult`.
+- **Invoice re-derivation (R-F3/R-F4):** `subtotalGravado`/`subtotalExento`/`itbis`
+  are recomputed from the persisted `DETALLE_VENTA` bases (16% counts as gravado),
+  `total = subtotal − descuento + itbis` holds exactly in `Decimal(12,2)`; the
+  `FAC-%06d` correlativo is allocated under an `EMPRESA` row-lock, and the allocator
+  restores the sucursal GUC in a `finally` **before** the branch-scoped invoice
+  write. Emission persists **no** paid/balance column — payment state stays derived
+  (ADR-017).
+- **Idempotency:** a retry on an already-`CONFIRMADA` sale returns `VENTA_INMUTABLE`
+  (a stable no-op) with its existing invoice intact and no second NCF burn.
 
 ## Domain layer (pure — ADR-013)
 

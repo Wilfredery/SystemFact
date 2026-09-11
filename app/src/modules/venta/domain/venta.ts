@@ -74,6 +74,32 @@ export function puedeCancelar(estado: EstadoVenta): boolean {
   return estado === ESTADO_VENTA.BORRADOR;
 }
 
+/**
+ * R-V15 — the pure confirmation gate. `confirmarVenta` MUST only flip a draft, so
+ * `transicionarConfirmar` accepts `BORRADOR` and yields `CONFIRMADA`; every other
+ * state is refused. It is a total switch over `EstadoVenta` with NO default, so
+ * the compiler forces an explicit branch if the persisted enum ever grows — the
+ * same fail-loud discipline as `estadoVentaDesdeDb`. Unknown DB states never reach
+ * here: the repository maps the raw value through `estadoVentaDesdeDb` first,
+ * which throws for any value outside the enum (spec R-V13 "Unknown stored state
+ * fails loud"). The application layer turns `permitido: false` into `VENTA_INMUTABLE`.
+ */
+export type ResultadoTransicionarConfirmar =
+  | { readonly permitido: true; readonly estado: typeof ESTADO_VENTA.CONFIRMADA }
+  | { readonly permitido: false; readonly estadoActual: EstadoVenta };
+
+export function transicionarConfirmar(
+  estado: EstadoVenta,
+): ResultadoTransicionarConfirmar {
+  switch (estado) {
+    case ESTADO_VENTA.BORRADOR:
+      return { permitido: true, estado: ESTADO_VENTA.CONFIRMADA };
+    case ESTADO_VENTA.CONFIRMADA:
+    case ESTADO_VENTA.CANCELADA:
+      return { permitido: false, estadoActual: estado };
+  }
+}
+
 // --- Discount vocabulary (frozen per ERD v4.7: no second money column) ---
 
 /** Authorization form of a discount. Zero discount is always `PORCENTAJE`/`0.00`. */
