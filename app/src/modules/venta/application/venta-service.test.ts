@@ -16,6 +16,11 @@ import {
   actualizarVentaBorradorEnTx,
   reemplazarLineasVentaEnTx,
   cancelarVentaEnTx,
+  cancelarVentaConfirmadaEnTx,
+  anularFacturaDeVentaEnTx,
+  leerFacturaVigenteDeVentaEnTx,
+  registrarAuditFacturaEnTx,
+  leerVentaParaConfirmarEnTx,
   leerVentaEnTx,
   listarVentasEnTx,
   contarVentasEnTx,
@@ -32,6 +37,7 @@ import {
   DESC_MAX_FALTANTE,
 } from "../infrastructure/config-repository";
 import { getOrCreateConsumidorFinalEnTx } from "@/modules/cliente/application/consumidor-final";
+import { registrarReposicionCancelacion } from "@/modules/inventario/application/registrar-salidas-venta";
 import { DESCUENTO_TIPO, type Descuento } from "../domain/venta";
 import {
   crearVenta,
@@ -49,6 +55,11 @@ jest.mock("../infrastructure/venta-repository", () => ({
   actualizarVentaBorradorEnTx: jest.fn(),
   reemplazarLineasVentaEnTx: jest.fn(),
   cancelarVentaEnTx: jest.fn(),
+  cancelarVentaConfirmadaEnTx: jest.fn(),
+  anularFacturaDeVentaEnTx: jest.fn(),
+  leerFacturaVigenteDeVentaEnTx: jest.fn(),
+  registrarAuditFacturaEnTx: jest.fn(),
+  leerVentaParaConfirmarEnTx: jest.fn(),
   leerVentaEnTx: jest.fn(),
   listarVentasEnTx: jest.fn(),
   contarVentasEnTx: jest.fn(),
@@ -58,6 +69,15 @@ jest.mock("../infrastructure/venta-repository", () => ({
   leerStockSucursalEnTx: jest.fn(),
   leerClienteParaVentaEnTx: jest.fn(),
   tieneRolPermitidoEnTx: jest.fn(),
+}));
+
+// Stub the inventario exit/reposition port so this unit test never pulls in the
+// repository (and the `import.meta`-bearing generated Prisma client) it mocks
+// away elsewhere. Confirmed-cancel reposition is exercised against the real DB in
+// `src/integration/cancelar-confirmada.integration.test.ts`.
+jest.mock("@/modules/inventario/application/registrar-salidas-venta", () => ({
+  registrarReposicionCancelacion: jest.fn(),
+  registrarSalidasVenta: jest.fn(),
 }));
 
 // Keep the REAL VentaConfigError / code (so `instanceof` in preparar works);
@@ -117,6 +137,14 @@ beforeEach(() => {
   (crearVentaConLineasEnTx as jest.Mock).mockResolvedValue({ id: 500 });
   (actualizarVentaBorradorEnTx as jest.Mock).mockResolvedValue({ updated: true });
   (cancelarVentaEnTx as jest.Mock).mockResolvedValue({ cancelled: true });
+  // Confirmed-cancel path defaults (only exercised by the CONFIRMADA tests).
+  (cancelarVentaConfirmadaEnTx as jest.Mock).mockResolvedValue({ cancelled: true });
+  (leerFacturaVigenteDeVentaEnTx as jest.Mock).mockResolvedValue({ id: 80 });
+  (anularFacturaDeVentaEnTx as jest.Mock).mockResolvedValue({ annulled: true });
+  (leerVentaParaConfirmarEnTx as jest.Mock).mockResolvedValue({
+    lineas: [{ productoId: 10, cantidad: "5.000" }],
+  });
+  (registrarReposicionCancelacion as jest.Mock).mockResolvedValue([]);
 });
 
 describe("crearVenta", () => {
@@ -259,6 +287,37 @@ describe("cancelarVenta", () => {
     (leerVentaEnTx as jest.Mock).mockResolvedValue(null);
     const r = await cancelarVenta(tx, ctx, { id: 7 });
     expect(!r.ok && r.code).toBe("VENTA_NO_ENCONTRADO");
+  });
+
+  it("CONFIRMADA: guarded flip + invoice annul + reposition + both audits (R-V16)", async () => {
+    (leerVentaEnTx as jest.Mock).mockResolvedValue({ id: 7, estado: "CONFIRMADA", sucursalId: 2, clienteId: 99, updatedAt: new Date() });
+    const r = await cancelarVenta(tx, ctx, { id: 7, motivo: "Devolución cliente" });
+    expect(r.ok === true && r.data.estado).toBe("CANCELADA");
+    // Confirmed flip, not the draft predicate; the VIGENTE invoice is annulled once.
+    expect(cancelarVentaEnTx).not.toHaveBeenCalled();
+    expect(cancelarVentaConfirmadaEnTx).toHaveBeenCalledTimes(1);
+    expect(anularFacturaDeVentaEnTx).toHaveBeenCalledTimes(1);
+    expect(registrarReposicionCancelacion).toHaveBeenCalledTimes(1);
+    // Both reversals are audited (Venta CANCELAR + Factura ANULAR).
+    expect(registrarAuditVentaEnTx).toHaveBeenCalledTimes(1);
+    expect(registrarAuditFacturaEnTx).toHaveBeenCalledTimes(1);
+  });
+
+  it("CONFIRMADA flip race loses → CONCURRENCIA_CONFLICTO, no annul/reposition/audit", async () => {
+    (leerVentaEnTx as jest.Mock).mockResolvedValue({ id: 7, estado: "CONFIRMADA", sucursalId: 2, clienteId: 99, updatedAt: new Date() });
+    (cancelarVentaConfirmadaEnTx as jest.Mock).mockResolvedValue({ cancelled: false });
+    const r = await cancelarVenta(tx, ctx, { id: 7 });
+    expect(!r.ok && r.code).toBe("CONCURRENCIA_CONFLICTO");
+    expect(anularFacturaDeVentaEnTx).not.toHaveBeenCalled();
+    expect(registrarReposicionCancelacion).not.toHaveBeenCalled();
+    expect(registrarAuditFacturaEnTx).not.toHaveBeenCalled();
+  });
+
+  it("CONFIRMADA but no VIGENTE invoice throws post-flip (rolls the cancel back)", async () => {
+    (leerVentaEnTx as jest.Mock).mockResolvedValue({ id: 7, estado: "CONFIRMADA", sucursalId: 2, clienteId: 99, updatedAt: new Date() });
+    (leerFacturaVigenteDeVentaEnTx as jest.Mock).mockResolvedValue(null);
+    await expect(cancelarVenta(tx, ctx, { id: 7 })).rejects.toMatchObject({ code: "CONCURRENCIA_CONFLICTO" });
+    expect(registrarReposicionCancelacion).not.toHaveBeenCalled();
   });
 });
 

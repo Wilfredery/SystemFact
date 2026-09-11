@@ -28,6 +28,7 @@ import {
   CANTIDAD_INVALIDA,
   INVENTARIO_NO_ENCONTRADO,
   STOCK_INSUFICIENTE,
+  STOCK_INSUFICIENTE_BLOQUEO,
   InventarioDomainError,
 } from "../domain/errors";
 import { calcularNuevoCostoPromedioPorValor } from "../domain/costo-promedio";
@@ -566,6 +567,309 @@ export async function registrarEntradasCompraEnTx(
       input.motivo,
     );
     resultados.push({ ...mov, productoId: linea.productoId });
+  }
+  return resultados;
+}
+
+// ---------------------------------------------------------------------------
+// 5c Phase 3 — confirmed-sale exit batch and cancellation reposition batch.
+// Both mirror the three-phase purchase-entry ordering (ownership guard →
+// deterministic ascending-product-id row locks → per-line movement + audit)
+// but operate on the session branch's INVENTARIO row directly and NEVER touch
+// `costoPromedio` (exits and reposition are replenish-only; average cost is a
+// purchase-path concern — inventario spec "Schema and cost boundary").
+// ---------------------------------------------------------------------------
+
+/** One sale-exit / reposition line: which product and how many units. */
+export interface SalidaVentaLinea {
+  readonly productoId: number;
+  /** Positive magnitude (a `Decimal(12,3)` string); the sign is the port's job. */
+  readonly cantidad: string;
+}
+
+export interface RegistrarSalidasVentaEnTxInput {
+  readonly ventaId: number;
+  /** Audit reason carried on every generated movement. */
+  readonly motivo: string;
+  readonly lineas: readonly SalidaVentaLinea[];
+}
+
+/** A movement applied for one exit/reposition line, tagged with its product. */
+export interface SalidaMovimientoAplicado extends MovimientoAplicado {
+  readonly productoId: number;
+}
+
+/**
+ * Upsert the session branch's INVENTARIO row for a product (zero row if new)
+ * and lock it with `SELECT ... FOR UPDATE`, returning the authoritative current
+ * quantity. The lock is held to the end of the transaction, so the running
+ * balance maintained by the batch is race-free against a concurrent confirm
+ * touching the SAME product/branch.
+ */
+async function bloquearInventarioSucursalEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  productoId: number,
+): Promise<{ inventarioId: number; cantidad: Decimal }> {
+  const ensured = await tx.inventario.upsert({
+    where: {
+      sucursalId_productoId: { sucursalId: ctx.sucursalId, productoId },
+    },
+    update: {},
+    create: {
+      sucursalId: ctx.sucursalId,
+      productoId,
+      cantidad: new Prisma.Decimal(0),
+    },
+    select: { id: true },
+  });
+
+  const locked = await tx.$queryRaw<{ cantidad: Prisma.Decimal }[]>`
+    SELECT "cantidad" FROM "INVENTARIO" WHERE "id" = ${ensured.id} FOR UPDATE`;
+  if (locked.length === 0) {
+    throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, {
+      inventarioId: ensured.id,
+    });
+  }
+  return {
+    inventarioId: ensured.id,
+    cantidad: new Decimal(locked[0].cantidad.toString()),
+  };
+}
+
+/** Append-only audit row for a sale-exit / reposition stock change. */
+async function registrarMovimientoEnAuditoria(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  inventarioId: number,
+  anterior: string,
+  nueva: string,
+  motivo: string,
+): Promise<void> {
+  await tx.movimientoAuditoria.create({
+    data: {
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      usuarioId: ctx.usuarioId,
+      fechaHora: new Date(),
+      accion: AccionAuditoria.ACTUALIZAR,
+      entidad: "Inventario",
+      idEntidad: String(inventarioId),
+      valorAnterior: anterior,
+      valorNuevo: nueva,
+      motivo,
+    },
+  });
+}
+
+/** Aggregate requested quantity per product; reject a non-positive magnitude. */
+function agruparDemandaPositiva(
+  lineas: readonly SalidaVentaLinea[],
+): Map<number, Decimal> {
+  const porProducto = new Map<number, Decimal>();
+  for (const l of lineas) {
+    const q = new Decimal(l.cantidad);
+    if (!q.isPositive()) {
+      throw new InventarioDomainError(CANTIDAD_INVALIDA, { productoId: l.productoId });
+    }
+    porProducto.set(
+      l.productoId,
+      (porProducto.get(l.productoId) ?? new Decimal(0)).plus(q),
+    );
+  }
+  return porProducto;
+}
+
+/**
+ * Atomic confirmed-sale exit batch. Every effect rolls back with the caller's
+ * confirm transaction (no nested transaction). Three ordered phases guarantee
+ * that a shortage rejects the WHOLE batch and changes NOTHING:
+ *
+ *   A. TENANT GUARD — each distinct product must belong to `ctx.empresaId`; the
+ *      first foreign product throws `INVENTARIO_NO_ENCONTRADO` before any lock
+ *      or write, so a cross-tenant batch persists zero changes.
+ *   B. HARD AVAILABILITY — per product in ASCENDING product-id order (same lock
+ *      order as the entry batch, so a concurrent confirm and exit can never
+ *      deadlock): upsert + `SELECT ... FOR UPDATE` the branch row and reject
+ *      with `STOCK_INSUFICIENTE_BLOQUEO` {productoId, available, requested}
+ *      when the aggregate requested exceeds the (now-locked) availability.
+ *      Negatives are impossible by construction.
+ *   C. DEBIT — per line, reduce the running balance, append ONE immutable
+ *      `SALIDA_VENTA` movement carrying `ventaId` (negative delta, before/after)
+ *      and the audit row. `costoPromedio` is never read or written here.
+ *
+ * @throws InventarioDomainError(INVENTARIO_NO_ENCONTRADO | STOCK_INSUFICIENTE_BLOQUEO | CANTIDAD_INVALIDA)
+ */
+export async function registrarSalidasVentaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  input: RegistrarSalidasVentaEnTxInput,
+): Promise<SalidaMovimientoAplicado[]> {
+  if (input.lineas.length === 0) return [];
+
+  const demanda = agruparDemandaPositiva(input.lineas);
+  const idsOrdenados = [...demanda.keys()].sort((a, b) => a - b);
+
+  // Phase A: ownership guard for every product before any lock/write.
+  for (const productoId of idsOrdenados) {
+    const posee = await productoExisteEnEmpresa(tx, ctx.empresaId, productoId);
+    if (!posee) {
+      throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, { productoId });
+    }
+  }
+
+  // Phase B: lock the branch row and HARD-verify availability (throw on reject).
+  const bloqueados = new Map<number, { inventarioId: number; restante: Decimal }>();
+  for (const productoId of idsOrdenados) {
+    const { inventarioId, cantidad } = await bloquearInventarioSucursalEnTx(
+      tx,
+      ctx,
+      productoId,
+    );
+    const pedida = demanda.get(productoId)!;
+    if (cantidad.lessThan(pedida)) {
+      throw new InventarioDomainError(STOCK_INSUFICIENTE_BLOQUEO, {
+        productoId,
+        available: cantidad.toFixed(3),
+        requested: pedida.toFixed(3),
+      });
+    }
+    bloqueados.set(productoId, { inventarioId, restante: cantidad });
+  }
+
+  // Phase C: per-line debit + one SALIDA_VENTA movement + audit. Never cost.
+  const resultados: SalidaMovimientoAplicado[] = [];
+  for (const linea of input.lineas) {
+    const estado = bloqueados.get(linea.productoId)!;
+    const pedida = new Decimal(linea.cantidad);
+    const anterior = estado.restante;
+    const nueva = anterior.minus(pedida);
+    // Belt-and-suspenders: Phase B proved the aggregate fits; a negative here
+    // would be a logic defect, so block rather than persist an impossible row.
+    if (nueva.isNegative()) {
+      throw new InventarioDomainError(STOCK_INSUFICIENTE_BLOQUEO, {
+        productoId: linea.productoId,
+        available: anterior.toFixed(3),
+        requested: pedida.toFixed(3),
+      });
+    }
+    estado.restante = nueva;
+
+    await tx.inventario.update({
+      where: { id: estado.inventarioId },
+      data: { cantidad: new Prisma.Decimal(nueva) },
+    });
+    await tx.movimientoInventario.create({
+      data: {
+        inventarioId: estado.inventarioId,
+        ventaId: input.ventaId,
+        tipoMovimiento: TipoMovimiento.SALIDA_VENTA,
+        motivo: input.motivo,
+        cantidadMovida: new Prisma.Decimal(pedida.negated()),
+        cantidadAnterior: new Prisma.Decimal(anterior),
+        cantidadNueva: new Prisma.Decimal(nueva),
+        usuarioId: ctx.usuarioId,
+        fecha: new Date(),
+      },
+    });
+    await registrarMovimientoEnAuditoria(
+      tx,
+      ctx,
+      estado.inventarioId,
+      anterior.toFixed(3),
+      nueva.toFixed(3),
+      input.motivo,
+    );
+    resultados.push({
+      inventoryId: estado.inventarioId,
+      previousQuantity: anterior.toFixed(3),
+      newQuantity: nueva.toFixed(3),
+      productoId: linea.productoId,
+    });
+  }
+  return resultados;
+}
+
+/**
+ * Cancellation reposition batch — the inverse of {@link registrarSalidasVentaEnTx}
+ * for a confirmed sale being cancelled. Same ownership guard and the SAME
+ * ascending-product-id lock order (so a cancel can never deadlock against a
+ * concurrent confirm on the same branch), but the delta is POSITIVE: stock is
+ * credited and one `REPOSICION_CANCELACION` movement carrying `ventaId`
+ * (before/after) is appended per line. There is no availability check — adding
+ * stock cannot go negative. Like the exit path it NEVER touches `costoPromedio`
+ * (replenish only). A reposition with zero lines is a no-op.
+ *
+ * @throws InventarioDomainError(INVENTARIO_NO_ENCONTRADO | CANTIDAD_INVALIDA)
+ */
+export async function registrarReposicionCancelacionEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  input: RegistrarSalidasVentaEnTxInput,
+): Promise<SalidaMovimientoAplicado[]> {
+  if (input.lineas.length === 0) return [];
+
+  const acumulada = agruparDemandaPositiva(input.lineas);
+  const idsOrdenados = [...acumulada.keys()].sort((a, b) => a - b);
+
+  // Phase A: ownership guard before any lock/write.
+  for (const productoId of idsOrdenados) {
+    const posee = await productoExisteEnEmpresa(tx, ctx.empresaId, productoId);
+    if (!posee) {
+      throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, { productoId });
+    }
+  }
+
+  // Phase B/C: lock each branch row (ascending), then credit + movement per line.
+  const bloqueados = new Map<number, { inventarioId: number; actual: Decimal }>();
+  for (const productoId of idsOrdenados) {
+    const { inventarioId, cantidad } = await bloquearInventarioSucursalEnTx(
+      tx,
+      ctx,
+      productoId,
+    );
+    bloqueados.set(productoId, { inventarioId, actual: cantidad });
+  }
+
+  const resultados: SalidaMovimientoAplicado[] = [];
+  for (const linea of input.lineas) {
+    const estado = bloqueados.get(linea.productoId)!;
+    const cantidad = new Decimal(linea.cantidad);
+    const anterior = estado.actual;
+    const nueva = anterior.plus(cantidad);
+    estado.actual = nueva;
+
+    await tx.inventario.update({
+      where: { id: estado.inventarioId },
+      data: { cantidad: new Prisma.Decimal(nueva) },
+    });
+    await tx.movimientoInventario.create({
+      data: {
+        inventarioId: estado.inventarioId,
+        ventaId: input.ventaId,
+        tipoMovimiento: TipoMovimiento.REPOSICION_CANCELACION,
+        motivo: input.motivo,
+        cantidadMovida: new Prisma.Decimal(cantidad),
+        cantidadAnterior: new Prisma.Decimal(anterior),
+        cantidadNueva: new Prisma.Decimal(nueva),
+        usuarioId: ctx.usuarioId,
+        fecha: new Date(),
+      },
+    });
+    await registrarMovimientoEnAuditoria(
+      tx,
+      ctx,
+      estado.inventarioId,
+      anterior.toFixed(3),
+      nueva.toFixed(3),
+      input.motivo,
+    );
+    resultados.push({
+      inventoryId: estado.inventarioId,
+      previousQuantity: anterior.toFixed(3),
+      newQuantity: nueva.toFixed(3),
+      productoId: linea.productoId,
+    });
   }
   return resultados;
 }

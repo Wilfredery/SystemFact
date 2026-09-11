@@ -65,19 +65,19 @@ Start: engine merged. Finish: `confirmarVenta` runs preview→NCF→flip→FACTU
 
 Start: confirm emits invoices. Finish: full R-V15 loop incl. post-consume rollback; R-V16 cancel. Verification: `pnpm jest src/modules/inventario src/modules/venta`. Rollback: revert PR-3; confirm loses only its final step.
 
-- [ ] 3.1 RED integration `app/src/modules/inventario/application/__tests__/salidas-venta.spec.ts`: 2-product debit → branch rows debited once, exactly two `SALIDA_VENTA` movements with `ventaId` + before/after quantities (inventario "Batch debit with movements").
-- [ ] 3.2 RED integration: line 2 of 3 exceeds availability → whole batch throws, no stock change/movement for ANY line, typed `STOCK_INSUFICIENTE_BLOQUEO` {productoId, available, requested} (inventario "Mid-batch shortage rolls back whole batch").
-- [ ] 3.3 RED integration (row-lock fixture, entry-path three-phase precedent): stock 10, two parallel 6-unit batches → exactly one commits, loser blocked, stock never negative (inventario "Concurrent exits serialize").
-- [ ] 3.4 RED integration: post-consume shortage (salidas throws after flip+FACTURA+NCF) → transaction aborts: no NCF advance, no invoice, no movement, sale stays `BORRADOR` (R-V15 "Post-consume stock rejection rolls everything back").
-- [ ] 3.5 GREEN: create `app/src/modules/inventario/application/registrar-salidas-venta.ts` + infrastructure batch — dedupe IDs, ascending `productoId` lock order, ownership verify, upsert+lock branch row, throw-on-reject, one movement per line, audit; never touches `costoPromedio`. (~150 lines)
-- [ ] 3.6 GREEN: wire `registrarSalidasVenta` as the FINAL step of `confirmarVenta` (after FACTURA, before warnings) per the fixed order; preview stays the early reject.
-- [ ] 3.7 RED integration: reposition batch restores exact quantity via one `REPOSICION_CANCELACION` movement, non-empty reason, average cost unchanged (inventario "Reposition restores exact quantity"). GREEN: `registrarReposicionCancelacion` mirroring exit locks, positive delta. (~90 lines)
-- [ ] 3.8 RED integration `application/__tests__/cancelar-confirmada.spec.ts`: confirmed sale (5 units, branch A1) → sale `CANCELADA`, invoice `VIGENTE→ANULADA` (never deleted), stock +5, `secuenciaActual` NOT rewound, audit rows for both states (R-V16 "Cancel restocks and annuls fiscally" — 608 semantics).
-- [ ] 3.9 RED integration: repeated cancel of `CANCELADA` → guarded stable error, zero effects; draft cancel path unchanged (R-V16 via R-V4).
-- [ ] 3.10 RED integration: cross-tenant inventory/movement access → not-found/forbidden without disclosure, no row changed (inventario "Cross-tenant access"); assert no migration exists and cost boundaries hold (inventario "Schema and cost boundary updated").
-- [ ] 3.11 GREEN: extend `application/venta-service.ts` + repository — `cancelarVenta` confirmed branch: guarded `CONFIRMADA→CANCELADA`, invoice annul, reposition batch, audit. (~110 lines)
-- [ ] 3.12 Docs: 608 cancel semantics note in venta README. (~20 lines)
-- [ ] 3.13 Verify `pnpm jest src/modules/inventario src/modules/venta` green; commit PR-3 (code+tests+docs one commit). (~0 diff)
+- [x] 3.1 RED integration `app/src/modules/inventario/application/__tests__/salidas-venta.spec.ts`: 2-product debit → branch rows debited once, exactly two `SALIDA_VENTA` movements with `ventaId` + before/after quantities (inventario "Batch debit with movements").
+- [x] 3.2 RED integration: line 2 of 3 exceeds availability → whole batch throws, no stock change/movement for ANY line, typed `STOCK_INSUFICIENTE_BLOQUEO` {productoId, available, requested} (inventario "Mid-batch shortage rolls back whole batch").
+- [x] 3.3 RED integration (row-lock fixture, entry-path three-phase precedent): stock 10, two parallel 6-unit batches → exactly one commits, loser blocked, stock never negative (inventario "Concurrent exits serialize").
+- [x] 3.4 RED integration: post-consume shortage (salidas throws after flip+FACTURA+NCF) → transaction aborts: no NCF advance, no invoice, no movement, sale stays `BORRADOR` (R-V15 "Post-consume stock rejection rolls everything back").
+- [x] 3.5 GREEN: create `app/src/modules/inventario/application/registrar-salidas-venta.ts` + infrastructure batch — dedupe IDs, ascending `productoId` lock order, ownership verify, upsert+lock branch row, throw-on-reject, one movement per line, audit; never touches `costoPromedio`. (~150 lines)
+- [x] 3.6 GREEN: wire `registrarSalidasVenta` as the FINAL step of `confirmarVenta` (after FACTURA, before warnings) per the fixed order; preview stays the early reject.
+- [x] 3.7 RED integration: reposition batch restores exact quantity via one `REPOSICION_CANCELACION` movement, non-empty reason, average cost unchanged (inventario "Reposition restores exact quantity"). GREEN: `registrarReposicionCancelacion` mirroring exit locks, positive delta. (~90 lines)
+- [x] 3.8 RED integration `application/__tests__/cancelar-confirmada.spec.ts`: confirmed sale (5 units, branch A1) → sale `CANCELADA`, invoice `VIGENTE→ANULADA` (never deleted), stock +5, `secuenciaActual` NOT rewound, audit rows for both states (R-V16 "Cancel restocks and annuls fiscally" — 608 semantics).
+- [x] 3.9 RED integration: repeated cancel of `CANCELADA` → guarded stable error, zero effects; draft cancel path unchanged (R-V16 via R-V4).
+- [x] 3.10 RED integration: cross-tenant inventory/movement access → not-found/forbidden without disclosure, no row changed (inventario "Cross-tenant access"); assert no migration exists and cost boundaries hold (inventario "Schema and cost boundary updated").
+- [x] 3.11 GREEN: extend `application/venta-service.ts` + repository — `cancelarVenta` confirmed branch: guarded `CONFIRMADA→CANCELADA`, invoice annul, reposition batch, audit. (~110 lines)
+- [x] 3.12 Docs: 608 cancel semantics note in venta README. (~20 lines)
+- [x] 3.13 Verify `pnpm jest src/modules/inventario src/modules/venta` green; commit PR-3 (code+tests+docs one commit). (~0 diff)
 
 ## Phase 4: PR-4 — UI + Seed + DESC_MAX + E2E (`pr5c4`)
 

@@ -119,6 +119,29 @@ movements), reposition, confirmed-cancel, UI and `seed:ncf` land in 5c phases 3�
 - **Idempotency:** a retry on an already-`CONFIRMADA` sale returns `VENTA_INMUTABLE`
   (a stable no-op) with its existing invoice intact and no second NCF burn.
 
+## 5c Phase 3 — salidas wiring + confirmed-sale cancellation (`pr5c3`)
+
+The confirm loop is now complete and a `CONFIRMADA` sale can be cancelled with
+full fiscal reversal. No new error codes were added (the catalog stays at **19**).
+
+| Layer | File | Responsibility (5c PR-3) |
+|---|---|---|
+| application | `application/confirmar-venta.ts` | The reserved step 9 is now `registrarSalidasVenta` — the **authoritative** post-consume stock block: it debits the branch and throws `STOCK_INSUFICIENTE_BLOQUEO` on a shortage, rolling back the flip + invoice + NCF. The step-5 hard preview remains as an early fast-fail. |
+| domain | `domain/venta.ts` | + pure `transicionarCancelarConfirmada` (accepts ONLY `CONFIRMADA` → `CANCELADA`; total switch, no default) alongside `transicionarConfirmar`/`puedeCancelar` — kept distinct so the draft-cancel path never reaches the confirmed side effects. |
+| application | `application/venta-service.ts` | `cancelarVenta` now routes on the read state: draft (`BORRADOR`, R-V4, unchanged) vs confirmed (`CONFIRMADA`, guarded flip + invoice annul + reposition + audits). |
+| infrastructure | `infrastructure/venta-repository.ts` | Guarded `CONFIRMADA→CANCELADA` flip, guarded `VIGENTE→ANULADA` invoice annul, and the `Factura`/`ANULAR` audit row. |
+
+- **608 cancellation semantics (R-V16):** cancelling a `CONFIRMADA` sale runs, in
+  ONE tenant transaction: guarded `CONFIRMADA → CANCELADA` → the linked `FACTURA`
+  flips `VIGENTE → ANULADA` (**never deleted**, so the "unused" NCF stays reported in
+  Formato 608, D4) → `registrarReposicionCancelacion` restores branch stock with one
+  `REPOSICION_CANCELACION` movement per line → an audit row for **each** reversal
+  (`Venta/CANCELAR` + `Factura/ANULAR`). The consumed NCF is **never rewound**
+  (`secuenciaActual` stays advanced). A repeat cancel of an already-`CANCELADA` sale
+  is the stable `VENTA_INMUTABLE`; a lost flip race is `CONCURRENCIA_CONFLICTO`. Once
+  the sale flip wins, every later failure **throws** (never returns) so a confirmed
+  sale can never persist half-reversed.
+
 ## Domain layer (pure — ADR-013)
 
 `domain/` imports NOTHING from Next.js / React / Prisma / Supabase. All money and

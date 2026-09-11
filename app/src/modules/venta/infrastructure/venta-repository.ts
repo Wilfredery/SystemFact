@@ -692,6 +692,108 @@ export async function leerFacturaDeVentaEnTx(
   };
 }
 
+// --- confirmed-sale cancellation (5c Phase 3) ------------------------------
+
+/**
+ * Guarded `CONFIRMADA → CANCELADA` flip — the confirmed-cancel optimistic lock
+ * (R-V16). ONE `UPDATE ... WHERE id AND empresaId AND sucursalId AND
+ * estado='CONFIRMADA'` with an affected-rows check. Zero rows means either a
+ * concurrent cancel already flipped the sale or a confirm raced it; the caller
+ * returns `CONCURRENCIA_CONFLICTO` and touches neither the invoice nor stock.
+ * Distinct from the draft `cancelarVentaEnTx` (which pins `estado='BORRADOR'`),
+ * so the two cancel paths can never cross-apply.
+ */
+export async function cancelarVentaConfirmadaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  ventaId: number,
+): Promise<{ cancelled: boolean }> {
+  const result = await tx.venta.updateMany({
+    where: {
+      id: ventaId,
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      estado: EstadoVenta.CONFIRMADA,
+    },
+    data: { estado: EstadoVenta.CANCELADA },
+  });
+  return { cancelled: result.count > 0 };
+}
+
+/**
+ * Guarded `VIGENTE → ANULADA` annul of the sale's emitted invoice (R-V16, 608
+ * semantics — the document is NEVER deleted, only annulled; "unused" NCF keeps
+ * fiscal reporting). One `UPDATE ... WHERE ventaId AND empresaId AND sucursalId
+ * AND estado='VIGENTE'` with an affected-rows check. A zero-row result means the
+ * invoice is not in a VIGENTE state (already ANULADA/CANCELADA) — the caller MUST
+ * NOT double-annul and instead aborts, so the sale flip rolls back with it.
+ */
+export async function anularFacturaDeVentaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  ventaId: number,
+): Promise<{ annulled: boolean }> {
+  const result = await tx.factura.updateMany({
+    where: {
+      ventaId,
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      estado: EstadoDocumento.VIGENTE,
+    },
+    data: { estado: EstadoDocumento.ANULADA },
+  });
+  return { annulled: result.count > 0 };
+}
+
+/**
+ * Append-only audit row for the invoice state change (the sale flip has its own
+ * `Venta` audit). Mirrors `registrarAuditVentaEnTx` but with `entidad: "Factura"`
+ * and the `ANULAR` action, so a reviewer sees both reversals in 608 terms.
+ */
+export async function registrarAuditFacturaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  facturaId: number,
+  valoresAnteriores: Record<string, unknown> | null,
+  valoresNuevos: Record<string, unknown> | null,
+  motivo: string | null = null,
+): Promise<void> {
+  await tx.movimientoAuditoria.create({
+    data: {
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      usuarioId: ctx.usuarioId,
+      fechaHora: new Date(),
+      accion: AccionAuditoria.ANULAR,
+      entidad: "Factura",
+      idEntidad: String(facturaId),
+      valorAnterior:
+        valoresAnteriores === null ? null : JSON.stringify(valoresAnteriores),
+      valorNuevo:
+        valoresNuevos === null ? null : JSON.stringify(valoresNuevos),
+      motivo,
+    },
+  });
+}
+
+/** The sale's VIGENTE invoice id (for the cancel annul + audit), or `null`. */
+export async function leerFacturaVigenteDeVentaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  ventaId: number,
+): Promise<{ id: number } | null> {
+  const row = await tx.factura.findFirst({
+    where: {
+      ventaId,
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      estado: EstadoDocumento.VIGENTE,
+    },
+    select: { id: true },
+  });
+  return row;
+}
+
 // --- listing / detail ---
 
 export interface ListarVentasFiltro {

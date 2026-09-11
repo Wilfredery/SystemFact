@@ -9,6 +9,7 @@ import {
   CANTIDAD_INVALIDA,
   MOTIVO_VACIO,
   STOCK_INSUFICIENTE,
+  STOCK_INSUFICIENTE_BLOQUEO,
   INVENTARIO_NO_ENCONTRADO,
   NO_AUTORIZADO,
   LIMITE_PAGINACION_INVALIDO,
@@ -24,6 +25,7 @@ describe("inventario error catalog", () => {
       CANTIDAD_INVALIDA,
       MOTIVO_VACIO,
       STOCK_INSUFICIENTE,
+      STOCK_INSUFICIENTE_BLOQUEO,
       INVENTARIO_NO_ENCONTRADO,
       NO_AUTORIZADO,
       LIMITE_PAGINACION_INVALIDO,
@@ -46,6 +48,7 @@ describe("inventario error catalog", () => {
     expect(messageFor(CANTIDAD_INVALIDA)).toContain("cantidad");
     expect(messageFor(MOTIVO_VACIO)).toContain("motivo");
     expect(messageFor(STOCK_INSUFICIENTE)).toContain("negativo");
+    expect(messageFor(STOCK_INSUFICIENTE_BLOQUEO)).toContain("salida de venta");
     expect(messageFor(INVENTARIO_NO_ENCONTRADO)).toContain("inventario");
     expect(messageFor(NO_AUTORIZADO)).toContain("permisos");
   });

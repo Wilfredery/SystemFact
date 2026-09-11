@@ -22,6 +22,7 @@
 import { Decimal } from "decimal.js";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
+import { registrarSalidasVenta } from "@/modules/inventario/application/registrar-salidas-venta";
 import {
   consumirNcfEnTx,
   NcfConsumoError,
@@ -229,7 +230,19 @@ export async function confirmarVenta(
   };
   const { id: facturaId } = await crearFacturaEnTx(tx, ctx, factura);
 
-  // 9. (PR-3) registrarSalidasVenta — the authoritative stock debit + movements.
+  // 9. AUTHORITATIVE stock exit (R-V15, PR-3). This is the real post-consume
+  //    block: `registrarSalidasVenta` debits the branch rows, writes one
+  //    `SALIDA_VENTA` movement per line, and THROWS `STOCK_INSUFICIENTE_BLOQUEO`
+  //    on any shortage (or `INVENTARIO_NO_ENCONTRADO` on a foreign product). A
+  //    throw here — AFTER the flip, invoice and consume — aborts the whole
+  //    transaction, un-burning the NCF and discarding the invoice/debit, so the
+  //    sale stays `BORRADOR` (spec "Post-consume stock rejection rolls everything
+  //    back"). The step-5 hard preview is only an early fast-fail; THIS is the
+  //    authoritative gate because it locks the rows and applies the batch atomically.
+  await registrarSalidasVenta(tx, ctx, {
+    ventaId: venta.id,
+    lineas: venta.lineas.map((l) => ({ productoId: l.productoId, cantidad: l.cantidad })),
+  });
   void secuencial; // reserved for later audit/nota flows; the invoice carries the NCF.
 
   const warnings: ConfirmarVentaWarning[] =

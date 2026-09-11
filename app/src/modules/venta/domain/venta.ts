@@ -100,6 +100,34 @@ export function transicionarConfirmar(
   }
 }
 
+/**
+ * R-V16 — the pure confirmed-cancellation gate. Cancelling a sale that was
+ * already `CONFIRMADA` flips it to `CANCELADA` and reverses its fiscal/inventory
+ * side effects; this gate therefore accepts ONLY `CONFIRMADA`. It is a total
+ * switch with NO default (same fail-loud discipline as `transicionarConfirmar`).
+ *
+ * Crucially this is DISTINCT from `puedeCancelar` (the DRAFT-cancel predicate,
+ * `BORRADOR`-only): the draft path never reaches the confirmed-cancel side
+ * effects and the confirmed path never mutates a draft (spec R-V16 "Draft-cancel
+ * path untouched"). `cancelarVenta` routes on the read state to one gate or the
+ * other; a `CANCELADA` sale is refused here as a stable terminal error.
+ */
+export type ResultadoTransicionarCancelarConfirmada =
+  | { readonly permitido: true; readonly estado: typeof ESTADO_VENTA.CANCELADA }
+  | { readonly permitido: false; readonly estadoActual: EstadoVenta };
+
+export function transicionarCancelarConfirmada(
+  estado: EstadoVenta,
+): ResultadoTransicionarCancelarConfirmada {
+  switch (estado) {
+    case ESTADO_VENTA.CONFIRMADA:
+      return { permitido: true, estado: ESTADO_VENTA.CANCELADA };
+    case ESTADO_VENTA.BORRADOR:
+    case ESTADO_VENTA.CANCELADA:
+      return { permitido: false, estadoActual: estado };
+  }
+}
+
 // --- Discount vocabulary (frozen per ERD v4.7: no second money column) ---
 
 /** Authorization form of a discount. Zero discount is always `PORCENTAJE`/`0.00`. */

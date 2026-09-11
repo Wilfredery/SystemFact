@@ -18,6 +18,12 @@
 export const CANTIDAD_INVALIDA = "CANTIDAD_INVALIDA";
 export const MOTIVO_VACIO = "MOTIVO_VACIO";
 export const STOCK_INSUFICIENTE = "STOCK_INSUFICIENTE";
+// Hard block on a confirmed-sale exit batch (fase-5c). Distinct from the
+// manual-adjustment `STOCK_INSUFICIENTE`: the sale-exit batch MUST throw (never
+// partial-apply) so the whole confirm transaction — including the already-burnt
+// NCF — rolls back together. The same stable string the venta catalog pins under
+// R-V15/`STOCK_INSUFICIENTE_BLOQUEO`; the inventario module owns the throw.
+export const STOCK_INSUFICIENTE_BLOQUEO = "STOCK_INSUFICIENTE_BLOQUEO";
 export const INVENTARIO_NO_ENCONTRADO = "INVENTARIO_NO_ENCONTRADO";
 export const NO_AUTORIZADO = "NO_AUTORIZADO";
 export const LIMITE_PAGINACION_INVALIDO = "LIMITE_PAGINACION_INVALIDO";
@@ -29,6 +35,7 @@ export type InventarioErrorCode =
   | typeof CANTIDAD_INVALIDA
   | typeof MOTIVO_VACIO
   | typeof STOCK_INSUFICIENTE
+  | typeof STOCK_INSUFICIENTE_BLOQUEO
   | typeof INVENTARIO_NO_ENCONTRADO
   | typeof NO_AUTORIZADO
   | typeof LIMITE_PAGINACION_INVALIDO
@@ -41,6 +48,7 @@ export const INVENTARIO_ERROR_CODES: readonly InventarioErrorCode[] = [
   CANTIDAD_INVALIDA,
   MOTIVO_VACIO,
   STOCK_INSUFICIENTE,
+  STOCK_INSUFICIENTE_BLOQUEO,
   INVENTARIO_NO_ENCONTRADO,
   NO_AUTORIZADO,
   LIMITE_PAGINACION_INVALIDO,
@@ -55,6 +63,8 @@ const MESSAGES: Readonly<Record<InventarioErrorCode, string>> = {
   [MOTIVO_VACIO]: "El motivo del ajuste es obligatorio.",
   [STOCK_INSUFICIENTE]:
     "El ajuste dejaría el stock en negativo; la cantidad disponible es insuficiente.",
+  [STOCK_INSUFICIENTE_BLOQUEO]:
+    "No hay existencias suficientes en la sucursal; la salida de venta se bloqueó.",
   [INVENTARIO_NO_ENCONTRADO]: "El inventario no existe en la empresa o sucursal.",
   [NO_AUTORIZADO]: "No tiene permisos para realizar esta acción.",
   [LIMITE_PAGINACION_INVALIDO]: "El límite de paginación debe estar entre 1 y 100.",
