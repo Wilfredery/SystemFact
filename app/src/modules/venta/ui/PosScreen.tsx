@@ -1,19 +1,21 @@
 "use client";
 
 /**
- * POS screen — fase 5b draft engine (spec R-V14, design "UI totals").
+ * POS screen — fase 5b draft engine + fase 5c confirm control (spec R-V14/R-V15).
  *
  * Ephemeral cart + live fiscal preview computed client-side by the SAME pure
  * domain calculators the server uses; saving delegates to the PR-2 server
  * actions, which always recompute authoritatively inside a tenant transaction.
- * The screen intentionally renders NO confirm control — confirmation, NCF
- * consumption and inventory debit are fase 5c scope.
+ * Confirming a BORRADOR (R-V15) flips it to CONFIRMADA and emits its VIGENTE
+ * invoice with a consumed NCF; the NCF_UMBRAL_90 threshold renders as a
+ * non-blocking banner. The screen still renders NO payment control (Fase 6).
  */
 
 import { useEffect, useMemo, useState } from "react";
 import {
   actualizarVentaAction,
   cancelarVentaAction,
+  confirmarVentaAction,
   crearVentaAction,
   obtenerVentaAction,
   listarVentasAction,
@@ -58,8 +60,10 @@ export function PosScreen({ esAdmin }: { esAdmin: boolean }) {
   const [descuento, setDescuento] = useState<Descuento>(DESCUENTO_CERO);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [confirmandoId, setConfirmandoId] = useState<number | null>(null);
   const [mensaje, setMensaje] = useState<Mensaje>(null);
   const [warnings, setWarnings] = useState<readonly AvisoStock[]>([]);
+  const [avisoNcf, setAvisoNcf] = useState<string | null>(null);
   const [borradores, setBorradores] = useState<readonly BorradorFila[]>([]);
   const [listaCargando, setListaCargando] = useState(true);
 
@@ -73,11 +77,17 @@ export function PosScreen({ esAdmin }: { esAdmin: boolean }) {
   ): void {
     if (r.ok) {
       // Map the raw DB state through the fail-loud domain mapper (never trust a
-      // bare string) before the enum compare — spec R-V13.
+      // bare string) before the enum compare — spec R-V13. The list keeps
+      // BORRADOR (draft engine) AND CONFIRMADA (5c confirm seam) rows and drops
+      // CANCELADA rows: a cancelled sale has no actionable state in the POS.
       setBorradores(
         r.data.items
           .map((i) => ({ ...i, estado: estadoVentaDesdeDb(i.estado) }))
-          .filter((i) => i.estado === ESTADO_VENTA.BORRADOR),
+          .filter(
+            (i) =>
+              i.estado === ESTADO_VENTA.BORRADOR ||
+              i.estado === ESTADO_VENTA.CONFIRMADA,
+          ),
       );
     }
     setListaCargando(false);
@@ -182,8 +192,29 @@ export function PosScreen({ esAdmin }: { esAdmin: boolean }) {
       setMensaje({ kind: "error", code: r.error.code, text: r.error.message });
       return;
     }
-    setMensaje({ kind: "ok", text: `Draft #${id} cancelled.` });
+    setMensaje({ kind: "ok", text: `Sale #${id} cancelled.` });
     void recargarBorradores();
+  }
+
+  async function confirmarBorrador(id: number) {
+    // Single-flight guard: the button is also disabled, but a double event in
+    // the same render cycle must never fire a second consume (R-V15).
+    if (confirmandoId !== null) return;
+    setConfirmandoId(id);
+    setMensaje(null);
+    setAvisoNcf(null);
+    const r = await confirmarVentaAction({ id });
+    if (r.ok) {
+      setMensaje({
+        kind: "ok",
+        text: `Sale #${r.data.id} confirmed — invoice ${r.data.ncf}.`,
+      });
+      if (r.data.ncfWarning !== null) setAvisoNcf(r.data.ncfWarning);
+      void recargarBorradores();
+    } else {
+      setMensaje({ kind: "error", code: r.error.code, text: r.error.message });
+    }
+    setConfirmandoId(null);
   }
 
   return (
@@ -192,8 +223,8 @@ export function PosScreen({ esAdmin }: { esAdmin: boolean }) {
         Point of sale
       </h1>
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
-        Build a cart and save it as a draft. Confirmation and fiscal documents are
-        enabled in a later phase.
+        Build a cart and save it as a draft, then confirm it to emit its fiscal
+        invoice (NCF). Payments arrive in a later phase.
       </p>
 
       {mensaje !== null && (
@@ -211,6 +242,22 @@ export function PosScreen({ esAdmin }: { esAdmin: boolean }) {
           )}
           {mensaje.text}
         </p>
+      )}
+
+      {avisoNcf !== null && (
+        <div
+          role="alert"
+          aria-label="NCF range warning"
+          className="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950"
+        >
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+            NCF range at 90% — {avisoNcf}
+          </p>
+          <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+            The current sequence range is nearly exhausted; request a new range
+            before confirmation becomes blocked.
+          </p>
+        </div>
       )}
 
       {warnings.length > 0 && (
@@ -286,8 +333,10 @@ export function PosScreen({ esAdmin }: { esAdmin: boolean }) {
         items={borradores}
         cargando={listaCargando}
         editandoId={editandoId}
+        confirmandoId={confirmandoId}
         onLoad={(id) => void cargarBorrador(id)}
         onCancel={(id) => void cancelarBorrador(id)}
+        onConfirm={(id) => void confirmarBorrador(id)}
       />
     </main>
   );

@@ -16,6 +16,8 @@
     "seed:retencion": "tsx tools/scripts/seed-retencion-config.ts",
     "seed:cliente": "tsx tools/scripts/seed-consumidor-final.ts",
     "seed:venta": "tsx tools/scripts/seed-venta-config.ts",
+    "seed:ncf": "tsx tools/scripts/seed-ncf.ts",
+    "e2e": "playwright test",
     "rls:diagnose": "tsx scripts/diagnose-rls.ts",
     "rls:deep-check": "tsx scripts/deep-check-rls.ts",
     "rls:inspect-columns": "tsx scripts/inspect-columns.ts"
@@ -36,6 +38,7 @@
     "@babel/plugin-transform-export-namespace-from": "^7.29.7",
     "@babel/plugin-transform-modules-commonjs": "^7.29.7",
     "@babel/preset-typescript": "^7.29.7",
+    "@playwright/test": "^1.57.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",

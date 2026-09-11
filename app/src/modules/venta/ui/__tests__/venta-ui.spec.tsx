@@ -28,6 +28,7 @@ jest.mock("@/modules/venta/http/actions", () => ({
   crearVentaAction: jest.fn(),
   actualizarVentaAction: jest.fn(),
   cancelarVentaAction: jest.fn(),
+  confirmarVentaAction: jest.fn(),
   listarVentasAction: jest.fn(),
   obtenerVentaAction: jest.fn(),
 }));
@@ -194,6 +195,7 @@ describe("PosScreen (R-V14)", () => {
             descuento: "4.00",
             clienteNombre: CONSUMIDOR_FINAL_LABEL,
             usuarioNombre: "Ana",
+            ncf: null,
           },
         ],
         total: 1,
@@ -208,7 +210,8 @@ describe("PosScreen (R-V14)", () => {
     expect(screen.getByRole("button", { name: "Cancel draft 9" })).toBeEnabled();
   });
 
-  it("never renders a confirm control and wires 'my drafts' cancel", async () => {    mockListar.mockResolvedValue({
+  it("renders the confirm control for drafts but NO payment control, and wires 'my drafts' cancel", async () => {
+    mockListar.mockResolvedValue({
       ok: true,
       data: {
         items: [
@@ -220,6 +223,7 @@ describe("PosScreen (R-V14)", () => {
             descuento: "0.00",
             clienteNombre: "Consumidor Final",
             usuarioNombre: "Ana",
+            ncf: null,
           },
         ],
         total: 1,
@@ -230,8 +234,9 @@ describe("PosScreen (R-V14)", () => {
     mockCancelar.mockResolvedValue({ ok: true, data: { id: 3, estado: ESTADO_VENTA.CANCELADA } });
     await renderPos(false);
 
-    // R-V14: no confirmation/payment affordance may exist in 5b.
-    expect(screen.queryByRole("button", { name: /confirm/i })).toBeNull();
+    // R-V14 (5c slice): the confirm affordance now EXISTS for BORRADOR rows,
+    // while the payment boundary (Fase 6) still must hold.
+    expect(await screen.findByRole("button", { name: "Confirm draft 3" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /cobrar|payment/i })).toBeNull();
 
     const cancel = await screen.findByRole("button", { name: "Cancel draft 3" });

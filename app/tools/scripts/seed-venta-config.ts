@@ -43,13 +43,62 @@ export const DESC_MAX_SEED_VIGENCIA = {
 } as const;
 
 /**
+ * R-V17 (CodeRabbit F5, fase-5c task 4.3): pure, deterministic overlap probe.
+ * Returns the FIRST pair of validity windows that intersect (boundaries
+ * inclusive), or `null` when the set is overlap-free. Windows are half-open
+ * intervals on the instant axis; `[a0,a1] ∩ [b0,b1] ≠ ∅ ⟺ a0 ≤ b1 ∧ b0 ≤ a1`.
+ */
+export function detectarVentanasSuperpuestas<
+  T extends { vigenciaInicio: Date; vigenciaFin: Date },
+>(ventanas: readonly T[]): { a: T; b: T } | null {
+  for (let i = 0; i < ventanas.length; i++) {
+    for (let j = i + 1; j < ventanas.length; j++) {
+      const a = ventanas[i];
+      const b = ventanas[j];
+      if (
+        a.vigenciaInicio <= b.vigenciaFin &&
+        b.vigenciaInicio <= a.vigenciaFin
+      ) {
+        return { a, b };
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Seed the `DESC_MAX` key for ONE empresa: one active row in the canonical
  * window, other active duplicates demoted. Idempotent.
+ *
+ * R-V17 fail-fast guard: BEFORE repairing, the seed inspects the currently
+ * active non-canonical rows. Two or more of them OVERLAPPING each other is an
+ * indeterminate corruption the demote step cannot resolve without silently
+ * choosing a winner — the seed throws instead of repairing. A single stray
+ * (even one overlapping the canonical window) remains self-healable by the
+ * demote + canonical upsert below, preserving the R-C2 idempotency contract.
  */
 export async function seedVentaConfigParaEmpresa(
   db: PrismaClient,
   empresaId: number,
 ): Promise<void> {
+  const extraActivas = await db.configuracionEmpresa.findMany({
+    where: {
+      empresaId,
+      clave: DESC_MAX_CLAVE,
+      activa: true,
+      NOT: { vigenciaInicio: DESC_MAX_SEED_VIGENCIA.inicio },
+    },
+    select: { vigenciaInicio: true, vigenciaFin: true },
+  });
+  const conflicto = detectarVentanasSuperpuestas(extraActivas);
+  if (conflicto !== null) {
+    throw new Error(
+      `seed-venta-config: ventanas DESC_MAX activas superpuestas para empresa ${String(
+        empresaId,
+      )} (${conflicto.a.vigenciaInicio.toISOString()}–${conflicto.a.vigenciaFin.toISOString()} ∩ ${conflicto.b.vigenciaInicio.toISOString()}–${conflicto.b.vigenciaFin.toISOString()}); corríjalas antes de re-sembrar (R-V17 fail-fast)`,
+    );
+  }
+
   await db.$transaction([
     db.configuracionEmpresa.updateMany({
       where: {

@@ -60,11 +60,15 @@ the operation.
    its ratified precedent (`venta/ui/fecha.ts`) uses `Intl.DateTimeFormat` with
    an explicit `timeZone` as the AGENTS.md "equivalent". Phase 1 follows that
    precedent rather than adding `date-fns-tz` + lockfile churn.
-3. **Spec literal typo.** The change docs print `B02000000522` (12 chars) while
-   mandating "exactly 11 characters" + `%08d`. The authoritative, self-consistent
-   rule yields `B0200000522`; tests assert 11 chars. Recommend fixing the
-   literal (and the 9-digit dev seed range `100000000–100000999` in Phase 4,
-   which likewise exceeds `%08d`).
+3. **Spec literal typo — reconciled.** The change docs print `B02000000522`
+   (12 chars) while mandating "exactly 11 characters" + `%08d`. The
+   authoritative, self-consistent rule yields `B0200000522`; tests assert
+   11 chars. The 9-digit dev seed range (`100000000–100000999`) that phase-1
+   drafts proposed for Phase 4 likewise exceeds `%08d` — the landing seed
+   (`pnpm seed:ncf`) instead uses ranges consistent with the canonical
+   composition `B<tipo 2d><%08d>`: dev/local B01 `00000001–00000100` and
+   B02 `00000101–00000200` per empresa (deviation recorded in design.md;
+   SETUP-LOCAL.md §"Seed de secuencias NCF").
 
 ## Tests
 

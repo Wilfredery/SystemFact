@@ -82,6 +82,12 @@ export async function leerConfigVentaEnTx(
       vigenciaInicio: { lte: fecha },
       vigenciaFin: { gte: fecha },
     },
+    // R-V17 (CodeRabbit F5): overlapping validity windows resolve
+    // DETERMINISTICALLY — the row with the NEWEST `vigenciaInicio` wins. Without
+    // the order, `findFirst` is an arbitrary-row pick (no `ORDER BY` ⇒ Postgres
+    // gives no row-order guarantee). The seed (`seed-venta-config`) asserts zero
+    // overlap per key+empresa so this tie-break never hides corrupted config.
+    orderBy: { vigenciaInicio: "desc" },
     select: { valor: true },
   });
 
