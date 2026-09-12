@@ -1,0 +1,54 @@
+# ============================================================
+# Release — versión + CHANGELOG automáticos (release-please)
+#
+# Cómo funciona:
+#   1. Cada push a `master` (o sea, cada PR mergeado) hace que release-please
+#      relea los Conventional Commits y actualice UN "release PR" abierto:
+#      sube la versión en app/package.json y escribe app/CHANGELOG.md.
+#   2. Cuando el equipo mergea ese release PR, release-please crea el tag
+#      `vX.Y.Z` y publica el GitHub Release con las notas del changelog.
+#
+# Nunca escribe directo sobre master: todo pasa por PR revisado, así que la
+# protección de rama se mantiene (AGENTS.md § Git workflow).
+#
+# Nota sobre el token: los PRs creados con el GITHUB_TOKEN por defecto NO
+# disparan otros workflows (por eso el release PR no corre CI). Si querés que
+# el release PR pase por el pipeline, creá un secret RELEASE_PLEASE_TOKEN
+# (PAT fine-grained con contents:write + pull-requests:write); si no existe,
+# se usa el token por defecto y el release PR se mergea con revisión humana.
+#
+# Requisito de repositorio: Settings → Actions → General →
+# "Allow GitHub Actions to create and approve pull requests" = ON.
+# ============================================================
+name: Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Release PR / tag
+    runs-on: ubuntu-latest
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Summary
+        run: |
+          echo "release_created: ${{ steps.release.outputs.release_created }}"
+          echo "tag_name:        ${{ steps.release.outputs.tag_name }}"
+          echo "pr:              ${{ steps.release.outputs.pr }}"
