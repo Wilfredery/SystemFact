@@ -106,6 +106,18 @@ These rules derive from the canonical engineering constitution in the project do
   ends green but silently creates NO tag and NO release (happened on v0.2.0, PR #27 — tag had to
   be created manually). With squash, the commit message is the PR title ("chore(master): release
   systemfact X.Y.Z") and the tag is created automatically.
+- **Silent runs without a release PR (diagnose in this order):** if a brand-new `feat` commit
+  landed on `master` but release-please shows "success" with NO output ("release_created",
+  "tag_name", "pr" all empty), suspect a stuck state machine, not a missing commit:
+  1. Check open PRs: is there a `chore: release master` PR? If not present, then:
+  2. Labels on PAST release PRs (closed, `release-please--branches--*` base): label
+     `autorelease: pending` on any MERGED release PR makes every future run abort with
+     "There are untagged, merged release PRs outstanding - aborting". Happened after PR #27
+     (v0.2.0 was tagged manually, so the bot's own pending state could never resolve).
+  3. Unstick (documented escape hatch): if the tag/release exists manually, replace the label
+     with `autorelease: tagged` ("already processed"), then `workflow_dispatch` the Release
+     workflow and verify the new release PR appears (v0.3.0 via PR #31 after this fix).
+  Always report a stalled release run back to the user explicitly — silence is not success.
 - Commit subjects are the release input: `feat` → MINOR, `fix`/`perf` → PATCH, `!`/BREAKING
   CHANGE → MINOR while pre-1.0 (`bump-minor-pre-major`). Validate locally:
   `pnpm lint:commits --from origin/master --to HEAD`.
