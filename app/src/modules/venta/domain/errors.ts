@@ -13,8 +13,10 @@
  * mapped from the ncf-engine port, one emission-gate code and one hard-stock
  * block — for a frozen catalog of **19**. Phase 5d devolucion adds four B04
  * codes (`DEVOLUCION_FUERA_DE_PLAZO`, `CANTIDAD_EXCEDE_ORIGINAL`,
- * `FACTURA_NO_VIGENTE`, `VENTA_NO_CONFIRMADA` — tasks 1.5, codes 601–604) for a
- * frozen catalog of **23**.
+ * `FACTURA_NO_VIGENTE`, `VENTA_NO_CONFIRMADA` — tasks 1.5, codes 601–604) plus
+ * the R-D5 idempotency-gate code `DEVOLUCION_YA_REGISTRADA` (code 605, approved
+ * design amendment: an identical retried return returns 605 and never burns a
+ * second B04) for a frozen catalog of **24**.
  * `STOCK_INSUFICIENTE` and `NCF_UMBRAL_90` stay WARNING channels, never catalog
  * error codes.
  */
@@ -58,6 +60,11 @@ export const DEVOLUCION_FUERA_DE_PLAZO = "DEVOLUCION_FUERA_DE_PLAZO"; // 601
 export const CANTIDAD_EXCEDE_ORIGINAL = "CANTIDAD_EXCEDE_ORIGINAL"; // 602
 export const FACTURA_NO_VIGENTE = "FACTURA_NO_VIGENTE"; // 603
 export const VENTA_NO_CONFIRMADA = "VENTA_NO_CONFIRMADA"; // 604
+// Idempotency gate (R-D5 "Idempotent retry does not double-consume", approved
+// design amendment): an exact (productoId, cantidad, tipoReposicion) triple
+// already emitted on a prior VIGENTE NC of the same factura is a RETRY, not a
+// cumulative return — it must be rejected BEFORE any write or B04 burn.
+export const DEVOLUCION_YA_REGISTRADA = "DEVOLUCION_YA_REGISTRADA"; // 605
 
 export type VentaErrorCode =
   | typeof VENTA_NO_ENCONTRADO
@@ -82,7 +89,8 @@ export type VentaErrorCode =
   | typeof DEVOLUCION_FUERA_DE_PLAZO
   | typeof CANTIDAD_EXCEDE_ORIGINAL
   | typeof FACTURA_NO_VIGENTE
-  | typeof VENTA_NO_CONFIRMADA;
+  | typeof VENTA_NO_CONFIRMADA
+  | typeof DEVOLUCION_YA_REGISTRADA;
 
 const MESSAGES: Record<VentaErrorCode, string> = {
   [VENTA_NO_ENCONTRADO]: "La venta no existe en la empresa",
@@ -119,6 +127,8 @@ const MESSAGES: Record<VentaErrorCode, string> = {
     "La factura original no está vigente; no se puede devolver",
   [VENTA_NO_CONFIRMADA]:
     "La venta original no está confirmada; no se puede devolver",
+  [DEVOLUCION_YA_REGISTRADA]:
+    "La devolución ya fue registrada para esta factura; no se puede emitir una nota de crédito duplicada",
 };
 
 export function messageFor(code: VentaErrorCode): string {

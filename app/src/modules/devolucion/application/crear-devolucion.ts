@@ -15,6 +15,11 @@
  *   5. per product: cumulative read + `validarCantidadDevuelta` — considering
  *      BOTH prior NCs AND the sibling lines of this NC (same product may
  *      appear as VENDIBLE + DANADO lines)
+ *   5b. R-D5 idempotency gate (approved design amendment): an exact
+ *      (productoId, cantidad, tipoReposicion) triple already emitted on a prior
+ *      VIGENTE NC of this factura rejects the WHOLE call with
+ *      `DEVOLUCION_YA_REGISTRADA` before any write or B04 burn; a different
+ *      quantity for the same product stays legal (the cumulative cap decides)
  *   6. `calcularTotalesNotaCredito`             — R-D5 frozen math
  *   7. `consumirNcfEnTx(tx, ctx, "B04")`        — atomic NCF consume with the
  *      non-blocking `NCF_UMBRAL_90` warning
@@ -41,6 +46,7 @@
 
 import { Decimal } from "decimal.js";
 import {
+  DEVOLUCION_YA_REGISTRADA,
   FACTURA_NO_VIGENTE,
   LINEA_INVALIDA,
   LINEAS_VACIAS,
@@ -77,6 +83,7 @@ import {
 import {
   crearDetalleNotaCreditoEnTx,
   crearNotaCreditoEnTx,
+  existeDevolucionIdenticaEnTx,
   leerPriorNCsPorFacturaEnTx,
   leerStockSucursalEnTx,
   registrarAuditNotaCreditoEnTx,
@@ -118,7 +125,13 @@ export type DevolucionResult =
       readonly data: DevolucionOutput;
       readonly warnings?: readonly DevolucionWarning[];
     }
-  | { readonly ok: false; readonly code: DevolucionErrorCode; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly code: DevolucionErrorCode;
+      readonly message: string;
+      /** Minimal locator context; only the idempotency gate (605) populates it. */
+      readonly details?: { readonly facturaId: number; readonly productoId: number };
+    };
 
 function devolucionError(code: VentaErrorCode): DevolucionResult {
   return { ok: false, code, message: messageFor(code) };
@@ -204,6 +217,30 @@ export async function crearDevolucion(
       venta.factura.facturaId,
       idsDistintos,
     );
+
+    // R-D5 idempotency gate (approved design amendment, task 3.3): an exact
+    // (productoId, cantidad, tipoReposicion) triple already emitted on a
+    // prior VIGENTE NC of this factura is a RETRY, not a cumulative return —
+    // reject BEFORE the cap check, before any write and BEFORE the B04 burn.
+    // A different quantity for the same product still passes (task 3.1).
+    const repetida = await existeDevolucionIdenticaEnTx(
+      tx,
+      ctx,
+      venta.factura.facturaId,
+      input.lineas,
+    );
+    if (repetida !== null) {
+      return {
+        ok: false,
+        code: DEVOLUCION_YA_REGISTRADA,
+        message: messageFor(DEVOLUCION_YA_REGISTRADA),
+        details: {
+          facturaId: venta.factura.facturaId,
+          productoId: repetida.productoId,
+        },
+      };
+    }
+
     const acumulado = new Map<number, Decimal>(
       idsDistintos.map((productoId) => [
         productoId,

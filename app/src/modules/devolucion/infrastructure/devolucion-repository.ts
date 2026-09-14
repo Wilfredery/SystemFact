@@ -79,6 +79,54 @@ export async function leerPriorNCsPorFacturaEnTx(
   );
 }
 
+/**
+ * One return line from the transport — shape stays a plain triple so the
+ * idempotency reader can be called with the SAME lines the caller validated.
+ */
+export interface LineaRetornoReferencia {
+  readonly productoId: number;
+  readonly cantidad: string;
+  readonly tipoReposicion: TipoReposicion;
+}
+
+/**
+ * R-D5 idempotency gate (approved design amendment, task 3.3): an exact
+ * `(productoId, cantidad, tipoReposicion)` triple that was ALREADY emitted on a
+ * VIGENTE NC for this factura means the call is a RETRY, not a legal
+ * cumulative return — a distinct quantity for the same product stays legal
+ * (task 3.1). Runs INSIDE the caller's transaction (same tenant scoping as
+ * `leerPriorNCsPorFacturaEnTx`) and MUST be consulted BEFORE any write or B04
+ * burn so a retry consumes nothing.
+ *
+ * @returns the product id of the first matched triple, or `null` when every
+ *          requested line is new.
+ */
+export async function existeDevolucionIdenticaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  facturaId: number,
+  lineas: readonly LineaRetornoReferencia[],
+): Promise<{ readonly productoId: number } | null> {
+  if (lineas.length === 0) return null;
+  const hit = await tx.detalleNotaCredito.findFirst({
+    where: {
+      notaCredito: {
+        empresaId: ctx.empresaId,
+        sucursalId: ctx.sucursalId,
+        facturaOriginalId: facturaId,
+        estado: EstadoDocumento.VIGENTE,
+      },
+      OR: lineas.map((l) => ({
+        productoId: l.productoId,
+        cantidad: new Prisma.Decimal(l.cantidad),
+        tipoReposicion: l.tipoReposicion,
+      })),
+    },
+    select: { productoId: true },
+  });
+  return hit === null ? null : { productoId: hit.productoId };
+}
+
 /** One branch stock snapshot after the locking read. */
 export interface StockBloqueadoSucursal {
   readonly productoId: number;
