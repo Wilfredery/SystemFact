@@ -20,6 +20,7 @@ import {
   Prisma,
   AccionAuditoria,
   TipoMovimiento,
+  TipoReposicion,
 } from "@/generated/prisma/client";
 import { Decimal } from "decimal.js";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
@@ -325,8 +326,15 @@ export interface EntradaMovimientoAplicado extends MovimientoAplicado {
  * stock is still landed only at `ctx.sucursalId` (spec: "entries target only
  * the session-authorized branch"). This read-scoping does not redirect any
  * entry to another branch; the alternative (a SECURITY DEFINER aggregate) is a
- * schema migration, which this change forbids. Flagged for verify-phase
- * ratification against the "no RLS GUC clearing in v1" line.
+ * schema migration, which this change forbids.
+ *
+ * RATIFIED against the shipped RLS design: the `inventario_isolation` policy
+ * (migration 20260902120000_enable_rls) deliberately allows an EMPTY sucursal
+ * GUC — `COALESCE(...,'') = '' OR s.id = ...` — while always pinning
+ * `app.current_empresa_id`. This transaction-local widen only enters that
+ * intended all-branches-within-empresa case for a read-only aggregate and is
+ * restored in `finally` before any branch-scoped write, so no unanchored
+ * window exists.
  */
 async function stockTotalEmpresaEnTx(
   tx: PrismaTx,
@@ -432,10 +440,14 @@ async function aplicarEntradaStockLineaEnTx(
 
   const anterior = new Decimal(locked[0].cantidad.toString());
   const recibida = new Decimal(linea.cantidad);
-  // An entry is always additive; a negative line would corrupt the ledger and
-  // is rejected before any write (the manual non-negative invariant never
-  // applies here because entries only ever increase stock).
-  if (recibida.isNegative()) {
+  // An entry is always additive; only strictly positive quantities may touch
+  // the ledger — a zero quantity is not a stock change and a negative line
+  // would corrupt it. Checks `lessThanOrEqualTo(0)` explicitly: decimal.js
+  // `isPositive()` is sign-based and returns true for zero, so `!isPositive()`
+  // would NOT reject `"0.000"` (see devolucion/domain/devolucion.ts note).
+  // Rejected before any write (the manual non-negative invariant never applies
+  // here because entries only ever increase stock).
+  if (recibida.lessThanOrEqualTo(0)) {
     throw new InventarioDomainError(CANTIDAD_INVALIDA, {
       productoId: linea.productoId,
     });
@@ -515,7 +527,9 @@ export async function registrarEntradasCompraEnTx(
   >();
   for (const linea of input.lineas) {
     const cantidad = new Decimal(linea.cantidad);
-    if (cantidad.isNegative()) {
+    // lessThanOrEqualTo(0), not !isPositive(): decimal.js isPositive() is
+    // sign-based and accepts zero (devolucion domain documents this gotcha).
+    if (cantidad.lessThanOrEqualTo(0)) {
       throw new InventarioDomainError(CANTIDAD_INVALIDA, {
         productoId: linea.productoId,
       });
@@ -605,8 +619,15 @@ export interface SalidaMovimientoAplicado extends MovimientoAplicado {
  * quantity. The lock is held to the end of the transaction, so the running
  * balance maintained by the batch is race-free against a concurrent confirm
  * touching the SAME product/branch.
+ *
+ * Exported so the devolucion module (task 1.3) can acquire the SAME row lock
+ * as its pre-cumulative-read serialization point: the credit-note cumulative
+ * cap is only race-free if the stock row is locked BEFORE the prior-NC read,
+ * and re-locking in `registrarDevolucionEnTx` is a no-op inside the same
+ * transaction. Lock order stays ascending-product-id everywhere, so a
+ * concurrent confirm and a concurrent devolucion can never deadlock.
  */
-async function bloquearInventarioSucursalEnTx(
+export async function bloquearInventarioSucursalEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
   productoId: number,
@@ -669,7 +690,9 @@ function agruparDemandaPositiva(
   const porProducto = new Map<number, Decimal>();
   for (const l of lineas) {
     const q = new Decimal(l.cantidad);
-    if (!q.isPositive()) {
+    // lessThanOrEqualTo(0), not !isPositive(): decimal.js isPositive() is
+    // sign-based and accepts zero (devolucion domain documents this gotcha).
+    if (q.lessThanOrEqualTo(0)) {
       throw new InventarioDomainError(CANTIDAD_INVALIDA, { productoId: l.productoId });
     }
     porProducto.set(
@@ -850,6 +873,157 @@ export async function registrarReposicionCancelacionEnTx(
         tipoMovimiento: TipoMovimiento.REPOSICION_CANCELACION,
         motivo: input.motivo,
         cantidadMovida: new Prisma.Decimal(cantidad),
+        cantidadAnterior: new Prisma.Decimal(anterior),
+        cantidadNueva: new Prisma.Decimal(nueva),
+        usuarioId: ctx.usuarioId,
+        fecha: new Date(),
+      },
+    });
+    await registrarMovimientoEnAuditoria(
+      tx,
+      ctx,
+      estado.inventarioId,
+      anterior.toFixed(3),
+      nueva.toFixed(3),
+      input.motivo,
+    );
+    resultados.push({
+      inventoryId: estado.inventarioId,
+      previousQuantity: anterior.toFixed(3),
+      newQuantity: nueva.toFixed(3),
+      productoId: linea.productoId,
+    });
+  }
+  return resultados;
+}
+
+// ---------------------------------------------------------------------------
+// fase-5d — B04 credit-note stock effect (devolucion seam, design D5).
+// One movement per returned line under the SAME ascending-product-id lock
+// order as the exit/entry batches: VENDIBLE restock is a positive
+// ENTRADA_DEVOLUCION delta, DANADO disposal is a negative SALIDA_MERMA delta
+// with the same hard shortage block as the sale exit. `notaCreditoId` links
+// every movement to its NC; `costoPromedio` is untouched (replenish only).
+// A product may appear in SEVERAL lines with MIXED reposicion — each line
+// mutates the running balance in input order, and a DANADO shortage throws so
+// the caller's transaction rolls back every prior line's movement with the NC.
+// ---------------------------------------------------------------------------
+
+/** One returned unit line: product, positive magnitude, disposal class. */
+export interface DevolucionLineaEnTx {
+  readonly productoId: number;
+  /** Positive magnitude (a `Decimal(12,3)` string); the sign is the port's job. */
+  readonly cantidad: string;
+  /** `VENDIBLE` restocks stock; `DANADO` disposes it as merma (never re-sold). */
+  readonly tipoReposicion: TipoReposicion;
+}
+
+export interface RegistrarDevolucionEnTxInput {
+  /** The NC backing this return (written to `MovimientoInventario.notaCreditoId`). */
+  readonly notaCreditoId: number;
+  /** Audit reason carried on every generated movement. */
+  readonly motivo: string;
+  readonly lineas: readonly DevolucionLineaEnTx[];
+}
+
+/** The movement each reposicion class maps to (frozen enum to frozen enum). */
+const MOVIMIENTO_POR_REPOSICION: Record<TipoReposicion, TipoMovimiento> = {
+  [TipoReposicion.VENDIBLE]: TipoMovimiento.ENTRADA_DEVOLUCION,
+  [TipoReposicion.DANADO]: TipoMovimiento.SALIDA_MERMA,
+};
+
+/**
+ * B04 credit-note stock effect — the devolucion seam. One movement per line
+ * under the SAME determinism as the other batches:
+ *
+ *   A. TENANT GUARD — every product must belong to `ctx.empresaId`; the first
+ *      foreign product throws `INVENTARIO_NO_ENCONTRADO` before any lock/write.
+ *   B. LOCKS — per DISTINCT product, ascending product-id order, upsert +
+ *      `SELECT ... FOR UPDATE` (identical to the exit/entry lock order, so a
+ *      devolucion can never deadlock against a concurrent confirm).
+ *   C. APPLY — per line, `VENDIBLE` credits the running balance (positive
+ *      `ENTRADA_DEVOLUCION` movement, cannot go negative) and `DANADO` debits it
+ *      (negative `SALIDA_MERMA` movement, hard `STOCK_INSUFICIENTE_BLOQUEO`
+ *      block so a damaged return of more units than held can never persist).
+ *      Every movement carries `notaCreditoId` + before/after; a DANADO shortage
+ *      THROWS so the enclosing devolucion transaction rolls back the NC, the
+ *      NCF and every already-applied line together.
+ *
+ * Unlike the sale exit there is NO aggregate pre-check phase: mixed
+ * VENDIBLE/DANADO lines for one product have no aggregate "demand", and the
+ * per-line hard block inside the same transaction yields the same
+ * all-or-nothing guarantee (a rejected line rolls back prior writes).
+ *
+ * @throws InventarioDomainError(INVENTARIO_NO_ENCONTRADO | STOCK_INSUFICIENTE_BLOQUEO | CANTIDAD_INVALIDA)
+ */
+export async function registrarDevolucionEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  input: RegistrarDevolucionEnTxInput,
+): Promise<SalidaMovimientoAplicado[]> {
+  if (input.lineas.length === 0) return [];
+
+  const idsOrdenados = [...new Set(input.lineas.map((l) => l.productoId))].sort(
+    (a, b) => a - b,
+  );
+
+  // Phase A: ownership guard for every product before any lock/write.
+  for (const productoId of idsOrdenados) {
+    const posee = await productoExisteEnEmpresa(tx, ctx.empresaId, productoId);
+    if (!posee) {
+      throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, { productoId });
+    }
+  }
+
+  // Phase B: lock each branch row (ascending).
+  const bloqueados = new Map<number, { inventarioId: number; actual: Decimal }>();
+  for (const productoId of idsOrdenados) {
+    const { inventarioId, cantidad } = await bloquearInventarioSucursalEnTx(
+      tx,
+      ctx,
+      productoId,
+    );
+    bloqueados.set(productoId, { inventarioId, actual: cantidad });
+  }
+
+  // Phase C: per-line credit/debit + one movement + audit. Never cost.
+  const resultados: SalidaMovimientoAplicado[] = [];
+  for (const linea of input.lineas) {
+    const estado = bloqueados.get(linea.productoId)!;
+    const cantidad = new Decimal(linea.cantidad);
+    const movimiento = MOVIMIENTO_POR_REPOSICION[linea.tipoReposicion];
+    if (movimiento === undefined) {
+      // A reposicion class outside the frozen enum is an invalid line, never a
+      // valid disposal: fail before persisting an impossible movement.
+      throw new InventarioDomainError(CANTIDAD_INVALIDA, {
+        productoId: linea.productoId,
+      });
+    }
+
+    const anterior = estado.actual;
+    const esMerma = movimiento === TipoMovimiento.SALIDA_MERMA;
+    const delta = esMerma ? cantidad.negated() : cantidad;
+    const nueva = anterior.plus(delta);
+    if (nueva.isNegative()) {
+      throw new InventarioDomainError(STOCK_INSUFICIENTE_BLOQUEO, {
+        productoId: linea.productoId,
+        available: anterior.toFixed(3),
+        requested: cantidad.toFixed(3),
+      });
+    }
+    estado.actual = nueva;
+
+    await tx.inventario.update({
+      where: { id: estado.inventarioId },
+      data: { cantidad: new Prisma.Decimal(nueva) },
+    });
+    await tx.movimientoInventario.create({
+      data: {
+        inventarioId: estado.inventarioId,
+        notaCreditoId: input.notaCreditoId,
+        tipoMovimiento: movimiento,
+        motivo: input.motivo,
+        cantidadMovida: new Prisma.Decimal(delta),
         cantidadAnterior: new Prisma.Decimal(anterior),
         cantidadNueva: new Prisma.Decimal(nueva),
         usuarioId: ctx.usuarioId,
