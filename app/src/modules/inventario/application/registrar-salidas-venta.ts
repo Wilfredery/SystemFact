@@ -38,6 +38,8 @@ import {
 import {
   registrarSalidasVentaEnTx,
   registrarReposicionCancelacionEnTx,
+  registrarDevolucionEnTx,
+  type DevolucionLineaEnTx,
   type SalidaMovimientoAplicado,
   type SalidaVentaLinea,
 } from "../infrastructure/inventario-repository";
@@ -73,7 +75,9 @@ function validarCantidadPositiva(linea: SalidasVentaLinea): void {
   if (forma !== null) {
     throw new InventarioDomainError(forma, { productoId: linea.productoId });
   }
-  if (!new Decimal(linea.cantidad).isPositive()) {
+  // lessThanOrEqualTo(0), not !isPositive(): decimal.js isPositive() is
+  // sign-based and accepts zero (devolucion domain documents this gotcha).
+  if (new Decimal(linea.cantidad).lessThanOrEqualTo(0)) {
     throw new InventarioDomainError(CANTIDAD_INVALIDA, {
       productoId: linea.productoId,
     });
@@ -130,6 +134,69 @@ export async function registrarReposicionCancelacion(
 
   return registrarReposicionCancelacionEnTx(tx, ctx, {
     ventaId: input.ventaId,
+    motivo: input.motivo.trim(),
+    lineas,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// fase-5d — devolucion seam (design D5): the B04 credit-note stock effect.
+// One `TipoReposicion`-classified line per returned unit; the repository maps
+// VENDIBLE → ENTRADA_DEVOLUCION (+stock) and DANADO → SALIDA_MERMA (−stock,
+// hard shortage block). Runs INSIDE the caller's devolucion transaction and is
+// THROW-ON-REJECT for the same reason as the exit batch: the NC + its NCF are
+// already written when this runs, so a returned line that cannot be applied
+// MUST throw to roll the whole devolucion back — never return a partial credit.
+// ---------------------------------------------------------------------------
+
+/** One returned unit line pushed through the devolucion seam. */
+export interface RegistrarDevolucionLinea {
+  readonly productoId: number;
+  /** Positive returned quantity as a `Decimal(12,3)` string. */
+  readonly cantidad: string;
+  /** `VENDIBLE` restocks; `DANADO` is disposed as merma (frozen enum). */
+  readonly tipoReposicion: "VENDIBLE" | "DANADO";
+}
+
+export interface RegistrarDevolucionInput {
+  /** The NC backing this return (written to `MovimientoInventario.notaCreditoId`). */
+  readonly notaCreditoId: number;
+  /** NON-EMPTY audit reason — the NC motivo, reused on every movement. */
+  readonly motivo: string;
+  readonly lineas: readonly RegistrarDevolucionLinea[];
+}
+
+/**
+ * Persist the stock effect of a B04 credit note: one `ENTRADA_DEVOLUCION` /
+ * `SALIDA_MERMA` movement per line under the shared ascending lock order. A
+ * blank/whitespace reason is rejected with `MOTIVO_VACIO`; a foreign product
+ * with `INVENTARIO_NO_ENCONTRADO`; a `DANADO` line beyond available stock with
+ * `STOCK_INSUFICIENTE_BLOQUEO` (rolling the caller's transaction back).
+ * Never touches `costoPromedio`.
+ *
+ * @throws InventarioDomainError(MOTIVO_VACIO | INVENTARIO_NO_ENCONTRADO | STOCK_INSUFICIENTE_BLOQUEO | CANTIDAD_INVALIDA)
+ */
+export async function registrarDevolucion(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  input: RegistrarDevolucionInput,
+): Promise<SalidaMovimientoAplicado[]> {
+  const motivoError = validateMotivo(input.motivo);
+  if (motivoError !== null) {
+    throw new InventarioDomainError(motivoError);
+  }
+
+  const lineas: DevolucionLineaEnTx[] = input.lineas.map((l) => {
+    validarCantidadPositiva(l);
+    return {
+      productoId: l.productoId,
+      cantidad: l.cantidad,
+      tipoReposicion: l.tipoReposicion,
+    };
+  });
+
+  return registrarDevolucionEnTx(tx, ctx, {
+    notaCreditoId: input.notaCreditoId,
     motivo: input.motivo.trim(),
     lineas,
   });

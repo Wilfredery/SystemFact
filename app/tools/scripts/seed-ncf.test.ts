@@ -2,7 +2,7 @@
  * Unit — NCF range seed shape (spec R-N6, fase-5c tasks 4.1/4.2).
  *
  * No DB: the seed is pinned on a structural fake so the FROZEN CONTRACT is
- * deterministic — independent B01/B02 dev ranges that fit the `%08d`
+ * deterministic — independent B01/B02/B04 dev ranges that fit the `%08d`
  * composition (R-N2: every value ≤ 99_999_999, so the composed NCF is always
  * exactly 11 chars — NEVER a 9-digit range), `secuenciaActual = rangoInicio - 1`
  * ("nothing used yet" under the D7 last-used semantics), compound-upsert
@@ -58,9 +58,9 @@ function makeFakeDb(preexistentes: Partial<Record<string, SecFila>> = {}) {
 }
 
 describe("NCF seed plan (R-N6 + R-N2 consistency)", () => {
-  it("provisions exactly B01 and B02 with independent, non-overlapping ranges", () => {
+  it("provisions exactly B01, B02 and B04 with independent, non-overlapping ranges", () => {
     const tipos = NCF_RANGOS_SEED.map((r) => r.tipoNcf);
-    expect(tipos.sort()).toEqual(["B01", "B02"]);
+    expect(tipos.sort()).toEqual(["B01", "B02", "B04"]);
     for (let i = 0; i < NCF_RANGOS_SEED.length; i++) {
       for (let j = i + 1; j < NCF_RANGOS_SEED.length; j++) {
         const a = NCF_RANGOS_SEED[i];
@@ -96,10 +96,10 @@ describe("seedNcfParaEmpresa", () => {
     const { db, upserts } = makeFakeDb();
     await seedNcfParaEmpresa(db, 7);
 
-    expect(upserts).toHaveLength(2);
+    expect(upserts).toHaveLength(3);
     for (const up of upserts) {
       expect(up.where.empresaId_tipoNcf.empresaId).toBe(7);
-      expect(["B01", "B02"]).toContain(up.where.empresaId_tipoNcf.tipoNcf);
+      expect(["B01", "B02", "B04"]).toContain(up.where.empresaId_tipoNcf.tipoNcf);
       expect(up.create.activa).toBe(true);
       expect(up.create.secuenciaActual).toBe(
         (up.create.rangoInicio as number) - 1,
@@ -111,10 +111,11 @@ describe("seedNcfParaEmpresa", () => {
     const { db, upserts } = makeFakeDb({
       B01: { rangoInicio: 1, rangoFin: 100, secuenciaActual: 42, activa: true },
       B02: { rangoInicio: 101, rangoFin: 200, secuenciaActual: 101, activa: true },
+      B04: { rangoInicio: 201, rangoFin: 300, secuenciaActual: 250, activa: true },
     });
     await seedNcfParaEmpresa(db, 7);
 
-    expect(upserts).toHaveLength(2);
+    expect(upserts).toHaveLength(3);
     for (const up of upserts) {
       expect(up.update.secuenciaActual).toBeUndefined();
       expect(up.update.rangoInicio).toBeUndefined();
@@ -139,18 +140,18 @@ describe("seedNcfParaEmpresa", () => {
 });
 
 describe("seedNcf company-wide pass", () => {
-  it("runs two upserts per empresa for every empresa by default", async () => {
+  it("runs three upserts per empresa for every empresa by default", async () => {
     const { db, upserts } = makeFakeDb();
     const res = await seedNcf(db);
     expect(res.empresas).toBe(2);
-    expect(upserts).toHaveLength(4);
+    expect(upserts).toHaveLength(6);
   });
 
   it("targets a single empresa when one is given (CLI --empresa)", async () => {
     const { db, upserts } = makeFakeDb();
     const res = await seedNcf(db, 2);
     expect(res.empresas).toBe(1);
-    expect(upserts).toHaveLength(2);
+    expect(upserts).toHaveLength(3);
     expect(upserts.every((u) => u.where.empresaId_tipoNcf.empresaId === 2)).toBe(
       true,
     );

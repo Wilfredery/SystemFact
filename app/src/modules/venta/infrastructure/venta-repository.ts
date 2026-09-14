@@ -514,6 +514,106 @@ export async function leerVentaParaConfirmarEnTx(
   };
 }
 
+/**
+ * A confirmed sale header + its persisted lines AND the emitted invoice,
+ * read branch-scoped for `crearDevolucion`. The `WHERE empresaId AND
+ * sucursalId` predicate makes a foreign-branch sale a `null` — zero
+ * disclosure of another branch's data (same discipline as
+ * `leerVentaParaConfirmarEnTx`, R-V15 "Foreign-branch sale not confirmable").
+ *
+ * The invoice is surfaced as a NESTED relation read (one `VENTA` row carries
+ * at most one `FACTURA` via `@@unique([ventaId])`). A confirmed sale whose
+ * invoice is missing or in a non-`VIGENTE` state arrives with
+ * `factura === null`, so the application maps it to `FACTURA_NO_VIGENTE` and
+ * the domain never sees a half-state.
+ *
+ * Line values cross as Decimal strings: the credit-note arithmetic (freeze of
+ * `precioUnitario`/`tasaItbis` from the ORIGINAL sale line, quantity caps,
+ * totals) is done with zero floats. `tasaItbis` normalizes through
+ * decimal.js `toString()` ("18" not "18.0"), matching the frozen-rate strings
+ * the domain calculator expects.
+ */
+export interface VentaParaDevolucion {
+  readonly ventaId: number;
+  /** Server-frozen sale instant (the window start for `validarPlazoDevolucion`). */
+  readonly ventaFecha: Date;
+  readonly clienteId: number;
+  readonly estado: EstadoVentaCore;
+  readonly factura: {
+    readonly facturaId: number;
+    readonly ncf: string;
+    readonly estado: string;
+    readonly fechaEmision: Date;
+  } | null;
+  readonly lineas: readonly {
+    readonly productoId: number;
+    readonly cantidad: string;
+    readonly precioUnitario: string;
+    readonly tasaItbis: string;
+  }[];
+}
+
+/**
+ * Branch-guarded read of everything `crearDevolucion` needs: the current sale
+ * state (guard gates), the emitted invoice (state + fiscal identity) and the
+ * ORIGINAL sale lines (cumulative-cap reference, money/rate freeze). `null`
+ * for a foreign tenant/branch id or a missing sale.
+ */
+export async function leerVentaParaDevolucionEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  ventaId: number,
+): Promise<VentaParaDevolucion | null> {
+  const row = await tx.venta.findFirst({
+    where: { id: ventaId, empresaId: ctx.empresaId, sucursalId: ctx.sucursalId },
+    select: {
+      id: true,
+      fecha: true,
+      estado: true,
+      clienteId: true,
+      factura: {
+        select: {
+          id: true,
+          ncf: true,
+          estado: true,
+          fechaEmision: true,
+        },
+      },
+      detalles: {
+        select: {
+          productoId: true,
+          cantidad: true,
+          precioUnitario: true,
+          tasaItbis: true,
+        },
+        orderBy: { id: "asc" },
+      },
+    },
+  });
+  if (row === null) return null;
+  return {
+    ventaId: row.id,
+    ventaFecha: row.fecha,
+    clienteId: row.clienteId,
+    estado: estadoVentaDesdeDb(row.estado),
+    factura:
+      row.factura === null
+        ? null
+        : {
+            facturaId: row.factura.id,
+            ncf: row.factura.ncf,
+            estado: row.factura.estado,
+            fechaEmision: row.factura.fechaEmision,
+          },
+    lineas: row.detalles.map((l) => ({
+      productoId: l.productoId,
+      cantidad: new Prisma.Decimal(l.cantidad).toFixed(3),
+      precioUnitario: new Prisma.Decimal(l.precioUnitario).toFixed(2),
+      tasaItbis: new Prisma.Decimal(l.tasaItbis).toString(),
+    })),
+  };
+}
+
 /** `Empresa.facturaAutomatica` — the emission gate (R-F1). Missing row → false. */
 export async function leerFacturaAutomaticaDeEmpresaEnTx(
   tx: PrismaTx,

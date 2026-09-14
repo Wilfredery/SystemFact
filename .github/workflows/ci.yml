@@ -61,6 +61,12 @@ jobs:
       - name: ESLint (incluye la regla systemfact/server-action-must-wrap-tenant)
         run: pnpm lint
 
+      # `LayoutProps`/`PageProps` son tipos globales generados por el typegen
+      # de Next 16 (next-env.d.ts + .next/types). Este job no corre build/dev,
+      # así que el typegen debe ejecutarse explícitamente antes del tsc.
+      - name: Generate Next route types (next typegen)
+        run: pnpm exec next typegen
+
       - name: TypeScript estricto (tsc --noEmit)
         run: pnpm exec tsc --noEmit
 

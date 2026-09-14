@@ -48,7 +48,7 @@ import {
   validarDescuentosContraMaximo,
   type DescuentoLineaCap,
 } from "../domain/descuentos";
-import { leerConfigVentaEnTx, VentaConfigError } from "../infrastructure/config-repository";
+import { DESC_MAX_FALTANTE, leerConfigVentaEnTx, VentaConfigError } from "../infrastructure/config-repository";
 import {
   leerProductosParaLineasVentaEnTx,
   leerStockSucursalEnTx,
@@ -174,7 +174,9 @@ export async function prepararLineasVenta(
       descMax = await leerConfigVentaEnTx(tx, ctx.empresaId, fecha);
     } catch (err) {
       if (err instanceof VentaConfigError) {
-        return ventaGuardadoError(err.code);
+        // This reader only ever throws DESC_MAX_FALTANTE (task 1.7 added the
+        // PLAZO_DEVOLUCION_FALTANTE code, but that reader lives in devolucion).
+        return ventaGuardadoError(err.code as typeof DESC_MAX_FALTANTE);
       }
       throw err;
     }

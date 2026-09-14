@@ -2,10 +2,11 @@
  * Unit test — venta-config seed (task 2.13 "seed script unit").
  *
  * Asserts the seed's SHAPE without a DB (the real idempotency-on-re-run is proven
- * in the integration suite): the business default `DESC_MAX = 4.00` in the wide
- * canonical window, the demote-others + upsert-canonical idempotency strategy, and
- * that the per-empresa pass targets exactly the `DESC_MAX` key. This mirrors how
- * the retention seed's constants are the single source the fixtures align to.
+ * in the integration suite): the business defaults `DESC_MAX = 4.00` and
+ * `PLAZO_DEVOLUCION = 15` in the wide canonical window, the
+ * demote-others + upsert-canonical idempotency strategy, and that the per-empresa
+ * pass targets BOTH keys. This mirrors how the retention seed's constants are the
+ * single source the fixtures align to.
  */
 
 import {
@@ -14,7 +15,9 @@ import {
   detectarVentanasSuperpuestas,
   DESC_MAX_SEED_VALOR,
   DESC_MAX_CLAVE,
-  DESC_MAX_SEED_VIGENCIA,
+  PLAZO_DEVOLUCION_SEED_VALOR,
+  PLAZO_DEVOLUCION_CLAVE,
+  CLAVE_SEED_VIGENCIA,
 } from "./seed-venta-config";
 
 // The seed module imports the generated Prisma client + pg adapter at the top for
@@ -51,27 +54,41 @@ function makeFakeDb(
   return { db: db as never, calls };
 }
 
-it("seeds the business default 4.00 for the DESC_MAX key in a wide window", async () => {
+it("seeds the business defaults for the DESC_MAX and PLAZO_DEVOLUCION keys in a wide window", async () => {
   expect(DESC_MAX_CLAVE).toBe("DESC_MAX");
   expect(DESC_MAX_SEED_VALOR).toBe("4.00");
-  expect(DESC_MAX_SEED_VIGENCIA.inicio.getUTCFullYear()).toBe(2000);
-  expect(DESC_MAX_SEED_VIGENCIA.fin.getUTCFullYear()).toBe(2099);
+  expect(PLAZO_DEVOLUCION_CLAVE).toBe("PLAZO_DEVOLUCION");
+  expect(PLAZO_DEVOLUCION_SEED_VALOR).toBe("15");
+  expect(CLAVE_SEED_VIGENCIA.inicio.getUTCFullYear()).toBe(2000);
+  expect(CLAVE_SEED_VIGENCIA.fin.getUTCFullYear()).toBe(2099);
 
   const { db, calls } = makeFakeDb([]);
   await seedVentaConfigParaEmpresa(db, 42);
 
-  // One demote + one upsert for the single key (idempotency strategy).
-  expect(calls.updateMany).toHaveLength(1);
-  expect(calls.upsert).toHaveLength(1);
+  // One demote + one upsert PER KEY (idempotency strategy).
+  expect(calls.updateMany).toHaveLength(2);
+  expect(calls.upsert).toHaveLength(2);
 
-  const upsert = calls.upsert[0] as {
+  const upserts = calls.upsert as {
     where: { empresaId_clave_vigenciaInicio: { empresaId: number; clave: string } };
     create: { valor: string; clave: string; activa: boolean };
-  };
-  expect(upsert.where.empresaId_clave_vigenciaInicio.empresaId).toBe(42);
-  expect(upsert.where.empresaId_clave_vigenciaInicio.clave).toBe("DESC_MAX");
-  expect(upsert.create.valor).toBe("4.00");
-  expect(upsert.create.activa).toBe(true);
+  }[];
+  const claves = upserts.map((u) => u.where.empresaId_clave_vigenciaInicio.clave);
+  expect(claves).toEqual(["DESC_MAX", "PLAZO_DEVOLUCION"]);
+
+  const descMax = upserts.find(
+    (u) => u.where.empresaId_clave_vigenciaInicio.clave === "DESC_MAX",
+  )!;
+  expect(descMax.where.empresaId_clave_vigenciaInicio.empresaId).toBe(42);
+  expect(descMax.create.valor).toBe("4.00");
+  expect(descMax.create.activa).toBe(true);
+
+  const plazo = upserts.find(
+    (u) => u.where.empresaId_clave_vigenciaInicio.clave === "PLAZO_DEVOLUCION",
+  )!;
+  expect(plazo.where.empresaId_clave_vigenciaInicio.empresaId).toBe(42);
+  expect(plazo.create.valor).toBe("15");
+  expect(plazo.create.activa).toBe(true);
 });
 
 it("runs once per empresa on the company-wide pass", async () => {
@@ -126,9 +143,10 @@ it("R-V17: seed FAILS FAST when two active non-canonical windows overlap (indete
 
 it("R-V17: a single overlapping stray still self-heals via demote + canonical upsert (R-C2 parity)", async () => {
   // Exactly one active non-canonical row (even overlapping the canonical
-  // window): demote-others resolves it — no fail-fast, one demote + one upsert.
+  // window): demote-others resolves it — no fail-fast, one demote + one upsert
+  // per key.
   const { db, calls } = makeFakeDb([], [W("2001-01-01", "2099-01-01")]);
   await seedVentaConfigParaEmpresa(db, 42);
-  expect(calls.updateMany).toHaveLength(1);
-  expect(calls.upsert).toHaveLength(1);
+  expect(calls.updateMany).toHaveLength(2);
+  expect(calls.upsert).toHaveLength(2);
 });

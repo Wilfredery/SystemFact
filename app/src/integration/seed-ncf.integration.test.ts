@@ -45,7 +45,7 @@ describe("seed-ncf (real DB, R-N6)", () => {
     fixture = await seedTenantFixture();
   });
 
-  it("provisions active, independent B01 and B02 rows for a fresh empresa", async () => {
+  it("provisions active, independent B01, B02 and B04 rows for a fresh empresa", async () => {
     const f = fixture!;
     // Fresh tenant: the base fixture seeds no NCF rows at all.
     expect(await getHarnessDb().ncfSecuencia.count({ where: { empresaId: f.empresaB.id } })).toBe(0);
@@ -53,7 +53,7 @@ describe("seed-ncf (real DB, R-N6)", () => {
     await seedNcfParaEmpresa(getHarnessDb(), f.empresaB.id);
 
     const filas = await filasB(f.empresaB.id);
-    expect(filas.map((r) => r.tipoNcf)).toEqual(["B01", "B02"]);
+    expect(filas.map((r) => r.tipoNcf)).toEqual(["B01", "B02", "B04"]);
     for (const fila of filas) {
       expect(fila.activa).toBe(true);
       // D7: nothing consumed at provisioning time.
@@ -61,13 +61,22 @@ describe("seed-ncf (real DB, R-N6)", () => {
       // %08d-consistent (never 9-digit): both bounds inside the composition space.
       expect(fila.rangoInicio).toBeGreaterThanOrEqual(1);
       expect(fila.rangoFin).toBeLessThanOrEqual(NCF_MAX_CONSECUTIVO);
-      // Vigencia through the end of the running year (SD expiry semantics).
-      expect(fila.vigenciaFin.getUTCFullYear()).toBe(new Date().getUTCFullYear());
+      // Vigencia through the end of the running year on the BUSINESS calendar
+      // (America/Santo_Domingo), mirroring the seed's Int-based year source.
+      expect(fila.vigenciaFin.getUTCFullYear()).toBe(
+        Number(
+          new Intl.DateTimeFormat("en-CA", {
+            timeZone: "America/Santo_Domingo",
+            year: "numeric",
+          }).format(new Date()),
+        ),
+      );
     }
-    // Independent: the planned numeric ranges are disjoint.
-    const [b01, b02] = filas;
-    expect(b01.rangoFin < b02.rangoInicio || b02.rangoFin < b01.rangoInicio).toBe(true);
-    expect(NCF_RANGOS_SEED).toHaveLength(2);
+    // Independent: the planned numeric ranges are pairwise disjoint.
+    const [b01, b02, b04] = filas;
+    expect(b01.rangoFin < b02.rangoInicio).toBe(true);
+    expect(b02.rangoFin < b04.rangoInicio).toBe(true);
+    expect(NCF_RANGOS_SEED).toHaveLength(3);
   });
 
   it("seed → consume yields the composed 11-char NCF, and a re-run neither duplicates nor rewinds the counter", async () => {
@@ -85,11 +94,11 @@ describe("seed-ncf (real DB, R-N6)", () => {
     expect(ncf).toBe(`B02${String(secuencial).padStart(8, "0")}`);
     expect(ncf).toHaveLength(11);
 
-    // Re-run the seed: same two rows, advanced counter preserved.
+    // Re-run the seed: same three rows, advanced counter preserved.
     await seedNcfParaEmpresa(db, f.empresaB.id);
     await seedNcfParaEmpresa(db, f.empresaB.id);
     const despues = await filasB(f.empresaB.id);
-    expect(despues).toHaveLength(2);
+    expect(despues).toHaveLength(3);
     const b02 = despues.find((r) => r.tipoNcf === "B02")!;
     expect(b02.secuenciaActual).toBe(filaB02.rangoInicio); // NOT rewound (consumed stays consumed)
     expect(b02.activa).toBe(true);

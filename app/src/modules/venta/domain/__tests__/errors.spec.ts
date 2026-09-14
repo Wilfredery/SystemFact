@@ -41,10 +41,15 @@ describe("venta error catalog — 5c confirm delta (R-V13 / R-V15)", () => {
     NCF_SEC_INEXISTENTE: true,
     FACTURA_AUTOMATICA_FALTA: true,
     STOCK_INSUFICIENTE_BLOQUEO: true,
+    // Phase-5d return delta (task 1.5: 601-604).
+    DEVOLUCION_FUERA_DE_PLAZO: true,
+    CANTIDAD_EXCEDE_ORIGINAL: true,
+    FACTURA_NO_VIGENTE: true,
+    VENTA_NO_CONFIRMADA: true,
   };
 
-  it("carries exactly 19 stable codes", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(19);
+  it("carries exactly 23 stable codes (19 + the 5d return delta)", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(23);
   });
 
   it("exposes the five confirm codes with distinct stable values", () => {

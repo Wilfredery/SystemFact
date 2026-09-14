@@ -4,14 +4,16 @@
  * `leerConfigVentaEnTx` hard-fails a discounted draft with `DESC_MAX_FALTANTE`
  * when no active `DESC_MAX` row covers the sale date — a state that (like the
  * retention keys before their seed) only integration fixtures avoid today. This
- * script provisions `DESC_MAX` for every empresa as ONE active row in a wide
- * validity window, using the business-confirmed default `4.00` (adjustable, and
- * the running rule reads the stored value so changing it needs no deploy — R-C3).
- * It is SAFE TO RE-RUN (idempotent), mirroring `seed-retencion-config.ts`.
+ * script provisions `DESC_MAX` AND the return window `PLAZO_DEVOLUCION` for
+ * every empresa as ONE active row per (key, empresa) in a wide validity window,
+ * using the business-confirmed defaults (`4.00`, `15` days — both adjustable,
+ * and the running rule reads the stored value so changing it needs no deploy —
+ * R-C3 / R-D2). It is SAFE TO RE-RUN (idempotent), mirroring
+ * `seed-retencion-config.ts`.
  *
  * Idempotency strategy (no migration, frozen `@@unique([empresaId, clave,
  * vigenciaInicio])`):
- *   1. Demote to `activa=false` any OTHER active `DESC_MAX` row for the same
+ *   1. Per key, demote to `activa=false` any OTHER active row for the same
  *      empresa that is not the canonical window — enforcing "one active row per
  *      (empresaId, clave)".
  *   2. Upsert the canonical window by its compound unique key, so a re-run UPDATES
@@ -33,11 +35,21 @@ import { PrismaClient } from "@/generated/prisma/client";
 /** Business-confirmed default discount cap (percent-form, adjustable in DB). */
 export const DESC_MAX_SEED_VALOR = "4.00";
 
-/** The `ConfiguracionEmpresa` key this seed provisions. */
+/** The `ConfiguracionEmpresa` key this seed provisions for discounts. */
 export const DESC_MAX_CLAVE = "DESC_MAX";
 
-/** Canonical validity window (the same long-dated span the fixtures use). */
-export const DESC_MAX_SEED_VIGENCIA = {
+/** Business-confirmed default return window in calendar days (adjustable in DB). */
+export const PLAZO_DEVOLUCION_SEED_VALOR = "15";
+
+/** The `ConfiguracionEmpresa` key this seed provisions for returns. */
+export const PLAZO_DEVOLUCION_CLAVE = "PLAZO_DEVOLUCION";
+
+/**
+ * Canonical validity window shared by every provisioned key (the same
+ * long-dated span the fixtures use). Kept as ONE constant so no key can drift
+ * to a different window.
+ */
+export const CLAVE_SEED_VIGENCIA = {
   inicio: new Date("2000-01-01T00:00:00.000Z"),
   fin: new Date("2099-12-31T23:59:59.000Z"),
 } as const;
@@ -67,33 +79,36 @@ export function detectarVentanasSuperpuestas<
 }
 
 /**
- * Seed the `DESC_MAX` key for ONE empresa: one active row in the canonical
- * window, other active duplicates demoted. Idempotent.
+ * Seed ONE config key for ONE empresa: one active row in the canonical window,
+ * other active duplicates demoted. Idempotent.
  *
  * R-V17 fail-fast guard: BEFORE repairing, the seed inspects the currently
- * active non-canonical rows. Two or more of them OVERLAPPING each other is an
- * indeterminate corruption the demote step cannot resolve without silently
- * choosing a winner — the seed throws instead of repairing. A single stray
- * (even one overlapping the canonical window) remains self-healable by the
- * demote + canonical upsert below, preserving the R-C2 idempotency contract.
+ * active non-canonical rows for the key. Two or more of them OVERLAPPING each
+ * other is an indeterminate corruption the demote step cannot resolve without
+ * silently choosing a winner — the seed throws instead of repairing. A single
+ * stray (even one overlapping the canonical window) remains self-healable by
+ * the demote + canonical upsert below, preserving the R-C2 idempotency
+ * contract.
  */
-export async function seedVentaConfigParaEmpresa(
+async function seedClaveParaEmpresa(
   db: PrismaClient,
   empresaId: number,
+  clave: string,
+  valor: string,
 ): Promise<void> {
   const extraActivas = await db.configuracionEmpresa.findMany({
     where: {
       empresaId,
-      clave: DESC_MAX_CLAVE,
+      clave,
       activa: true,
-      NOT: { vigenciaInicio: DESC_MAX_SEED_VIGENCIA.inicio },
+      NOT: { vigenciaInicio: CLAVE_SEED_VIGENCIA.inicio },
     },
     select: { vigenciaInicio: true, vigenciaFin: true },
   });
   const conflicto = detectarVentanasSuperpuestas(extraActivas);
   if (conflicto !== null) {
     throw new Error(
-      `seed-venta-config: ventanas DESC_MAX activas superpuestas para empresa ${String(
+      `seed-venta-config: ventanas ${clave} activas superpuestas para empresa ${String(
         empresaId,
       )} (${conflicto.a.vigenciaInicio.toISOString()}–${conflicto.a.vigenciaFin.toISOString()} ∩ ${conflicto.b.vigenciaInicio.toISOString()}–${conflicto.b.vigenciaFin.toISOString()}); corríjalas antes de re-sembrar (R-V17 fail-fast)`,
     );
@@ -103,9 +118,9 @@ export async function seedVentaConfigParaEmpresa(
     db.configuracionEmpresa.updateMany({
       where: {
         empresaId,
-        clave: DESC_MAX_CLAVE,
+        clave,
         activa: true,
-        NOT: { vigenciaInicio: DESC_MAX_SEED_VIGENCIA.inicio },
+        NOT: { vigenciaInicio: CLAVE_SEED_VIGENCIA.inicio },
       },
       data: { activa: false },
     }),
@@ -113,25 +128,38 @@ export async function seedVentaConfigParaEmpresa(
       where: {
         empresaId_clave_vigenciaInicio: {
           empresaId,
-          clave: DESC_MAX_CLAVE,
-          vigenciaInicio: DESC_MAX_SEED_VIGENCIA.inicio,
+          clave,
+          vigenciaInicio: CLAVE_SEED_VIGENCIA.inicio,
         },
       },
       update: {
-        valor: DESC_MAX_SEED_VALOR,
-        vigenciaFin: DESC_MAX_SEED_VIGENCIA.fin,
+        valor,
+        vigenciaFin: CLAVE_SEED_VIGENCIA.fin,
         activa: true,
       },
       create: {
         empresaId,
-        clave: DESC_MAX_CLAVE,
-        valor: DESC_MAX_SEED_VALOR,
-        vigenciaInicio: DESC_MAX_SEED_VIGENCIA.inicio,
-        vigenciaFin: DESC_MAX_SEED_VIGENCIA.fin,
+        clave,
+        valor,
+        vigenciaInicio: CLAVE_SEED_VIGENCIA.inicio,
+        vigenciaFin: CLAVE_SEED_VIGENCIA.fin,
         activa: true,
       },
     }),
   ]);
+}
+
+/**
+ * Seed the `DESC_MAX` and `PLAZO_DEVOLUCION` keys for ONE empresa. Each key
+ * runs through the same demote + canonical upsert path, so a re-run never
+ * duplicates and stray duplicates are demoted.
+ */
+export async function seedVentaConfigParaEmpresa(
+  db: PrismaClient,
+  empresaId: number,
+): Promise<void> {
+  await seedClaveParaEmpresa(db, empresaId, DESC_MAX_CLAVE, DESC_MAX_SEED_VALOR);
+  await seedClaveParaEmpresa(db, empresaId, PLAZO_DEVOLUCION_CLAVE, PLAZO_DEVOLUCION_SEED_VALOR);
 }
 
 /**
@@ -163,7 +191,7 @@ async function main(): Promise<void> {
   try {
     const res = await seedVentaConfig(db);
     console.log(
-      `OK: seeded ${DESC_MAX_CLAVE}=${DESC_MAX_SEED_VALOR} for ${res.empresas} empresa(s) (idempotent).`,
+      `OK: seeded ${DESC_MAX_CLAVE}=${DESC_MAX_SEED_VALOR} and ${PLAZO_DEVOLUCION_CLAVE}=${PLAZO_DEVOLUCION_SEED_VALOR} for ${res.empresas} empresa(s) (idempotent).`,
     );
   } finally {
     await db.$disconnect();

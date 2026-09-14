@@ -22,11 +22,14 @@ import {
 import {
   DESC_MAX_FALTANTE,
   messageForVentaConfig,
-  type VentaConfigErrorCode,
 } from "../infrastructure/config-repository";
 
+// The save pipeline only ever reads DESC_MAX (its `leerConfigVentaEnTx`
+// reader); `VentaConfigErrorCode` also carries PLAZO_DEVOLUCION_FALTANTE
+// (task 1.7's other config key), which belongs to the devolucion flow and
+// must NOT leak into the save surface — pin the union to the exact code.
 /** Union of the venta-domain and venta-config codes a save can return. */
-export type VentaGuardadoErrorCode = VentaErrorCode | VentaConfigErrorCode;
+export type VentaGuardadoErrorCode = VentaErrorCode | typeof DESC_MAX_FALTANTE;
 
 export const ALL_GUARDADO_ERROR_CODES: readonly VentaGuardadoErrorCode[] = [
   // venta domain (R-V13)

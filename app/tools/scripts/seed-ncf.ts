@@ -4,16 +4,17 @@
  * `pnpm seed:ncf` is the ONLY V1 provisioning path for `NCF_SECUENCIA`:
  * `consumirNcfEnTx` hard-fails `NCF_SEC_INEXISTENTE` without an active
  * `empresaId + tipoNcf` row, so no tenant can confirm a sale until this runs.
- * It provisions the two emitted invoice types (B01/B02) per empresa as
- * INDEPENDENT ranges (per AGENTS.md "independent sequences per type+company")
- * and is SAFE TO RE-RUN, mirroring `seed-venta-config.ts`.
+ * It provisions the emitted invoice types (B01/B02) and the B04 credit-note
+ * range per empresa as INDEPENDENT ranges (per AGENTS.md "independent sequences
+ * per type+company") and is SAFE TO RE-RUN, mirroring `seed-venta-config.ts`.
  *
  * DEV-RANGE RECONCILIATION (fase-5c deviation 3): the earlier design/docs
  * example range `100000000–100000999` is 9 digits and contradicts the frozen
  * R-N2 composition `B<tipo 2d><%08d>` (11 chars total) — a secuencial above
  * `99_999_999` can never be composed. The authoritative rule is R-N2, so the
  * dev ranges below are `%08d`-consistent and DGII-plausible:
- *   B01 → 00000001–00000100, B02 → 00000101–00000200 (disjoint → independent).
+ *   B01 → 00000001–00000100, B02 → 00000101–00000200, B04 → 00000201–00000300
+ *   (disjoint → independent).
  * Real DGII authorizations always live in `1..99_999_999` for the B-series;
  * this seed is a development/staging tool and MUST NOT be pointed at a tenant
  * holding a real authorized range (the fail-fast guard below refuses anyway).
@@ -45,7 +46,7 @@ export const NCF_MAX_CONSECUTIVO = 99_999_999;
 
 /** One planned dev range: which tipo and its inclusive numeric bounds. */
 export interface RangoNcfSeed {
-  readonly tipoNcf: "B01" | "B02";
+  readonly tipoNcf: "B01" | "B02" | "B04";
   readonly rangoInicio: number;
   readonly rangoFin: number;
 }
@@ -53,15 +54,27 @@ export interface RangoNcfSeed {
 /**
  * The frozen provisioning plan. B01 is local-validation-only in V1 (design
  * D2/D6 — its eligibility requires a 9-digit RNC taxpayer client), but the
- * range is seeded so a taxpayer sale never dies on config. Ranges are
- * DISJOINT, hence independent counters with no numeric collision.
+ * range is seeded so a taxpayer sale never dies on config. B04 backs the
+ * credit-note (devolucion) flow. Ranges are DISJOINT, hence independent
+ * counters with no numeric collision.
  */
 export const NCF_RANGOS_SEED: readonly RangoNcfSeed[] = [
   { tipoNcf: "B01", rangoInicio: 1, rangoFin: 100 },
   { tipoNcf: "B02", rangoInicio: 101, rangoFin: 200 },
+  { tipoNcf: "B04", rangoInicio: 201, rangoFin: 300 },
 ];
 
-const anioEnCurso = new Date().getUTCFullYear();
+// The running year for NCF validity follows the BUSINESS calendar
+// (America/Santo_Domingo — AGENTS.md "Dates & time"), resolved via the
+// standard Intl API with an explicit timeZone, same pattern as the devolucion
+// domain. `getUTCFullYear()` would disagree with the SD calendar during the
+// UTC±4 offset windows (e.g. Dec 31 20:00 SD already reads next year in UTC).
+const anioEnCurso = Number(
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santo_Domingo",
+    year: "numeric",
+  }).format(new Date()),
+);
 
 /**
  * Validity through the end of the running year. The engine compares SD
