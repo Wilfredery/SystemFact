@@ -10,6 +10,8 @@
  *     no second audit, and stock/config are untouched.
  */
 
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import {
@@ -41,6 +43,130 @@ async function crearProductoConStock(
   return prod.id;
 }
 
+/**
+ * Dedicated blocker connection for the parking race — same superuser access as
+ * `getHarnessDb` but a SEPARATE PrismaPg pool with `max: 1`. The blocker's
+ * transaction must stay open holding the `VENTA` row lock for the whole parking
+ * window, while other clients (harness poller, tenant racers) work in parallel;
+ * sharing the harness pool could serialize against itself or steal the polling
+ * connections, so a dedicated single-connection client is the robust choice.
+ */
+function crearClienteBloqueador(): PrismaClient {
+  const directUrl = process.env.DIRECT_URL;
+  if (directUrl === undefined || directUrl === "") {
+    throw new Error("DIRECT_URL is not set; the blocker needs a superuser connection.");
+  }
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString: directUrl, max: 1 }) });
+}
+
+interface WaitingPid {
+  readonly pid: number;
+}
+
+interface LockRow {
+  readonly pid: number;
+  readonly locktype: string;
+  readonly granted: boolean;
+  readonly mode: string;
+  readonly query: string | null;
+}
+
+/**
+ * Poll until BOTH racer transactions are parked: waiting backends (lock waits
+ * excluding our own poller connection) recorded in `pg_stat_activity`, joined
+ * with `pg_locks` for diagnosis. Being parked is the guarantee that both racers
+ * already read their `estado`/`updatedAt` snapshot, so after the blocker rolls
+ * back the guarded `updateMany` predicates re-evaluate deterministically: the
+ * first delivered waiter commits, the second matches zero rows →
+ * `CONCURRENCIA_CONFLICTO`. Fails loudly on timeout (dumping the full lock
+ * state) instead of proceeding non-deterministically.
+ */
+async function esperarAmbasEsperando(db: PrismaClient): Promise<void> {
+  const inicio = Date.now();
+  for (;;) {
+    const esperando = await db.$queryRaw<WaitingPid[]>`
+      SELECT a.pid
+      FROM pg_stat_activity a
+      WHERE a.wait_event_type = 'Lock'
+        AND a.wait_event IS NOT NULL
+        AND a.datname = current_database()
+        AND a.pid <> pg_backend_pid()`;
+    if (esperando.length >= 2) return;
+    if (Date.now() - inicio > 5_000) {
+      const dump = await db.$queryRaw<LockRow[]>`
+        SELECT l.pid, l.locktype, l.granted, l.mode, left(s.query, 120) AS query
+        FROM pg_locks l
+        LEFT JOIN pg_stat_activity s ON s.pid = l.pid
+        WHERE l.pid IN (
+          SELECT pid FROM pg_stat_activity
+          WHERE wait_event_type = 'Lock' AND wait_event IS NOT NULL
+        ) OR NOT l.granted`;
+      throw new Error(
+        "Race parking failed: fewer than two transactions are waiting on the " +
+          `row lock after 5s. Current lock state: ${JSON.stringify(dump)}`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+}
+
+/**
+ * Fire `crearRaza()` (the two parallel use cases) while a blocker transaction
+ * holds the `Venta` row lock WITHOUT changing any data (`SELECT ... FOR
+ * UPDATE`), wait until BOTH racers are parked on it, then roll the blocker back
+ * (a rollback transforms nothing). From then on the race is deterministic: the
+ * first delivered waiter passes its guarded predicate and commits (advancing
+ * the row's `updatedAt`/`estado`), so the second waiter's re-evaluated
+ * predicate matches zero rows → `CONCURRENCIA_CONFLICTO`. Scheduler-dependent
+ * flakiness is gone; every existing assertion stays untouched.
+ *
+ * The blocker's Prisma interactive transaction gets a 15s timeout (its default
+ * 5s would kill it mid-parking); the rollback is triggered by throwing after
+ * the unlock signal, and its rejection is deliberately swallowed.
+ */
+async function conRazaBloqueada<T>(ventaId: number, crearRaza: () => Promise<T>): Promise<T> {
+  const blockerDb = crearClienteBloqueador();
+  let releaseBlocker!: () => void;
+  const unlocked = new Promise<void>((resolve) => {
+    releaseBlocker = resolve;
+  });
+  let signalLockHeld!: () => void;
+  const lockHeld = new Promise<void>((resolve) => {
+    signalLockHeld = resolve;
+  });
+  const blockerPromise = blockerDb.$transaction(
+    async (btx) => {
+      await btx.$executeRaw`SELECT id FROM "VENTA" WHERE id = ${ventaId} FOR UPDATE`;
+      signalLockHeld();
+      // Hold the row lock while both racers stack up on it, then roll back.
+      await unlocked;
+      throw new Error("blocker released (intentional rollback trigger)");
+    },
+    { timeout: 15_000 },
+  );
+  // The rollback trigger rejection is intentional; swallow it eagerly so Jest
+  // never observes it as an unhandled rejection (allSettled below re-awaits it).
+  void blockerPromise.catch(() => undefined);
+  try {
+    await lockHeld;
+    const racePromise = crearRaza();
+    try {
+      await esperarAmbasEsperando(getHarnessDb());
+    } catch (err) {
+      // Never leave the racers parked on a failure path.
+      releaseBlocker();
+      await Promise.allSettled([racePromise]);
+      throw err;
+    }
+    releaseBlocker();
+    return await racePromise;
+  } finally {
+    releaseBlocker();
+    await Promise.allSettled([blockerPromise]);
+    await blockerDb.$disconnect();
+  }
+}
+
 describe("venta guarded lifecycle (real DB)", () => {
   let catA: number;
 
@@ -63,23 +189,27 @@ describe("venta guarded lifecycle (real DB)", () => {
       return r.data.id;
     });
 
-    // Two concurrent edits on the SAME draft, each a different line-set.
-    const [a, b] = await Promise.all([
-      withTenantTransaction(ctx, (tx) =>
-        actualizarVenta(tx, ctx, {
-          id,
-          fecha: new Date("2026-01-10T00:00:00.000Z"),
-          lineas: [{ productoId: prod, cantidad: "3", precioUnitario: "100.00", descuento: CERO }],
-        }),
-      ),
-      withTenantTransaction(ctx, (tx) =>
-        actualizarVenta(tx, ctx, {
-          id,
-          fecha: new Date("2026-01-10T00:00:00.000Z"),
-          lineas: [{ productoId: prod, cantidad: "7", precioUnitario: "100.00", descuento: CERO }],
-        }),
-      ),
-    ]);
+    // Two concurrent edits on the SAME draft, each a different line-set. A
+    // blocker transaction parks both racers on the row lock first, so the
+    // winner/loser split no longer depends on the scheduler's ordering.
+    const [a, b] = await conRazaBloqueada(id, () =>
+      Promise.all([
+        withTenantTransaction(ctx, (tx) =>
+          actualizarVenta(tx, ctx, {
+            id,
+            fecha: new Date("2026-01-10T00:00:00.000Z"),
+            lineas: [{ productoId: prod, cantidad: "3", precioUnitario: "100.00", descuento: CERO }],
+          }),
+        ),
+        withTenantTransaction(ctx, (tx) =>
+          actualizarVenta(tx, ctx, {
+            id,
+            fecha: new Date("2026-01-10T00:00:00.000Z"),
+            lineas: [{ productoId: prod, cantidad: "7", precioUnitario: "100.00", descuento: CERO }],
+          }),
+        ),
+      ]),
+    );
 
     // Exactly one commits; the loser is a concurrency conflict.
     const oks = [a.ok, b.ok];
@@ -151,10 +281,14 @@ describe("venta guarded lifecycle (real DB)", () => {
       return r.data.id;
     });
 
-    const [a, b] = await Promise.all([
-      withTenantTransaction(ctx, (tx) => cancelarVenta(tx, ctx, { id })),
-      withTenantTransaction(ctx, (tx) => cancelarVenta(tx, ctx, { id })),
-    ]);
+    // Parked race: the blocker guarantees both cancels read `BORRADOR` before
+    // contending, so exactly one flips the row deterministically.
+    const [a, b] = await conRazaBloqueada(id, () =>
+      Promise.all([
+        withTenantTransaction(ctx, (tx) => cancelarVenta(tx, ctx, { id })),
+        withTenantTransaction(ctx, (tx) => cancelarVenta(tx, ctx, { id })),
+      ]),
+    );
     const oks = [a.ok, b.ok];
     expect(oks.filter(Boolean)).toHaveLength(1);
     const loser = a.ok ? b : a;
