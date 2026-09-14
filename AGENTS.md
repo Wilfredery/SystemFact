@@ -86,10 +86,29 @@ These rules derive from the canonical engineering constitution in the project do
 - Domain tests run with no database (domain is pure).
 
 ## Git workflow
-- `main` protected: advances only via reviewed, green PR.
+- `master` protected: advances only via reviewed, green PR.
 - Branches `feature/<phase>-<module>` aligned to roadmap phases.
 - Conventional commits; one work unit per commit.
 - Prisma migrations always in their own reviewable commit, never mixed with feature changes.
+
+## CI/CD (GitHub Actions)
+- `.github/workflows/ci.yml` — runs on every PR targeting `master` and again on `master`
+  after the merge: ESLint, strict typecheck, `prisma validate`, unit tests, integration tests
+  against a real Postgres 16 (RLS enforced via the `systemfact_app` role), production build and
+  a Conventional Commits guard. The aggregate job **CI gate** is the single required status check.
+- `.github/workflows/release-please.yml` — on every merge to `master` it refreshes ONE release
+  PR with the next version (`app/package.json`) and `app/CHANGELOG.md`; merging that PR creates
+  the `vX.Y.Z` tag and publishes the GitHub Release. It never pushes to `master` directly.
+  Config: `release-please-config.json` + `.release-please-manifest.json`.
+- Commit subjects are the release input: `feat` → MINOR, `fix`/`perf` → PATCH, `!`/BREAKING
+  CHANGE → MINOR while pre-1.0 (`bump-minor-pre-major`). Validate locally:
+  `pnpm lint:commits --from origin/master --to HEAD`.
+- E2E (Playwright) runs only when the repo secrets `E2E_USER`, `E2E_PASSWORD`,
+  `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` exist; otherwise the job skips
+  with a notice instead of failing. Optional repo variable `E2E_PRODUCT` (default `Arroz`).
+- One-time repo setting: Settings → Actions → General → allow GitHub Actions to create and approve
+  pull requests, so release-please can open its PR. Optional secret `RELEASE_PLEASE_TOKEN` (PAT)
+  if you also want CI to run on the release PR.
 
 ## Definition of Done
 A feature is done when it: (1) meets the requirement + acceptance criteria;

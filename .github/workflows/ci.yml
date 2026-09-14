@@ -1,0 +1,352 @@
+# ============================================================
+# CI — SystemFact
+#
+# Corre en cada PR que apunta a `master` y otra vez sobre `master` después
+# del merge (verificación post-merge + insumo para release-please).
+#
+# Capas (AGENTS.md § Testing):
+#   1. quality     → ESLint, TypeScript estricto (noEmit) y `prisma validate`
+#   2. unit        → Jest (dominio fiscal, aplicación, UI jsdom) sin base de datos
+#   3. integration → Jest contra Postgres 16 REAL con RLS forzado (rol
+#                    systemfact_app NOBYPASSRLS), igual que el entorno local
+#   4. build       → `next build` de producción (detecta errores de build-time)
+#   5. commits     → guardián de Conventional Commits (insumo de release-please)
+#   6. e2e         → smoke Playwright; SOLO corre si están los secrets (si no,
+#                    se saltea con un aviso y no bloquea el PR)
+#
+# El job agregado "CI gate" es el único check requerido por la protección de
+# rama: si un job obligatorio falla, el gate falla.
+# ============================================================
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Un push nuevo sobre la misma rama cancela los jobs todavía en vuelo.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# El código Next.js vive en app/ (el root del repo no es un paquete Node).
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  # ----------------------------------------------------------
+  # 1. Estilo, tipos y schema
+  # ----------------------------------------------------------
+  quality:
+    name: Lint / types / schema
+    runs-on: ubuntu-latest
+    env:
+      # Valores dummy: ningún chequeo de este job toca una base de datos, pero
+      # `src/lib/env.ts` (y `prisma validate`) esperan que las variables existan.
+      DATABASE_URL: postgresql://systemfact_app:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://postgres:ci@localhost:5432/ci
+      NEXT_PUBLIC_SUPABASE_URL: https://ci.invalid.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-project
+
+      - name: ESLint (incluye la regla systemfact/server-action-must-wrap-tenant)
+        run: pnpm lint
+
+      - name: TypeScript estricto (tsc --noEmit)
+        run: pnpm exec tsc --noEmit
+
+      - name: Prisma schema validation
+        run: pnpm exec prisma validate
+
+  # ----------------------------------------------------------
+  # 2. Tests unitarios (sin base de datos: el dominio es puro)
+  # ----------------------------------------------------------
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-project
+
+      - name: Jest (dominio + aplicación + UI)
+        run: pnpm test
+
+  # ----------------------------------------------------------
+  # 3. Integración contra Postgres real con RLS
+  # ----------------------------------------------------------
+  # Reproduce el entorno de SETUP-LOCAL.md dentro del runner:
+  #   - Postgres 16 (misma major que Supabase),
+  #   - migraciones aplicadas como superuser (DIRECT_URL),
+  #   - rol de aplicación `systemfact_app` NOBYPASSRLS con password efímero
+  #     (la migración create_app_role lo crea SIN password, out-of-band por
+  #     diseño; acá lo seteamos solo para esta base descartable).
+  integration:
+    name: Integration tests (Postgres + RLS)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Credenciales efímeras y SOLO para este contenedor descartable.
+      PGSUPERPASSWORD: postgres
+      APP_PASSWORD: ci-app-password
+      TEST_DB: systemfact_test
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-project
+
+      - name: Ensure psql client
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+          psql --version
+
+      - name: Provision test database, migrations and app role
+        run: |
+          set -euo pipefail
+          export PGPASSWORD="${PGSUPERPASSWORD}"
+          SUPER_URL="postgresql://postgres:${PGSUPERPASSWORD}@localhost:5432/${TEST_DB}"
+
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE ${TEST_DB}"
+
+          # El harness de integración lee app/.env.integration en el globalSetup
+          # de Jest; se escribe antes de migrar para que todo el job use las
+          # mismas credenciales.
+          cat > .env.integration <<EOF
+          DATABASE_URL="postgresql://systemfact_app:${APP_PASSWORD}@localhost:5432/${TEST_DB}"
+          DIRECT_URL="${SUPER_URL}"
+          NEXT_PUBLIC_SUPABASE_URL="http://localhost:54321"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY="integration-test-key"
+          EOF
+
+          # DDL como superuser. DATABASE_URL se fuerza al mismo rol para que el
+          # deploy funcione aunque el config de Prisma no sea autodetectado.
+          DATABASE_URL="${SUPER_URL}" DIRECT_URL="${SUPER_URL}" pnpm exec prisma migrate deploy
+
+          # create_app_role crea el rol sin password y otorga CONNECT solo sobre
+          # la base `postgres`; acá se completa para esta base de test.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER ROLE systemfact_app WITH PASSWORD '${APP_PASSWORD}'" \
+            -c "GRANT CONNECT ON DATABASE ${TEST_DB} TO systemfact_app"
+
+      - name: Jest integration suite (RLS enforced)
+        run: pnpm test:integration
+
+  # ----------------------------------------------------------
+  # 4. Build de producción
+  # ----------------------------------------------------------
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    env:
+      # `next build` no necesita base de datos; sí necesita que las variables
+      # validadas por `src/lib/env.ts` existan durante la recolección de páginas.
+      DATABASE_URL: postgresql://systemfact_app:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://postgres:ci@localhost:5432/ci
+      NEXT_PUBLIC_SUPABASE_URL: https://ci.invalid.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-project
+
+      - name: next build
+        run: pnpm build
+
+  # ----------------------------------------------------------
+  # 5. Guardián de Conventional Commits (solo PRs)
+  # ----------------------------------------------------------
+  # release-please deriva la próxima versión y el CHANGELOG de los commits que
+  # entran a master: un asunto no convencional desaparece del changelog.
+  commits:
+    name: Conventional commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # hace falta la historia completa para diffear contra la base
+
+      - uses: ./.github/actions/setup-project
+
+      - name: Validate commit messages
+        run: |
+          pnpm exec tsx tools/ci/check-conventional-commits.ts \
+            --from "origin/${{ github.base_ref }}" \
+            --to "${{ github.sha }}"
+
+  # ----------------------------------------------------------
+  # 6. E2E (Playwright) — opcional, dependiente de secrets
+  # ----------------------------------------------------------
+  # El smoke usa Supabase Auth REMOTO + la base local: sin credenciales reales
+  # no puede correr. Este preflight decide si el job arranca; si faltan los
+  # secrets, el pipeline avisa y sigue (no bloquea PRs de terceros).
+  e2e-gate:
+    name: E2E preflight
+    runs-on: ubuntu-latest
+    # Este job no hace checkout: el working-directory global (app/) no existiría.
+    defaults:
+      run:
+        working-directory: .
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          E2E_USER: ${{ secrets.E2E_USER }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "${E2E_USER}" ] && [ -n "${E2E_PASSWORD}" ] && [ -n "${SUPABASE_URL}" ] && [ -n "${SUPABASE_ANON_KEY}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Secrets de E2E detectados: corre el smoke de Playwright."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::E2E omitido: configurá los secrets E2E_USER, E2E_PASSWORD, NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY para habilitar el smoke de Playwright."
+          fi
+
+  e2e:
+    name: E2E smoke (Playwright)
+    needs: e2e-gate
+    if: needs.e2e-gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGSUPERPASSWORD: postgres
+      APP_PASSWORD: ci-app-password
+      E2E_DB: systemfact_e2e
+      SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      E2E_USER: ${{ secrets.E2E_USER }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+      E2E_PRODUCT: ${{ vars.E2E_PRODUCT || 'Arroz' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-project
+
+      - name: Ensure psql client
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+
+      - name: Provision dev-shaped database (migrations + app role)
+        run: |
+          set -euo pipefail
+          export PGPASSWORD="${PGSUPERPASSWORD}"
+          SUPER_URL="postgresql://postgres:${PGSUPERPASSWORD}@localhost:5432/${E2E_DB}"
+
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE ${E2E_DB}"
+
+          # app/.env es lo que leen Next.js, Playwright y los seeds.
+          cat > .env <<EOF
+          DATABASE_URL="postgresql://systemfact_app:${APP_PASSWORD}@localhost:5432/${E2E_DB}"
+          DIRECT_URL="${SUPER_URL}"
+          NEXT_PUBLIC_SUPABASE_URL="${SUPABASE_URL}"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY}"
+          E2E_USER="${E2E_USER}"
+          E2E_PASSWORD="${E2E_PASSWORD}"
+          E2E_PRODUCT="${E2E_PRODUCT}"
+          EOF
+
+          DATABASE_URL="${SUPER_URL}" DIRECT_URL="${SUPER_URL}" pnpm exec prisma migrate deploy
+
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER ROLE systemfact_app WITH PASSWORD '${APP_PASSWORD}'" \
+            -c "GRANT CONNECT ON DATABASE ${E2E_DB} TO systemfact_app"
+
+      - name: Seed the E2E tenant
+        run: |
+          set -euo pipefail
+          export PGPASSWORD="${PGSUPERPASSWORD}"
+          # Fixture CI-only (empresa + sucursal + rol + usuario + producto con stock).
+          # No vive en app/tools/scripts: no debe poder apuntarse a una base real.
+          psql -h localhost -U postgres -d "${E2E_DB}" \
+            -v ON_ERROR_STOP=1 \
+            -v e2e_user="${E2E_USER}" \
+            -v e2e_product="${E2E_PRODUCT}" \
+            -f ../.github/ci/e2e-fixture.sql
+          # Seeds de negocio que ya usa el entorno local (idempotentes).
+          pnpm seed:venta
+          pnpm seed:ncf
+          pnpm seed:cliente
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run the confirm smoke
+        run: pnpm e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: app/playwright-report
+          retention-days: 7
+
+  # ----------------------------------------------------------
+  # Gate: único check requerido por la protección de `master`
+  # ----------------------------------------------------------
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs: [quality, unit, integration, build, commits, e2e]
+    runs-on: ubuntu-latest
+    # Agregador puro: no hace checkout, así que no hereda el cwd app/.
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Fail when a required job failed or was cancelled
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "::error::Uno o más jobs de CI fallaron. Revisá el resumen del workflow."
+          exit 1
+
+      - name: All required jobs passed
+        run: |
+          echo "OK: lint, types, schema, unit, integration y build en verde."

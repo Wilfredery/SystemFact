@@ -1,0 +1,42 @@
+# ============================================================
+# Composite setup shared by every CI job.
+#
+# Keeps Node + pnpm + the frozen install in ONE place so the versions can
+# never drift between jobs (a drifted install is the classic "works in one
+# job, fails in another" CI bug).
+#
+# - pnpm version comes from app/package.json#packageManager (pnpm@11.24.0);
+#   `package_json_file` points the action at the app manifest because the
+#   repository root is not a Node package.
+# - `pnpm install --frozen-lockfile` runs the `postinstall` hook
+#   (`prisma generate`), so the generated client exists before any job runs.
+# ============================================================
+name: Setup project
+description: Install Node, pnpm and the frozen dependencies of app/.
+
+inputs:
+  node-version:
+    description: Node.js version to install.
+    required: false
+    default: "24"
+
+runs:
+  using: composite
+  steps:
+    - name: Install pnpm
+      uses: pnpm/action-setup@v6
+      with:
+        package_json_file: app/package.json
+        run_install: false
+
+    - name: Install Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: pnpm
+        cache-dependency-path: app/pnpm-lock.yaml
+
+    - name: Install dependencies (frozen lockfile)
+      shell: bash
+      working-directory: app
+      run: pnpm install --frozen-lockfile
