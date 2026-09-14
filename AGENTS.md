@@ -100,6 +100,12 @@ These rules derive from the canonical engineering constitution in the project do
   PR with the next version (`app/package.json`) and `app/CHANGELOG.md`; merging that PR creates
   the `vX.Y.Z` tag and publishes the GitHub Release. It never pushes to `master` directly.
   Config: `release-please-config.json` + `.release-please-manifest.json`.
+- **MANDATORY: merge release PRs (`release-please--branches--*`) with "Squash and merge", NEVER
+  "Create a merge commit".** release-please detects the merged release PR by the message of the
+  pushed commit; a merge commit ("Merge pull request #N...") breaks that detection, so the run
+  ends green but silently creates NO tag and NO release (happened on v0.2.0, PR #27 — tag had to
+  be created manually). With squash, the commit message is the PR title ("chore(master): release
+  systemfact X.Y.Z") and the tag is created automatically.
 - Commit subjects are the release input: `feat` → MINOR, `fix`/`perf` → PATCH, `!`/BREAKING
   CHANGE → MINOR while pre-1.0 (`bump-minor-pre-major`). Validate locally:
   `pnpm lint:commits --from origin/master --to HEAD`.
