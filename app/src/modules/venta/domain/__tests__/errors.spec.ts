@@ -46,10 +46,12 @@ describe("venta error catalog — 5c confirm delta (R-V13 / R-V15)", () => {
     CANTIDAD_EXCEDE_ORIGINAL: true,
     FACTURA_NO_VIGENTE: true,
     VENTA_NO_CONFIRMADA: true,
+    // Phase-5d idempotency-gate delta (R-D5 amendment: 605).
+    DEVOLUCION_YA_REGISTRADA: true,
   };
 
-  it("carries exactly 23 stable codes (19 + the 5d return delta)", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(23);
+  it("carries exactly 24 stable codes (19 + the 5d return delta + the 605 gate)", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(24);
   });
 
   it("exposes the five confirm codes with distinct stable values", () => {

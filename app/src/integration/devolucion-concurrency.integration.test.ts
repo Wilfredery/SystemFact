@@ -19,8 +19,11 @@
  * never scheduler-dependent. The sale line sells exactly 1 unit and both
  * racers request that same 1 unit, so after the winner commits its line the
  * loser deterministically re-reads the cumulative cap (1 + 1 > 1) and is
- * rejected with `CANTIDAD_EXCEDE_ORIGINAL` — exactly-one-winner, no negative
- * stock, no reservation above the original quantity, no lost update.
+ * rejected with `DEVOLUCION_YA_REGISTRADA` — the released waiter's first
+ * read INSIDE the serialization window observes the winner's committed detail
+ * triple, which is simultaneously the failed cumulative proof (1 + 1 > 1):
+ * exactly-one-winner, no negative stock, no reservation above the original
+ * quantity, no lost update.
  */
 
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -205,7 +208,7 @@ describe("devolucion same-factura race (real DB, RLS on)", () => {
     });
   });
 
-  it("two parallel returns of the same unit: exactly one commits, loser CANTIDAD_EXCEDE_ORIGINAL, one B04 burn, no negative stock", async () => {
+  it("two parallel returns of the same unit: exactly one commits, loser DEVOLUCION_YA_REGISTRADA, one B04 burn, no negative stock", async () => {
     // Stock 10 at branch A1; the confirm debits the 1 sold unit → 9 left.
     const prod = (
       await crearProductoVenta({
@@ -251,11 +254,14 @@ describe("devolucion same-factura race (real DB, RLS on)", () => {
     );
 
     // Exactly one commits; the loser gets the typed cumulative-cap error.
+    // The winner's NC consumed the only sold unit; the loser, released after
+    // the winner's COMMIT, re-reads the prior NCs under the same lock and its
+    // requested triple exactly matches the winner's emitted detail.
     const oks = [a.ok, b.ok];
     expect(oks.filter(Boolean)).toHaveLength(1);
     const loser = a.ok ? b : a;
     const winner = a.ok ? a : b;
-    expect(!loser.ok && loser.code).toBe("CANTIDAD_EXCEDE_ORIGINAL");
+    expect(!loser.ok && loser.code).toBe("DEVOLUCION_YA_REGISTRADA");
     expect(winner.ok && winner.data.ncf).toBe("B0400000201"); // range seeded at 200
 
     // No reservation above the original quantity: ONE NC of exactly 1 unit.

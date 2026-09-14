@@ -5,10 +5,11 @@
  * one (factura, producto) is enforced over EVERY prior VIGENTE NC line, not
  * just the last one. Two complementary scenarios from the devolucion spec:
  *
- *   A. sale line of 5, two prior NCs returned 2 + 1 (cumulative 3) → one more
- *      unit succeeds, cumulative = 4 ≤ 5;
- *   B. sale line of 5, two prior NCs already returned 3 + 2 (cumulative 5) → a
- *      further return is rejected with `CANTIDAD_EXCEDE_ORIGINAL` and NO row of
+ *   A. sale line of 5, two prior NCs returned 1.500 + 2.000 (cumulative 3.500)
+ *      → one more unit succeeds, cumulative = 4.500 ≤ 5;
+ *   B. sale line of 5, two prior NCs already returned 2.000 + 3.000 (cumulative
+ *      5) → a further return is rejected with `CANTIDAD_EXCEDE_ORIGINAL` and NO
+ *      row of
  *      any kind is written (NC / detalles / inventory movements / audit counts
  *      all unchanged) — crucially BEFORE the B04 NCF consume, so no sequence
  *      number is burned either.
@@ -154,14 +155,18 @@ describe("devolucion cumulative cap (real DB, RLS on)", () => {
     });
   });
 
-  it("cap has room: two prior NCs returned 2+1 of 5; a 4th NC of 1 succeeds (cumulative 4)", async () => {
+  it("cap has room: two prior NCs returned 1.500+2.000 of 5; another NC of 1 succeeds (cumulative 4.500)", async () => {
     const prod = await productoConStock("cap-ok", "50.000");
     const { ventaId, facturaId } = await crearVentaConfirmada(prod, "5");
 
-    // Two prior NCs, 2 and 1 units — the cumulative builds ACROSS documents.
-    const r1 = await devolver(ventaId, prod, "2");
+    // Two prior NCs across SEPARATE documents. Quantities are deliberately
+    // pairwise distinct AND distinct from the requested one: under the R-D5
+    // idempotency gate an exact (producto, cantidad, tipoReposicion) triple on
+    // a prior NC is a RETRY (rejected), so legal cumulative growth always
+    // requests a never-before-returned quantity of that product.
+    const r1 = await devolver(ventaId, prod, "1.500");
     expect(r1.ok).toBe(true);
-    const r2 = await devolver(ventaId, prod, "1");
+    const r2 = await devolver(ventaId, prod, "2.000");
     expect(r2.ok).toBe(true);
     const secuenciaTrasPriors = await leerSecuenciaB04(ctx.empresaId);
     expect(secuenciaTrasPriors).toBe(202); // B04 range seeded at 200, two burns
@@ -171,9 +176,9 @@ describe("devolucion cumulative cap (real DB, RLS on)", () => {
       _sum: { cantidad: true },
       where: { notaCredito: { facturaOriginalId: facturaId }, productoId: prod },
     });
-    expect(priorSum._sum?.cantidad?.toFixed(3)).toBe("3.000");
+    expect(priorSum._sum?.cantidad?.toFixed(3)).toBe("3.500");
 
-    // One more unit: cumulative 4 ≤ 5 → the third NC commits.
+    // One more unit: cumulative 4.500 ≤ 5 → the third NC commits.
     const r3 = await devolver(ventaId, prod, "1");
     expect(r3.ok).toBe(true);
     if (r3.ok) {
@@ -189,19 +194,22 @@ describe("devolucion cumulative cap (real DB, RLS on)", () => {
       _sum: { cantidad: true },
       where: { notaCredito: { facturaOriginalId: facturaId }, productoId: prod },
     });
-    expect(total._sum?.cantidad?.toFixed(3)).toBe("4.000");
+    expect(total._sum?.cantidad?.toFixed(3)).toBe("4.500");
     // One VENDIBLE movement per NC (prices frozen at 100.00).
     expect(await db.movimientoInventario.count({ where: { notaCreditoId: { in: ncs.map((n) => n.id) } } })).toBe(3);
     expect(await leerSecuenciaB04(ctx.empresaId)).toBe(203); // exactly three burns
   });
 
-  it("cap exhausted: prior NCs returned 3+2 of 5; a 6th unit rejects and writes NOTHING (incl. no NCF burn)", async () => {
+  it("cap exhausted: prior NCs returned 2.000+3.000 of 5; a further unit rejects and writes NOTHING (incl. no NCF burn)", async () => {
     const prod = await productoConStock("cap-full", "50.000");
     const { ventaId, facturaId } = await crearVentaConfirmada(prod, "5");
 
-    const r1 = await devolver(ventaId, prod, "3");
+    // Pairwise-distinct prior quantities (two NCs); the requested one differs
+    // from both, so the idempotency gate does NOT fire and the CAP is what
+    // rejects the request.
+    const r1 = await devolver(ventaId, prod, "2.000");
     expect(r1.ok).toBe(true);
-    const r2 = await devolver(ventaId, prod, "2");
+    const r2 = await devolver(ventaId, prod, "3.000");
     expect(r2.ok).toBe(true);
 
     const db = getHarnessDb();
