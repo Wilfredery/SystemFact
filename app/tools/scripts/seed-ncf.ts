@@ -64,7 +64,17 @@ export const NCF_RANGOS_SEED: readonly RangoNcfSeed[] = [
   { tipoNcf: "B04", rangoInicio: 201, rangoFin: 300 },
 ];
 
-const anioEnCurso = new Date().getUTCFullYear();
+// The running year for NCF validity follows the BUSINESS calendar
+// (America/Santo_Domingo — AGENTS.md "Dates & time"), resolved via the
+// standard Intl API with an explicit timeZone, same pattern as the devolucion
+// domain. `getUTCFullYear()` would disagree with the SD calendar during the
+// UTC±4 offset windows (e.g. Dec 31 20:00 SD already reads next year in UTC).
+const anioEnCurso = Number(
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santo_Domingo",
+    year: "numeric",
+  }).format(new Date()),
+);
 
 /**
  * Validity through the end of the running year. The engine compares SD
