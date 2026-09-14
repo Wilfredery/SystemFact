@@ -35,6 +35,12 @@ jest.mock("@/modules/venta/http/actions", () => ({
 jest.mock("@/modules/producto/http/actions", () => ({
   listarProductosAction: jest.fn(),
 }));
+// DraftList now mounts the fase-5d return control, which imports the real
+// devolucion server-action module (and its Supabase env reader) at module
+// scope — mock it like the venta actions so the screen stays DB-free.
+jest.mock("@/modules/devolucion/http/actions", () => ({
+  devolverVentaAction: jest.fn(),
+}));
 jest.mock("@/modules/cliente/http/actions", () => ({
   listarClientesAction: jest.fn(),
   crearClienteAction: jest.fn(),

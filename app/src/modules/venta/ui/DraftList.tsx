@@ -13,6 +13,7 @@
  */
 
 import { ESTADO_VENTA, type EstadoVenta } from "../domain/venta";
+import { DevolverButton } from "@/modules/devolucion/ui/DevolverButton";
 import { formatearMonto } from "./carro";
 import { formatearFechaSD } from "./fecha";
 
@@ -120,15 +121,18 @@ export function DraftList({
                       </button>
                     </>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => onCancel(d.id)}
-                      aria-label={`Cancel sale ${d.id}`}
-                      title="Cancel the sale and void (anular) its fiscal invoice"
-                      className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-zinc-800"
-                    >
-                      Cancel sale
-                    </button>
+                    <>
+                      <DevolverButton ventaId={d.id} />
+                      <button
+                        type="button"
+                        onClick={() => onCancel(d.id)}
+                        aria-label={`Cancel sale ${d.id}`}
+                        title="Cancel the sale and void (anular) its fiscal invoice"
+                        className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-zinc-800"
+                      >
+                        Cancel sale
+                      </button>
+                    </>
                   )}
                 </div>
               </li>
