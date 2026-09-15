@@ -118,6 +118,16 @@ These rules derive from the canonical engineering constitution in the project do
      with `autorelease: tagged` ("already processed"), then `workflow_dispatch` the Release
      workflow and verify the new release PR appears (v0.3.0 via PR #31 after this fix).
   Always report a stalled release run back to the user explicitly — silence is not success.
+- **Root cause fixed (PR #39): `component: systemfact` was REMOVED from `release-please-config.json`**
+  and the title pattern is now `chore: release ${version}`. With the component key present and
+  `include-component-in-tag: false`, release-please failed BOTH ways: the bot titled its release
+  PR `chore: release master` (legacy default, component token missing on empty component), and
+  after merging, the workflow's re-parse produced `component: undefined` ≠ configured
+  `systemfact` → tag never created → "untagged, merged release PRs outstanding" → every run
+  aborted (v0.2.0 #27, v0.3.0 #31, v0.4.0-adjacent #35, v0.4.1 #37 — all needed manual tags).
+  From #39 onward: release PR title `chore: release X.Y.Z` round-trips through the parser and
+  the tag + GitHub Release are created automatically right after the squash merge. Tags only
+  need manual creation for release PRs merged with the legacy title (immutable once merged).
 - Commit subjects are the release input: `feat` → MINOR, `fix`/`perf` → PATCH, `!`/BREAKING
   CHANGE → MINOR while pre-1.0 (`bump-minor-pre-major`). Validate locally:
   `pnpm lint:commits --from origin/master --to HEAD`.
