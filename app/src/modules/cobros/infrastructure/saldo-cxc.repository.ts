@@ -91,3 +91,72 @@ export async function consultarSaldoCxcEnTx(
 
   return rows;
 }
+
+/**
+ * One VIGENTE invoice's frozen total and its recomputed pending balance, both as
+ * `Decimal(12,2)` strings. Produced by {@link bloquearYCalcularSaldoFacturaEnTx}.
+ */
+export interface SaldoFacturaBloqueado {
+  readonly total: string;
+  readonly saldoPendiente: string;
+}
+
+/**
+ * Re-reads a single invoice's pending balance INSIDE the caller's transaction
+ * while taking a `FOR UPDATE` row lock on the `FACTURA` row (R-C2). This is the
+ * serialization point for concurrent collections: every `registrarCobro` on the
+ * same invoice blocks here until the prior transaction commits, so each one
+ * judges its amount against the balance AS OF its own snapshot — never a stale
+ * read. Returns `null` when the invoice is missing, not owned by this tenant, or
+ * not `VIGENTE`; the caller maps that to `FACTURA_COBRO_NO_VIGENTE`.
+ *
+ * The pending-balance expression is the SINGLE canonical ADR-017 derivation,
+ * term-for-term identical to {@link consultarSaldoCxcEnTx} (total − Σ COBRO/APLICADO
+ * − Σ VIGENTE credit-note + Σ VIGENTE debit-note); it is written as correlated
+ * scalar subqueries only to (a) avoid scanning the whole board for a one-invoice
+ * revalidation and (b) hold the row lock in the same statement. If the canonical
+ * formula ever changes, BOTH statements must change together — that coupling is
+ * deliberate (the board and the over-payment guard must never disagree).
+ *
+ * `FOR UPDATE OF f` locks only the invoice row; the scalar subqueries still run
+ * under the app role's RLS (empresa GUC enforced, branch GUC bounding the sums),
+ * so the recomputed balance is tenant-scoped by construction.
+ */
+export async function bloquearYCalcularSaldoFacturaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  facturaId: number,
+): Promise<SaldoFacturaBloqueado | null> {
+  const rows = await tx.$queryRaw<SaldoFacturaBloqueado[]>`
+    SELECT
+      f."total"::numeric(12, 2)::text AS "total",
+      (
+        f."total"
+        - COALESCE((
+            SELECT SUM("monto") FROM "PAGO"
+            WHERE "facturaId" = f."id"
+              AND "empresaId" = ${ctx.empresaId}
+              AND "tipo" = 'COBRO'
+              AND "estado" = 'APLICADO'
+          ), 0)
+        - COALESCE((
+            SELECT SUM("monto") FROM "NOTA_CREDITO"
+            WHERE "facturaOriginalId" = f."id"
+              AND "empresaId" = ${ctx.empresaId}
+              AND "estado" = 'VIGENTE'
+          ), 0)
+        + COALESCE((
+            SELECT SUM("monto") FROM "NOTA_DEBITO"
+            WHERE "facturaOriginalId" = f."id"
+              AND "empresaId" = ${ctx.empresaId}
+              AND "estado" = 'VIGENTE'
+          ), 0)
+      )::numeric(12, 2)::text AS "saldoPendiente"
+    FROM "FACTURA" f
+    WHERE f."id" = ${facturaId}
+      AND f."empresaId" = ${ctx.empresaId}
+      AND f."estado" = 'VIGENTE'
+    FOR UPDATE OF f`;
+
+  return rows[0] ?? null;
+}
