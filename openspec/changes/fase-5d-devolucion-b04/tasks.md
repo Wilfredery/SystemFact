@@ -58,5 +58,5 @@ _Tasks 3.1–3.3 form PR slice 3 (cumulative quantity edge cases + concurrency t
 
 ## Phase 4: Cleanup / Documentation
 
-- [ ] 4.1 Update module barrel exports in `app/src/modules/devolucion/index.ts`
-- [ ] 4.2 Add JSDoc comments and type documentation for all new domain/application interfaces; verify no unused imports across modified files
+- [x] 4.1 Update module barrel exports in `app/src/modules/devolucion/index.ts` — **deviation (docs-only interpretation):** no module in this repo uses a barrel (`index.ts`); imports go straight to concrete files. Interpreted as: `devolucion` was the only module missing its `README.md` → created `app/src/modules/devolucion/README.md` (module map) per repo convention + YAGNI instead of introducing a one-off barrel.
+- [x] 4.2 Add JSDoc comments and type documentation for all new domain/application interfaces; verify no unused imports across modified files (JSDoc verified present on every exported symbol of the new slice; `pnpm lint` clean → no unused imports)
