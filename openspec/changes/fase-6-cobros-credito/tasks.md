@@ -61,8 +61,8 @@ strict_tdd: OFF (Engram `sdd-init-calidad-precio/systemfact`) — tests ship ins
 
 ## Phase 4: UI — Board, Payment, Estado de Cuenta (PR slice 4)
 
-- [ ] 4.1 Create `cobros/http/cxc-board/` page: Pendiente/Parcial/En Mora lists, paginated 25/page, consuming only `consultarSaldoCxC` (R-C7, R-B1).
-- [ ] 4.2 Create payment form: submit control **disabled on first click (non-droppable line — do not omit)**, server revalidates all; e2e test: rapid double-click → at most one collection persists (R-C7).
-- [ ] 4.3 Create estado de cuenta view: customer's VIGENTE invoices with total, applied cobros, pending balance, derived state from canonical query; e2e test with mixed-state customer (R-C7).
-- [ ] 4.4 Create receipt reprint page (non-fiscal document) (R-C4).
-- [ ] 4.5 Update module docs (`docs/` fase-6 section) with cobros lifecycle and error catalog reference.
+- [x] 4.1 Create `cobros/http/cxc-board/` page: Pendiente/Parcial/En Mora lists, paginated 25/page, consuming only `consultarSaldoCxC` (R-C7, R-B1).
+- [x] 4.2 Create payment form: submit control **disabled on first click (non-droppable line — do not omit)**, server revalidates all; e2e test: rapid double-click → at most one collection persists (R-C7).
+- [x] 4.3 Create estado de cuenta view: customer's VIGENTE invoices with total, applied cobros, pending balance, derived state from canonical query; e2e test with mixed-state customer (R-C7).
+- [x] 4.4 Create receipt reprint page (non-fiscal document) (R-C4).
+- [x] 4.5 Update module docs (`docs/` fase-6 section) with cobros lifecycle and error catalog reference.
