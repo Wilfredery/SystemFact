@@ -1,4 +1,43 @@
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:026b3c8140ccb23cfc3c975def890f21b8e8743063ee5a95fcade875744154ca
+verdict: pass
+blockers: 0
+critical_findings: 0
+requirements: 12/12
+scenarios: 32/32
+test_command: pnpm test
+test_exit_code: 0
+test_output_hash: sha256:dd92b49215b09a0514fbcd8163ffb32d8527101b213199fb007aedc122d01dda
+build_command: pnpm build
+build_exit_code: 0
+build_output_hash: sha256:176fa12f2bd207c2d7d0c03ddbca2442d09eb6ff7f8a0399ea2b461ca129292c
+```
+
 # Verify Report: fase-5d-devolucion-b04 (Devoluciones, Nota de Crédito B04)
+
+## Re-verification on current master (evidence envelope)
+
+This section records a fresh, independent verification run on current `master` commit
+`83c3b695bd39175c51d315a05dfe98efc97bb358` (HEAD at verification time). Every command was
+executed in `app/` and its raw stdout/stderr captured to a file; the `test_output_hash` /
+`build_output_hash` in the envelope are the SHA-256 of those exact captured outputs.
+
+- `pnpm lint` → exit 0 (0 problems; sha256 `a6d6ff1c66f0c23d303b894d3878ff2da6ae4d5645282104321902c39cc37673`)
+- `pnpm exec tsc --noEmit` → exit 0 (clean; empty output)
+- `pnpm test` (unit, jsdom) → exit 0, **71 suites / 642 tests passed** (sha256 `dd92b49215b09a0514fbcd8163ffb32d8527101b213199fb007aedc122d01dda`)
+- `pnpm test:integration` (real Postgres 16, `systemfact_app` role, RLS enforced; `sf-postgres`
+  healthy on localhost:5433) → exit 0, **29 suites / 112 tests passed** (sha256 `31be1270c244c2691ef78f2150be71b8d1b3a83191961d616cf4ea8e8789c75a`)
+- `pnpm build` (`next build`) → exit 0, compiled + 7/7 static pages (sha256 `176fa12f2bd207c2d7d0c03ddbca2442d09eb6ff7f8a0399ea2b461ca129292c`)
+
+`evidence_revision` is the SHA-256 of the HEAD commit-hash string (reproducible identity of the
+verified revision). The envelope's `test_*` pair represents the canonical project test command
+(`pnpm test`); the integration suite above is additional corroborating evidence for the fiscal
+devolucion flows and was also green. Playwright E2E remains CI-secrets-gated and was not executed
+locally (unchanged, non-blocking, see "Known honest gaps"). Verdict: **PASS**, no blockers,
+no critical findings.
+
+---
 
 **Verdict: PASS** — all requirements verified against merged master (v0.4.0, tag e740b3f).
 Artifacts reconciled on branch `sdd/fase-5d-artifact-reconciliation`.
