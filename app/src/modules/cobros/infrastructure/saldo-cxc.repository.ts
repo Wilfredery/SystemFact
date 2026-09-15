@@ -116,17 +116,40 @@ export interface SaldoFacturaBloqueado {
  * scalar subqueries only to (a) avoid scanning the whole board for a one-invoice
  * revalidation and (b) hold the row lock in the same statement. If the canonical
  * formula ever changes, BOTH statements must change together — that coupling is
- * deliberate (the board and the over-payment guard must never disagree).
- *
- * `FOR UPDATE OF f` locks only the invoice row; the scalar subqueries still run
- * under the app role's RLS (empresa GUC enforced, branch GUC bounding the sums),
- * so the recomputed balance is tenant-scoped by construction.
- */
+  * deliberate (the board and the over-payment guard must never disagree).
+  *
+  * The lock and the balance read are TWO statements, not one: under READ
+  * COMMITTED the scalar subqueries of a single locking statement still evaluate
+  * against that statement's snapshot, so a tx that waited on the lock would
+  * recompute the balance WITHOUT the payment the winner just committed. Statement
+  * 1 parks on the row lock; statement 2 runs after the lock is held and gets a
+  * fresh snapshot — the twice-serialized ordering the R-C2 test demands.
+  *
+  * Both statements run under the app role's RLS (empresa GUC enforced, branch
+  * GUC bounding the sums), so the recomputed balance is tenant-scoped by
+  * construction.
+  */
 export async function bloquearYCalcularSaldoFacturaEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
   facturaId: number,
 ): Promise<SaldoFacturaBloqueado | null> {
+  // Statement 1: take the blocking `FOR UPDATE` row lock FIRST. When two
+  // concurrent cobros race, the loser parks here until the winner's
+  // transaction commits or aborts.
+  const locked = await tx.$queryRaw<{ id: number }[]>`
+    SELECT f."id"
+    FROM "FACTURA" f
+    WHERE f."id" = ${facturaId}
+      AND f."empresaId" = ${ctx.empresaId}
+      AND f."estado" = 'VIGENTE'
+    FOR UPDATE`;
+  if (locked.length === 0) return null;
+
+  // Statement 2: under READ COMMITTED every statement takes a fresh snapshot,
+  // so this recomputation sees the cobros the winner committed while we were
+  // waiting (the old single-statement version evaluated its SUM() subqueries
+  // against the pre-lock snapshot and let both payments through — R-C2).
   const rows = await tx.$queryRaw<SaldoFacturaBloqueado[]>`
     SELECT
       f."total"::numeric(12, 2)::text AS "total",
@@ -155,8 +178,7 @@ export async function bloquearYCalcularSaldoFacturaEnTx(
     FROM "FACTURA" f
     WHERE f."id" = ${facturaId}
       AND f."empresaId" = ${ctx.empresaId}
-      AND f."estado" = 'VIGENTE'
-    FOR UPDATE OF f`;
+      AND f."estado" = 'VIGENTE'`;
 
   return rows[0] ?? null;
 }
