@@ -5,9 +5,11 @@
  * opens one) and executes the frozen observable ORDER from design "Interfaces":
  *   read + branch guard → pure `transicionarConfirmar` → emission gate
  *   (`facturaAutomatica`) → NCF-type eligibility → HARD stock preview (reject
- *   BEFORE any burn) → NCF lock+consume → guarded `UPDATE ... WHERE estado=
- *   'BORRADOR'` flip → recomputed `FACTURA(VIGENTE)` → (PR-3 `registrarSalidasVenta`)
- *   → warnings.
+ *   BEFORE any burn) → CREDIT GATE for credit sales via `EvaluarCreditoPort`
+ *   (reject BEFORE the NCF lock) → NCF lock+consume → guarded `UPDATE ... WHERE
+ *   estado='BORRADOR'` flip → recomputed `FACTURA(VIGENTE)` → (PR-3
+ *   `registrarSalidasVenta`) → CONTADO `COBRO/APLICADO` full total (close the
+ *   loop) → warnings.
  *
  * Two invariants make this safe:
  *   1. Nothing that CONSUMES runs before the emission gate or the HARD preview, so
@@ -23,6 +25,11 @@ import { Decimal } from "decimal.js";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { registrarSalidasVenta } from "@/modules/inventario/application/registrar-salidas-venta";
+import {
+  evaluarCreditoPort,
+  type CreditoRechazo,
+} from "@/modules/cobros/application/credit-port";
+import { registrarCobro } from "@/modules/cobros/application/registrar-cobro";
 import {
   consumirNcfEnTx,
   NcfConsumoError,
@@ -79,7 +86,11 @@ export interface ConfirmarVentaOutput {
 
 export type ConfirmarVentaResult =
   | { readonly ok: true; readonly data: ConfirmarVentaOutput; readonly warnings?: readonly ConfirmarVentaWarning[] }
-  | { readonly ok: false; readonly code: VentaErrorCode; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly code: VentaErrorCode | CreditoRechazo;
+      readonly message: string;
+    };
 
 /** Build a typed confirmation failure from a domain code. */
 function confirmarError(code: VentaErrorCode): ConfirmarVentaResult {
@@ -185,6 +196,28 @@ export async function confirmarVenta(
     }
   }
 
+  // 5b. Recompute the invoice breakdown from the PERSISTED lines UP-FRONT (R-F3) so
+  //     the credit gate (pre-consume) and the FACTURA (post-consume) share the exact
+  //     same server-frozen total — one derivation, never two that could diverge.
+  const totales = recomponerTotalesFactura(venta);
+
+  // 5c. CREDIT GATE (R-V15, R-K2). Only credit sales are gated, and the gate runs
+  //     AFTER the hard stock preview and BEFORE the NCF lock/consume, so a blocked
+  //     client is refused WITHOUT burning a sequence number: the sale stays
+  //     `BORRADOR` with no NCF, invoice, debit or COBRO (spec "credit-blocked
+  //     client rejected before NCF consumption"). `venta` consumes ONLY the
+  //     `EvaluarCreditoPort` application port — no ORM, no cobros infrastructure,
+  //     no duplicated balance rule (R-K1). A `CONTADO` result carries no decision:
+  //     the sale simply proceeds (and is closed with a COBRO after the invoice).
+  const credito = await evaluarCreditoPort.evaluarCreditoCliente(tx, ctx, {
+    clienteId: venta.clienteId,
+    totalVenta: totales.total,
+    fecha: new Date(),
+  });
+  if (credito.forma === "CREDITO" && !credito.permitido) {
+    return { ok: false, code: credito.code, message: credito.message };
+  }
+
   // 6. NCF lock + consume. Missing / exhausted / expired all THROW before advancing
   //    (nothing burned), so mapping them back to venta's stable codes is safe.
   let ncf: string;
@@ -209,9 +242,9 @@ export async function confirmarVenta(
   const { flipUpdated } = await confirmarVentaFlipEnTx(tx, ctx, venta.id);
   if (!flipUpdated) throw new VentaDomainError(CONCURRENCIA_CONFLICTO);
 
-  // 8. Emit the FACTURA: recomputed breakdown + atomic correlativo (branch GUC
-  //    restored inside the allocator's finally) + branch-scoped insert.
-  const totales = recomponerTotalesFactura(venta);
+  // 8. Emit the FACTURA: recomputed breakdown (from the `totales` derived at 5b) +
+  //    atomic correlativo (branch GUC restored inside the allocator's finally) +
+  //    branch-scoped insert.
   const correlativoInterno = await asignarCorrelativoFacturaEnTx(tx, ctx.empresaId, ctx.sucursalId);
   const factura: FacturaPersistencia = {
     ventaId: venta.id,
@@ -243,6 +276,30 @@ export async function confirmarVenta(
     ventaId: venta.id,
     lineas: venta.lineas.map((l) => ({ productoId: l.productoId, cantidad: l.cantidad })),
   });
+
+  // 10. CONTADO CLOSE-THE-LOOP (R-V15). A cash sale is settled the instant it is
+  //     confirmed: register EXACTLY ONE `COBRO/APLICADO` for the full invoice
+  //     total (via the cobros collection use case — no ORM leak into `venta`), so
+  //     the derived payment state resolves to `PAGADA` and a cash invoice never
+  //     resurfaces as a phantom `PENDIENTE` on the CxC board. It runs POST-CONSUME,
+  //     so any failure THROWS (never returns): a later abort leaves no COBRO row
+  //     (spec "if the transaction later aborts, no COBRO persists"). A CREDIT sale
+  //     is deliberately NOT closed here — it stays an open receivable the board
+  //     collects through `registrarCobro`. A freshly-emitted VIGENTE invoice always
+  //     has pending == total, so a rejection is an invariant defect, not a business
+  //     state; throwing aborts the transaction and rolls every effect back.
+  if (credito.forma === "CONTADO") {
+    const cobro = await registrarCobro(tx, ctx, {
+      facturaId,
+      monto: totales.total,
+    });
+    if (!cobro.ok) {
+      throw new Error(
+        `confirmarVenta: cobro contado rechazado para la venta ${String(venta.id)} (${cobro.code})`,
+      );
+    }
+  }
+
   void secuencial; // reserved for later audit/nota flows; the invoice carries the NCF.
 
   const warnings: ConfirmarVentaWarning[] =

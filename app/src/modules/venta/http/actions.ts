@@ -32,6 +32,7 @@ import {
   obtenerVenta,
 } from "../application/venta-service";
 import { confirmarVenta } from "../application/confirmar-venta";
+import type { CreditoRechazo } from "@/modules/cobros/application/credit-port";
 import { tieneRolPermitidoEnTx } from "../infrastructure/venta-repository";
 import type { StockWarning, VentaErrorCode } from "../domain/errors";
 import type { VentaGuardadoErrorCode } from "../application/venta-guardado";
@@ -52,9 +53,10 @@ import {
 /** Sale CRUD is operational (Admin + Operador); the discount gate is per-payload. */
 const ROLES_VENTA = ["Administrador", "Operador"];
 
-/** Composed action error surface: domain ∪ config ∪ transport codes. */
+/** Composed action error surface: domain ∪ config ∪ transport ∪ credit codes. */
 export type VentaAccionesErrorCode =
   | VentaErrorCode
+  | CreditoRechazo
   | Extract<VentaGuardadoErrorCode, "DESC_MAX_FALTANTE">
   | typeof NO_AUTORIZADO
   | typeof SESION_INVALIDA

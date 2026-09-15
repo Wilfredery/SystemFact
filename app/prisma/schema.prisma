@@ -589,7 +589,11 @@ model Pago {
   tipo              TipoPago // COBRO / REEMBOLSO (devolución en efectivo)
   autorizadoPor     Int? // opcional: quién autorizó un REEMBOLSO (03, §10); null en COBRO
   correlativoRecibo Int // referencia del recibo de cobro imprimible (04, §6)
-  createdAt         DateTime   @default(now()) @db.Timestamptz(6)
+  // R-C3 refund idempotency: a CLIENT-generated key gates REEMBOLSO de-duplication.
+  // NULLABLE so every COBRO and every legacy row keeps a NULL; Postgres permits
+  // multiple NULLs, so only non-NULL keys participate in uniqueness (design.md).
+  idempotencyKey    String?         @db.VarChar(255)
+  createdAt         DateTime        @default(now()) @db.Timestamptz(6)
 
   factura              Factura  @relation(fields: [facturaId], references: [id], onDelete: Restrict)
   empresa              Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
@@ -598,6 +602,7 @@ model Pago {
   autorizadoPorUsuario Usuario? @relation("PagoReembolsoAutorizado", fields: [autorizadoPor], references: [id], onDelete: Restrict)
 
   @@unique([empresaId, correlativoRecibo]) // secuencia de recibo única por empresa (v4.1)
+  @@unique([empresaId, idempotencyKey]) // R-C3: idempotencia de reembolso (nullable → múltiples NULL permitidos)
   @@map("PAGO")
 }
 

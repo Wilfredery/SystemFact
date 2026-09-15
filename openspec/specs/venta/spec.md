@@ -197,7 +197,8 @@ The POS screen MUST provide: product search by name/code showing branch availabi
 - TEST: e2e
 ### Requirement: Atomic sale confirmation (R-V15)
 
-`confirmarVenta` MUST run inside one tenant transaction in this observable order: read + branch guard → pure `transicionarConfirmar` (`BORRADOR → CONFIRMADA` only) → revalidate lines/tax rates → HARD stock preview (reject before any NCF burn) → NCF lock+consume (ncf-engine) → guarded `UPDATE ... WHERE estado='BORRADOR'` flip with affected-rows check → FACTURA creation (factura-emision) → `registrarSalidasVenta` batch. Any failure AFTER consumption MUST throw (never return-after-consume) so the flip, invoice, debit and NCF all roll back. Exactly one NCF per sale; retries on `CONFIRMADA` MUST NOT consume a second one.
+`confirmarVenta` MUST run inside one tenant transaction in this observable order: read + branch guard → pure `transicionarConfirmar` (`BORRADOR → CONFIRMADA` only) → revalidate lines/tax rates → HARD stock preview (reject before any NCF burn) → **credit gate for credit sales via `EvaluarCreditoPort` — rejection MUST occur before the NCF lock/consumption** → NCF lock+consume (ncf-engine) → guarded `UPDATE ... WHERE estado='BORRADOR'` flip with affected-rows check → FACTURA creation (factura-emision) → `registrarSalidasVenta` batch → **for contado sales, register exactly one `COBRO/APLICADO` for the full invoice total in the same transaction**. Any failure AFTER consumption MUST throw (never return-after-consume) so the flip, invoice, debit, NCF and the contado COBRO all roll back. Exactly one NCF per sale; retries on `CONFIRMADA` MUST NOT consume a second one.
+(Previously: no credit gate and no COBRO registration — cash invoices surfaced as PENDIENTE in CxC.)
 
 #### Scenario: Happy-path confirm closes the loop
 
@@ -227,6 +228,20 @@ The POS screen MUST provide: product search by name/code showing branch availabi
 - THEN typed not-found with zero effects
 - TEST: integration
 
+#### Scenario: Credit-blocked client rejected before NCF consumption (critical)
+
+- GIVEN a credit sale whose client is over limit or overdue > 30 days
+- WHEN confirm runs
+- THEN the stable code (`LIMITE_CREDITO_EXCEDIDO` / `CLIENTE_EN_MORA` / `CREDITO_NO_HABILITADO`) returns before the NCF lock, and the sale remains `BORRADOR` with no NCF, invoice, debit or COBRO
+- TEST: integration
+
+#### Scenario: Contado sale derives PAGADA at confirm (critical)
+
+- GIVEN a contado sale confirmed successfully
+- WHEN the transaction commits
+- THEN exactly one `COBRO/APLICADO` equal to the invoice total exists and the derived payment state is `PAGADA`
+- AND if the transaction later aborts, no COBRO row persists
+- TEST: integration
 ### Requirement: Confirmed-sale cancellation (R-V16)
 
 Cancelling a `CONFIRMADA` sale MUST run guarded `CONFIRMADA → CANCELADA` in one tenant transaction with: the FACTURA flipping `VIGENTE → ANULADA` (never deleted — "unused" NCF keeps fiscal reporting via Formato 608, D4); the consumed NCF staying consumed (`secuenciaActual` MUST NOT rewind); one `REPOSICION_CANCELACION` movement restoring each line's branch stock; audit rows for both state changes. Cancelling an already-`CANCELADA` sale MUST fail with the guarded zero-row stable error.
