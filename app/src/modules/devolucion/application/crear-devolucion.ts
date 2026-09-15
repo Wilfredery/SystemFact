@@ -96,6 +96,7 @@ export interface LineaDevolucionInput {
   readonly tipoReposicion: TipoReposicion;
 }
 
+/** Return request: the original sale id, a trimmed audit reason and ≥1 line. */
 export interface CrearDevolucionInput {
   readonly ventaId: number;
   readonly motivo: string;
@@ -107,8 +108,10 @@ export interface CrearDevolucionInput {
 /** Composed error surface: the frozen venta catalog ∪ PLAZO_DEVOLUCION_FALTANTE. */
 export type DevolucionErrorCode = VentaErrorCode | typeof PLAZO_DEVOLUCION_FALTANTE;
 
+/** Non-blocking warning channel — currently only the 90% NCF-range threshold. */
 export type DevolucionWarning = { readonly code: typeof NCF_UMBRAL_90 };
 
+/** The emitted credit note: id + burned B04 NCF + frozen header money. */
 export interface DevolucionOutput {
   readonly id: number;
   readonly ncf: string;
