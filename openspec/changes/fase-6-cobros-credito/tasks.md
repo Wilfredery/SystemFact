@@ -37,14 +37,14 @@ strict_tdd: OFF (Engram `sdd-init-calidad-precio/systemfact`) — tests ship ins
 
 ## Phase 2: Collections, Refunds, Receipts (PR slice 2)
 
-- [ ] 2.1 Create `cobros/application/registrar-cobro.ts`: validate tenant/VIGENTE invoice (`FACTURA_COBRO_NO_VIGENTE`), row-lock invoice, recompute balance in-tx, reject `COBRO_EXCEDE_SALDO`, insert `COBRO/APLICADO`, EFECTIVO only, Decimal end-to-end, multiple abonos (R-C1, R-C2).
-- [ ] 2.2 Create `cobros/infrastructure/recibo.repository.ts`: `correlativoRecibo` = `MAX+1` per empresa under `EMPRESA FOR UPDATE`, reuse `asignarCorrelativoSiguienteEnTx` pattern (R-C4).
-- [ ] 2.3 Integration test (critical, R-C2): two parallel 8,000.00 COBROs on 10,000.00 balance — exactly one commits, other gets `COBRO_EXCEDE_SALDO`, no negative balance.
-- [ ] 2.4 Integration test (critical, R-C4): concurrent payments on different invoices → unique consecutive receipts, no duplicate-key abort.
-- [ ] 2.5 Create `cobros/application/registrar-reembolso.ts`: require client `idempotencyKey` (Zod mandatory), check inside tx **BEFORE insert AND BEFORE receipt burn**, duplicate → `PAGO_IDEMPOTENCIA_CONFLICTO`; unique-violation race re-read → same code; Prisma errors never cross HTTP; record `autorizadoPor` (R-C3).
-- [ ] 2.6 Integration test (critical, R-C3): replay of key K → conflict, no row, receipt N+1 not burned; same-key race → one row, loser gets stable code; fresh-key second 500.00 refund accepted.
-- [ ] 2.7 Create `cobros/application/consultar-saldo-cxc.ts` (sole entry point for board/aging/mora/credit) + `cobros/http/actions.ts` thin Server Actions in `withTenantTransaction`; server-side role gating: Despachador denied, unauthorized refund → `PAGO_NO_AUTORIZADO` before any write (R-C6, R-B1).
-- [ ] 2.8 Integration test (R-C6): unauthorized refund actor rejected pre-write; all reads/writes tenant-scoped under RLS GUCs.
+- [x] 2.1 Create `cobros/application/registrar-cobro.ts`: validate tenant/VIGENTE invoice (`FACTURA_COBRO_NO_VIGENTE`), row-lock invoice, recompute balance in-tx, reject `COBRO_EXCEDE_SALDO`, insert `COBRO/APLICADO`, EFECTIVO only, Decimal end-to-end, multiple abonos (R-C1, R-C2).
+- [x] 2.2 Create `cobros/infrastructure/recibo.repository.ts`: `correlativoRecibo` = `MAX+1` per empresa under `EMPRESA FOR UPDATE`, reuse `asignarCorrelativoSiguienteEnTx` pattern (R-C4).
+- [x] 2.3 Integration test (critical, R-C2): two parallel 8,000.00 COBROs on 10,000.00 balance — exactly one commits, other gets `COBRO_EXCEDE_SALDO`, no negative balance.
+- [x] 2.4 Integration test (critical, R-C4): concurrent payments on different invoices → unique consecutive receipts, no duplicate-key abort.
+- [x] 2.5 Create `cobros/application/registrar-reembolso.ts`: require client `idempotencyKey` (Zod mandatory), check inside tx **BEFORE insert AND BEFORE receipt burn**, duplicate → `PAGO_IDEMPOTENCIA_CONFLICTO`; unique-violation race re-read → same code; Prisma errors never cross HTTP; record `autorizadoPor` (R-C3).
+- [x] 2.6 Integration test (critical, R-C3): replay of key K → conflict, no row, receipt N+1 not burned; same-key race → one row, loser gets stable code; fresh-key second 500.00 refund accepted.
+- [x] 2.7 Create `cobros/application/consultar-saldo-cxc.ts` (sole entry point for board/aging/mora/credit) + `cobros/http/actions.ts` thin Server Actions in `withTenantTransaction`; server-side role gating: Despachador denied, unauthorized refund → `PAGO_NO_AUTORIZADO` before any write (R-C6, R-B1).
+- [x] 2.8 Integration test (R-C6): unauthorized refund actor rejected pre-write; all reads/writes tenant-scoped under RLS GUCs.
 
 ## Phase 3: Credit Gate + Venta Retrofit (PR slice 3)
 
