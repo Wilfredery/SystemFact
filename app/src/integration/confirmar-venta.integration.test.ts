@@ -19,6 +19,7 @@ import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenan
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { crearVenta } from "@/modules/venta/application/venta-service";
 import { confirmarVenta } from "@/modules/venta/application/confirmar-venta";
+import { consultarSaldoCxC } from "@/modules/cobros/application/consultar-saldo-cxc";
 import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 import { crearProductoVenta, fijarStock } from "./setup/venta-helpers";
 
@@ -85,6 +86,72 @@ async function sembrarDescMax(empresaId: number, valor: string): Promise<void> {
   await getHarnessDb().configuracionEmpresa.create({
     data: { empresaId, clave: "DESC_MAX", valor, vigenciaInicio: new Date("2000-01-01T00:00:00.000Z"), vigenciaFin: VIG_FIN, activa: true },
   });
+}
+
+/**
+ * A `CREDITO` client (non–Consumidor Final) with the given limit; `habilitado`
+ * defaults true. Only the fiscal classification gates the sale (R-K1: the port,
+ * not venta, decides credit-vs-contado from the client row).
+ */
+async function crearClienteCredito(
+  ctx: TenantCtx,
+  nombre: string,
+  opts: { limite: string; habilitado?: boolean },
+): Promise<number> {
+  const db = getHarnessDb();
+  const c = await db.cliente.create({
+    data: {
+      empresaId: ctx.empresaId,
+      nombre,
+      telefono: "0",
+      direccion: "x",
+      tipoCliente: "CREDITO",
+      creditoHabilitado: opts.habilitado ?? true,
+      limiteCredito: opts.limite,
+      plazoCreditoDias: 0,
+    },
+    select: { id: true },
+  });
+  return c.id;
+}
+
+/** A draft (`BORRADOR`) for an EXPLICIT client, one in-stock line, no discount. */
+async function crearBorradorCliente(ctx: TenantCtx, clienteId: number, productoId: number): Promise<number> {
+  return withTenantTransaction(ctx, async (tx) => {
+    const r = await crearVenta(tx, ctx, {
+      clienteId,
+      fecha: new Date("2026-01-10T00:00:00.000Z"),
+      lineas: [{ productoId, cantidad: "1", precioUnitario: "100.00", descuento: CERO }],
+    });
+    if (!r.ok) throw new Error(`crearVenta falló: ${r.code}`);
+    return r.data.id;
+  });
+}
+
+/** A VIGENTE receivable (no sale) for a client, total as given — seeds existing pending. */
+async function sembrarFacturaVigente(ctx: TenantCtx, clienteId: number, ncf: string, total: string): Promise<number> {
+  const db = getHarnessDb();
+  const f = await db.factura.create({
+    data: {
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      clienteId,
+      usuarioId: ctx.usuarioId,
+      tipoNcf: "B01",
+      ncf,
+      correlativoInterno: `FAC-${ncf}`,
+      estado: "VIGENTE",
+      subtotalGravado: total,
+      itbis: "0.00",
+      subtotalExento: "0.00",
+      descuento: "0.00",
+      total,
+      // Fresh (today) so the over-limit reason is the LIMIT, never a 31-day mora.
+      fechaEmision: new Date(),
+    },
+    select: { id: true },
+  });
+  return f.id;
 }
 
 describe("confirmarVenta (real DB, RLS on)", () => {
@@ -255,7 +322,7 @@ describe("confirmarVenta (real DB, RLS on)", () => {
     expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(523); // two burns, serialized
   });
 
-  it("emitted invoice is VIGENTE, 1:1 ventaId, correct branch, no stored balance (R-F1/R-F4, 2.10)", async () => {
+  it("emitted contado invoice is VIGENTE, 1:1 ventaId, closed as PAGADA, no stored balance (R-F1/R-F4/R-V15, 2.10)", async () => {
     const prod = await productoConStock("vig", "50.000");
     await marcarFacturaAutomatica(ctx.empresaId, true);
     await sembrarRango(ctx.empresaId, "B02", { rangoInicio: 500, rangoFin: 1000, secuenciaActual: 521 });
@@ -270,9 +337,72 @@ describe("confirmarVenta (real DB, RLS on)", () => {
     expect(fac.estado).toBe("VIGENTE");
     expect(fac.sucursalId).toBe(ctx.sucursalId);
     expect(fac.ncf).toBe("B0200000522"); // 11-char composition via the consume port
-    // No persisted paid/balance state: no Pago rows and no balance column on FACTURA.
-    expect(await db.pago.count({ where: { facturaId: fac.id } })).toBe(0);
+    // R-V15: a CONTO sale is closed at confirm by exactly ONE full-total COBRO/APLICADO.
+    const pagos = await db.pago.findMany({ where: { facturaId: fac.id } });
+    expect(pagos).toHaveLength(1);
+    expect(pagos[0].tipo).toBe("COBRO");
+    expect(pagos[0].estado).toBe("APLICADO");
+    expect(pagos[0].monto.toFixed(2)).toBe(fac.total.toFixed(2));
+    // Derived state (never a stored column): the canonical read reports PAGADA, pending 0.
+    const saldo = await withTenantTransaction(ctx, (tx) => consultarSaldoCxC(tx, ctx));
+    const vista = saldo.ok && saldo.data.find((v) => v.facturaId === fac.id);
+    expect(vista && "estadoPago" in vista ? vista.estadoPago : null).toBe("PAGADA");
+    expect(vista && "saldoPendiente" in vista ? vista.saldoPendiente : null).toBe("0.00");
+    // ADR-017: still no persisted paid/balance column on FACTURA.
     expect(Object.keys(fac)).not.toContain("saldo");
     expect(Object.keys(fac)).not.toContain("totalPagado");
+  });
+
+  it("credit-gate ordering (R-V15, critical): over-limit credit client rejected BEFORE the NCF lock; zero effects", async () => {
+    const prod = await productoConStock("blocked", "50.000");
+    await marcarFacturaAutomatica(ctx.empresaId, true);
+    await sembrarRango(ctx.empresaId, "B02", { rangoInicio: 500, rangoFin: 1000, secuenciaActual: 521 });
+
+    // A CREDITO client already at (over) its 20,000 limit; any new sale projects past it.
+    const clienteId = await crearClienteCredito(ctx, "Sobre-límite", { limite: "20000.00" });
+    await sembrarFacturaVigente(ctx, clienteId, "B01000000500", "20000.00"); // pending == limit
+    const id = await crearBorradorCliente(ctx, clienteId, prod);
+
+    const r = await withTenantTransaction(ctx, (tx) => confirmarVenta(tx, ctx, { id }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("LIMITE_CREDITO_EXCEDIDO");
+
+    // The gate fired AFTER the stock preview but BEFORE the NCF lock → nothing burned:
+    const db = getHarnessDb();
+    expect((await db.venta.findUnique({ where: { id } }))?.estado).toBe("BORRADOR");
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521); // no burn
+    expect(await db.factura.count({ where: { ventaId: id } })).toBe(0); // no invoice
+    expect(await db.movimientoInventario.count({ where: { ventaId: id } })).toBe(0); // no debit
+    // No COBRO anywhere: the only receivable is the seeded 20,000 one, still unpaid.
+    expect(await db.pago.count({ where: { empresaId: ctx.empresaId } })).toBe(0);
+  });
+
+  it("contado close-the-loop (R-V15): one full-total COBRO → PAGADA; an outer abort leaves no COBRO", async () => {
+    const prod = await productoConStock("contado", "50.000");
+    await marcarFacturaAutomatica(ctx.empresaId, true);
+    await sembrarRango(ctx.empresaId, "B02", { rangoInicio: 500, rangoFin: 1000, secuenciaActual: 521 });
+    const id = await crearBorrador(ctx, prod);
+
+    // Successful confirm commits the sale + its single closing COBRO.
+    const r = await withTenantTransaction(ctx, (tx) => confirmarVenta(tx, ctx, { id }));
+    expect(r.ok).toBe(true);
+    const db = getHarnessDb();
+    const fac = (await db.factura.findFirst({ where: { ventaId: id } }))!;
+    expect(await db.pago.count({ where: { facturaId: fac.id, tipo: "COBRO", estado: "APLICADO" } })).toBe(1);
+
+    // A SEPARATE sale whose outer transaction aborts AFTER confirm: the COBRO must not persist.
+    const id2 = await crearBorrador(ctx, prod);
+    await expect(
+      withTenantTransaction(ctx, async (tx) => {
+        const rr = await confirmarVenta(tx, ctx, { id: id2 });
+        if (!rr.ok) throw new Error(`confirm falló: ${rr.code}`);
+        throw new Error("abort-after-confirm");
+      }),
+    ).rejects.toThrow("abort-after-confirm");
+    // Everything (sale flip, NCF, invoice, debit, COBRO) rolled back together.
+    expect((await db.venta.findUnique({ where: { id: id2 } }))?.estado).toBe("BORRADOR");
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(522); // only the first sale burned
+    expect(await db.factura.count({ where: { ventaId: id2 } })).toBe(0);
+    expect(await db.pago.count({ where: { empresaId: ctx.empresaId, factura: { ventaId: id2 } } })).toBe(0);
   });
 });
