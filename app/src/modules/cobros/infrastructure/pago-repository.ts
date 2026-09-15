@@ -53,3 +53,31 @@ export async function crearPagoEnTx(
   });
   return { id: created.id };
 }
+
+/**
+ * Empresa-wide fast-path lookup of an existing `PAGO` by its `(empresaId,
+ * idempotencyKey)` refund idempotency key (R-C3).
+ *
+ * The unique constraint is scoped to `empresaId` (NOT branch), so this read
+ * clears the SUCURSAL GUC locally to see a matching row in ANY branch of the
+ * empresa — otherwise a replay arriving at a different branch would slip past
+ * the pre-check and only be caught by the insert's unique violation. The EMPRESA
+ * GUC stays in force, so the scan never crosses tenants. The acting branch GUC
+ * is restored before returning so the caller's subsequent writes land correctly.
+ * Returns the existing id, or `null` when the key is fresh.
+ */
+export async function buscarPagoPorIdempotenciaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  idempotencyKey: string,
+): Promise<{ readonly id: number } | null> {
+  await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', '', true)`;
+  const hit = await tx.pago.findFirst({
+    where: { empresaId: ctx.empresaId, idempotencyKey },
+    select: { id: true },
+  });
+  await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${String(
+    ctx.sucursalId,
+  )}, true)`;
+  return hit === null ? null : { id: hit.id };
+}
