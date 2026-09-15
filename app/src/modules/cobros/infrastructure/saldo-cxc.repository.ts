@@ -160,3 +160,41 @@ export async function bloquearYCalcularSaldoFacturaEnTx(
 
   return rows[0] ?? null;
 }
+
+/** Client credit terms a CxC row needs for mora, aging and the credit gate. */
+export interface TerminosCredito {
+  readonly plazoCreditoDias: number;
+  readonly creditoHabilitado: boolean;
+  /** Frozen `Decimal(12,2)` limit as a string (never a float). */
+  readonly limiteCredito: string;
+}
+
+/**
+ * Batched read of CLIENTE credit terms for the distinct clients in a CxC result
+ * set (ONE query for all ids — no per-invoice N+1, AGENTS.md "No N+1"). Feeds
+ * `consultarSaldoCxC` (application), the sole entry point for board / aging /
+ * mora / credit, so those views never re-query CLIENTE themselves. The explicit
+ * `empresaId` filter plus the RLS GUC keep it tenant-bound; `limiteCredito` is
+ * projected as a Decimal-string. Returns an empty map when there are no clients.
+ */
+export async function leerTerminosCreditoEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  clienteIds: readonly number[],
+): Promise<ReadonlyMap<number, TerminosCredito>> {
+  if (clienteIds.length === 0) return new Map();
+  const clientes = await tx.cliente.findMany({
+    where: { id: { in: [...clienteIds] }, empresaId: ctx.empresaId },
+    select: { id: true, plazoCreditoDias: true, creditoHabilitado: true, limiteCredito: true },
+  });
+  return new Map(
+    clientes.map((c) => [
+      c.id,
+      {
+        plazoCreditoDias: c.plazoCreditoDias,
+        creditoHabilitado: c.creditoHabilitado,
+        limiteCredito: c.limiteCredito.toFixed(2),
+      },
+    ]),
+  );
+}
