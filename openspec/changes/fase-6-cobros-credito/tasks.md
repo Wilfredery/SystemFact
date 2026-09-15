@@ -29,11 +29,16 @@ strict_tdd: OFF (Engram `sdd-init-calidad-precio/systemfact`) — tests ship ins
 
 ## Phase 1: Domain, Aggregate & Migration (PR slice 1)
 
+> Reconciliation (apply slice 3): 1.3–1.5 were implemented and committed in slice 1 (7d25df7
+> pure domain incl. `pago.ts`/`clasificar-estado-pago.ts`/`en-mora.ts`; 45c8ca5 the
+> `saldo-cxc.repository.ts` canonical aggregate + `cobros-saldo-cxc.integration.test.ts`).
+> Only 1.1/1.2 had been ticked; 1.3–1.5 boxes corrected to match shipped reality.
+
 - [x] 1.1 Modify `app/prisma/schema.prisma`: add `idempotencyKey String? @db.VarChar(255)` + `@@unique([empresaId, idempotencyKey])` on `Pago`; create `app/prisma/migrations/<ts>_pago_idempotency_key/` — **own reviewable commit** (R-C3).
 - [x] 1.2 Create `app/src/modules/cobros/domain/errors.ts`: versioned 600-series catalog (`PAGO_IDEMPOTENCIA_CONFLICTO`, `COBRO_EXCEDE_SALDO`, `CLIENTE_EN_MORA`, `LIMITE_CREDITO_EXCEDIDO`, `CREDITO_NO_HABILITADO`, `FACTURA_COBRO_NO_VIGENTE`, `PAGO_NO_AUTORIZADO`, `PAGO_NO_ENCONTRADO`) with code+message+context (R-C5). Unit test: every rejection path returns catalog code, never stack traces.
-- [ ] 1.3 Create `cobros/domain/pago.ts` (types, `prisma.Decimal` money) + `cobros/domain/clasificar-estado-pago.ts` (R-B2) + `cobros/domain/en-mora.ts` using `date-fns-tz` for `America/Santo_Domingo` (R-B3). Unit tests: `PARCIAL` at 5,000/15,000; SD/UTC boundary day NOT in mora; 1 full SD day past due → mora.
-- [ ] 1.4 Create `cobros/infrastructure/saldo-cxc.repository.ts`: single grouped SQL aggregate — only `FACTURA.estado=VIGENTE`, `PAGO.tipo=COBRO AND estado=APLICADO`, −VIGENTE credit notes, +debit notes (empty in V1); no cache (R-B1).
-- [ ] 1.5 Integration test: mixed APLICADO/REVERTIDO → pending 6,000.00 on 10,000.00 invoice; ANULADA invoices excluded from listing (R-B1).
+- [x] 1.3 Create `cobros/domain/pago.ts` (types, `prisma.Decimal` money) + `cobros/domain/clasificar-estado-pago.ts` (R-B2) + `cobros/domain/en-mora.ts` using `date-fns-tz` for `America/Santo_Domingo` (R-B3). Unit tests: `PARCIAL` at 5,000/15,000; SD/UTC boundary day NOT in mora; 1 full SD day past due → mora.
+- [x] 1.4 Create `cobros/infrastructure/saldo-cxc.repository.ts`: single grouped SQL aggregate — only `FACTURA.estado=VIGENTE`, `PAGO.tipo=COBRO AND estado=APLICADO`, −VIGENTE credit notes, +debit notes (empty in V1); no cache (R-B1).
+- [x] 1.5 Integration test: mixed APLICADO/REVERTIDO → pending 6,000.00 on 10,000.00 invoice; ANULADA invoices excluded from listing (R-B1).
 
 ## Phase 2: Collections, Refunds, Receipts (PR slice 2)
 
@@ -48,11 +53,11 @@ strict_tdd: OFF (Engram `sdd-init-calidad-precio/systemfact`) — tests ship ins
 
 ## Phase 3: Credit Gate + Venta Retrofit (PR slice 3)
 
-- [ ] 3.1 Create `cobros/application/credit-port.ts` exposing `EvaluarCreditoPort` (TenantCtx + Decimal-string over caller's tx); `venta` consumes only the port — no ORM/cobros infrastructure imports (R-K1). Integration test: port-only coupling, typed allow/reject.
-- [ ] 3.2 Implement credit rules on canonical aggregate: `creditoHabilitado=false` → `CREDITO_NO_HABILITADO`; pending+totalVenta > limite → `LIMITE_CREDITO_EXCEDIDO`; >30 days overdue (SD) → `CLIENTE_EN_MORA` (R-K2). Unit test (R-K2 boundary): pending+sale exactly equals limit → allowed (inclusive). Integration test: over-limit 23,000/20,000 rejected; 31-days-overdue rejected; REVERTIDO cobros excluded so sale passes.
-- [ ] 3.3 Modify `app/src/modules/venta/application/confirmar-venta.ts`: call port after stock preview and **BEFORE NCF lock/consumption**; after invoice+stock writes, register exactly one full-total `COBRO/APLICADO` for contado before commit (R-V15).
-- [ ] 3.4 Integration test (critical, R-V15 ordering): credit-blocked client → stable code returns before NCF lock; sale stays `BORRADOR`, no NCF/invoice/debit/COBRO. Integration test: contado confirm → one COBRO = total, derived state `PAGADA`; later abort → no COBRO persists.
-- [ ] 3.5 Extend existing R-V15 regression suite (happy path, post-consume rollback, double-confirm, foreign branch) still green.
+- [x] 3.1 Create `cobros/application/credit-port.ts` exposing `EvaluarCreditoPort` (TenantCtx + Decimal-string over caller's tx); `venta` consumes only the port — no ORM/cobros infrastructure imports (R-K1). Integration test: port-only coupling, typed allow/reject.
+- [x] 3.2 Implement credit rules on canonical aggregate: `creditoHabilitado=false` → `CREDITO_NO_HABILITADO`; pending+totalVenta > limite → `LIMITE_CREDITO_EXCEDIDO`; >30 days overdue (SD) → `CLIENTE_EN_MORA` (R-K2). Unit test (R-K2 boundary): pending+sale exactly equals limit → allowed (inclusive). Integration test: over-limit 23,000/20,000 rejected; 31-days-overdue rejected; REVERTIDO cobros excluded so sale passes.
+- [x] 3.3 Modify `app/src/modules/venta/application/confirmar-venta.ts`: call port after stock preview and **BEFORE NCF lock/consumption**; after invoice+stock writes, register exactly one full-total `COBRO/APLICADO` for contado before commit (R-V15).
+- [x] 3.4 Integration test (critical, R-V15 ordering): credit-blocked client → stable code returns before NCF lock; sale stays `BORRADOR`, no NCF/invoice/debit/COBRO. Integration test: contado confirm → one COBRO = total, derived state `PAGADA`; later abort → no COBRO persists.
+- [x] 3.5 Extend existing R-V15 regression suite (happy path, post-consume rollback, double-confirm, foreign branch) still green.
 
 ## Phase 4: UI — Board, Payment, Estado de Cuenta (PR slice 4)
 
