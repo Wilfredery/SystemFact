@@ -92,6 +92,23 @@ These rules derive from the canonical engineering constitution in the project do
 - Prisma migrations always in their own reviewable commit, never mixed with feature changes.
 
 ## CI/CD (GitHub Actions)
+- **⚠️ VERSIONING POLICY (2026-09-15, SUPERSEDES EVERYTHING BELOW): automatic tagging is PARKED.**
+  The release-please loop never achieved a reliable closed cycle (legacy-title anchors lost on
+  squash merges #27/#31/#35/#37; silent success runs; PR #41's parseable-title proof still failed
+  with exit 2 and the bot relapsed to legacy titles with a duplicated-changelog proposal #42).
+  Cost of fighting the bot exceeded its value. **New human-driven protocol:**
+  1. User notifies the agent after merging a completed PR.
+  2. Agent prepares the version bump (`app/package.json` + `app/CHANGELOG.md` +
+     `.release-please-manifest.json`), opens a `chore: release X.Y.Z` PR, and the user squash-merges.
+     OR simpler: user merges feature PR → notifies agent → agent prepares tag notes and the user
+     creates the `vX.Y.Z` tag + GitHub Release on the release commit from the GitHub Releases UI.
+  3. Semver input unchanged: `feat` → MINOR, `fix`/`perf`/chore(release)/docs → PATCH, `!`/BREAKING
+     CHANGE → MINOR while pre-1.0.
+  4. Do NOT invest more tokens debugging release-please unless the user explicitly re-opens that
+     effort. Merge rule below (Squash and merge) still applies to any release PR created by hand.
+  The `.github/workflows/release-please.yml` workflow may stay enabled but its output is
+  informational; never treat a silent run as a versioning failure again — manual is the version
+  of record. Anything below this banner is historical context, not current policy.
 - `.github/workflows/ci.yml` — runs on every PR targeting `master` and again on `master`
   after the merge: ESLint, strict typecheck, `prisma validate`, unit tests, integration tests
   against a real Postgres 16 (RLS enforced via the `systemfact_app` role), production build and
