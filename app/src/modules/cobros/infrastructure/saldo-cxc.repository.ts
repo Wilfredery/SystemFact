@@ -198,3 +198,52 @@ export async function leerTerminosCreditoEnTx(
     ]),
   );
 }
+
+/**
+ * A single client's full credit profile for the fase-6 credit gate (R-K1/R-K2):
+ * the fiscal classification needed to tell a CREDIT sale (a `CREDITO` client that
+ * is not the generic Consumidor Final) from a contado one, plus the enabled flag,
+ * frozen limit and payment term the rules consume. Owned here so the gate's
+ * client reads live in exactly one module — `venta` never queries `CLIENTE` for a
+ * credit decision (the port is its only window into cobros).
+ *
+ * Tenant-pinned by `empresaId` and run inside the caller's `withTenantTransaction`
+ * (RLS GUCs in force). Returns `null` when the id is missing or foreign so the
+ * caller can fail closed. `limiteCredito` is a `Decimal(12,2)` string.
+ */
+export async function leerPerfilCreditoEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  clienteId: number,
+): Promise<PerfilCredito | null> {
+  const row = await tx.cliente.findFirst({
+    where: { id: clienteId, empresaId: ctx.empresaId },
+    select: {
+      tipoCliente: true,
+      esConsumidorFinal: true,
+      creditoHabilitado: true,
+      limiteCredito: true,
+      plazoCreditoDias: true,
+    },
+  });
+  if (row === null) return null;
+  return {
+    // A credit sale is a non-CF client classified `CREDITO`; everything else
+    // (CF, MINORISTA, MAYORISTA) is a contado sale that skips the gate.
+    esVentaCredito:
+      !row.esConsumidorFinal && row.tipoCliente === "CREDITO",
+    creditoHabilitado: row.creditoHabilitado,
+    limiteCredito: row.limiteCredito.toFixed(2),
+    plazoCreditoDias: row.plazoCreditoDias,
+  };
+}
+
+/** Client facts the credit gate needs (produced by {@link leerPerfilCreditoEnTx}). */
+export interface PerfilCredito {
+  /** `true` only for a non-CF `tipoCliente=CREDITO` client → the gate applies. */
+  readonly esVentaCredito: boolean;
+  readonly creditoHabilitado: boolean;
+  /** Frozen `Decimal(12,2)` limit as a string. */
+  readonly limiteCredito: string;
+  readonly plazoCreditoDias: number;
+}

@@ -34,6 +34,34 @@ function fechaEnSD(valor: Date): string {
   return FORMATO_FECHA_SD.format(valor);
 }
 
+/** `YYYY-MM-DD` → UTC-day index; used only to diff two already-SD-resolved dates. */
+function indiceDiaUTCDia(fechaSD: string): number {
+  const [y, m, d] = fechaSD.split("-").map(Number);
+  // Date.UTC on the three calendar parts yields the same instant for both dates,
+  // so the integer day difference is a pure calendar-day count (no hour math).
+  return Math.floor(Date.UTC(y, m - 1, d) / MILISEGUNDOS_POR_DIA);
+}
+
+/**
+ * Full Santo Domingo calendar days the receivable is PAST its due date
+ * (`fechaEmision + plazoCreditoDias`). `0` (or negative → clamped to `0`) when
+ * not yet due or due today; `31` on the 31st day past due. The credit gate uses
+ * this to reject strictly MORE than 30 days overdue (R-K2), a different, larger
+ * threshold than the board mora flag {@link enMora} (which fires at 1 day). The
+ * due date and "today" are both resolved in SD, so a UTC instant is never
+ * compared directly (R-B3 discipline reused).
+ */
+export function diasVencidoEnSD(params: {
+  readonly fechaEmision: Date;
+  readonly plazoCreditoDias: number;
+  readonly now: Date;
+}): number {
+  const vencimientoSD = fechaVencimiento(params.fechaEmision, params.plazoCreditoDias);
+  const hoySD = fechaEnSD(params.now);
+  const dias = indiceDiaUTCDia(hoySD) - indiceDiaUTCDia(vencimientoSD);
+  return dias > 0 ? dias : 0;
+}
+
 /**
  * The invoice due date (`fechaEmision + plazoCreditoDias` days) expressed as its
  * Santo Domingo calendar date. Exposed for the aging/board views that group by
