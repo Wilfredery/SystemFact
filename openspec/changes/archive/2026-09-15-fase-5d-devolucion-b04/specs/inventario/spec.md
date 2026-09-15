@@ -29,7 +29,7 @@ The module MUST expose `registrarDevolucion` as the implemented return-inventory
 
 ## MODIFIED Requirements
 
-### Requirement: Tenant isolation and typed future seams (R-S5)
+### Requirement: Tenant isolation and typed future seams
 
 All reads and writes MUST be constrained by the authenticated tenant and branch, including movement history. The module exposes typed entry and exit interfaces for purchase, sale, return, and transfer callers; the purchase entry seam is implemented via `registrarEntradasCompra`/`registrarEntradaCompra` and MUST update `costoPromedio`; the sale exit seam is implemented via `registrarSalidasVenta` plus the cancellation reposition batch; the return seam is now implemented via `registrarDevolucion` (`ENTRADA_DEVOLUCION`/`SALIDA_MERMA` per `tipoReposicion`); transfer callers remain unimplemented. The seams MUST return typed success/error results.
 (Previously: return/transfer callers and `TipoReposicion` flows were declared but unimplemented.)
