@@ -58,3 +58,11 @@ export type RegistrarReembolsoDto = z.infer<typeof zRegistrarReembolsoInput>;
 // The CxC read takes no filter in V1 (the board is the whole branch receivable);
 // an empty object is accepted so the caller can pass nothing.
 export const zConsultarSaldoCxcInput = z.object({}).optional();
+
+// A receipt reprint is addressed by its company-serialized correlativoRecibo (R-C4).
+// A positive integer only — the domain/catalog owns the not-found case; Zod owns the
+// SHAPE (an id-less reprint request never reaches the read use case).
+export const zConsultarReciboInput = z.object({
+  correlativoRecibo: z.number().int().positive(),
+});
+export type ConsultarReciboDto = z.infer<typeof zConsultarReciboInput>;

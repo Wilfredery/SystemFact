@@ -81,3 +81,71 @@ export async function buscarPagoPorIdempotenciaEnTx(
   )}, true)`;
   return hit === null ? null : { id: hit.id };
 }
+
+/**
+ * A printable receipt projection (R-C4 reprint): the persisted payment facts plus
+ * the fiscal-invoice and counterparty labels the reprint page renders. Money is a
+ * `Decimal(12,2)` string; the receipt is a NON-fiscal document (a reprint of a
+ * payment already reflected on its VIGENTE `FACTURA`, whose own NCF is shown for
+ * cross-reference only — never a new tax document).
+ */
+export interface ReciboLeido {
+  readonly correlativoRecibo: number;
+  readonly tipo: TipoPago;
+  readonly estado: EstadoPago;
+  readonly monto: string;
+  readonly metodoPago: string;
+  readonly fecha: Date;
+  readonly autorizadoPor: number | null;
+  readonly facturaId: number;
+  readonly facturaNcf: string;
+  readonly clienteNombre: string;
+  readonly usuarioNombre: string;
+  readonly empresaNombre: string;
+}
+
+/**
+ * Reads one empresa-wide receipt by its `correlativoRecibo` (the `(empresaId,
+ * correlativoRecibo)` unique key) inside the caller's tenant transaction. The
+ * `empresaId` pin plus the RLS EMPRESA GUC keep the read tenant-bound; a foreign or
+ * missing number collapses to `null` so the application layer can map it to
+ * `PAGO_NO_ENCONTRADO`. `monto` is a Decimal-string (never a float).
+ */
+export async function leerReciboEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  correlativoRecibo: number,
+): Promise<ReciboLeido | null> {
+  const row = await tx.pago.findFirst({
+    where: { empresaId: ctx.empresaId, correlativoRecibo },
+    select: {
+      correlativoRecibo: true,
+      tipo: true,
+      estado: true,
+      monto: true,
+      metodoPago: true,
+      fecha: true,
+      autorizadoPor: true,
+      facturaId: true,
+      factura: { select: { ncf: true, cliente: { select: { nombre: true } } } },
+      usuario: { select: { nombre: true } },
+      empresa: { select: { nombreComercial: true } },
+    },
+  });
+  if (row === null) return null;
+  return {
+    correlativoRecibo: row.correlativoRecibo,
+    tipo: row.tipo,
+    estado: row.estado,
+    // Prisma returns a Decimal; normalize through toString so no float is seen.
+    monto: row.monto.toFixed(2),
+    metodoPago: row.metodoPago,
+    fecha: row.fecha,
+    autorizadoPor: row.autorizadoPor,
+    facturaId: row.facturaId,
+    facturaNcf: row.factura.ncf,
+    clienteNombre: row.factura.cliente.nombre,
+    usuarioNombre: row.usuario.nombre,
+    empresaNombre: row.empresa.nombreComercial,
+  };
+}
