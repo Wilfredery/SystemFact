@@ -20,10 +20,14 @@
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 
-/** A UTC `[desde, hasta]` window plus an optional branch narrowing (ANDed). */
+/** A UTC `[desde, hasta]` window plus an optional branch narrowing (ANDed). The bounds are
+ *  OPTIONAL (open-ended when absent): the dashboard always passes a concrete SD day/month
+ *  window, while the operational period report (slice B) may leave a date end unset to mean
+ *  "no lower/upper bound". A `null`/absent bound simply drops that predicate (never a scan
+ *  past the tenant pin — `empresaId` is always required). */
 export interface VentanaFiltro {
-  readonly desde: Date;
-  readonly hasta: Date;
+  readonly desde?: Date;
+  readonly hasta?: Date;
   readonly sucursalId?: number;
 }
 
@@ -60,6 +64,8 @@ export async function totalesVentasEnTx(
   ventana: VentanaFiltro,
 ): Promise<TotalesVentasLeidos> {
   const sucursal = ventana.sucursalId ?? null;
+  const desde = ventana.desde ?? null;
+  const hasta = ventana.hasta ?? null;
   const [fila] = await tx.$queryRaw<
     { neto: string; operaciones: number }[]
   >`
@@ -69,8 +75,8 @@ export async function totalesVentasEnTx(
     FROM "VENTA" v
     WHERE v."empresaId" = ${ctx.empresaId}
       AND v."estado" = 'CONFIRMADA'
-      AND v."fecha" >= ${ventana.desde}
-      AND v."fecha" <= ${ventana.hasta}
+      AND (${desde}::timestamptz IS NULL OR v."fecha" >= ${desde})
+      AND (${hasta}::timestamptz IS NULL OR v."fecha" <= ${hasta})
       AND (${sucursal}::int IS NULL OR v."sucursalId" = ${sucursal})`;
   return {
     neto: fila?.neto ?? "0.00",
@@ -91,6 +97,8 @@ export async function topVendedoresEnTx(
   limite: number,
 ): Promise<TopVendedorLeido[]> {
   const sucursal = ventana.sucursalId ?? null;
+  const desde = ventana.desde ?? null;
+  const hasta = ventana.hasta ?? null;
   return tx.$queryRaw<TopVendedorLeido[]>`
     SELECT
       p."id"::int                                                    AS "productoId",
@@ -102,8 +110,8 @@ export async function topVendedoresEnTx(
     JOIN "PRODUCTO" p ON p."id" = d."productoId"
     WHERE v."empresaId" = ${ctx.empresaId}
       AND v."estado" = 'CONFIRMADA'
-      AND v."fecha" >= ${ventana.desde}
-      AND v."fecha" <= ${ventana.hasta}
+      AND (${desde}::timestamptz IS NULL OR v."fecha" >= ${desde})
+      AND (${hasta}::timestamptz IS NULL OR v."fecha" <= ${hasta})
       AND (${sucursal}::int IS NULL OR v."sucursalId" = ${sucursal})
     GROUP BY p."id", p."nombre"
     ORDER BY SUM(d."cantidad") DESC, SUM(d."subtotalLinea") DESC, p."id" ASC
