@@ -31,9 +31,13 @@ import {
   consultarInventarioValorizadoAction,
   consultarProductosVendidosAction,
   consultarVentasPorPeriodoAction,
+  consultarComparativaAction,
+  consultarCxcAgingAction,
+  consultarCxPAction,
 } from "@/modules/reportes/http/actions";
 import { DashboardKpis } from "@/modules/reportes/ui/dashboard-kpis";
 import { PanelOperativo } from "@/modules/reportes/ui/operacional-panel";
+import { PanelFinanciero } from "@/modules/reportes/ui/financiero-panel";
 import { ReportSelector } from "@/modules/reportes/ui/report-selector";
 import {
   seleccionDesdeSearchParams,
@@ -121,6 +125,33 @@ async function PanelReporte({
     const r = await consultarEstadoFacturasAction(seleccion.filtro);
     return r.ok ? (
       <PanelOperativo reporte="facturas" pagina={r.data} seleccion={seleccion} />
+    ) : (
+      <MensajeError code={r.error.code} message={r.error.message} />
+    );
+  }
+
+  // Slice C — the financial fleet. The panel renders ONLY on a role-authorized result; a Cobrador
+  // reaching cxc is served their own-branch aging, while cxp/comparativa deny (FIN-3).
+  if (reporte === REPORTE_ID.CXC) {
+    const r = await consultarCxcAgingAction(seleccion.filtro);
+    return r.ok ? (
+      <PanelFinanciero reporte="cxc" pagina={r.data} seleccion={seleccion} />
+    ) : (
+      <MensajeError code={r.error.code} message={r.error.message} />
+    );
+  }
+  if (reporte === REPORTE_ID.CXP) {
+    const r = await consultarCxPAction(seleccion.filtro);
+    return r.ok ? (
+      <PanelFinanciero reporte="cxp" pagina={r.data} seleccion={seleccion} />
+    ) : (
+      <MensajeError code={r.error.code} message={r.error.message} />
+    );
+  }
+  if (reporte === REPORTE_ID.COMPARATIVA) {
+    const r = await consultarComparativaAction(seleccion.filtro);
+    return r.ok ? (
+      <PanelFinanciero reporte="comparativa" pagina={r.data} seleccion={seleccion} />
     ) : (
       <MensajeError code={r.error.code} message={r.error.message} />
     );

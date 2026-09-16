@@ -50,6 +50,10 @@ import {
   consultarProductosVendidos,
   consultarVentasPorPeriodo,
 } from "../application/operacional";
+import { consultarCxcAging } from "../application/cxc-aging";
+import { consultarComparativa, consultarCxP } from "../application/financiero";
+import type { CxcAgingFila } from "../domain/aging";
+import type { ComparativaFila, CxpFila } from "../domain/financiero";
 import {
   SESION_INVALIDA,
   VALIDATION_ERROR,
@@ -192,3 +196,28 @@ export async function consultarEstadoFacturasAction(
   return consultarReporteOperativo(input, consultarEstadoFacturas);
 }
 
+/**
+ * FIN-1/FIN-2 — CxC aging (canonical reuse + bucket summary). The SAME
+ * {@link consultarReporteOperativo} adapter runs the pre-transaction `normalizarFiltro` (an invalid
+ * range never queries) and delegates to the aging use case, which owns the CxC role gate + the
+ * Admin company-wide widen / branch-pin / Cobrador own-branch scope (FIN-1, FIN-3).
+ */
+export async function consultarCxcAgingAction(
+  input?: unknown,
+): Promise<ActionResult<Pagina<CxcAgingFila>>> {
+  return consultarReporteOperativo(input, consultarCxcAging);
+}
+
+/** FIN-4 — CxP derived outstanding balances (Administrador-only; a Cobrador is denied). */
+export async function consultarCxPAction(
+  input?: unknown,
+): Promise<ActionResult<Pagina<CxpFila>>> {
+  return consultarReporteOperativo(input, consultarCxP);
+}
+
+/** FIN-5 — analytical comparativa, current vs the immediately-preceding equal-length SD window. */
+export async function consultarComparativaAction(
+  input?: unknown,
+): Promise<ActionResult<Pagina<ComparativaFila>>> {
+  return consultarReporteOperativo(input, consultarComparativa);
+}
