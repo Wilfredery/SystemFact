@@ -73,15 +73,68 @@ function buildError(code: CobroErrorCode): CobroResult<never> {
   return { ok: false, code, message: messageFor(code) };
 }
 
-/** True when a Prisma error is the `(empresaId, idempotencyKey)` unique clash. */
-function esConflictoIdempotencia(err: unknown): boolean {
+/**
+ * Postgres constraint name hidden under the driver adapter error. With
+ * `@prisma/adapter-pg` (Prisma 7) the `P2002` carries no `meta.target`; the
+ * driver maps the raw Postgres error to
+ * `meta.driverAdapterError.cause.constraint` — either an object
+ * `{ index: "..." }` or a plain string.
+ */
+function constraintNameFromMeta(err: Prisma.PrismaClientKnownRequestError): string {
+  const constraint = (
+    err.meta as
+      | { driverAdapterError?: { cause?: { constraint?: unknown } } }
+      | undefined
+  )?.driverAdapterError?.cause?.constraint;
+  if (typeof constraint === "string") return constraint;
+  if (constraint !== null && typeof constraint === "object") {
+    const index = (constraint as { index?: unknown }).index;
+    if (typeof index === "string") return index;
+  }
+  return "";
+}
+
+/**
+ * The real `instanceof` check OR the structural stand-in (a plain object with
+ * `name: "PrismaClientKnownRequestError"`) — the stand-in lets db-free unit
+ * tests pin the matcher without importing the runtime client (the generated
+ * client is ESM-only and cannot be parsed by the CJS Jest transform). The
+ * structural guard still requires `code === "P2002"`, so only a genuine-looking
+ * known-request error can match; a random object cannot masquerade without
+ * faking code+meta too.
+ */
+function esPrismaKnownRequest(err: unknown): err is Prisma.PrismaClientKnownRequestError {
+  if (err instanceof Prisma.PrismaClientKnownRequestError) return true;
   return (
-    err instanceof Prisma.PrismaClientKnownRequestError &&
-    err.code === "P2002" &&
-    (Array.isArray(err.meta?.target)
-      ? err.meta?.target.includes("idempotencyKey")
-      : String(err.meta?.target ?? "").includes("idempotencyKey"))
+    typeof err === "object" &&
+    err !== null &&
+    (err as { name?: unknown }).name === "PrismaClientKnownRequestError"
   );
+}
+
+/** True when a Prisma error is the `(empresaId, idempotencyKey)` unique clash. */
+export function esConflictoIdempotencia(err: unknown): boolean {
+  if (
+    !esPrismaKnownRequest(err) ||
+    (err as { code?: unknown }).code !== "P2002"
+  ) {
+    return false;
+  }
+  const target = err.meta?.target;
+  // Content match, not exact-element match: both the client shape
+  // (["empresaId", "idempotencyKey"]) and an embedded constraint/index name
+  // ("PAGO_empresaId_idempotencyKey_key") must resolve to the same clash.
+  if (Array.isArray(target) && target.some((t) => typeof t === "string" && t.toLowerCase().includes("idempotencykey"))) {
+    return true;
+  }
+  if (typeof target === "string" && target.toLowerCase().includes("idempotencykey")) {
+    return true;
+  }
+  // Driver-adapter path (Prisma 7 + adapter-pg): meta.target is absent, so
+  // identify the clash by the Postgres constraint name, which embeds the column.
+  return constraintNameFromMeta(err)
+    .toLowerCase()
+    .includes("idempotencykey");
 }
 
 /**
