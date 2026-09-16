@@ -30,10 +30,7 @@
  * Slice A is the access path for the default page.
  */
 
-import {
-  AccionAuditoria as PrismaAccionAuditoria,
-  type Prisma,
-} from "@/generated/prisma/client";
+import { type Prisma } from "@/generated/prisma/client";
 import { tenantFilter, type TenantCtx } from "@/modules/tenant/domain/tenant";
 import { tenantWhere } from "@/modules/tenant/infrastructure/tenant-where";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
@@ -41,29 +38,10 @@ import {
   CAMPOS_TEXTO_LIBRE,
   accionAuditoriaDesdeDb,
   calcularOffset,
-  type AccionAuditoria,
   type AuditoriaFiltro,
   type AuditoriaRegistro,
 } from "../domain/auditoria";
-
-/**
- * Total domain → Prisma-enum map. Both unions are the same string literals, but
- * an explicit exhaustive `Record` keeps the boundary drift-guarded by the
- * compiler: adding a variant to the domain union without extending the map
- * fails `tsc`; adding one to the Prisma enum without also extending the domain
- * union fails the Slice-A drift guard in `domain/auditoria.test.ts`.
- */
-const PRISMA_ACCION: Record<AccionAuditoria, PrismaAccionAuditoria> = {
-  CREAR: PrismaAccionAuditoria.CREAR,
-  ACTUALIZAR: PrismaAccionAuditoria.ACTUALIZAR,
-  CANCELAR: PrismaAccionAuditoria.CANCELAR,
-  ANULAR: PrismaAccionAuditoria.ANULAR,
-  PAGAR: PrismaAccionAuditoria.PAGAR,
-  AJUSTAR: PrismaAccionAuditoria.AJUSTAR,
-  LOGIN: PrismaAccionAuditoria.LOGIN,
-  LOGOUT: PrismaAccionAuditoria.LOGOUT,
-  LEER: PrismaAccionAuditoria.LEER,
-};
+import { accionAuditoriaADb } from "./prisma-accion";
 
 /**
  * Explicit scalar projection — exactly the fields the DTO surfaces, never the
@@ -113,7 +91,7 @@ export async function consultarAuditoriaEnTx(
       ...tenantWhere(tenantFilter(ctx), /* omitSucursalId */ true),
     };
     if (filtro.accion !== undefined) {
-      where.accion = PRISMA_ACCION[filtro.accion];
+      where.accion = accionAuditoriaADb(filtro.accion);
     }
     if (filtro.usuarioId !== undefined) {
       where.usuarioId = filtro.usuarioId;

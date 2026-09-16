@@ -264,3 +264,46 @@ export function mapearAPagina(params: {
     totalPages: calcularTotalPages(total, filtro.pageSize),
   };
 }
+
+// --- Write seam (AU-1): pure, DB-free shapes for appending an audit event ---
+//
+// These are the DATA contracts of the append-only write port introduced in phase
+// 7A. They stay in the pure domain (no Prisma) exactly like the read DTOs above:
+// the read-only "consultation" module gains a tiny write contract, but the actual
+// INSERT (and the enum mapping) live in `infrastructure/`. The port interface
+// itself is declared in `application/`.
+
+/**
+ * Minimal tenant anchor for an audit write. The read path receives a full
+ * {@link TenantCtx}, but the LOGIN/LOGOUT standalone path has NO `TenantCtx`
+ * (identity is resolved outside `withTenantTransaction`). The write helper only
+ * needs the company + acting user; `sucursalId` is optional so a caller that has
+ * no branch context (company-wide session events) can omit it, and the concrete
+ * per-row branch can be overridden per event via {@link AuditoriaWriteEvent.sucursalId}.
+ *
+ * `TenantCtx` is structurally assignable to this shape, so branch-scoped callers
+ * (cobros) pass their ctx unchanged.
+ */
+export interface AuditoriaTenantAnchor {
+  readonly empresaId: number;
+  readonly usuarioId: number;
+  readonly sucursalId?: number | null;
+}
+
+/**
+ * A single append-only audit event to persist (AU-1). `accion` is the frozen
+ * domain enum — never a free string. `sucursalId` OVERRIDES the anchor's branch:
+ * omit it to inherit the anchor's branch (cobros), or pass `null` explicitly to
+ * record a company-wide action with no branch (LOGIN/LOGOUT). `fechaHora` is set
+ * in code (UTC); omit to default to now.
+ */
+export interface AuditoriaWriteEvent {
+  readonly accion: AccionAuditoria;
+  readonly entidad: string;
+  readonly idEntidad: string;
+  readonly sucursalId?: number | null;
+  readonly valorAnterior?: string | null;
+  readonly valorNuevo?: string | null;
+  readonly motivo?: string | null;
+  readonly fechaHora?: Date;
+}
