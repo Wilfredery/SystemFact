@@ -33,6 +33,10 @@ import { ReporteDomainError } from "../domain/errors";
 import type { DashboardVista } from "../domain/dashboard";
 import { consultarDashboard } from "../application/consultar-dashboard";
 import {
+  REPORTE_ID,
+  type ReporteId,
+} from "../domain/catalogo";
+import {
   normalizarFiltro,
   type ReporteFiltro,
   type ReporteFiltroEntrada,
@@ -52,8 +56,10 @@ import {
 } from "../application/operacional";
 import { consultarCxcAging } from "../application/cxc-aging";
 import { consultarComparativa, consultarCxP } from "../application/financiero";
+import { consultarRentabilidad } from "../application/rentabilidad";
 import type { CxcAgingFila } from "../domain/aging";
 import type { ComparativaFila, CxpFila } from "../domain/financiero";
+import type { RentabilidadFila } from "../domain/margen";
 import {
   SESION_INVALIDA,
   VALIDATION_ERROR,
@@ -196,6 +202,16 @@ export async function consultarEstadoFacturasAction(
   return consultarReporteOperativo(input, consultarEstadoFacturas);
 }
 
+/** The report ids the slice-B operational actions serve (deep-link dispatch for the shell). */
+export const ACCIONES_OPERATIVAS: Readonly<
+  Partial<Record<ReporteId, (input?: unknown) => Promise<ActionResult<unknown>>>>
+> = {
+  [REPORTE_ID.VENTAS]: consultarVentasPorPeriodoAction,
+  [REPORTE_ID.PRODUCTOS]: consultarProductosVendidosAction,
+  [REPORTE_ID.INVENTARIO]: consultarInventarioValorizadoAction,
+  [REPORTE_ID.FACTURAS]: consultarEstadoFacturasAction,
+};
+
 /**
  * FIN-1/FIN-2 — CxC aging (canonical reuse + bucket summary). The SAME
  * {@link consultarReporteOperativo} adapter runs the pre-transaction `normalizarFiltro` (an invalid
@@ -221,3 +237,35 @@ export async function consultarComparativaAction(
 ): Promise<ActionResult<Pagina<ComparativaFila>>> {
   return consultarReporteOperativo(input, consultarComparativa);
 }
+
+/**
+ * The slice-C financial actions (deep-link dispatch). Cobrador reaches ONLY `cxc` (the use case
+ * denies the other two); every action shares the identical `normalizarFiltro` → tx → use-case
+ * gate flow, so the transport contract and pre-query validation never diverge from slice B.
+ */
+export const ACCIONES_FINANCIERAS: Readonly<
+  Partial<Record<ReporteId, (input?: unknown) => Promise<ActionResult<unknown>>>>
+> = {
+  [REPORTE_ID.CXC]: consultarCxcAgingAction,
+  [REPORTE_ID.CXP]: consultarCxPAction,
+  [REPORTE_ID.COMPARATIVA]: consultarComparativaAction,
+};
+
+/**
+ * REN-1/REN-2 — Rentabilidad por producto (Administrador-only). The SAME
+ * {@link consultarReporteOperativo} adapter runs the pre-transaction `normalizarFiltro` (an invalid
+ * range never queries) and delegates to the use case, which owns the role gate + company-wide widen
+ * and the current-cost margin math (with the REN-3 limitation surfaced by the panel + CSV).
+ */
+export function consultarRentabilidadAction(
+  input?: unknown,
+): Promise<ActionResult<Pagina<RentabilidadFila>>> {
+  return consultarReporteOperativo(input, consultarRentabilidad);
+}
+
+/** The slice-D rentabilidad action (deep-link dispatch for the shell). */
+export const ACCIONES_RENTABILIDAD: Readonly<
+  Partial<Record<ReporteId, (input?: unknown) => Promise<ActionResult<unknown>>>>
+> = {
+  [REPORTE_ID.RENTABILIDAD]: consultarRentabilidadAction,
+};

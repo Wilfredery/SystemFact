@@ -34,10 +34,12 @@ import {
   consultarComparativaAction,
   consultarCxcAgingAction,
   consultarCxPAction,
+  consultarRentabilidadAction,
 } from "@/modules/reportes/http/actions";
 import { DashboardKpis } from "@/modules/reportes/ui/dashboard-kpis";
 import { PanelOperativo } from "@/modules/reportes/ui/operacional-panel";
 import { PanelFinanciero } from "@/modules/reportes/ui/financiero-panel";
+import { PanelRentabilidad } from "@/modules/reportes/ui/rentabilidad-panel";
 import { ReportSelector } from "@/modules/reportes/ui/report-selector";
 import {
   seleccionDesdeSearchParams,
@@ -152,6 +154,17 @@ async function PanelReporte({
     const r = await consultarComparativaAction(seleccion.filtro);
     return r.ok ? (
       <PanelFinanciero reporte="comparativa" pagina={r.data} seleccion={seleccion} />
+    ) : (
+      <MensajeError code={r.error.code} message={r.error.message} />
+    );
+  }
+
+  // Slice D — rentabilidad por producto (Administrador-only). The panel renders ONLY on a
+  // role-authorized result and shows the REN-3 cost-basis disclaimer; a non-admin is denied.
+  if (reporte === REPORTE_ID.RENTABILIDAD) {
+    const r = await consultarRentabilidadAction(seleccion.filtro);
+    return r.ok ? (
+      <PanelRentabilidad pagina={r.data} seleccion={seleccion} />
     ) : (
       <MensajeError code={r.error.code} message={r.error.message} />
     );
