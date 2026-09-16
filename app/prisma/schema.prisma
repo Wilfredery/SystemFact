@@ -770,5 +770,12 @@ model MovimientoAuditoria {
   usuario  Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
 
   // Auditoría append-only: sin UPDATE/DELETE en Prisma (03, §13).
+  // Read indexes for /auditoria (fase-7a): default newest-first page plus the
+  // two selective equality filters and the optional branch filter. No JSON/blob
+  // or free-text index (valorAnterior/valorNuevo are never searched).
+  @@index([empresaId, fechaHora, id], map: "MOVIMIENTO_AUDITORIA_empresaId_fechaHora_id_idx")
+  @@index([empresaId, sucursalId, fechaHora, id], map: "MOVIMIENTO_AUDITORIA_empresaId_sucursalId_fechaHora_id_idx")
+  @@index([empresaId, accion, fechaHora, id], map: "MOVIMIENTO_AUDITORIA_empresaId_accion_fechaHora_id_idx")
+  @@index([empresaId, usuarioId, fechaHora, id], map: "MOVIMIENTO_AUDITORIA_empresaId_usuarioId_fechaHora_id_idx")
   @@map("MOVIMIENTO_AUDITORIA")
 }

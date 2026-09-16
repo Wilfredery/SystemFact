@@ -14,6 +14,8 @@ const config = {
   testEnvironment: "node",
   rootDir: ".",
   moduleNameMapper: {
+    // MUST precede "^@/(.*)$" — Jest picks the FIRST matching key.
+    "^@/generated/prisma/client$": "<rootDir>/src/test-support/prisma-client-stub.ts",
     "^@/(.*)$": "<rootDir>/src/$1",
   },
   testMatch: [
@@ -34,6 +36,39 @@ const config = {
   // Surface tsconfig's strict settings so tests catch the same type errors
   // as the production build.
   transform: {
+    // MUST come before the ts-jest pattern below: the generated Prisma client
+    // is ESM-flavored source (`import.meta.url`) that ts-jest's CommonJS
+    // output cannot execute. Same babel transform the integration config
+    // (jest.integration.config.js) already established for db-free unit tests
+    // that import the client (e.g. the cobros idempotency matcher test).
+    "src[\\\\/]generated[\\\\/]prisma[\\\\/].*\\.ts$": [
+      require.resolve("babel-jest"),
+      {
+        presets: [require.resolve("@babel/preset-typescript")],
+        plugins: [
+          require.resolve("@babel/plugin-transform-modules-commonjs"),
+          require.resolve("@babel/plugin-transform-export-namespace-from"),
+          {
+            visitor: {
+              MetaProperty(path) {
+                const isUrlMember =
+                  path.parent.type === "MemberExpression" &&
+                  path.parent.property?.name === "url";
+                if (isUrlMember) {
+                  path.parentPath.replaceWithSourceString(
+                    `require("node:url").pathToFileURL(__filename).href`,
+                  );
+                } else {
+                  path.replaceWithSourceString(
+                    `{ url: require("node:url").pathToFileURL(__filename).href }`,
+                  );
+                }
+              },
+            },
+          },
+        ],
+      },
+    ],
     "^.+\\.ts$": [
       "ts-jest",
       {

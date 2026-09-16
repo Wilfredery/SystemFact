@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import { setLoginFlow } from "@/modules/tenant/infrastructure/tenant-runtime";
+import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
+import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import {
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_USUARIO_INACTIVO,
@@ -15,6 +17,76 @@ import {
 export type AuthResult =
   | { ok: true }
   | { ok: false; code: AuthErrorCode; message: string };
+
+/**
+ * Appends a LOGIN or LOGOUT audit row on the STANDALONE (pre-`TenantCtx`) path
+ * (REQ-AUTH-AUD-001, design.md "Login/logout context").
+ *
+ * `withTenantTransaction` cannot run before a `TenantCtx` exists, so this opens
+ * its OWN direct `prisma.$transaction`: activate the `app.is_login_flow`
+ * exception, pin `app.current_empresa_id` to the SINGLE resolved company of the
+ * authenticating user, then append the row through the auditoria write port with
+ * `sucursalId` null (a company-wide session action). The empresa GUC is pinned to
+ * exactly this one company and never widened, so the login-flow RLS exception is
+ * not exploited to reach other tenants (the `audit_insert` policy's
+ * `WITH CHECK empresa GUC = empresaId` is the DB-level backstop).
+ *
+ * A failure propagates (design.md: "failure propagates rather than silently
+ * losing security evidence") — the caller surfaces it; we never swallow it.
+ *
+ * Exported so the real-DB integration harness can exercise the exact standalone
+ * mechanism the login/logout paths use (the Supabase credential round-trip itself
+ * is remote and cannot run in an integration test).
+ */
+export async function registrarAuditoriaSesion(
+  accion: "LOGIN" | "LOGOUT",
+  anchor: { readonly empresaId: number; readonly usuarioId: number },
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await setLoginFlow(tx);
+    await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${String(
+      anchor.empresaId,
+    )}, true)`;
+    await registrarEventoAuditoriaEnTx(tx as PrismaTx, anchor, {
+      accion,
+      entidad: "Sesion",
+      idEntidad: String(anchor.usuarioId),
+      sucursalId: null,
+    });
+  });
+}
+
+/**
+ * Resolves the `{ id, empresaId }` of the USUARIO behind the current Supabase
+ * session (login-flow lookup). Returns null when there is no valid session or no
+ * active mapped user — so an unattributable logout writes NO audit row.
+ */
+async function resolverUsuarioDeSesion(
+  supabase: SupabaseClient,
+): Promise<{ readonly id: number; readonly empresaId: number } | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user === null) return null;
+
+  const email = user.email ?? "";
+  let nombreUsuario: string;
+  try {
+    nombreUsuario = decodeNombreUsuario(email);
+  } catch {
+    return null;
+  }
+
+  const usuario = await prisma.$transaction(async (tx) => {
+    await setLoginFlow(tx);
+    return tx.usuario.findUnique({
+      where: { nombreUsuario },
+      select: { id: true, empresaId: true, activo: true },
+    });
+  });
+  if (usuario === null || !usuario.activo) return null;
+  return { id: usuario.id, empresaId: usuario.empresaId };
+}
 
 /**
  * Authenticates a user with `nombreUsuario` + password.
@@ -63,7 +135,7 @@ export async function loginWithCredenciales(
     await setLoginFlow(tx);
     return tx.usuario.findUnique({
       where: { nombreUsuario },
-      select: { id: true, activo: true, nombre: true },
+      select: { id: true, activo: true, nombre: true, empresaId: true },
     });
   });
 
@@ -77,14 +149,34 @@ export async function loginWithCredenciales(
     };
   }
 
+  // REQ-AUTH-AUD-001: a FULLY successful login (session established AND the mapped
+  // USUARIO validated active) appends exactly one LOGIN audit row. The failed-
+  // credentials and inactive-user rejections returned above, so a rejected login
+  // writes nothing (no unauthenticated noise, no enumeration side-channel in the log).
+  await registrarAuditoriaSesion("LOGIN", {
+    empresaId: usuario.empresaId,
+    usuarioId: usuario.id,
+  });
+
   return { ok: true };
 }
 
 /**
- * Closes the Supabase Auth session for the current request.
+ * Closes the Supabase Auth session for the current request and appends one LOGOUT
+ * audit row (REQ-AUTH-AUD-001). The acting identity is resolved from the still-
+ * present session (the synthetic email is in the JWT) before sign-out, the session
+ * is then closed, and the row is written against the pre-resolved ids. An
+ * unattributable logout (no active mapped user) writes nothing.
  */
 export async function logout(supabase: SupabaseClient): Promise<void> {
+  const identity = await resolverUsuarioDeSesion(supabase);
   await supabase.auth.signOut();
+  if (identity !== null) {
+    await registrarAuditoriaSesion("LOGOUT", {
+      empresaId: identity.empresaId,
+      usuarioId: identity.id,
+    });
+  }
 }
 
 export interface CurrentUserContext {
