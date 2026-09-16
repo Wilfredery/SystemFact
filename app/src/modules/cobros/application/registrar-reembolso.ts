@@ -19,6 +19,8 @@
  *      rolls back so its receipt allocation leaves no trace. Any other Prisma
  *      error is a defect and propagates (the transaction aborts) — a raw Prisma
  *      error never becomes a business result.
+ *   5. Exactly one `PAGAR` audit row is appended after the committed `Pago`
+ *      (R-C8); the replay and race paths above write no audit row.
  *
  * Authorization (only an allowed actor may refund → `PAGO_NO_AUTORIZADO`) is a
  * coarse role gate enforced by the HTTP adapter BEFORE this use case runs — it
@@ -47,6 +49,7 @@ import {
   buscarPagoPorIdempotenciaEnTx,
   crearPagoEnTx,
 } from "../infrastructure/pago-repository";
+import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 
 /** A refund request — the mandatory client key plus one payment amount. */
 export interface RegistrarReembolsoInput {
@@ -134,6 +137,25 @@ export async function registrarReembolso(
       idempotencyKey,
       autorizadoPor,
     });
+
+    // R-C8: append exactly one `PAGAR` audit row strictly AFTER the `Pago`
+    // committed, inside this same try — so the replay pre-check (returned above)
+    // and the concurrent-first-submit P2002 race (caught below) both leave the
+    // audit row count flat. An audit failure is not an idempotency conflict: the
+    // catch re-throws and the whole transaction (Pago + audit) rolls back together
+    // (AU-3).
+    await registrarEventoAuditoriaEnTx(tx, ctx, {
+      accion: "PAGAR",
+      entidad: "Pago",
+      idEntidad: String(pagoId),
+      valorNuevo: JSON.stringify({
+        correlativoRecibo,
+        monto: monto.toFixed(2),
+        idempotencyKey,
+      }),
+      motivo: "Reembolso aplicado",
+    });
+
     return { ok: true, data: { pagoId, correlativoRecibo, autorizadoPor } };
   } catch (err) {
     // (4) First-submit race: a concurrent transaction committed the same key

@@ -16,7 +16,9 @@
  *     `COBRO_EXCEDE_SALDO` (over-payment never drives the balance negative);
  *   • the receipt number is allocated company-wide under the `EMPRESA` lock
  *     (R-C4), then the `COBRO`/`APLICADO` row is inserted `EFECTIVO`-only with
- *     `Decimal` money end-to-end.
+ *     `Decimal` money end-to-end;
+ *   • exactly one `PAGAR` audit row is appended in the same transaction after the
+ *     Pago commits (R-C8) — a rejected/replayed cobro writes none.
  *
  * Idempotency of a collection is inherent: each `registrarCobro` is a distinct
  * payment the caller chose to make; only refunds carry a client idempotency key
@@ -45,6 +47,7 @@ import {
 } from "../infrastructure/saldo-cxc.repository";
 import { asignarCorrelativoReciboEnTx } from "../infrastructure/recibo.repository";
 import { crearPagoEnTx } from "../infrastructure/pago-repository";
+import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 
 /** A collection request — one payment against one invoice. */
 export interface RegistrarCobroInput {
@@ -111,6 +114,23 @@ export async function registrarCobro(
     correlativoRecibo,
     idempotencyKey: null,
     autorizadoPor: null,
+  });
+
+  // R-C8: append exactly one `PAGAR` audit row, INSIDE this same transaction and
+  // strictly after the `Pago` committed. The over-payment / non-VIGENTE guards
+  // returned above, so a rejected cobro never reaches this call. The audit insert
+  // is not wrapped in try/catch on purpose: a failure aborts the transaction so the
+  // Pago and its audit row roll back together (AU-3, design.md) — never a payment
+  // without its audit trail.
+  await registrarEventoAuditoriaEnTx(tx, ctx, {
+    accion: "PAGAR",
+    entidad: "Pago",
+    idEntidad: String(pagoId),
+    valorNuevo: JSON.stringify({
+      correlativoRecibo,
+      monto: monto.toFixed(2),
+    }),
+    motivo: "Cobro aplicado",
   });
 
   return {
