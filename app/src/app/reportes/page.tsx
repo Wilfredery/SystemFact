@@ -35,11 +35,18 @@ import {
   consultarCxcAgingAction,
   consultarCxPAction,
   consultarRentabilidadAction,
+  consultarResumenITBISAction,
+  consultarCasillasIT1Action,
 } from "@/modules/reportes/http/actions";
 import { DashboardKpis } from "@/modules/reportes/ui/dashboard-kpis";
 import { PanelOperativo } from "@/modules/reportes/ui/operacional-panel";
 import { PanelFinanciero } from "@/modules/reportes/ui/financiero-panel";
 import { PanelRentabilidad } from "@/modules/reportes/ui/rentabilidad-panel";
+import {
+  PanelCasillasIT1,
+  PanelDgiiTxt,
+  PanelResumenITBIS,
+} from "@/modules/reportes/ui/fiscal-panel";
 import { ReportSelector } from "@/modules/reportes/ui/report-selector";
 import {
   seleccionDesdeSearchParams,
@@ -168,6 +175,29 @@ async function PanelReporte({
     ) : (
       <MensajeError code={r.error.code} message={r.error.message} />
     );
+  }
+
+  // Slice E — the fiscal fleet (Administrador-only). The ITBIS/IT-1 panels render a Decimal SUMMARY
+  // fetched through the SAME gate (a non-admin is denied before any aggregate); the DGII 606/607/608
+  // panels render a format card whose TXT download re-runs the identical gate server-side (EXP-4).
+  if (reporte === REPORTE_ID.ITBIS) {
+    const r = await consultarResumenITBISAction(seleccion.filtro);
+    return r.ok ? (
+      <PanelResumenITBIS resumen={r.data} seleccion={seleccion} />
+    ) : (
+      <MensajeError code={r.error.code} message={r.error.message} />
+    );
+  }
+  if (reporte === REPORTE_ID.IT1) {
+    const r = await consultarCasillasIT1Action(seleccion.filtro);
+    return r.ok ? (
+      <PanelCasillasIT1 casillas={r.data} seleccion={seleccion} />
+    ) : (
+      <MensajeError code={r.error.code} message={r.error.message} />
+    );
+  }
+  if (reporte === REPORTE_ID.DGII_606 || reporte === REPORTE_ID.DGII_607 || reporte === REPORTE_ID.DGII_608) {
+    return <PanelDgiiTxt reporte={reporte} seleccion={seleccion} />;
   }
 
   return (

@@ -20,7 +20,9 @@
 import {
   LARGO_IMPORTE_DEFAULT,
   LARGO_NCF,
+  LARGO_REGISTROS_DEFAULT,
   LARGO_RNC,
+  LARGO_TOTAL_MONTO_DEFAULT,
   SEPARADOR_LINEA,
   ensamblarLinea,
   fechaAAAMMDD,
@@ -30,10 +32,14 @@ import {
 } from "./formato";
 import type { FormasPago607 } from "./pagos-607";
 
-/** Field widths for the 607/606 amount columns (the U2 seam — one place to adjust). */
+/**
+ * Field widths for the 607/606/608 columns. The MONEY / COUNT / TOTAL widths are imported from
+ * `formato` (the SINGLE declared source — a U2 byte-offset fix edits `formato`, never a second
+ * copy here); the small CODE widths are layout-only constants local to the record shape.
+ */
 const W_IMPORTE = LARGO_IMPORTE_DEFAULT; // N12
-const W_MONTO_TOTAL = 16; // header TOTAL_MONTO_FACTURADO N16
-const W_REGISTROS = 12; // header CANTIDAD_REGISTROS N12
+const W_MONTO_TOTAL = LARGO_TOTAL_MONTO_DEFAULT; // header TOTAL_MONTO_FACTURADO N16
+const W_REGISTROS = LARGO_REGISTROS_DEFAULT; // header CANTIDAD_REGISTROS N12
 const W_FECHA = 8; // AAAAMMDD (a natural length; padding is a no-op for a real date)
 const W_ID = 1; // TipoIdentificación N1
 const W_TIPO_INGRESO = 1; // 607 D5 code

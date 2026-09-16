@@ -86,6 +86,9 @@ export function dividirPorTope(total: number, tope: number): number[] {
  * `CANTIDAD_REGISTROS` equals its own detail length and the per-file counts sum to the whole.
  */
 export function trocearRegistros<T>(filas: readonly T[], tope: number): T[][] {
+  if (!Number.isInteger(tope) || tope < 1) {
+    throw new RangeError(`trocearRegistros: tope debe ser un entero >= 1, recibido ${String(tope)}`);
+  }
   const trozos: T[][] = [];
   if (filas.length === 0) return [[]]; // en-cero: one empty chunk
   for (let i = 0; i < filas.length; i += tope) {

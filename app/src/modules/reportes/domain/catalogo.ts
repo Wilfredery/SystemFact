@@ -114,11 +114,26 @@ export const REPORTES_FINANCIEROS_SLICE_C: readonly ReporteId[] = [
 
 /**
  * Report ids wired in slice D (rentabilidad por producto + its live CSV carrying the REN-3
- * cost-basis disclaimer). Administrador-only (proposal decision 5); the selector marks this
+ * cost-basis disclaimer). Administrador-only (proposal decision 5); the selector marks these
  * "disponible" and the shell renders a real data panel + export for it.
  */
 export const REPORTES_RENTABILIDAD_SLICE_D: readonly ReporteId[] = [
   REPORTE_ID.RENTABILIDAD,
+];
+
+/**
+ * Report ids wired in slice E (the fiscal fleet: ITBIS summary + IT-1 casilla worksheet with their
+ * CSV, plus the DGII 606/607/608 TXT exporters). All Administrador-only (proposal decision 5). The
+ * ITBIS/IT-1 panels render a data summary + a CSV "Exportar"; the 606/607/608 panels render a period
+ * selector + a DGII TXT download link (which re-runs the SAME gate server-side, EXP-4). U1–U5 are
+ * pre-validation acceptance gates the panel surfaces as a pending-tool-validation notice.
+ */
+export const REPORTES_FISCALES_SLICE_E: readonly ReporteId[] = [
+  REPORTE_ID.ITBIS,
+  REPORTE_ID.IT1,
+  REPORTE_ID.DGII_606,
+  REPORTE_ID.DGII_607,
+  REPORTE_ID.DGII_608,
 ];
 
 const REPORTES_IMPLEMENTADOS = new Set<string>([
@@ -126,6 +141,7 @@ const REPORTES_IMPLEMENTADOS = new Set<string>([
   ...REPORTES_OPERATIVOS_SLICE_B,
   ...REPORTES_FINANCIEROS_SLICE_C,
   ...REPORTES_RENTABILIDAD_SLICE_D,
+  ...REPORTES_FISCALES_SLICE_E,
 ]);
 
 /** True when a report's panel is wired (dashboard + slice-B/C operational+financial + slice-D rentabilidad). */

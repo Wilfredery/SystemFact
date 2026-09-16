@@ -25,7 +25,7 @@ export const LARGO_IMPORTE_DEFAULT = 12;
 /** The default width of the header `TOTAL_MONTO_FACTURADO` field (N16 — research §3 H5). */
 export const LARGO_TOTAL_MONTO_DEFAULT = 16;
 /** The default width of the header `CANTIDAD_REGISTROS` field (N12 — research §3 H4). */
-export const LARGO_RECISTROS_DEFAULT = 12;
+export const LARGO_REGISTROS_DEFAULT = 12;
 /** NCF field width (11 positions since May-2018 — research §3 D3, S3). */
 export const LARGO_NCF = 11;
 /** RNC/Cédula field width (A11, space-padded, never blank — research §3 D1, §2). */
