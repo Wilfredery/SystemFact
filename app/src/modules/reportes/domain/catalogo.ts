@@ -89,6 +89,28 @@ export const REPORTES_DISPONIBLES_SLICE_A: readonly ReporteId[] = [
   REPORTE_ID.DASHBOARD,
 ];
 
+/**
+ * Report ids wired in slice B (the operational fleet + live CSV). The selector marks these
+ * "disponible" (no `·` próxima marker) and the shell renders a real data panel + export for
+ * them; slices C–E extend this same set as their panels land.
+ */
+export const REPORTES_OPERATIVOS_SLICE_B: readonly ReporteId[] = [
+  REPORTE_ID.VENTAS,
+  REPORTE_ID.PRODUCTOS,
+  REPORTE_ID.INVENTARIO,
+  REPORTE_ID.FACTURAS,
+];
+
+const REPORTES_IMPLEMENTADOS = new Set<string>([
+  ...REPORTES_DISPONIBLES_SLICE_A,
+  ...REPORTES_OPERATIVOS_SLICE_B,
+]);
+
+/** True when a report's panel is wired (dashboard + slice-B operational fleet). */
+export function esReporteImplementado(id: ReporteId): boolean {
+  return REPORTES_IMPLEMENTADOS.has(id);
+}
+
 /** The catalog entry for an id, or `undefined` when unknown. */
 export function entradaDeCatalogo(id: ReporteId): EntradaCatalogo | undefined {
   return CATALOGO_REPORTES.find((e) => e.id === id);
