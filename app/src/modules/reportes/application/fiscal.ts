@@ -240,6 +240,11 @@ export async function generarTxt606(
     const periodo = periodoDeFiltro(filtro, now);
     const filas: FilaDetalle606[] = leidas.map((r) => {
       const informal = r.tipoProveedor === "INFORMAL";
+      // The supplier's OWN fiscal id drives D1/D2, via the same pure derivation as 607: a valid
+      // 9-digit RNC → type 1, an 11-digit Cédula → type 2, a blank/unvalid (e.g. an informal with no
+      // id on file) → type 3 with a blank D1. We NEVER substitute the remitter's company RNC (that
+      // would report the company as its own supplier) — a blank/odd id is the tenant's data concern,
+      // surfaced to the pre-validation tool, not fabricated here.
       const id = derivarTipoIdentificacion(r.rncProveedor, false);
       const split = derivarItbis606({ itbisFacturado: r.itbis, proveedorInformal: informal });
       // V1 splits the base into goods OR services by tipoCompra (all-in-one column).
@@ -247,8 +252,8 @@ export async function generarTxt606(
       const base = new Decimal(r.subtotalGravado).plus(r.subtotalExento).toDecimalPlaces(2);
       const cero = "0.00";
       return {
-        rncProveedor: id.identificacion !== "" ? id.identificacion : rnc, // never blank (research §2)
-        tipoIdentificacion: id.tipo === 3 ? 1 : id.tipo, // a supplier is RNC/Cédula, never "no id"
+        rncProveedor: id.identificacion, // the supplier's own id, blank if none (never the company RNC)
+        tipoIdentificacion: id.tipo, // 1 RNC | 2 Cédula | 3 sin identificación (research §4 D2)
         tipoBienesServicios: derivarTipoBienesServicios(r.tipoCompra),
         ncf: r.ncf ?? "",
         ncfModificado: null, // V1 stores no modified-purchase NCF reference (column present, blank)
