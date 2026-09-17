@@ -20,8 +20,9 @@ import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { generarCsvOperativo, type CsvResultado } from "./exportar-operativos";
 import { generarCsvFinanciero } from "./exportar-financieros";
 import { generarCsvRentabilidad } from "./exportar-rentabilidad";
+import { generarCsvFiscal } from "./exportar-fiscales";
 
-/** The report ids exportable through the shared CSV seam (slice B operational + C financial + D rentabilidad). */
+/** The report ids exportable through the shared CSV seam (slice B operational + C financial + D rentabilidad + E fiscal summaries). */
 const REPORTES_EXPORTABLES: readonly ReporteId[] = [
   REPORTE_ID.VENTAS,
   REPORTE_ID.PRODUCTOS,
@@ -31,6 +32,8 @@ const REPORTES_EXPORTABLES: readonly ReporteId[] = [
   REPORTE_ID.CXP,
   REPORTE_ID.COMPARATIVA,
   REPORTE_ID.RENTABILIDAD,
+  REPORTE_ID.ITBIS,
+  REPORTE_ID.IT1,
 ];
 
 const OPERATIVOS = new Set<string>([
@@ -40,10 +43,13 @@ const OPERATIVOS = new Set<string>([
   REPORTE_ID.FACTURAS,
 ]);
 
+const FISCALESCSV = new Set<string>([REPORTE_ID.ITBIS, REPORTE_ID.IT1]);
+
 /**
  * Produce the CSV for any currently-exportable report, delegating to the matching family exporter.
- * An id with no exporter (dashboard / fiscal / an unknown) is denied `REPORTE_NO_AUTORIZADO` before
- * any read — the whole surface is deny-by-default (EXP-4).
+ * An id with no exporter (dashboard / an unknown) is denied `REPORTE_NO_AUTORIZADO` before any read
+ * — the whole surface is deny-by-default (EXP-4). The DGII 606/607/608 TXT exports are served by the
+ * fiscal TXT route (they are TXT, not CSV), so they are intentionally NOT in this CSV seam.
  */
 export async function generarCsvReporte(
   tx: PrismaTx,
@@ -59,6 +65,9 @@ export async function generarCsvReporte(
   }
   if (reporteId === REPORTE_ID.RENTABILIDAD) {
     return generarCsvRentabilidad(tx, ctx, reporteId, filtro);
+  }
+  if (FISCALESCSV.has(reporteId)) {
+    return generarCsvFiscal(tx, ctx, reporteId, filtro);
   }
   return generarCsvFinanciero(tx, ctx, reporteId, filtro);
 }

@@ -54,6 +54,11 @@ import {
 import { consultarCxcAging } from "../application/cxc-aging";
 import { consultarComparativa, consultarCxP } from "../application/financiero";
 import { consultarRentabilidad } from "../application/rentabilidad";
+import {
+  consultarCasillasIT1,
+  consultarResumenITBIS,
+} from "../application/fiscal";
+import type { CasillasIT1, ResumenITBIS } from "../domain/fiscal";
 import type { CxcAgingFila } from "../domain/aging";
 import type { ComparativaFila, CxpFila } from "../domain/financiero";
 import type { RentabilidadFila } from "../domain/margen";
@@ -237,3 +242,53 @@ export async function consultarRentabilidadAction(
   return consultarReporteOperativo(input, consultarRentabilidad);
 }
 
+/**
+ * FIS-1 — the per-period ITBIS summary (Administrador-only). A bespoke adapter: the ITBIS/IT-1
+ * screens render a DECIMAL SUMMARY (not a paginated `Pagina`), so they share the SAME transport
+ * pre-check flow (`zReporteFiltroInput` → `normalizarFiltro`, which rejects an invalid range with
+ * `REPORTE_VALIDACION` BEFORE any query — OP-6) and the same `withTenantTransaction` + role gate
+ * (DB-2), but delegate to the fiscal use case that returns a summary object. The DGII 606/607/608
+ * TXT export does NOT go through a Server Action — it is the `/reportes/exportar-txt` route (a file
+ * response, EXP-3), which re-runs the SAME gate server-side (EXP-4).
+ */
+async function consultarReporteFiscal<T>(
+  input: unknown,
+  usarCaso: (
+    tx: PrismaTx,
+    ctx: TenantCtx,
+    filtro: ReporteFiltro,
+  ) => Promise<ReportResult<T>>,
+): Promise<ActionResult<T>> {
+  const parsed = zReporteFiltroInput.safeParse(input ?? {});
+  if (!parsed.success) {
+    return fail(VALIDATION_ERROR, mensajeTransporte(VALIDATION_ERROR));
+  }
+  let filtro: ReporteFiltro;
+  try {
+    filtro = normalizarFiltro(parsed.data);
+  } catch (e) {
+    if (e instanceof ReporteDomainError) return fail(e.code, e.message);
+    throw e;
+  }
+  const ctx = await resolverCtx();
+  if (ctx === null) return fail(SESION_INVALIDA, mensajeTransporte(SESION_INVALIDA));
+  return withTenantTransaction(ctx, async (tx) => {
+    const result = await usarCaso(tx, ctx, filtro);
+    if (!result.ok) return fail(result.code, result.message);
+    return ok(result.data);
+  });
+}
+
+/** FIS-1 — ITBIS summary consult. */
+export async function consultarResumenITBISAction(
+  input?: unknown,
+): Promise<ActionResult<ResumenITBIS>> {
+  return consultarReporteFiscal(input, consultarResumenITBIS);
+}
+
+/** FIS-2 — IT-1 casilla worksheet consult (a summary, never a TXT). */
+export async function consultarCasillasIT1Action(
+  input?: unknown,
+): Promise<ActionResult<CasillasIT1>> {
+  return consultarReporteFiscal(input, consultarCasillasIT1);
+}

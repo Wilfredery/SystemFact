@@ -109,6 +109,31 @@ export function construirHref(
 }
 
 /**
+ * Build the `/reportes/exportar-txt` href for a DGII fiscal period export. It carries the SAME
+ * report id + period facets as the fiscal panel (the format code selects the TXT generator server-side,
+ * routed by the panel), and drops pagination because a DGII register is the FULL filtered set split
+ * deterministically across files (FIS-6, EXP-2). `parte` selects which split file to download (1 by
+ * default); the panel surfaces the total count so a multi-file period links each part.
+ */
+export function construirHrefExportarTxt(
+  seleccion: SeleccionReporte,
+  parte = 1,
+): string {
+  const p = new URLSearchParams();
+  const poner = (clave: string, valor: string | number | null | undefined): void => {
+    if (valor === undefined || valor === null || valor === "") return;
+    p.set(clave, String(valor));
+  };
+  poner("reporte", seleccion.reporte);
+  poner("desde", seleccion.filtro.desde);
+  poner("hasta", seleccion.filtro.hasta);
+  poner("preset", seleccion.filtro.preset);
+  poner("sucursalId", seleccion.filtro.sucursalId);
+  if (parte > 1) p.set("parte", String(parte));
+  const qs = p.toString();
+  return qs === "" ? "/reportes/exportar-txt" : `/reportes/exportar-txt?${qs}`;
+}
+/**
  * Build the `/reportes/exportar` href for a filtered report: it carries the SAME report id and
  * filter facets as the screen but DROPS `page`/`pageSize`, because a CSV export is the FULL
  * filtered dataset, independent of screen pagination (EXP-2). The route handler parses it back
