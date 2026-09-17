@@ -101,12 +101,24 @@ export const REPORTES_OPERATIVOS_SLICE_B: readonly ReporteId[] = [
   REPORTE_ID.FACTURAS,
 ];
 
+/**
+ * Report ids wired in slice C (the financial fleet: CxC aging, CxP, comparativa + their live CSV).
+ * A Cobrador sees only `CXC` (the others deny server-side, FIN-3); the selector marks these
+ * "disponible" and the shell renders a real data panel + export for them.
+ */
+export const REPORTES_FINANCIEROS_SLICE_C: readonly ReporteId[] = [
+  REPORTE_ID.CXC,
+  REPORTE_ID.CXP,
+  REPORTE_ID.COMPARATIVA,
+];
+
 const REPORTES_IMPLEMENTADOS = new Set<string>([
   ...REPORTES_DISPONIBLES_SLICE_A,
   ...REPORTES_OPERATIVOS_SLICE_B,
+  ...REPORTES_FINANCIEROS_SLICE_C,
 ]);
 
-/** True when a report's panel is wired (dashboard + slice-B operational fleet). */
+/** True when a report's panel is wired (dashboard + slice-B operational + slice-C financial fleet). */
 export function esReporteImplementado(id: ReporteId): boolean {
   return REPORTES_IMPLEMENTADOS.has(id);
 }

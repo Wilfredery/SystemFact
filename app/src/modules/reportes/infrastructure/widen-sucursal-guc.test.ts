@@ -9,7 +9,7 @@
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
-import { conSucursalAmpliadaEnTx } from "./widen-sucursal-guc";
+import { conSucursalAmpliadaEnTx, conSucursalFijadaEnTx } from "./widen-sucursal-guc";
 
 interface LlamadaSetConfig {
   readonly clave: string;
@@ -97,5 +97,43 @@ describe("conSucursalAmpliadaEnTx — widen + restore (DB-4)", () => {
         g.llamadas.some((l) => l.clave === "app.current_empresa_id"),
       ).toBe(false);
     }
+  });
+});
+
+describe("conSucursalFijadaEnTx — single-branch PIN, never widened (FIN-1)", () => {
+  it("pins the branch GUC to the filter branch (never empty), restores the caller branch", async () => {
+    const grabador: Grabador = { llamadas: [] };
+    const tx = crearTxGrabador(grabador);
+
+    // Caller's own branch is 42; the admin filters receivables for branch 7.
+    const salida = await conSucursalFijadaEnTx(tx, ctx(42), 7, async () => "lecto");
+
+    expect(salida).toBe("lecto");
+    expect(grabador.llamadas).toEqual([
+      // Pinned to branch 7 — a NON-empty value (a plain single-branch predicate, not the "").
+      { clave: "app.current_sucursal_id", valor: "7" },
+      { clave: "app.current_sucursal_id", valor: "42" }, // restored to the caller's branch
+    ]);
+    // FIN-1: the branch GUC is NEVER emptied on a branch-filtered CxC read.
+    expect(grabador.llamadas.some((l) => l.valor === "")).toBe(false);
+  });
+
+  it("restores the caller branch even when the read throws, and never touches the empresa GUC", async () => {
+    const grabador: Grabador = { llamadas: [] };
+    const tx = crearTxGrabador(grabador);
+
+    await expect(
+      conSucursalFijadaEnTx(tx, ctx(9), 5, async () => {
+        throw new Error("fallo");
+      }),
+    ).rejects.toThrow("fallo");
+
+    expect(grabador.llamadas).toEqual([
+      { clave: "app.current_sucursal_id", valor: "5" },
+      { clave: "app.current_sucursal_id", valor: "9" },
+    ]);
+    expect(
+      grabador.llamadas.some((l) => l.clave === "app.current_empresa_id"),
+    ).toBe(false);
   });
 });

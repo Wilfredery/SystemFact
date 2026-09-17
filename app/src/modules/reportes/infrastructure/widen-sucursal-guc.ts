@@ -47,3 +47,34 @@ export async function conSucursalAmpliadaEnTx<T>(
     )}, true)`;
   }
 }
+
+/**
+ * Run `lectura` with the branch GUC PINNED to a single, explicit branch — the CxC branch-
+ * narrowing counterpart to the company-wide widen (FIN-1). Unlike {@link conSucursalAmpliadaEnTx}
+ * this NEVER empties the branch GUC: it sets it to exactly `sucursalId`, so RLS bounds the read
+ * to that one branch (a plain single-branch predicate), and restores the caller's own branch in
+ * `finally`. The `app.current_empresa_id` GUC is never touched, so the tenant anchor holds and a
+ * branch OUTSIDE the pinned empresa yields zero rows (RLS). This is how an ADMIN ages one branch's
+ * receivables without ever widening to company-wide; the Cobrador path uses no pin at all (their
+ * own branch is already pinned by the session context, so a client-supplied branch cannot override
+ * it — FIN-3).
+ */
+export async function conSucursalFijadaEnTx<T>(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  sucursalId: number,
+  lectura: (tx: PrismaTx) => Promise<T>,
+): Promise<T> {
+  // SET LOCAL to the requested branch — NEVER the empty ("") widen value.
+  await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${String(
+    sucursalId,
+  )}, true)`;
+  try {
+    return await lectura(tx);
+  } finally {
+    // Restore the caller's assignment branch so later statements see it again.
+    await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${String(
+      ctx.sucursalId,
+    )}, true)`;
+  }
+}

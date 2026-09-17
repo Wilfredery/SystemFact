@@ -6,7 +6,8 @@
  * client-side loop over fetched pages (EXP-3). It is DEEP-LINKABLE: it parses the SAME
  * `/reportes?reporte&desde&hasta&sucursalId&...` contract through `ui/url.ts` and re-runs the
  * SAME canonical pipeline the screen does — session ctx → `normalizarFiltro` → role gate →
- * `generarCsvOperativo` (which reuses the identical gate/widen/query, EXP-4). The CSV carries
+  * `generarCsvReporte` (the shared dispatcher routing to the operational / slice-C financial
+  * exporter, each reusing its report's identical gate/widen/query, EXP-4). The CSV carries
  * the FULL filtered dataset independent of screen pagination (EXP-2).
  *
  * Security: the tenant context is resolved from the Supabase session (an auth read); no ctx →
@@ -19,7 +20,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
-import { generarCsvOperativo } from "@/modules/reportes/application/exportar-operativos";
+import { generarCsvReporte } from "@/modules/reportes/application/exportar";
 import {
   normalizarFiltro,
   type ReporteFiltro,
@@ -79,7 +80,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   return withTenantTransaction(ctx, async (tx) => {
-    const resultado = await generarCsvOperativo(tx, ctx, reporte, normalizado);
+    const resultado = await generarCsvReporte(tx, ctx, reporte, normalizado);
     if (!resultado.ok) {
       // A role refusal is 403; every other stable business code (e.g. an invalid range) is 400.
       const status = resultado.code === REPORTE_NO_AUTORIZADO ? 403 : 400;
