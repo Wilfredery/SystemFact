@@ -33,10 +33,6 @@ import { ReporteDomainError } from "../domain/errors";
 import type { DashboardVista } from "../domain/dashboard";
 import { consultarDashboard } from "../application/consultar-dashboard";
 import {
-  REPORTE_ID,
-  type ReporteId,
-} from "../domain/catalogo";
-import {
   normalizarFiltro,
   type ReporteFiltro,
   type ReporteFiltroEntrada,
@@ -169,39 +165,30 @@ async function consultarReporteOperativo<T>(
 }
 
 /** OP-1 — Ventas por período (confirmed sales grouped by SD calendar day). */
-export function consultarVentasPorPeriodoAction(
+export async function consultarVentasPorPeriodoAction(
   input?: unknown,
 ): Promise<ActionResult<Pagina<VentasPeriodoFila>>> {
   return consultarReporteOperativo(input, consultarVentasPorPeriodo);
 }
 
 /** OP-2 — Productos más/menos vendidos (units-ranked, monto secondary). */
-export function consultarProductosVendidosAction(
+export async function consultarProductosVendidosAction(
   input?: unknown,
 ): Promise<ActionResult<Pagina<ProductoVendidoFila>>> {
   return consultarReporteOperativo(input, consultarProductosVendidos);
 }
 
 /** OP-3 — Inventario actual / valorizado por sucursal. */
-export function consultarInventarioValorizadoAction(
+export async function consultarInventarioValorizadoAction(
   input?: unknown,
 ): Promise<ActionResult<Pagina<InventarioValorizadoFila>>> {
   return consultarReporteOperativo(input, consultarInventarioValorizado);
 }
 
 /** OP-4 — Estado de facturas (estado × tipoNcf grid + derived payment state). */
-export function consultarEstadoFacturasAction(
+export async function consultarEstadoFacturasAction(
   input?: unknown,
 ): Promise<ActionResult<Pagina<EstadoFacturaCelda>>> {
   return consultarReporteOperativo(input, consultarEstadoFacturas);
 }
 
-/** The report ids the slice-B operational actions serve (deep-link dispatch for the shell). */
-export const ACCIONES_OPERATIVAS: Readonly<
-  Partial<Record<ReporteId, (input?: unknown) => Promise<ActionResult<unknown>>>>
-> = {
-  [REPORTE_ID.VENTAS]: consultarVentasPorPeriodoAction,
-  [REPORTE_ID.PRODUCTOS]: consultarProductosVendidosAction,
-  [REPORTE_ID.INVENTARIO]: consultarInventarioValorizadoAction,
-  [REPORTE_ID.FACTURAS]: consultarEstadoFacturasAction,
-};
