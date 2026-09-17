@@ -14,9 +14,10 @@
  *
  * A consultation writes NO audit event (DB-6): there is no `registrarEventoAuditoria` call
  * anywhere in the reportes module — reading a report is not a significant write. Every read
- * is tenant-pinned + RLS-scoped inside the wrapper (DB-3), and only stable catalog codes
- * cross this boundary — Prisma/DB errors never leak to the client (AGENTS.md "Never expose
- * stack traces or internal Prisma errors"). No `withTenantTransaction` call sits outside a
+ * is tenant-pinned + RLS-scoped inside the wrapper (DB-3), and business errors cross ONLY through
+ * the typed ActionResult's stable catalog codes - unexpected Prisma/DB failures are rethrown
+ * untranslated and redacted to a generic error by the Next production action boundary (AGENTS.md
+ * "Never expose stack traces or internal Prisma errors"). No `withTenantTransaction` call sits outside a
  * wrapper, so the project-local ESLint rule `systemfact/server-action-must-wrap-tenant`
  * passes.
  */
@@ -52,8 +53,10 @@ import {
 } from "../application/operacional";
 import { consultarCxcAging } from "../application/cxc-aging";
 import { consultarComparativa, consultarCxP } from "../application/financiero";
+import { consultarRentabilidad } from "../application/rentabilidad";
 import type { CxcAgingFila } from "../domain/aging";
 import type { ComparativaFila, CxpFila } from "../domain/financiero";
+import type { RentabilidadFila } from "../domain/margen";
 import {
   SESION_INVALIDA,
   VALIDATION_ERROR,
@@ -221,3 +224,16 @@ export async function consultarComparativaAction(
 ): Promise<ActionResult<Pagina<ComparativaFila>>> {
   return consultarReporteOperativo(input, consultarComparativa);
 }
+
+/**
+ * REN-1/REN-2 — Rentabilidad por producto (Administrador-only). The SAME
+ * {@link consultarReporteOperativo} adapter runs the pre-transaction `normalizarFiltro` (an invalid
+ * range never queries) and delegates to the use case, which owns the role gate + company-wide widen
+ * and the current-cost margin math (with the REN-3 limitation surfaced by the panel + CSV).
+ */
+export async function consultarRentabilidadAction(
+  input?: unknown,
+): Promise<ActionResult<Pagina<RentabilidadFila>>> {
+  return consultarReporteOperativo(input, consultarRentabilidad);
+}
+

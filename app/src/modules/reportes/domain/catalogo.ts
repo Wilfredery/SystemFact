@@ -112,13 +112,23 @@ export const REPORTES_FINANCIEROS_SLICE_C: readonly ReporteId[] = [
   REPORTE_ID.COMPARATIVA,
 ];
 
+/**
+ * Report ids wired in slice D (rentabilidad por producto + its live CSV carrying the REN-3
+ * cost-basis disclaimer). Administrador-only (proposal decision 5); the selector marks this
+ * "disponible" and the shell renders a real data panel + export for it.
+ */
+export const REPORTES_RENTABILIDAD_SLICE_D: readonly ReporteId[] = [
+  REPORTE_ID.RENTABILIDAD,
+];
+
 const REPORTES_IMPLEMENTADOS = new Set<string>([
   ...REPORTES_DISPONIBLES_SLICE_A,
   ...REPORTES_OPERATIVOS_SLICE_B,
   ...REPORTES_FINANCIEROS_SLICE_C,
+  ...REPORTES_RENTABILIDAD_SLICE_D,
 ]);
 
-/** True when a report's panel is wired (dashboard + slice-B operational + slice-C financial fleet). */
+/** True when a report's panel is wired (dashboard + slice-B/C operational+financial + slice-D rentabilidad). */
 export function esReporteImplementado(id: ReporteId): boolean {
   return REPORTES_IMPLEMENTADOS.has(id);
 }
