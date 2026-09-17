@@ -292,4 +292,3 @@ export async function consultarCasillasIT1Action(
 ): Promise<ActionResult<CasillasIT1>> {
   return consultarReporteFiscal(input, consultarCasillasIT1);
 }
- (feat(reportes): DGII 606/607/608 exporters, fiscal summary use cases, TXT route and panels)
