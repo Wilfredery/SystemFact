@@ -14,9 +14,10 @@
  *
  * A consultation writes NO audit event (DB-6): there is no `registrarEventoAuditoria` call
  * anywhere in the reportes module — reading a report is not a significant write. Every read
- * is tenant-pinned + RLS-scoped inside the wrapper (DB-3), and only stable catalog codes
- * cross this boundary — Prisma/DB errors never leak to the client (AGENTS.md "Never expose
- * stack traces or internal Prisma errors"). No `withTenantTransaction` call sits outside a
+ * is tenant-pinned + RLS-scoped inside the wrapper (DB-3), and business errors cross ONLY through
+ * the typed ActionResult's stable catalog codes - unexpected Prisma/DB failures are rethrown
+ * untranslated and redacted to a generic error by the Next production action boundary (AGENTS.md
+ * "Never expose stack traces or internal Prisma errors"). No `withTenantTransaction` call sits outside a
  * wrapper, so the project-local ESLint rule `systemfact/server-action-must-wrap-tenant`
  * passes.
  */
@@ -32,10 +33,6 @@ import type { ReporteErrorCode } from "../domain/errors";
 import { ReporteDomainError } from "../domain/errors";
 import type { DashboardVista } from "../domain/dashboard";
 import { consultarDashboard } from "../application/consultar-dashboard";
-import {
-  REPORTE_ID,
-  type ReporteId,
-} from "../domain/catalogo";
 import {
   normalizarFiltro,
   type ReporteFiltro,
@@ -202,16 +199,6 @@ export async function consultarEstadoFacturasAction(
   return consultarReporteOperativo(input, consultarEstadoFacturas);
 }
 
-/** The report ids the slice-B operational actions serve (deep-link dispatch for the shell). */
-export const ACCIONES_OPERATIVAS: Readonly<
-  Partial<Record<ReporteId, (input?: unknown) => Promise<ActionResult<unknown>>>>
-> = {
-  [REPORTE_ID.VENTAS]: consultarVentasPorPeriodoAction,
-  [REPORTE_ID.PRODUCTOS]: consultarProductosVendidosAction,
-  [REPORTE_ID.INVENTARIO]: consultarInventarioValorizadoAction,
-  [REPORTE_ID.FACTURAS]: consultarEstadoFacturasAction,
-};
-
 /**
  * FIN-1/FIN-2 — CxC aging (canonical reuse + bucket summary). The SAME
  * {@link consultarReporteOperativo} adapter runs the pre-transaction `normalizarFiltro` (an invalid
@@ -239,33 +226,14 @@ export async function consultarComparativaAction(
 }
 
 /**
- * The slice-C financial actions (deep-link dispatch). Cobrador reaches ONLY `cxc` (the use case
- * denies the other two); every action shares the identical `normalizarFiltro` → tx → use-case
- * gate flow, so the transport contract and pre-query validation never diverge from slice B.
- */
-export const ACCIONES_FINANCIERAS: Readonly<
-  Partial<Record<ReporteId, (input?: unknown) => Promise<ActionResult<unknown>>>>
-> = {
-  [REPORTE_ID.CXC]: consultarCxcAgingAction,
-  [REPORTE_ID.CXP]: consultarCxPAction,
-  [REPORTE_ID.COMPARATIVA]: consultarComparativaAction,
-};
-
-/**
  * REN-1/REN-2 — Rentabilidad por producto (Administrador-only). The SAME
  * {@link consultarReporteOperativo} adapter runs the pre-transaction `normalizarFiltro` (an invalid
  * range never queries) and delegates to the use case, which owns the role gate + company-wide widen
  * and the current-cost margin math (with the REN-3 limitation surfaced by the panel + CSV).
  */
-export function consultarRentabilidadAction(
+export async function consultarRentabilidadAction(
   input?: unknown,
 ): Promise<ActionResult<Pagina<RentabilidadFila>>> {
   return consultarReporteOperativo(input, consultarRentabilidad);
 }
 
-/** The slice-D rentabilidad action (deep-link dispatch for the shell). */
-export const ACCIONES_RENTABILIDAD: Readonly<
-  Partial<Record<ReporteId, (input?: unknown) => Promise<ActionResult<unknown>>>>
-> = {
-  [REPORTE_ID.RENTABILIDAD]: consultarRentabilidadAction,
-};
