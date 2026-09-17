@@ -25,15 +25,37 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
+import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import type { ReporteErrorCode } from "../domain/errors";
+import { ReporteDomainError } from "../domain/errors";
 import type { DashboardVista } from "../domain/dashboard";
 import { consultarDashboard } from "../application/consultar-dashboard";
+import {
+  normalizarFiltro,
+  type ReporteFiltro,
+  type ReporteFiltroEntrada,
+} from "../domain/reporte-filtro";
+import type { Pagina, ReportResult } from "../domain/reporte-resultado";
+import type {
+  EstadoFacturaCelda,
+  InventarioValorizadoFila,
+  ProductoVendidoFila,
+  VentasPeriodoFila,
+} from "../domain/operacional";
+import {
+  consultarEstadoFacturas,
+  consultarInventarioValorizado,
+  consultarProductosVendidos,
+  consultarVentasPorPeriodo,
+} from "../application/operacional";
 import {
   SESION_INVALIDA,
   VALIDATION_ERROR,
   mensajeTransporte,
   zDashboardInput,
+  zReporteFiltroInput,
 } from "./validations";
 
 /** Composed action error surface: reportes business catalog ∪ transport codes. */
@@ -93,3 +115,80 @@ export async function consultarDashboardAction(
     return ok(result.data);
   });
 }
+
+/**
+ * The shared operational-consultation adapter (OP-6). The WHOLE flow is transport + wiring,
+ * zero business logic:
+ *   1. Zod-parse the transport shape (a `YYYY-MM-DD` SD date, positive-int page/sucursalId).
+ *   2. `normalizarFiltro` (the shared DB-5 domain contract) resolves the SD window, presets,
+ *      the 25/100 clamp and REJECTS a `desde > hasta` range with `REPORTE_VALIDACION` —
+ *      BEFORE the tenant transaction opens, so an invalid range never queries (OP-6).
+ *   3. Resolve the session ctx, then inside `withTenantTransaction` delegate to the report
+ *      use case (which owns the server-side role gate + admin widen, DB-2/DB-4) and forward
+ *      its typed `Pagina`. Only stable catalog codes cross this boundary; a Prisma/DB error
+ *      PROPAGATES to the Next action layer and is never translated into a business code here.
+ */
+async function consultarReporteOperativo<T>(
+  input: unknown,
+  usarCaso: (
+    tx: PrismaTx,
+    ctx: TenantCtx,
+    filtro: ReporteFiltro,
+  ) => Promise<ReportResult<Pagina<T>>>,
+): Promise<ActionResult<Pagina<T>>> {
+  const parsed = zReporteFiltroInput.safeParse(input ?? {});
+  if (!parsed.success) {
+    return fail(VALIDATION_ERROR, mensajeTransporte(VALIDATION_ERROR));
+  }
+
+  const entrada: ReporteFiltroEntrada = parsed.data;
+  let filtro: ReporteFiltro;
+  try {
+    filtro = normalizarFiltro(entrada);
+  } catch (e) {
+    if (e instanceof ReporteDomainError) {
+      return fail(e.code, e.message);
+    }
+    throw e;
+  }
+
+  const ctx = await resolverCtx();
+  if (ctx === null) {
+    return fail(SESION_INVALIDA, mensajeTransporte(SESION_INVALIDA));
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const result = await usarCaso(tx, ctx, filtro);
+    if (!result.ok) return fail(result.code, result.message);
+    return ok(result.data);
+  });
+}
+
+/** OP-1 — Ventas por período (confirmed sales grouped by SD calendar day). */
+export async function consultarVentasPorPeriodoAction(
+  input?: unknown,
+): Promise<ActionResult<Pagina<VentasPeriodoFila>>> {
+  return consultarReporteOperativo(input, consultarVentasPorPeriodo);
+}
+
+/** OP-2 — Productos más/menos vendidos (units-ranked, monto secondary). */
+export async function consultarProductosVendidosAction(
+  input?: unknown,
+): Promise<ActionResult<Pagina<ProductoVendidoFila>>> {
+  return consultarReporteOperativo(input, consultarProductosVendidos);
+}
+
+/** OP-3 — Inventario actual / valorizado por sucursal. */
+export async function consultarInventarioValorizadoAction(
+  input?: unknown,
+): Promise<ActionResult<Pagina<InventarioValorizadoFila>>> {
+  return consultarReporteOperativo(input, consultarInventarioValorizado);
+}
+
+/** OP-4 — Estado de facturas (estado × tipoNcf grid + derived payment state). */
+export async function consultarEstadoFacturasAction(
+  input?: unknown,
+): Promise<ActionResult<Pagina<EstadoFacturaCelda>>> {
+  return consultarReporteOperativo(input, consultarEstadoFacturas);
+}
+

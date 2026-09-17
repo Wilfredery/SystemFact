@@ -25,11 +25,19 @@ import { createClient } from "@/lib/supabase/client";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
 import { REPORTE_NO_AUTORIZADO } from "@/modules/reportes/domain/errors";
 import { REPORTE_ID } from "@/modules/reportes/domain/catalogo";
-import { consultarDashboardAction } from "@/modules/reportes/http/actions";
+import {
+  consultarDashboardAction,
+  consultarEstadoFacturasAction,
+  consultarInventarioValorizadoAction,
+  consultarProductosVendidosAction,
+  consultarVentasPorPeriodoAction,
+} from "@/modules/reportes/http/actions";
 import { DashboardKpis } from "@/modules/reportes/ui/dashboard-kpis";
+import { PanelOperativo } from "@/modules/reportes/ui/operacional-panel";
 import { ReportSelector } from "@/modules/reportes/ui/report-selector";
 import {
   seleccionDesdeSearchParams,
+  type SeleccionReporte,
   type SearchParamsInput,
 } from "@/modules/reportes/ui/url";
 
@@ -46,7 +54,6 @@ export default async function ReportesPage({ searchParams }: PageProps) {
   }
 
   const seleccion = seleccionDesdeSearchParams(await searchParams);
-  const esPanelVivo = seleccion.reporte === REPORTE_ID.DASHBOARD;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -61,17 +68,87 @@ export default async function ReportesPage({ searchParams }: PageProps) {
       <ReportSelector seleccionInicial={seleccion} />
 
       <div className="mt-8">
-        {esPanelVivo ? (
-          <PanelDashboard />
-        ) : (
-          <p
-            className="rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
-          >
-            Este reporte se habilita en una entrega posterior.
-          </p>
-        )}
+        <PanelReporte seleccion={seleccion} />
       </div>
     </main>
+  );
+}
+
+/**
+ * Dispatches the active selection to its panel. The DASHBOARD renders its KPI tiles; the
+ * slice-B OPERATIONAL fleet fetches its first page through the matching thin consult action
+ * (the single server-side gate + tenant read) and renders {@link PanelOperativo} with its
+ * export affordance. A not-yet-wired report renders an honest "próximamente" (no query). The
+ * unauthorized/validation cases render a plain message — the server gate is authoritative, the
+ * route is never hidden (DB-2).
+ */
+async function PanelReporte({
+  seleccion,
+}: {
+  readonly seleccion: SeleccionReporte;
+}) {
+  const { reporte } = seleccion;
+
+  if (reporte === REPORTE_ID.DASHBOARD) {
+    return <PanelDashboard />;
+  }
+
+  if (reporte === REPORTE_ID.VENTAS) {
+    const r = await consultarVentasPorPeriodoAction(seleccion.filtro);
+    return r.ok ? (
+      <PanelOperativo reporte="ventas" pagina={r.data} seleccion={seleccion} />
+    ) : (
+      <MensajeError code={r.error.code} message={r.error.message} />
+    );
+  }
+  if (reporte === REPORTE_ID.PRODUCTOS) {
+    const r = await consultarProductosVendidosAction(seleccion.filtro);
+    return r.ok ? (
+      <PanelOperativo reporte="productos" pagina={r.data} seleccion={seleccion} />
+    ) : (
+      <MensajeError code={r.error.code} message={r.error.message} />
+    );
+  }
+  if (reporte === REPORTE_ID.INVENTARIO) {
+    const r = await consultarInventarioValorizadoAction(seleccion.filtro);
+    return r.ok ? (
+      <PanelOperativo reporte="inventario" pagina={r.data} seleccion={seleccion} />
+    ) : (
+      <MensajeError code={r.error.code} message={r.error.message} />
+    );
+  }
+  if (reporte === REPORTE_ID.FACTURAS) {
+    const r = await consultarEstadoFacturasAction(seleccion.filtro);
+    return r.ok ? (
+      <PanelOperativo reporte="facturas" pagina={r.data} seleccion={seleccion} />
+    ) : (
+      <MensajeError code={r.error.code} message={r.error.message} />
+    );
+  }
+
+  return (
+    <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+      Este reporte se habilita en una entrega posterior.
+    </p>
+  );
+}
+
+/**
+ * The stable-code access/validation message. A refusal (`REPORTE_NO_AUTORIZADO`) shows the
+ * permission copy; any other catalog code (e.g. `REPORTE_VALIDACION`) shows its message. The
+ * route is NEVER hidden and no export control renders on a denial — the server gate is the
+ * control (DB-2, EXP-4/EXP-5).
+ */
+function MensajeError({ code, message }: { readonly code: string; readonly message: string }) {
+  return (
+    <p
+      role="alert"
+      className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+    >
+      {code === REPORTE_NO_AUTORIZADO
+        ? "No tiene permisos para consultar este reporte."
+        : message}
+    </p>
   );
 }
 

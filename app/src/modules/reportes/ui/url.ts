@@ -107,3 +107,26 @@ export function construirHref(
   const qs = p.toString();
   return qs === "" ? "/reportes" : `/reportes?${qs}`;
 }
+
+/**
+ * Build the `/reportes/exportar` href for a filtered report: it carries the SAME report id and
+ * filter facets as the screen but DROPS `page`/`pageSize`, because a CSV export is the FULL
+ * filtered dataset, independent of screen pagination (EXP-2). The route handler parses it back
+ * through {@link seleccionDesdeSearchParams}, so a deep-linked, filtered export round-trips the
+ * exact view the user sees (EXP-5).
+ */
+export function construirHrefExportar(seleccion: SeleccionReporte): string {
+  const p = new URLSearchParams();
+  const poner = (clave: string, valor: string | number | null | undefined): void => {
+    if (valor === undefined || valor === null || valor === "") return;
+    p.set(clave, String(valor));
+  };
+  poner("reporte", seleccion.reporte);
+  poner("desde", seleccion.filtro.desde);
+  poner("hasta", seleccion.filtro.hasta);
+  poner("preset", seleccion.filtro.preset);
+  poner("sucursalId", seleccion.filtro.sucursalId);
+  // Deliberately no `page`/`pageSize` — the export is the whole filtered set (EXP-2).
+  const qs = p.toString();
+  return qs === "" ? "/reportes/exportar" : `/reportes/exportar?${qs}`;
+}

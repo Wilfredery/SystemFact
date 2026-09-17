@@ -17,6 +17,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   CATALOGO_REPORTES,
+  esReporteImplementado,
   type FamiliaReporte,
   type ReporteId,
 } from "../domain/catalogo";
@@ -49,9 +50,9 @@ const ETIQUETA_PRESET: Record<PresetPeriodico, string> = {
   ANIO: "Este año",
 };
 
-/** A report is "próximamente" (panel lands in a later slice) unless it's the dashboard. */
+/** A report is "próximamente" (panel lands in a later slice) unless it's wired (A dashboard, B operational). */
 function esDisponible(id: ReporteId): boolean {
-  return id === "dashboard";
+  return esReporteImplementado(id);
 }
 
 export function ReportSelector({

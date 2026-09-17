@@ -446,6 +446,8 @@ model Venta {
   factura               Factura?               @relation("FacturaVenta")
   movimientosInventario MovimientoInventario[]
 
+  // Reportes slice B aggregation read index (empresa-scoped confirmed-sales period).
+  @@index([empresaId, fecha], map: "VENTA_empresaId_fecha_idx")
   @@map("VENTA")
 }
 
@@ -501,6 +503,8 @@ model Factura {
 
   @@unique([empresaId, ncf]) // NCF único por empresa (fiscal)
   @@unique([ventaId])
+  // Reportes slice B aggregation read index (empresa-scoped issuance window).
+  @@index([empresaId, fechaEmision], map: "FACTURA_empresaId_fechaEmision_idx")
   @@map("FACTURA")
 }
 
@@ -658,6 +662,8 @@ model Compra {
   movimientosInventario MovimientoInventario[]
 
   @@unique([empresaId, ncf]) // NCF único por empresa (fiscal)
+  // Reportes slice B aggregation read index (empresa-scoped purchase window).
+  @@index([empresaId, fecha], map: "COMPRA_empresaId_fecha_idx")
   @@map("COMPRA")
 }
 
