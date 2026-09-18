@@ -18,10 +18,10 @@
  *   - pagination: page 2 = rows 26–50 (25/page), 500 → 100 clamp over 250 rows.
  *   - a page past the end returns an empty page, total intact, no error.
  *   - empty result → total 0, totalPages 0.
- *   - append-only: an app-role UPDATE/DELETE is RLS-denied (0 rows affected).
+ *   - append-only: an app-role UPDATE/DELETE is rejected with AUDITORIA_INMUTABLE
+ *     by the statement-level append-only trigger (migration 20260918).
  */
 
-import { Prisma } from "@/generated/prisma/client";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import {
@@ -391,20 +391,26 @@ describe("auditoria consultation read path (real DB, RLS on, fase-7a slice B)", 
       idEntidad: "1",
     });
 
-    // Through the app role inside a tenant tx, with no UPDATE/DELETE RLS
-    // policy on MOVIMIENTO_AUDITORIA (FORCE RLS), the mutation matches nothing.
+    // Through the app role inside a tenant tx, the statement-level append-only
+    // trigger (20260918_define_audit_appendonly) rejects the mutation outright
+    // with AUDITORIA_INMUTABLE (prisma error P2029 wrapping the SQL raise) —
+    // the append-only guarantee is explicit, never a silent 0-row no-op.
     const ctx = adminA1(f);
-    const affected = await withTenantTransaction(ctx, async (tx) => {
-      const upd = await tx.movimientoAuditoria.updateMany({
-        where: { empresaId: ctx.empresaId },
-        data: { motivo: "tampered" },
-      });
-      const del = await tx.movimientoAuditoria.deleteMany({
-        where: { empresaId: ctx.empresaId },
-      });
-      return { updated: upd.count, deleted: del.count };
-    });
-    expect(affected).toEqual({ updated: 0, deleted: 0 });
+    await expect(
+      withTenantTransaction(ctx, async (tx) => {
+        await tx.movimientoAuditoria.updateMany({
+          where: { empresaId: ctx.empresaId },
+          data: { motivo: "tampered" },
+        });
+      }),
+    ).rejects.toThrow(/AUDITORIA_INMUTABLE/);
+    await expect(
+      withTenantTransaction(ctx, async (tx) => {
+        await tx.movimientoAuditoria.deleteMany({
+          where: { empresaId: ctx.empresaId },
+        });
+      }),
+    ).rejects.toThrow(/AUDITORIA_INMUTABLE/);
 
     // The row survives, untouched — the log is append-only at the DB boundary.
     const db = getHarnessDb();
