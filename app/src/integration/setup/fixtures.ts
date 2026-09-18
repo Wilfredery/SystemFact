@@ -11,6 +11,7 @@
  */
 
 import { PrismaPg } from "@prisma/adapter-pg";
+import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@/generated/prisma/client";
 
 let harnessClient: PrismaClient | null = null;
@@ -120,8 +121,7 @@ export interface TenantFixture {
   readonly retencion: TenantFixtureRetencion;
 }
 
-const UNIQUE_SUFFIX = (): string =>
-  `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+const UNIQUE_SUFFIX = (): string => randomUUID();
 
 /**
  * Full two-company fixture:
