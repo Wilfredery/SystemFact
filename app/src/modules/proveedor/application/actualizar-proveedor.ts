@@ -101,17 +101,91 @@ function resolverRncFinal(
   return normalizeRnc(input.rnc);
 }
 
+/**
+ * Run `construirPatchProveedor` and translate only its frozen VALIDATION_ERROR
+ * into a typed result; an unexpected error propagates untouched. Kept module-local
+ * and pure (no DB) so the malformed-name-before-any-read ordering is preserved.
+ */
+function prepararPatchProveedor(
+  input: ActualizarProveedorInput,
+): { ok: true; patch: ActualizarProveedorPatch } | { ok: false; code: ProveedorErrorCode } {
+  try {
+    return { ok: true, patch: construirPatchProveedor(input) };
+  } catch (err) {
+    if (err instanceof ProveedorDomainError && err.code === VALIDATION_ERROR) {
+      return { ok: false, code: VALIDATION_ERROR };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Resolve the final RNC through `resolverRncFinal`, translating only the known
+ * RNC_FORMATO_INVALIDO into a typed result and rethrowing any other error. Pure
+ * over the already-read row.
+ */
+function resolverRncFinalSeguro(
+  input: ActualizarProveedorInput,
+  actual: Proveedor,
+): { ok: true; rnc: string | null } | { ok: false; code: ProveedorErrorCode } {
+  try {
+    return { ok: true, rnc: resolverRncFinal(input, actual) };
+  } catch (err) {
+    if (
+      err instanceof ProveedorDomainError &&
+      err.code === RNC_FORMATO_INVALIDO
+    ) {
+      return { ok: false, code: RNC_FORMATO_INVALIDO };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Duplicate-RNC probe, run only when the resolved RNC is non-null and differs
+ * from the stored value (nulls are repeatable and never probed). Returns the
+ * duplicate code or `null`. Kept in the use case because it hits the DB.
+ */
+async function sondaRncDuplicado(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  actual: Proveedor,
+  input: ActualizarProveedorInput,
+  rncFinal: string | null,
+): Promise<ProveedorErrorCode | null> {
+  if (rncFinal !== null && rncFinal !== actual.rnc) {
+    const duplicado = await existeRncEnEmpresa(
+      tx,
+      ctx.empresaId,
+      rncFinal,
+      input.id,
+    );
+    if (duplicado) {
+      return RNC_PROVEEDOR_DUPLICADO;
+    }
+  }
+  return null;
+}
+
+/** Audit old/new only for the fields the patch actually carries (VARCHAR-safe). */
+function calcularDifAuditoria(
+  actual: Proveedor,
+  patch: ActualizarProveedorPatch,
+): { anteriores: Record<string, unknown>; nuevos: Record<string, unknown> } {
+  const anteriores: Record<string, unknown> = {};
+  const nuevos: Record<string, unknown> = {};
+  for (const key of Object.keys(patch) as (keyof ActualizarProveedorPatch)[]) {
+    anteriores[key] = actual[key];
+    nuevos[key] = patch[key];
+  }
+  return { anteriores, nuevos };
+}
+
 export async function actualizarProveedor(
   tx: PrismaTx,
   ctx: TenantCtx,
   input: ActualizarProveedorInput,
 ): Promise<ActualizarProveedorResult> {
-  let patch: ActualizarProveedorPatch;
-  const cambios: {
-    anteriores: Record<string, unknown>;
-    nuevos: Record<string, unknown>;
-  } = { anteriores: {}, nuevos: {} };
-
   const provided = [
     "nombre",
     "contacto",
@@ -126,14 +200,9 @@ export async function actualizarProveedor(
 
   // Normalize the non-RNC fields BEFORE any DB read, preserving the original
   // ordering: a malformed name must fail with zero store access.
-  try {
-    patch = construirPatchProveedor(input);
-  } catch (err) {
-    if (err instanceof ProveedorDomainError && err.code === VALIDATION_ERROR) {
-      return buildError(VALIDATION_ERROR);
-    }
-    throw err;
-  }
+  const preparada = prepararPatchProveedor(input);
+  if (!preparada.ok) return buildError(preparada.code);
+  const patch = preparada.patch;
 
   const actual = await proveedorByIdEnEmpresa(tx, ctx.empresaId, input.id);
   if (actual === null) {
@@ -146,36 +215,19 @@ export async function actualizarProveedor(
 
   // RNC: undefined keeps the stored value; explicit null clears it (nulls are
   // repeatable and never probed); a new string must normalize and stay free.
-  let rncFinal: string | null;
-  try {
-    rncFinal = resolverRncFinal(input, actual);
-  } catch (err) {
-    if (
-      err instanceof ProveedorDomainError &&
-      err.code === RNC_FORMATO_INVALIDO
-    ) {
-      return buildError(RNC_FORMATO_INVALIDO);
-    }
-    throw err;
-  }
-  if (input.rnc !== undefined) patch.rnc = rncFinal;
-  if (rncFinal !== null && rncFinal !== actual.rnc) {
-    const duplicado = await existeRncEnEmpresa(
-      tx,
-      ctx.empresaId,
-      rncFinal,
-      input.id,
-    );
-    if (duplicado) {
-      return buildError(RNC_PROVEEDOR_DUPLICADO);
-    }
-  }
+  const rncResuelto = resolverRncFinalSeguro(input, actual);
+  if (!rncResuelto.ok) return buildError(rncResuelto.code);
+  if (input.rnc !== undefined) patch.rnc = rncResuelto.rnc;
+  const duplicadoError = await sondaRncDuplicado(
+    tx,
+    ctx,
+    actual,
+    input,
+    rncResuelto.rnc,
+  );
+  if (duplicadoError !== null) return buildError(duplicadoError);
 
-  // Audit old/new only for fields the patch actually carries.
-  for (const key of Object.keys(patch) as (keyof ActualizarProveedorPatch)[]) {
-    cambios.anteriores[key] = actual[key];
-    cambios.nuevos[key] = patch[key];
-  }
+  const cambios = calcularDifAuditoria(actual, patch);
 
   let update: { updated: boolean; newVersion: number };
   try {

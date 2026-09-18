@@ -156,6 +156,88 @@ function calcularEstadoEfectivo(
 }
 
 /**
+ * Build the patch, derive the effective post-write state ONCE, and evaluate the
+ * cross-field credit rules against that merged state (R5) — all inside one
+ * boundary that translates only known domain/decimal violations into a stable
+ * error code and rethrows anything else. Returns the shared `patch` and
+ * `estado` so the caller never re-derives the fiscal final. Pure (no DB).
+ */
+function prepararValidacionCliente(
+  input: ActualizarClienteInput,
+  actual: Cliente,
+):
+  | { ok: true; patch: ActualizarClientePatch; estado: EstadoClienteEfectivo }
+  | { ok: false; code: ClienteErrorCode } {
+  try {
+    const patch = construirPatchCliente(input);
+    const estado = calcularEstadoEfectivo(actual, patch);
+    validarLimitesCredito({
+      limiteCredito: estado.limiteFinal,
+      plazoCreditoDias: estado.plazoFinal,
+    });
+    validarReglasCredito({
+      creditoHabilitado: estado.creditoFinal,
+      limiteCredito: estado.limiteFinal,
+      tipoCliente: estado.tipoFinal,
+      identificacionFiscal: estado.fiscalFinal,
+    });
+    return { ok: true, patch, estado };
+  } catch (err) {
+    if (err instanceof ClienteDomainError) return { ok: false, code: err.code };
+    if (err instanceof Error && err.name === "DecimalError") {
+      return { ok: false, code: "VALIDATION_ERROR" };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Duplicate fiscal-ID probe, run only when the effective ID is non-null and
+ * differs from the stored value (estado.fiscalFinal computed once upstream — no
+ * recompute). Returns the duplicate code or `null`. Kept in the use case because
+ * it hits the DB.
+ */
+async function sondaFiscalDuplicada(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  actual: Cliente,
+  input: ActualizarClienteInput,
+  estado: EstadoClienteEfectivo,
+): Promise<ClienteErrorCode | null> {
+  if (
+    estado.fiscalFinal !== null &&
+    estado.fiscalFinal !== actual.identificacionFiscal
+  ) {
+    const duplicado = await existeIdentificacionFiscalEnEmpresa(
+      tx,
+      ctx.empresaId,
+      estado.fiscalFinal,
+      input.id,
+    );
+    if (duplicado) return CLIENTE_IDENTIFICACION_DUPLICADA;
+  }
+  return null;
+}
+
+/**
+ * Audit old/new only for the fields the patch carries (minimal, VARCHAR-safe):
+ * the stored value and the new value for each present key. Pure over the
+ * already-read row and the already-built patch.
+ */
+function calcularDifAuditoria(
+  actual: Cliente,
+  patch: ActualizarClientePatch,
+): { anteriores: Record<string, unknown>; nuevos: Record<string, unknown> } {
+  const anteriores: Record<string, unknown> = {};
+  const nuevos: Record<string, unknown> = {};
+  for (const key of Object.keys(patch) as (keyof ActualizarClientePatch)[]) {
+    anteriores[key] = actual[key];
+    nuevos[key] = patch[key];
+  }
+  return { anteriores, nuevos };
+}
+
+/**
  * CLI-EDIT: optimistic-lock partial update inside the tenant transaction.
  * Sequence guarantees zero mutation on every failure mode:
  *   1. load the tenant row; a foreign id is CLIENTE_NO_ENCONTRADO (R1);
@@ -197,53 +279,15 @@ export async function actualizarCliente(
     return buildError("VALIDATION_ERROR");
   }
 
-  let patch: ActualizarClientePatch;
-  let estado: EstadoClienteEfectivo;
-  try {
-    patch = construirPatchCliente(input);
-    estado = calcularEstadoEfectivo(actual, patch);
-    validarLimitesCredito({
-      limiteCredito: estado.limiteFinal,
-      plazoCreditoDias: estado.plazoFinal,
-    });
-    validarReglasCredito({
-      creditoHabilitado: estado.creditoFinal,
-      limiteCredito: estado.limiteFinal,
-      tipoCliente: estado.tipoFinal,
-      identificacionFiscal: estado.fiscalFinal,
-    });
-  } catch (err) {
-    if (err instanceof ClienteDomainError) return buildError(err.code);
-    if (err instanceof Error && err.name === "DecimalError") {
-      return buildError("VALIDATION_ERROR");
-    }
-    throw err;
-  }
+  const preparada = prepararValidacionCliente(input, actual);
+  if (!preparada.ok) return buildError(preparada.code);
+  const { patch, estado } = preparada;
 
-  // Duplicate probe only when the fiscal ID actually changes to a new value
-  // (estado.fiscalFinal computed once above — no recompute duplication).
-  if (
-    estado.fiscalFinal !== null &&
-    estado.fiscalFinal !== actual.identificacionFiscal
-  ) {
-    const duplicado = await existeIdentificacionFiscalEnEmpresa(
-      tx,
-      ctx.empresaId,
-      estado.fiscalFinal,
-      input.id,
-    );
-    if (duplicado) return buildError(CLIENTE_IDENTIFICACION_DUPLICADA);
-  }
+  const duplicadoError = await sondaFiscalDuplicada(tx, ctx, actual, input, estado);
+  if (duplicadoError !== null) return buildError(duplicadoError);
 
   // Audit old/new only for the fields the patch carries (minimal, VARCHAR-safe).
-  const cambios: {
-    anteriores: Record<string, unknown>;
-    nuevos: Record<string, unknown>;
-  } = { anteriores: {}, nuevos: {} };
-  for (const key of Object.keys(patch) as (keyof ActualizarClientePatch)[]) {
-    cambios.anteriores[key] = actual[key];
-    cambios.nuevos[key] = patch[key];
-  }
+  const cambios = calcularDifAuditoria(actual, patch);
 
   let update: { updated: boolean; newVersion: number };
   try {

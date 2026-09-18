@@ -172,6 +172,87 @@ function construirPatchYDif(
   return { data, antiguos, nuevos };
 }
 
+/**
+ * Pure domain-validation of the supplied fiscal fields only (unchanged fields are
+ * preserved by reading them from `actual`): an invalid ITBIS rate or base price
+ * maps to its stable code, and a vigencia violation surfaces as
+ * `VIGENCIA_INVALIDA` while any unexpected error propagates untouched. Returns
+ * the first offending code, or `null` when the patch is fiscally coherent.
+ * Extracted so the use-case orchestration stays thin; the read order and the
+ * "typed result only for the known violation, rethrow otherwise" rule are exactly
+ * those the inline block applied.
+ */
+function validarInvariantsFiscales(
+  actual: Producto,
+  input: ActualizarProductoInput,
+): ProductoErrorCode | null {
+  if (input.itbisTasa !== undefined && !esTasaItbisValida(input.itbisTasa)) {
+    return TASA_ITBIS_INVALIDA;
+  }
+  if (input.precioVenta !== undefined && !esPrecioValido(input.precioVenta)) {
+    return PRECIO_BASE_INVALIDO;
+  }
+  try {
+    buildProductoItbis({
+      tasa: input.itbisTasa ?? actual.itbis.tasa,
+      vigenteDesde: input.itbisVigenteDesde ?? actual.itbis.vigenteDesde,
+      vigenteHasta:
+        input.itbisVigenteHasta !== undefined
+          ? input.itbisVigenteHasta
+          : actual.itbis.vigenteHasta,
+      aplicaRetencionITBIS:
+        input.itbisAplicaRetencionITBIS ?? actual.itbis.aplicaRetencionITBIS,
+    });
+  } catch (err) {
+    // Only the known vigencia violation becomes a typed result; anything
+    // else is a defect and must propagate.
+    if (err instanceof ProductoDomainError && err.code === VIGENCIA_INVALIDA) {
+      return VIGENCIA_INVALIDA;
+    }
+    throw err;
+  }
+  return null;
+}
+
+/**
+ * Referential-integrity probes: uniqueness is checked only when the code actually
+ * changes (the edited row is excluded so re-submitting its own code is a no-op),
+ * and a category swap is verified to belong to the company. Runs in the original
+ * codigo → categoria order and returns the first violation code, or `null`.
+ * These stay in the use case (not a pure domain helper) because they hit the DB.
+ */
+async function sondarIntegridadReferencial(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  actual: Producto,
+  input: ActualizarProductoInput,
+): Promise<ProductoErrorCode | null> {
+  if (input.codigo !== undefined && input.codigo !== actual.codigo) {
+    const duplicado = await existeCodigoEnEmpresa(
+      tx,
+      ctx.empresaId,
+      input.codigo,
+      input.id,
+    );
+    if (duplicado) {
+      return CODIGO_PRODUCTO_DUPLICADO;
+    }
+  }
+
+  if (input.categoriaId !== undefined && input.categoriaId !== actual.categoriaId) {
+    const categoriaValida = await categoriaPerteneceAEmpresa(
+      tx,
+      ctx.empresaId,
+      input.categoriaId,
+    );
+    if (!categoriaValida) {
+      return CATEGORIA_INVALIDA;
+    }
+  }
+
+  return null;
+}
+
 export async function actualizarProducto(
   tx: PrismaTx,
   ctx: TenantCtx,
@@ -193,55 +274,15 @@ export async function actualizarProducto(
   const actual = current.producto;
 
   // Domain validation on supplied fields only; unchanged fields are preserved.
-  if (input.itbisTasa !== undefined && !esTasaItbisValida(input.itbisTasa)) {
-    return buildError(TASA_ITBIS_INVALIDA);
-  }
-  if (input.precioVenta !== undefined && !esPrecioValido(input.precioVenta)) {
-    return buildError(PRECIO_BASE_INVALIDO);
-  }
-  try {
-    buildProductoItbis({
-      tasa: input.itbisTasa ?? actual.itbis.tasa,
-      vigenteDesde: input.itbisVigenteDesde ?? actual.itbis.vigenteDesde,
-      vigenteHasta:
-        input.itbisVigenteHasta !== undefined
-          ? input.itbisVigenteHasta
-          : actual.itbis.vigenteHasta,
-      aplicaRetencionITBIS:
-        input.itbisAplicaRetencionITBIS ?? actual.itbis.aplicaRetencionITBIS,
-    });
-  } catch (err) {
-    // Only the known vigencia violation becomes a typed result; anything
-    // else is a defect and must propagate.
-    if (err instanceof ProductoDomainError && err.code === VIGENCIA_INVALIDA) {
-      return buildError(VIGENCIA_INVALIDA);
-    }
-    throw err;
+  const fiscalError = validarInvariantsFiscales(actual, input);
+  if (fiscalError !== null) {
+    return buildError(fiscalError);
   }
 
-  // Uniqueness is probed only when the code actually changes; the edited row
-  // itself is excluded so re-submitting its own code is a no-op.
-  if (input.codigo !== undefined && input.codigo !== actual.codigo) {
-    const duplicado = await existeCodigoEnEmpresa(
-      tx,
-      ctx.empresaId,
-      input.codigo,
-      input.id,
-    );
-    if (duplicado) {
-      return buildError(CODIGO_PRODUCTO_DUPLICADO);
-    }
-  }
-
-  if (input.categoriaId !== undefined && input.categoriaId !== actual.categoriaId) {
-    const categoriaValida = await categoriaPerteneceAEmpresa(
-      tx,
-      ctx.empresaId,
-      input.categoriaId,
-    );
-    if (!categoriaValida) {
-      return buildError(CATEGORIA_INVALIDA);
-    }
+  // Uniqueness / category-ownership probes, only when the value actually changes.
+  const referenciaError = await sondarIntegridadReferencial(tx, ctx, actual, input);
+  if (referenciaError !== null) {
+    return buildError(referenciaError);
   }
 
   // Build the UPDATE payload plus the old/new audit diff of changed fields via
