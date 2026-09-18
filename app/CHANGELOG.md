@@ -1,6 +1,12 @@
 # Changelog
 
-# [0.11.5](https://github.com/Wilfredery/SystemFact/compare/v0.11.4...v0.11.5) (2026-09-18)
+## [0.11.6](https://github.com/Wilfredery/SystemFact/compare/v0.11.5...v0.11.6) (2026-09-18)
+
+### Chores
+
+* **agents:** codify release conventions — every PR carries its own version bump, semver `refactor:`/`test:` → PATCH, UTF-8 BOM rule for machine-consumed files (#59 CI root cause)
+
+## [0.11.5](https://github.com/Wilfredery/SystemFact/compare/v0.11.4...v0.11.5) (2026-09-18)
 
 ### Refactored
 
