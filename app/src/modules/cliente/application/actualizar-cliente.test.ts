@@ -228,6 +228,34 @@ describe("actualizarCliente", () => {
       expect.objectContaining({ identificacionFiscal: null }),
     );
   });
+  it("CLI-EDIT-UNDEF: explicit undefined identificacionFiscal leaves it unchanged and un-audited", async () => {
+    const result = await actualizarCliente(tx, ctx, {
+      id: 5,
+      version: 2,
+      nombre: "Acme Nueva",
+      identificacionFiscal: undefined,
+    });
+    // `undefined` is NOT a patch: unlike the null-clearing case above, the
+    // fiscal ID stays untouched, is absent from the UPDATE payload and from
+    // the audit diff, and triggers no duplicate probe.
+    expect(result.ok).toBe(true);
+    expect(actualizarClienteEnTx).toHaveBeenCalledWith(
+      tx,
+      1,
+      5,
+      2,
+      { nombre: "Acme Nueva" },
+    );
+    expect(registrarAuditClienteEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      ctx,
+      "ACTUALIZAR",
+      5,
+      { nombre: "Acme SRL" },
+      { nombre: "Acme Nueva" },
+    );
+    expect(existeIdentificacionFiscalEnEmpresa).not.toHaveBeenCalled();
+  });
 });
 
 describe("llevaCamposDeCredito (admin-only gate predicate)", () => {
