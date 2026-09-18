@@ -64,6 +64,98 @@ export function llevaCamposDeCredito(input: ActualizarClienteInput): boolean {
 }
 
 /**
+ * Post-write credit-bearing state: the stored row with the patch overlaid, used
+ * both for the cross-field credit rule (R5) and for the duplicate fiscal-ID
+ * probe. Computed once by `calcularEstadoEfectivo` so the two consumers never
+ * re-derive it (removes the duplicated `fiscalFinal` recompute).
+ */
+interface EstadoClienteEfectivo {
+  readonly fiscalFinal: string | null;
+  readonly limiteFinal: Decimal;
+  readonly plazoFinal: number;
+  readonly creditoFinal: boolean;
+  readonly tipoFinal: TipoCliente;
+}
+
+/**
+ * Build the UPDATE patch from the input. `undefined` fields are skipped
+ * (R-QC-02: undefined leaves the column unchanged) while `null` is kept as a
+ * real value (clears the column); nothing is null-coalesced. Field normalization
+ * and length checks live here and throw `ClienteDomainError`, which the caller
+ * maps to a typed result. Pure: no Prisma/Next imports.
+ */
+function construirPatchCliente(input: ActualizarClienteInput): ActualizarClientePatch {
+  const patch: ActualizarClientePatch = {};
+  if (input.nombre !== undefined) {
+    const nombre = normalizeNombre(input.nombre);
+    if (nombre.length === 0 || nombre.length > 255) {
+      throw new ClienteDomainError("VALIDATION_ERROR");
+    }
+    patch.nombre = nombre;
+  }
+  if (input.telefono !== undefined) {
+    const telefono = input.telefono.trim();
+    if (telefono.length === 0 || telefono.length > 255) {
+      throw new ClienteDomainError("VALIDATION_ERROR");
+    }
+    patch.telefono = telefono;
+  }
+  if (input.direccion !== undefined) {
+    const direccion = input.direccion.trim();
+    if (direccion.length === 0 || direccion.length > 255) {
+      throw new ClienteDomainError("VALIDATION_ERROR");
+    }
+    patch.direccion = direccion;
+  }
+  if (input.identificacionFiscal !== undefined) {
+    patch.identificacionFiscal = normalizeIdentificacionFiscal(
+      input.identificacionFiscal,
+    );
+  }
+  if (input.tipoCliente !== undefined) patch.tipoCliente = input.tipoCliente;
+  if (input.creditoHabilitado !== undefined) {
+    patch.creditoHabilitado = input.creditoHabilitado;
+  }
+  if (input.limiteCredito !== undefined) {
+    const limite = new Decimal(input.limiteCredito);
+    patch.limiteCredito = limite.toFixed(2);
+  }
+  if (input.plazoCreditoDias !== undefined) {
+    patch.plazoCreditoDias = input.plazoCreditoDias;
+  }
+  return patch;
+}
+
+/** Overlay the patch on the stored row to get the effective post-write state. */
+function calcularEstadoEfectivo(
+  actual: Cliente,
+  patch: ActualizarClientePatch,
+): EstadoClienteEfectivo {
+  return {
+    fiscalFinal:
+      patch.identificacionFiscal !== undefined
+        ? patch.identificacionFiscal
+        : actual.identificacionFiscal,
+    limiteFinal:
+      patch.limiteCredito !== undefined
+        ? new Decimal(patch.limiteCredito)
+        : actual.limiteCredito,
+    plazoFinal:
+      patch.plazoCreditoDias !== undefined
+        ? patch.plazoCreditoDias
+        : actual.plazoCreditoDias,
+    creditoFinal:
+      patch.creditoHabilitado !== undefined
+        ? patch.creditoHabilitado
+        : actual.creditoHabilitado,
+    tipoFinal:
+      patch.tipoCliente !== undefined
+        ? patch.tipoCliente
+        : actual.tipoCliente,
+  };
+}
+
+/**
  * CLI-EDIT: optimistic-lock partial update inside the tenant transaction.
  * Sequence guarantees zero mutation on every failure mode:
  *   1. load the tenant row; a foreign id is CLIENTE_NO_ENCONTRADO (R1);
@@ -91,7 +183,6 @@ export async function actualizarCliente(
   }
   if (!actual.activo) return buildError("CLIENTE_YA_INACTIVO");
 
-  const patch: ActualizarClientePatch = {};
   const provided = [
     "nombre",
     "telefono",
@@ -106,71 +197,20 @@ export async function actualizarCliente(
     return buildError("VALIDATION_ERROR");
   }
 
+  let patch: ActualizarClientePatch;
+  let estado: EstadoClienteEfectivo;
   try {
-    if (input.nombre !== undefined) {
-      const nombre = normalizeNombre(input.nombre);
-      if (nombre.length === 0 || nombre.length > 255) {
-        return buildError("VALIDATION_ERROR");
-      }
-      patch.nombre = nombre;
-    }
-    if (input.telefono !== undefined) {
-      const telefono = input.telefono.trim();
-      if (telefono.length === 0 || telefono.length > 255) {
-        return buildError("VALIDATION_ERROR");
-      }
-      patch.telefono = telefono;
-    }
-    if (input.direccion !== undefined) {
-      const direccion = input.direccion.trim();
-      if (direccion.length === 0 || direccion.length > 255) {
-        return buildError("VALIDATION_ERROR");
-      }
-      patch.direccion = direccion;
-    }
-    if (input.identificacionFiscal !== undefined) {
-      patch.identificacionFiscal = normalizeIdentificacionFiscal(
-        input.identificacionFiscal,
-      );
-    }
-    if (input.tipoCliente !== undefined) patch.tipoCliente = input.tipoCliente;
-    if (input.creditoHabilitado !== undefined) {
-      patch.creditoHabilitado = input.creditoHabilitado;
-    }
-    if (input.limiteCredito !== undefined) {
-      const limite = new Decimal(input.limiteCredito);
-      patch.limiteCredito = limite.toFixed(2);
-    }
-    if (input.plazoCreditoDias !== undefined) {
-      patch.plazoCreditoDias = input.plazoCreditoDias;
-    }
-
-    // Effective post-write state (patch overlaid on the stored row).
-    const fiscalFinal =
-      patch.identificacionFiscal !== undefined
-        ? patch.identificacionFiscal
-        : actual.identificacionFiscal;
-    const limiteFinal =
-      patch.limiteCredito !== undefined
-        ? new Decimal(patch.limiteCredito)
-        : actual.limiteCredito;
-    const plazoFinal =
-      patch.plazoCreditoDias !== undefined
-        ? patch.plazoCreditoDias
-        : actual.plazoCreditoDias;
-    const creditoFinal =
-      patch.creditoHabilitado !== undefined
-        ? patch.creditoHabilitado
-        : actual.creditoHabilitado;
-    const tipoFinal =
-      patch.tipoCliente !== undefined ? patch.tipoCliente : actual.tipoCliente;
-
-    validarLimitesCredito({ limiteCredito: limiteFinal, plazoCreditoDias: plazoFinal });
+    patch = construirPatchCliente(input);
+    estado = calcularEstadoEfectivo(actual, patch);
+    validarLimitesCredito({
+      limiteCredito: estado.limiteFinal,
+      plazoCreditoDias: estado.plazoFinal,
+    });
     validarReglasCredito({
-      creditoHabilitado: creditoFinal,
-      limiteCredito: limiteFinal,
-      tipoCliente: tipoFinal,
-      identificacionFiscal: fiscalFinal,
+      creditoHabilitado: estado.creditoFinal,
+      limiteCredito: estado.limiteFinal,
+      tipoCliente: estado.tipoFinal,
+      identificacionFiscal: estado.fiscalFinal,
     });
   } catch (err) {
     if (err instanceof ClienteDomainError) return buildError(err.code);
@@ -180,19 +220,16 @@ export async function actualizarCliente(
     throw err;
   }
 
-  // Duplicate probe only when the fiscal ID actually changes to a new value.
-  const fiscalFinal =
-    patch.identificacionFiscal !== undefined
-      ? patch.identificacionFiscal
-      : actual.identificacionFiscal;
+  // Duplicate probe only when the fiscal ID actually changes to a new value
+  // (estado.fiscalFinal computed once above — no recompute duplication).
   if (
-    fiscalFinal !== null &&
-    fiscalFinal !== actual.identificacionFiscal
+    estado.fiscalFinal !== null &&
+    estado.fiscalFinal !== actual.identificacionFiscal
   ) {
     const duplicado = await existeIdentificacionFiscalEnEmpresa(
       tx,
       ctx.empresaId,
-      fiscalFinal,
+      estado.fiscalFinal,
       input.id,
     );
     if (duplicado) return buildError(CLIENTE_IDENTIFICACION_DUPLICADA);

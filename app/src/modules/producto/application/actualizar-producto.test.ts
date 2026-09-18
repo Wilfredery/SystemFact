@@ -303,6 +303,54 @@ describe("actualizarProducto", () => {
     expect(actualizarProductoEnTx).not.toHaveBeenCalled();
   });
 
+  it("PROD-011-UNDEF: descripcion undefined omits the patch entry and audit diff", async () => {
+    mockCurrent(2, makeProducto({ descripcion: "Desc anterior" }));
+    (actualizarProductoEnTx as jest.Mock).mockResolvedValue({
+      updated: true,
+      newVersion: 3,
+    });
+
+    await actualizarProducto(makeTx(), ctx, {
+      id: 10,
+      version: 2,
+      nombre: "Notebook",
+      descripcion: undefined,
+    });
+
+    // `undefined` is NOT a patch: the field must be absent from the UPDATE
+    // payload and from the audit old/new, so it is left untouched in the DB.
+    const data = (actualizarProductoEnTx as jest.Mock).mock.calls[0][4];
+    expect(Object.keys(data)).toEqual(["nombre"]);
+    expect(data).not.toHaveProperty("descripcion");
+    const [oldVals, newVals] = (registrarProductoActualizadoEnTx as jest.Mock).mock
+      .calls[0].slice(3);
+    expect(oldVals).not.toHaveProperty("descripcion");
+    expect(newVals).not.toHaveProperty("descripcion");
+  });
+
+  it("PROD-011-NULL: explicit null clears descripcion and audits old/new", async () => {
+    mockCurrent(2, makeProducto({ descripcion: "Desc anterior" }));
+    (actualizarProductoEnTx as jest.Mock).mockResolvedValue({
+      updated: true,
+      newVersion: 3,
+    });
+
+    await actualizarProducto(makeTx(), ctx, {
+      id: 10,
+      version: 2,
+      descripcion: null,
+    });
+
+    // `null` IS a patch: SQL NULL is written and the audit records the
+    // transition from the stored value to null.
+    const data = (actualizarProductoEnTx as jest.Mock).mock.calls[0][4];
+    expect(data).toEqual({ descripcion: null });
+    const [oldVals, newVals] = (registrarProductoActualizadoEnTx as jest.Mock).mock
+      .calls[0].slice(3);
+    expect(oldVals).toEqual({ descripcion: "Desc anterior" });
+    expect(newVals).toEqual({ descripcion: null });
+  });
+
   it("patch with no editable fields returns VALIDATION_ERROR", async () => {
     mockCurrent();
 

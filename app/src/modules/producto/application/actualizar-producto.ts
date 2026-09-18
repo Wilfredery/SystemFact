@@ -94,6 +94,84 @@ function mismaFecha(a: Date | null, b: Date | null): boolean {
   return a.getTime() === b.getTime();
 }
 
+/**
+ * Table-driven declaration of one editable producto field: how to read the
+ * incoming value, the stored value, compare them for equality, and format the
+ * audit value. `key` is the shared UPDATE-payload/audit column name (it can
+ * differ from the input property name, e.g. `itbisTasa` → `tasaItbis`).
+ *
+ * `leerInput` never null-coalesces, so the builder keeps `undefined` (skip the
+ * field) distinct from `null` (clear it) — the R-QC-02 null-vs-undefined
+ * contract. `iguales`/`formatearAuditoria` are field-specific so Decimal,
+ * Date and scalar comparison/format stay correct.
+ */
+interface CampoEdicionProducto {
+  readonly key: keyof ActualizarProductoData;
+  readonly leerInput: (input: ActualizarProductoInput) => unknown;
+  readonly leerActual: (actual: Producto) => unknown;
+  readonly iguales: (a: unknown, b: unknown) => boolean;
+  readonly formatearAuditoria: (value: unknown) => unknown;
+}
+
+const igualesScalar = (a: unknown, b: unknown): boolean => a === b;
+const igualesDecimal = (a: unknown, b: unknown): boolean =>
+  (a as Decimal).equals(b as Decimal);
+const igualesFecha = (a: unknown, b: unknown): boolean =>
+  mismaFecha(a as Date | null, b as Date | null);
+
+const formatoIdentidad = (value: unknown): unknown => value;
+const formatoDecimal = (value: unknown): unknown =>
+  value === null || value === undefined ? null : (value as Decimal).toString();
+const formatoFecha = (value: unknown): unknown =>
+  value === null || value === undefined ? null : (value as Date).toISOString();
+
+const CAMPOS_EDICION_PRODUCTO: readonly CampoEdicionProducto[] = [
+  { key: "nombre", leerInput: (i) => i.nombre, leerActual: (p) => p.nombre, iguales: igualesScalar, formatearAuditoria: formatoIdentidad },
+  { key: "descripcion", leerInput: (i) => i.descripcion, leerActual: (p) => p.descripcion, iguales: igualesScalar, formatearAuditoria: formatoIdentidad },
+  { key: "precioVenta", leerInput: (i) => i.precioVenta, leerActual: (p) => p.precioVenta, iguales: igualesDecimal, formatearAuditoria: formatoDecimal },
+  { key: "tasaItbis", leerInput: (i) => i.itbisTasa, leerActual: (p) => p.itbis.tasa, iguales: igualesScalar, formatearAuditoria: formatoIdentidad },
+  { key: "itbisVigenteDesde", leerInput: (i) => i.itbisVigenteDesde, leerActual: (p) => p.itbis.vigenteDesde, iguales: igualesFecha, formatearAuditoria: formatoFecha },
+  { key: "itbisVigenteHasta", leerInput: (i) => i.itbisVigenteHasta, leerActual: (p) => p.itbis.vigenteHasta, iguales: igualesFecha, formatearAuditoria: formatoFecha },
+  { key: "itbisAplicaRetencionITBIS", leerInput: (i) => i.itbisAplicaRetencionITBIS, leerActual: (p) => p.itbis.aplicaRetencionITBIS, iguales: igualesScalar, formatearAuditoria: formatoIdentidad },
+  { key: "codigo", leerInput: (i) => i.codigo, leerActual: (p) => p.codigo, iguales: igualesScalar, formatearAuditoria: formatoIdentidad },
+  { key: "categoriaId", leerInput: (i) => i.categoriaId, leerActual: (p) => p.categoriaId, iguales: igualesScalar, formatearAuditoria: formatoIdentidad },
+];
+
+/**
+ * Pure builder: turns the input into the UPDATE payload plus the old/new audit
+ * diff of only the genuinely-changed fields. A field present as `undefined` is
+ * skipped entirely (neither patched nor audited); a field present as `null`
+ * (or any value) is always written, but recorded in the audit only when it
+ * differs from the stored value.
+ */
+function construirPatchYDif(
+  actual: Producto,
+  input: ActualizarProductoInput,
+  campos: readonly CampoEdicionProducto[],
+): {
+  data: ActualizarProductoData;
+  antiguos: Record<string, unknown>;
+  nuevos: Record<string, unknown>;
+} {
+  const data: ActualizarProductoData = {};
+  const payload = data as Record<string, unknown>;
+  const antiguos: Record<string, unknown> = {};
+  const nuevos: Record<string, unknown> = {};
+
+  for (const campo of campos) {
+    const valor = campo.leerInput(input);
+    if (valor === undefined) continue;
+    payload[campo.key] = valor;
+    const anterior = campo.leerActual(actual);
+    if (!campo.iguales(anterior, valor)) {
+      antiguos[campo.key] = campo.formatearAuditoria(anterior);
+      nuevos[campo.key] = campo.formatearAuditoria(valor);
+    }
+  }
+
+  return { data, antiguos, nuevos };
+}
+
 export async function actualizarProducto(
   tx: PrismaTx,
   ctx: TenantCtx,
@@ -106,9 +184,10 @@ export async function actualizarProducto(
   }
 
   const current = await obtenerProductoPorId(tx, ctx.empresaId, input.id);
-  if (current === null || !current.producto.activo) {
+  if (!current?.producto.activo) {
     // Inactive rows are not editable and a foreign-tenant id looks identical
-    // to a missing one: no cross-tenant disclosure (REQ-PROD-013).
+    // to a missing one: no cross-tenant disclosure (REQ-PROD-013). Optional
+    // chaining also satisfies S6582 (`current === null || !....activo`).
     return buildError(PRODUCTO_NO_ENCONTRADO);
   }
   const actual = current.producto;
@@ -165,76 +244,15 @@ export async function actualizarProducto(
     }
   }
 
-  // Build the UPDATE payload plus the old/new audit diff of changed fields.
-  const data: ActualizarProductoData = {};
-  const antiguos: Record<string, unknown> = {};
-  const nuevos: Record<string, unknown> = {};
-
-  if (input.nombre !== undefined) {
-    data.nombre = input.nombre;
-    if (input.nombre !== actual.nombre) {
-      antiguos.nombre = actual.nombre;
-      nuevos.nombre = input.nombre;
-    }
-  }
-  if (input.descripcion !== undefined) {
-    data.descripcion = input.descripcion;
-    if (input.descripcion !== actual.descripcion) {
-      antiguos.descripcion = actual.descripcion;
-      nuevos.descripcion = input.descripcion;
-    }
-  }
-  if (input.precioVenta !== undefined) {
-    data.precioVenta = input.precioVenta;
-    if (!actual.precioVenta.equals(input.precioVenta)) {
-      antiguos.precioVenta = actual.precioVenta.toString();
-      nuevos.precioVenta = input.precioVenta.toString();
-    }
-  }
-  if (input.itbisTasa !== undefined) {
-    data.tasaItbis = input.itbisTasa;
-    if (input.itbisTasa !== actual.itbis.tasa) {
-      antiguos.tasaItbis = actual.itbis.tasa;
-      nuevos.tasaItbis = input.itbisTasa;
-    }
-  }
-  if (input.itbisVigenteDesde !== undefined) {
-    data.itbisVigenteDesde = input.itbisVigenteDesde;
-    if (!mismaFecha(input.itbisVigenteDesde, actual.itbis.vigenteDesde)) {
-      antiguos.itbisVigenteDesde = actual.itbis.vigenteDesde.toISOString();
-      nuevos.itbisVigenteDesde = input.itbisVigenteDesde.toISOString();
-    }
-  }
-  if (input.itbisVigenteHasta !== undefined) {
-    data.itbisVigenteHasta = input.itbisVigenteHasta;
-    if (!mismaFecha(input.itbisVigenteHasta, actual.itbis.vigenteHasta)) {
-      antiguos.itbisVigenteHasta = actual.itbis.vigenteHasta?.toISOString() ?? null;
-      nuevos.itbisVigenteHasta = input.itbisVigenteHasta?.toISOString() ?? null;
-    }
-  }
-  if (input.itbisAplicaRetencionITBIS !== undefined) {
-    data.itbisAplicaRetencionITBIS = input.itbisAplicaRetencionITBIS;
-    if (
-      input.itbisAplicaRetencionITBIS !== actual.itbis.aplicaRetencionITBIS
-    ) {
-      antiguos.itbisAplicaRetencionITBIS = actual.itbis.aplicaRetencionITBIS;
-      nuevos.itbisAplicaRetencionITBIS = input.itbisAplicaRetencionITBIS;
-    }
-  }
-  if (input.codigo !== undefined) {
-    data.codigo = input.codigo;
-    if (input.codigo !== actual.codigo) {
-      antiguos.codigo = actual.codigo;
-      nuevos.codigo = input.codigo;
-    }
-  }
-  if (input.categoriaId !== undefined) {
-    data.categoriaId = input.categoriaId;
-    if (input.categoriaId !== actual.categoriaId) {
-      antiguos.categoriaId = actual.categoriaId;
-      nuevos.categoriaId = input.categoriaId;
-    }
-  }
+  // Build the UPDATE payload plus the old/new audit diff of changed fields via
+  // the table-driven pure helper (undefined skips, null writes, audit only on a
+  // real change). This lowers cognitive complexity without touching the
+  // undefined-vs-null semantics locked by the golden tests.
+  const { data, antiguos, nuevos } = construirPatchYDif(
+    actual,
+    input,
+    CAMPOS_EDICION_PRODUCTO,
+  );
 
   let update;
   try {
