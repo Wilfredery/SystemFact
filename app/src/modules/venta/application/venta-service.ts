@@ -306,9 +306,15 @@ async function cancelarVentaConfirmada(
   motivo: string | undefined,
 ): Promise<CancelarVentaResult> {
   const gate = transicionarCancelarConfirmada(ESTADO_VENTA.CONFIRMADA);
-  // `gate.estado` is `CANCELADA` by construction; the total switch documents that
-  // ONLY a CONFIRMADA sale can enter this path (draft/terminal are routed away).
-  void gate;
+  // The total transition documents that ONLY a CONFIRMADA sale can enter this
+  // path (draft/terminal are routed away upstream). `permitido: false` is
+  // unreachable for a `CONFIRMADA` input, so this explicit guard is
+  // behavior-identical to the previous `void` dismissal — it just consumes the
+  // gate honestly instead of via the `void` operator (S3735, quality-polish 1e)
+  // without touching the transaction semantics of the steps below.
+  if (!gate.permitido) {
+    return cancelError(VENTA_INMUTABLE);
+  }
 
   // 1. Guarded CONFIRMADA → CANCELADA. Zero rows = a concurrent cancel/confirm won
   //    → typed conflict, and NOTHING else has run so there is nothing to roll back.

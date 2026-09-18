@@ -153,6 +153,52 @@ function aDecimalCantidad(cantidad: string, productoId: number): Decimal {
   return new Decimal(cantidad);
 }
 
+/**
+ * PURE resolution of the requested return lines against the ORIGINAL sale rows
+ * (R-D5 mirror, quality-polish 1e): a product never sold in THIS venta is an
+ * invalid line, and money + rate freeze from the original row — the exact
+ * predicates the inline loop applied, only relocated. `validarReturnType` and
+ * the quantity-grammar probe keep throwing `VentaDomainError(LINEA_INVALIDA)`
+ * at the same pre-write position (the outer catch maps them). No DB access:
+ * it runs before the locking `leerStockSucursalEnTx` read.
+ */
+export function resolverLineasContraVentaOriginal(
+  inputLineas: readonly LineaDevolucionInput[],
+  ventaLineas: readonly {
+    readonly productoId: number;
+    readonly cantidad: string;
+    readonly precioUnitario: string;
+    readonly tasaItbis: string;
+  }[],
+): {
+  readonly lineas: DetalleNotaCreditoInput[];
+  readonly cantidades: Decimal[];
+  readonly originales: Decimal[];
+} {
+  const originalPorProducto = new Map(ventaLineas.map((l) => [l.productoId, l]));
+  const lineas: DetalleNotaCreditoInput[] = [];
+  const cantidades: Decimal[] = [];
+  const originales: Decimal[] = [];
+  for (const l of inputLineas) {
+    validarReturnType(l.tipoReposicion);
+    const original = originalPorProducto.get(l.productoId);
+    if (original === undefined) {
+      throw new VentaDomainError(LINEA_INVALIDA, { productoId: l.productoId });
+    }
+    const cantidad = aDecimalCantidad(l.cantidad, l.productoId);
+    lineas.push({
+      productoId: l.productoId,
+      cantidad: l.cantidad,
+      precioUnitario: original.precioUnitario,
+      tasaItbis: original.tasaItbis,
+      tipoReposicion: l.tipoReposicion,
+    });
+    cantidades.push(cantidad);
+    originales.push(new Decimal(original.cantidad));
+  }
+  return { lineas, cantidades, originales };
+}
+
 export async function crearDevolucion(
   tx: PrismaTx,
   ctx: TenantCtx,
@@ -164,7 +210,10 @@ export async function crearDevolucion(
     const venta = await leerVentaParaDevolucionEnTx(tx, ctx, input.ventaId);
     if (venta === null) return devolucionError(VENTA_NO_ENCONTRADO);
     if (venta.estado !== ESTADO_VENTA.CONFIRMADA) return devolucionError(VENTA_NO_CONFIRMADA);
-    if (venta.factura === null || venta.factura.estado !== "VIGENTE") {
+    // S6582 (quality-polish 1e): optional chaining covers both failure shapes
+    // identically — a `null` factura short-circuits to `undefined`, which is
+    // never `"VIGENTE"`, so the same FACTURA_NO_VIGENTE guard fires.
+    if (venta.factura?.estado !== "VIGENTE") {
       return devolucionError(FACTURA_NO_VIGENTE);
     }
 
@@ -177,31 +226,14 @@ export async function crearDevolucion(
     // called directly by tests — a zero-line NC must never be created.
     if (input.lineas.length === 0) return devolucionError(LINEAS_VACIAS);
 
-    // Resolve against the ORIGINAL sale rows: a product never sold in THIS
-    // venta is an invalid line, and money + rate freeze from the original row
-    // (the design's R-D5 mirror; see the DETALLE_NOTA_CREDITO schema-comment
-    // tension note in `devolucion-repository`).
-    const originalPorProducto = new Map(venta.lineas.map((l) => [l.productoId, l]));
-    const lineas: DetalleNotaCreditoInput[] = [];
-    const cantidades: Decimal[] = [];
-    const originales: Decimal[] = [];
-    for (const l of input.lineas) {
-      validarReturnType(l.tipoReposicion);
-      const original = originalPorProducto.get(l.productoId);
-      if (original === undefined) {
-        throw new VentaDomainError(LINEA_INVALIDA, { productoId: l.productoId });
-      }
-      const cantidad = aDecimalCantidad(l.cantidad, l.productoId);
-      lineas.push({
-        productoId: l.productoId,
-        cantidad: l.cantidad,
-        precioUnitario: original.precioUnitario,
-        tasaItbis: original.tasaItbis,
-        tipoReposicion: l.tipoReposicion,
-      });
-      cantidades.push(cantidad);
-      originales.push(new Decimal(original.cantidad));
-    }
+    // Resolve against the ORIGINAL sale rows via the pure resolver (quality-polish
+    // 1e): a product never sold in THIS venta is an invalid line, and money +
+    // rate freeze from the original row (the design's R-D5 mirror; see the
+    // DETALLE_NOTA_CREDITO schema-comment tension note in `devolucion-repository`).
+    const { lineas, cantidades, originales } = resolverLineasContraVentaOriginal(
+      input.lineas,
+      venta.lineas,
+    );
 
     // CRITICAL: lock ALL inventory rows FIRST (ascending, the same order every
     // inventory seam uses) — this IS the serialization point for R-D3. All
