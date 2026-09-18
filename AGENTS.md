@@ -109,6 +109,22 @@ These rules derive from the canonical engineering constitution in the project do
   The `.github/workflows/release-please.yml` workflow may stay enabled but its output is
   informational; never treat a silent run as a versioning failure again — manual is the version
   of record. Anything below this banner is historical context, not current policy.
+- **⚠️ RELEASE CONVENTION (2026-09-18, maintainer-approved — binding for agents):**
+  1. **Every feature/fix/refactor PR carries its own version bump.** `app/package.json` +
+     `.release-please-manifest.json` + `app/CHANGELOG.md` are edited IN the PR (its final patch
+     commit), so master never stacks un-bumped releases. The standalone `chore(release)` PR is
+     reserved for (a) retro-syncs when a bump was missed, or (b) the closes of genuine
+     multi-PR chains where the maintainer explicitly says "bumpra al cierre".
+  2. Semver: `feat` → MINOR; `fix`/`perf`/`chore(release)`/`docs`/`test`/`refactor` → PATCH
+     (in pre-1.0); `!`/BREAKING CHANGE → MINOR pre-1.0. Tag as annotated `vX.Y.Z` at the
+     squash-merge commit + GitHub Release with compare notes (like v0.11.2–v0.11.5).
+  3. **UTF-8 BOM rule (machine-consumed files):** NEVER write versioned config/text
+     (`app/package.json`, `.release-please-manifest.json`, `app/CHANGELOG.md`, tsconfig, YAML
+     consumed by Node tooling) with PowerShell 5.1 `Set-Content -Encoding UTF8` — it silently
+     prepends a BOM (EF BB BF) and breaks Node parsers in CI (pnpm/action-setup JSON.parse
+     fails with "Unexpected token '?'"; root cause of the PR #59 CI break). Write with
+     `[IO.File]::WriteAllText/WriteAllBytes` using `UTF8Encoding($false)`, or verify
+     `bytes[0] -ne 0xEF` after writing. Sonar TS sensors tolerate the BOM; Node tooling does not.
 - `.github/workflows/ci.yml` — runs on every PR targeting `master` and again on `master`
   after the merge: ESLint, strict typecheck, `prisma validate`, unit tests, integration tests
   against a real Postgres 16 (RLS enforced via the `systemfact_app` role), production build and
