@@ -52,12 +52,61 @@ function buildError(
   return { ok: false, code, message: messageFor(code) };
 }
 
+/**
+ * Build the non-RNC UPDATE patch from the input. `undefined` fields are skipped
+ * (R-QC-02: undefined leaves the column unchanged); a `null` never reaches here
+ * because `rnc` is resolved separately and the remaining fields are
+ * non-nullable strings/enums. Field normalization and the frozen 1–255 bounds
+ * live here and throw `ProveedorDomainError(VALIDATION_ERROR)`, which the caller
+ * maps to a typed result. Pure: no Prisma/Next imports.
+ */
+function construirPatchProveedor(
+  input: ActualizarProveedorInput,
+): ActualizarProveedorPatch {
+  const patch: ActualizarProveedorPatch = {};
+
+  // String fields: normalize when present, keep the frozen 1–255 bounds.
+  for (const field of ["nombre", "contacto"] as const) {
+    if (input[field] === undefined) continue;
+    const value = normalizeNombre(input[field] as string);
+    if (value.length === 0 || value.length > 255) {
+      throw new ProveedorDomainError(VALIDATION_ERROR);
+    }
+    patch[field] = value;
+  }
+  if (input.telefono !== undefined) {
+    const telefono = input.telefono.trim();
+    if (telefono.length === 0 || telefono.length > 255) {
+      throw new ProveedorDomainError(VALIDATION_ERROR);
+    }
+    patch.telefono = telefono;
+  }
+  if (input.tipoProveedor !== undefined) patch.tipoProveedor = input.tipoProveedor;
+  if (input.tipoPersona !== undefined) patch.tipoPersona = input.tipoPersona;
+
+  return patch;
+}
+
+/**
+ * Resolve the final RNC to store. `undefined` keeps the stored value; explicit
+ * `null` clears it (nulls are repeatable and never probed); a new string is
+ * normalized and may throw `ProveedorDomainError(RNC_FORMATO_INVALIDO)`, mapped
+ * by the caller. Pure over the already-read row — no DB access.
+ */
+function resolverRncFinal(
+  input: ActualizarProveedorInput,
+  actual: Proveedor,
+): string | null {
+  if (input.rnc === undefined) return actual.rnc;
+  return normalizeRnc(input.rnc);
+}
+
 export async function actualizarProveedor(
   tx: PrismaTx,
   ctx: TenantCtx,
   input: ActualizarProveedorInput,
 ): Promise<ActualizarProveedorResult> {
-  const patch: ActualizarProveedorPatch = {};
+  let patch: ActualizarProveedorPatch;
   const cambios: {
     anteriores: Record<string, unknown>;
     nuevos: Record<string, unknown>;
@@ -75,24 +124,16 @@ export async function actualizarProveedor(
     return buildError(VALIDATION_ERROR);
   }
 
-  // String fields: normalize when present, keep the frozen 1–255 bounds.
-  for (const field of ["nombre", "contacto"] as const) {
-    if (input[field] === undefined) continue;
-    const value = normalizeNombre(input[field] as string);
-    if (value.length === 0 || value.length > 255) {
+  // Normalize the non-RNC fields BEFORE any DB read, preserving the original
+  // ordering: a malformed name must fail with zero store access.
+  try {
+    patch = construirPatchProveedor(input);
+  } catch (err) {
+    if (err instanceof ProveedorDomainError && err.code === VALIDATION_ERROR) {
       return buildError(VALIDATION_ERROR);
     }
-    patch[field] = value;
+    throw err;
   }
-  if (input.telefono !== undefined) {
-    const telefono = input.telefono.trim();
-    if (telefono.length === 0 || telefono.length > 255) {
-      return buildError(VALIDATION_ERROR);
-    }
-    patch.telefono = telefono;
-  }
-  if (input.tipoProveedor !== undefined) patch.tipoProveedor = input.tipoProveedor;
-  if (input.tipoPersona !== undefined) patch.tipoPersona = input.tipoPersona;
 
   const actual = await proveedorByIdEnEmpresa(tx, ctx.empresaId, input.id);
   if (actual === null) {
@@ -105,21 +146,19 @@ export async function actualizarProveedor(
 
   // RNC: undefined keeps the stored value; explicit null clears it (nulls are
   // repeatable and never probed); a new string must normalize and stay free.
-  let rncFinal = actual.rnc;
-  if (input.rnc !== undefined) {
-    try {
-      rncFinal = normalizeRnc(input.rnc);
-    } catch (err) {
-      if (
-        err instanceof ProveedorDomainError &&
-        err.code === RNC_FORMATO_INVALIDO
-      ) {
-        return buildError(RNC_FORMATO_INVALIDO);
-      }
-      throw err;
+  let rncFinal: string | null;
+  try {
+    rncFinal = resolverRncFinal(input, actual);
+  } catch (err) {
+    if (
+      err instanceof ProveedorDomainError &&
+      err.code === RNC_FORMATO_INVALIDO
+    ) {
+      return buildError(RNC_FORMATO_INVALIDO);
     }
-    patch.rnc = rncFinal;
+    throw err;
   }
+  if (input.rnc !== undefined) patch.rnc = rncFinal;
   if (rncFinal !== null && rncFinal !== actual.rnc) {
     const duplicado = await existeRncEnEmpresa(
       tx,
