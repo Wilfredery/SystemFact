@@ -46,6 +46,7 @@ import {
   FACTURA_AUTOMATICA_FALTA,
   STOCK_INSUFICIENTE_BLOQUEO,
   type VentaErrorCode,
+  type StockWarning,
 } from "../domain/errors";
 import { seleccionarTipoNcf } from "./elegibilidad-ncf";
 import {
@@ -111,6 +112,34 @@ function demandaPorProducto(
     mapa.set(l.productoId, (mapa.get(l.productoId) ?? new Decimal(0)).plus(l.cantidad));
   }
   return mapa;
+}
+
+/**
+ * PURE pre-consume availability check (R-V15 hard preview, quality-polish 1e):
+ * every demanded product whose requested quantity exceeds its branch stock (a
+ * missing row counts as zero) yields one {@link StockWarning}. The orchestrator
+ * turns a non-empty list into `STOCK_INSUFICIENTE_BLOQUEO` — the identical
+ * predicate the inline loop applied, only relocated before the NCF consume.
+ * Reads/calculation only: no DB, no state, no transaction semantics.
+ */
+export function verificarDisponibilidadPreNcf(
+  demanda: ReadonlyMap<number, Decimal>,
+  stocks: readonly { readonly productoId: number; readonly disponible: string }[],
+): StockWarning[] {
+  const disponible = new Map(stocks.map((s) => [s.productoId, new Decimal(s.disponible)]));
+  const faltantes: StockWarning[] = [];
+  for (const [productoId, pedida] of demanda) {
+    const disponiblePara = disponible.get(productoId) ?? new Decimal(0);
+    if (pedida.greaterThan(disponiblePara)) {
+      faltantes.push({
+        code: "STOCK_INSUFICIENTE",
+        productoId,
+        available: disponiblePara.toFixed(3),
+        requested: pedida.toFixed(3),
+      });
+    }
+  }
+  return faltantes;
 }
 
 /**
@@ -186,14 +215,12 @@ export async function confirmarVenta(
 
   // 5. HARD stock preview (pre-NCF boundary, R-V15). Phase 3 owns the authoritative
   //    post-consume block; here the same shortage is rejected BEFORE any burn so a
-  //    draft that cannot be sold never consumes a sequence number.
+  //    draft that cannot be sold never consumes a sequence number. The pure
+  //    predicate lives in `verificarDisponibilidadPreNcf` (quality-polish 1e).
   const demanda = demandaPorProducto(venta.lineas);
   const stocks = await leerStockSucursalEnTx(tx, ctx.sucursalId, [...demanda.keys()]);
-  const disponible = new Map(stocks.map((s) => [s.productoId, new Decimal(s.disponible)]));
-  for (const [productoId, pedida] of demanda) {
-    if (pedida.greaterThan(disponible.get(productoId) ?? new Decimal(0))) {
-      return confirmarError(STOCK_INSUFICIENTE_BLOQUEO);
-    }
+  if (verificarDisponibilidadPreNcf(demanda, stocks).length > 0) {
+    return confirmarError(STOCK_INSUFICIENTE_BLOQUEO);
   }
 
   // 5b. Recompute the invoice breakdown from the PERSISTED lines UP-FRONT (R-F3) so
@@ -220,13 +247,13 @@ export async function confirmarVenta(
 
   // 6. NCF lock + consume. Missing / exhausted / expired all THROW before advancing
   //    (nothing burned), so mapping them back to venta's stable codes is safe.
+  //    The consumed `secuencial` is deliberately not surfaced: the invoice carries
+  //    the NCF (quality-polish 1e closed the S3735 `void` here by dropping it).
   let ncf: string;
-  let secuencial: number;
   let warning: NcfWarning | undefined;
   try {
     const consumido = await consumirNcfEnTx(tx, ctx, elegibilidad.tipo);
     ncf = consumido.ncf;
-    secuencial = consumido.secuencial;
     warning = consumido.warning;
   } catch (err) {
     if (err instanceof NcfConsumoError) {
@@ -299,8 +326,6 @@ export async function confirmarVenta(
       );
     }
   }
-
-  void secuencial; // reserved for later audit/nota flows; the invoice carries the NCF.
 
   const warnings: ConfirmarVentaWarning[] =
     warning === NCF_UMBRAL_90 ? [{ code: NCF_UMBRAL_90 }] : [];
