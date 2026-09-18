@@ -168,33 +168,17 @@ function diasDelMes(y: number, m: number): number {
 }
 
 /**
- * Normalise a raw consultation request into a DB-ready {@link ReporteFiltro}: page ≥ 1,
- * pageSize clamped to `[1,100]` (500 → 100, DB-5), `sucursalId` validated, the SD date
- * window resolved (explicit `desde`/`hasta`, or a preset when both are absent), and a
- * `desde > hasta` range rejected. Throws {@link ReporteDomainError}`(REPORTE_VALIDACION)`
- * on any transport violation so the use case can fail BEFORE running a query.
+ * Resolve the SD date window from either explicit `desde`/`hasta` or a full-period preset
+ * (used only when both ends are absent), validate the `YYYY-MM-DD` wire shape, reject a
+ * `desde > hasta` inversion, then convert to inclusive UTC bounds through the reused
+ * {@link rangoFechasAUTC} seam. Pure in `(entrada, now)` — a blank value is "not provided",
+ * NOT an invalid one; only a non-empty malformed date, an unknown preset, or an inversion
+ * throws {@link ReporteDomainError}`(REPORTE_VALIDACION)` so the caller fails BEFORE a query.
  */
-export function normalizarFiltro(
+export function resolverRangoSD(
   entrada: ReporteFiltroEntrada,
-  now: Date = new Date(),
-): ReporteFiltro {
-  const filtro: {
-    desde?: Date;
-    hasta?: Date;
-    sucursalId?: number;
-    page: number;
-    pageSize: number;
-  } = {
-    page: normalizarPage(entrada.page),
-    pageSize: normalizarPageSize(entrada.pageSize),
-  };
-
-  const sucursalId = normalizarId(entrada.sucursalId, "sucursalId");
-  if (sucursalId !== undefined) filtro.sucursalId = sucursalId;
-
-  // Resolve the SD calendar-date strings from either explicit ends or a preset. A blank
-  // value is "not provided", NOT an invalid one; only a non-empty malformed date (or a
-  // `desde > hasta` inversion) fails as REPORTE_VALIDACION.
+  now: Date,
+): { desde?: Date; hasta?: Date } {
   let desde =
     typeof entrada.desde === "string" && entrada.desde.trim() !== ""
       ? entrada.desde.trim()
@@ -234,7 +218,35 @@ export function normalizarFiltro(
     throw new ReporteDomainError(REPORTE_VALIDACION, { campo: "rango" });
   }
 
-  const rango = rangoFechasAUTC({ desde, hasta });
+  return rangoFechasAUTC({ desde, hasta });
+}
+
+/**
+ * Normalise a raw consultation request into a DB-ready {@link ReporteFiltro}: page ≥ 1,
+ * pageSize clamped to `[1,100]` (500 → 100, DB-5), `sucursalId` validated, and the SD date
+ * window resolved via the pure {@link resolverRangoSD} (explicit `desde`/`hasta`, or a
+ * preset when both are absent). Throws {@link ReporteDomainError}`(REPORTE_VALIDACION)` on
+ * any transport violation so the use case can fail BEFORE running a query.
+ */
+export function normalizarFiltro(
+  entrada: ReporteFiltroEntrada,
+  now: Date = new Date(),
+): ReporteFiltro {
+  const filtro: {
+    desde?: Date;
+    hasta?: Date;
+    sucursalId?: number;
+    page: number;
+    pageSize: number;
+  } = {
+    page: normalizarPage(entrada.page),
+    pageSize: normalizarPageSize(entrada.pageSize),
+  };
+
+  const sucursalId = normalizarId(entrada.sucursalId, "sucursalId");
+  if (sucursalId !== undefined) filtro.sucursalId = sucursalId;
+
+  const rango = resolverRangoSD(entrada, now);
   if (rango.desde !== undefined) filtro.desde = rango.desde;
   if (rango.hasta !== undefined) filtro.hasta = rango.hasta;
 

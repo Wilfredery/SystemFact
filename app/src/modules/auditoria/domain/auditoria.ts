@@ -147,6 +147,34 @@ function normalizarPageSize(pageSize: number | null | undefined): number {
 }
 
 /**
+ * Trim a transport string to a non-empty value, or `undefined` when absent, null, or
+ * whitespace-only. A blank value means "not provided", NOT an invalid one — the caller
+ * drops it rather than rejecting, so only a genuinely populated term is kept.
+ */
+function normalizarTexto(valor: string | null | undefined): string | undefined {
+  if (typeof valor !== "string") return undefined;
+  const recortado = valor.trim();
+  return recortado === "" ? undefined : recortado;
+}
+
+/**
+ * Normalise the transport `accion` facet to a domain {@link AccionAuditoria}, or
+ * `undefined` when no action filter is requested (missing/null/blank). A non-empty but
+ * unknown value is transport-invalid and throws `AUDITORIA_VALIDACION` so the caller fails
+ * before any query (AC-3).
+ */
+export function normalizarAccion(
+  value: string | null | undefined,
+): AccionAuditoria | undefined {
+  const accion = normalizarTexto(value);
+  if (accion === undefined) return undefined;
+  if (!esAccionAuditoria(accion)) {
+    throw new AuditoriaDomainError(AUDITORIA_VALIDACION, { campo: "accion" });
+  }
+  return accion;
+}
+
+/**
  * Normalise a raw consultation request into a DB-ready {@link AuditoriaFiltro}:
  * page floored to ≥1, page size clamped to `[1,100]` (500 → 100, never accepted),
  * free text trimmed and dropped when blank, ids validated as positive integers, an
@@ -168,16 +196,8 @@ export function normalizarFiltro(entrada: AuditoriaFiltroEntrada): AuditoriaFilt
     pageSize: normalizarPageSize(entrada.pageSize),
   };
 
-  if (entrada.accion !== undefined && entrada.accion !== null) {
-    const accion = entrada.accion.trim();
-    // A blank `accion` is "no filter"; only a non-empty unknown value is invalid.
-    if (accion !== "") {
-      if (!esAccionAuditoria(accion)) {
-        throw new AuditoriaDomainError(AUDITORIA_VALIDACION, { campo: "accion" });
-      }
-      filtro.accion = accion;
-    }
-  }
+  const accion = normalizarAccion(entrada.accion);
+  if (accion !== undefined) filtro.accion = accion;
 
   const usuarioId = normalizarId(entrada.usuarioId, "usuarioId");
   if (usuarioId !== undefined) filtro.usuarioId = usuarioId;
@@ -185,19 +205,13 @@ export function normalizarFiltro(entrada: AuditoriaFiltroEntrada): AuditoriaFilt
   const sucursalId = normalizarId(entrada.sucursalId, "sucursalId");
   if (sucursalId !== undefined) filtro.sucursalId = sucursalId;
 
-  const texto = typeof entrada.texto === "string" ? entrada.texto.trim() : "";
-  if (texto !== "") filtro.texto = texto;
+  const texto = normalizarTexto(entrada.texto);
+  if (texto !== undefined) filtro.texto = texto;
 
   // A blank / whitespace-only date is "not provided", not an invalid one; only a
   // non-empty but malformed SD date reaches the conversion helper and fails loud.
-  const desde =
-    typeof entrada.desde === "string" && entrada.desde.trim() !== ""
-      ? entrada.desde.trim()
-      : undefined;
-  const hasta =
-    typeof entrada.hasta === "string" && entrada.hasta.trim() !== ""
-      ? entrada.hasta.trim()
-      : undefined;
+  const desde = normalizarTexto(entrada.desde);
+  const hasta = normalizarTexto(entrada.hasta);
   const rango = rangoFechasAUTC({ desde, hasta });
   if (rango.desde !== undefined) filtro.desde = rango.desde;
   if (rango.hasta !== undefined) filtro.hasta = rango.hasta;
