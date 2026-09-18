@@ -21,11 +21,14 @@
  */
 
 import { redirect } from "next/navigation";
+import type { ReactElement } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
 import { REPORTE_NO_AUTORIZADO } from "@/modules/reportes/domain/errors";
-import { REPORTE_ID } from "@/modules/reportes/domain/catalogo";
+import { REPORTE_ID, type ReporteId } from "@/modules/reportes/domain/catalogo";
+import type { ReporteFiltroEntrada } from "@/modules/reportes/domain/reporte-filtro";
 import {
+  type ActionResult,
   consultarDashboardAction,
   consultarEstadoFacturasAction,
   consultarInventarioValorizadoAction,
@@ -88,12 +91,116 @@ export default async function ReportesPage({ searchParams }: PageProps) {
 }
 
 /**
- * Dispatches the active selection to its panel. The DASHBOARD renders its KPI tiles; the
- * slice-B OPERATIONAL fleet fetches its first page through the matching thin consult action
- * (the single server-side gate + tenant read) and renders {@link PanelOperativo} with its
- * export affordance. A not-yet-wired report renders an honest "próximamente" (no query). The
- * unauthorized/validation cases render a plain message — the server gate is authoritative, the
- * route is never hidden (DB-2).
+ * One registry row: the report's consult action (the SAME thin adapter + server-side DB-2
+ * gate the previous conditionals called) and the panel to render on a typed success. The
+ * page owns NO authorization — it only dispatches (R-QC-02).
+ */
+interface EntradaReporte {
+  readonly consultar: (
+    filtro: ReporteFiltroEntrada,
+  ) => Promise<ActionResult<unknown>>;
+  readonly render: (
+    data: unknown,
+    seleccion: SeleccionReporte,
+  ) => ReactElement;
+}
+
+/**
+ * Builds a type-safe registry row: the generic `T` (the action's success payload) is
+ * correlated with the render parameter at the call site and erased ONCE for the
+ * heterogeneous Record. Each panel keeps its own typed props, so the registry adds no casts
+ * in the panel files and moves no logic out of the server actions.
+ */
+function entrada<T>(
+  consultar: (
+    filtro: ReporteFiltroEntrada,
+  ) => Promise<ActionResult<T>>,
+  render: (data: T, seleccion: SeleccionReporte) => ReactElement,
+): EntradaReporte {
+  return {
+    consultar: consultar as EntradaReporte["consultar"],
+    render: render as EntradaReporte["render"],
+  };
+}
+
+/**
+ * The `REPORTE_ID` → { consult action, panel } registry. The operational (slice B) and
+ * financial (slice C) fleets share the {@link PanelOperativo}/{@link PanelFinanciero}
+ * discriminant; rentabilidad (D) and the fiscal ITBIS/IT-1 summaries (E) keep their own
+ * panels. DASHBOARD, the DGII 606/607/608 cards and the not-yet-wired fallback are handled
+ * OUTSIDE this map as special cases (they carry no report-filter consult).
+ */
+const REGISTRO_REPORTES: Partial<Record<ReporteId, EntradaReporte>> = {
+  [REPORTE_ID.VENTAS]: entrada(
+    consultarVentasPorPeriodoAction,
+    (pagina, seleccion) => (
+      <PanelOperativo reporte="ventas" pagina={pagina} seleccion={seleccion} />
+    ),
+  ),
+  [REPORTE_ID.PRODUCTOS]: entrada(
+    consultarProductosVendidosAction,
+    (pagina, seleccion) => (
+      <PanelOperativo reporte="productos" pagina={pagina} seleccion={seleccion} />
+    ),
+  ),
+  [REPORTE_ID.INVENTARIO]: entrada(
+    consultarInventarioValorizadoAction,
+    (pagina, seleccion) => (
+      <PanelOperativo reporte="inventario" pagina={pagina} seleccion={seleccion} />
+    ),
+  ),
+  [REPORTE_ID.FACTURAS]: entrada(
+    consultarEstadoFacturasAction,
+    (pagina, seleccion) => (
+      <PanelOperativo reporte="facturas" pagina={pagina} seleccion={seleccion} />
+    ),
+  ),
+  // Slice C — the financial fleet. A Cobrador reaching cxc is served their own-branch aging,
+  // while cxp/comparativa deny SERVER-SIDE (FIN-3); the page renders whatever the gate returns.
+  [REPORTE_ID.CXC]: entrada(
+    consultarCxcAgingAction,
+    (pagina, seleccion) => (
+      <PanelFinanciero reporte="cxc" pagina={pagina} seleccion={seleccion} />
+    ),
+  ),
+  [REPORTE_ID.CXP]: entrada(
+    consultarCxPAction,
+    (pagina, seleccion) => (
+      <PanelFinanciero reporte="cxp" pagina={pagina} seleccion={seleccion} />
+    ),
+  ),
+  [REPORTE_ID.COMPARATIVA]: entrada(
+    consultarComparativaAction,
+    (pagina, seleccion) => (
+      <PanelFinanciero reporte="comparativa" pagina={pagina} seleccion={seleccion} />
+    ),
+  ),
+  // Slice D — rentabilidad por producto (Administrador-only; the REN-3 disclaimer is in the panel).
+  [REPORTE_ID.RENTABILIDAD]: entrada(
+    consultarRentabilidadAction,
+    (pagina, seleccion) => (
+      <PanelRentabilidad pagina={pagina} seleccion={seleccion} />
+    ),
+  ),
+  // Slice E — the fiscal summaries (Administrador-only). Both render a Decimal SUMMARY fetched
+  // through the SAME gate; a non-admin is denied before any aggregate runs.
+  [REPORTE_ID.ITBIS]: entrada(consultarResumenITBISAction, (resumen, seleccion) => (
+    <PanelResumenITBIS resumen={resumen} seleccion={seleccion} />
+  )),
+  [REPORTE_ID.IT1]: entrada(consultarCasillasIT1Action, (casillas, seleccion) => (
+    <PanelCasillasIT1 casillas={casillas} seleccion={seleccion} />
+  )),
+};
+
+/**
+ * Dispatches the active selection to its panel through {@link REGISTRO_REPORTES}. The
+ * DASHBOARD renders its KPI tiles and the DGII 606/607/608 ids render their format card
+ * (a TXT download that re-runs the identical server-side gate, EXP-4) — both are special
+ * cases outside the registry. Every other report consults through its registered thin action
+ * (the single server-side gate + tenant read) and renders its typed panel or, on a refusal,
+ * a plain message. A not-yet-wired report renders an honest "próximamente" (no query). This
+ * is a DISPATCH-ONLY selection: it performs no role/company/branch check (DB-2 lives in the
+ * actions); the route is never hidden and no export control renders on a denial (EXP-4/EXP-5).
  */
 async function PanelReporte({
   seleccion,
@@ -102,104 +209,32 @@ async function PanelReporte({
 }) {
   const { reporte } = seleccion;
 
+  // DASHBOARD — the role-scoped KPI tile panel (no report filter, its own server gate).
   if (reporte === REPORTE_ID.DASHBOARD) {
     return <PanelDashboard />;
   }
 
-  if (reporte === REPORTE_ID.VENTAS) {
-    const r = await consultarVentasPorPeriodoAction(seleccion.filtro);
-    return r.ok ? (
-      <PanelOperativo reporte="ventas" pagina={r.data} seleccion={seleccion} />
-    ) : (
-      <MensajeError code={r.error.code} message={r.error.message} />
-    );
-  }
-  if (reporte === REPORTE_ID.PRODUCTOS) {
-    const r = await consultarProductosVendidosAction(seleccion.filtro);
-    return r.ok ? (
-      <PanelOperativo reporte="productos" pagina={r.data} seleccion={seleccion} />
-    ) : (
-      <MensajeError code={r.error.code} message={r.error.message} />
-    );
-  }
-  if (reporte === REPORTE_ID.INVENTARIO) {
-    const r = await consultarInventarioValorizadoAction(seleccion.filtro);
-    return r.ok ? (
-      <PanelOperativo reporte="inventario" pagina={r.data} seleccion={seleccion} />
-    ) : (
-      <MensajeError code={r.error.code} message={r.error.message} />
-    );
-  }
-  if (reporte === REPORTE_ID.FACTURAS) {
-    const r = await consultarEstadoFacturasAction(seleccion.filtro);
-    return r.ok ? (
-      <PanelOperativo reporte="facturas" pagina={r.data} seleccion={seleccion} />
-    ) : (
-      <MensajeError code={r.error.code} message={r.error.message} />
-    );
-  }
-
-  // Slice C — the financial fleet. The panel renders ONLY on a role-authorized result; a Cobrador
-  // reaching cxc is served their own-branch aging, while cxp/comparativa deny (FIN-3).
-  if (reporte === REPORTE_ID.CXC) {
-    const r = await consultarCxcAgingAction(seleccion.filtro);
-    return r.ok ? (
-      <PanelFinanciero reporte="cxc" pagina={r.data} seleccion={seleccion} />
-    ) : (
-      <MensajeError code={r.error.code} message={r.error.message} />
-    );
-  }
-  if (reporte === REPORTE_ID.CXP) {
-    const r = await consultarCxPAction(seleccion.filtro);
-    return r.ok ? (
-      <PanelFinanciero reporte="cxp" pagina={r.data} seleccion={seleccion} />
-    ) : (
-      <MensajeError code={r.error.code} message={r.error.message} />
-    );
-  }
-  if (reporte === REPORTE_ID.COMPARATIVA) {
-    const r = await consultarComparativaAction(seleccion.filtro);
-    return r.ok ? (
-      <PanelFinanciero reporte="comparativa" pagina={r.data} seleccion={seleccion} />
-    ) : (
-      <MensajeError code={r.error.code} message={r.error.message} />
-    );
-  }
-
-  // Slice D — rentabilidad por producto (Administrador-only). The panel renders ONLY on a
-  // role-authorized result and shows the REN-3 cost-basis disclaimer; a non-admin is denied.
-  if (reporte === REPORTE_ID.RENTABILIDAD) {
-    const r = await consultarRentabilidadAction(seleccion.filtro);
-    return r.ok ? (
-      <PanelRentabilidad pagina={r.data} seleccion={seleccion} />
-    ) : (
-      <MensajeError code={r.error.code} message={r.error.message} />
-    );
-  }
-
-  // Slice E — the fiscal fleet (Administrador-only). The ITBIS/IT-1 panels render a Decimal SUMMARY
-  // fetched through the SAME gate (a non-admin is denied before any aggregate); the DGII 606/607/608
-  // panels render a format card whose TXT download re-runs the identical gate server-side (EXP-4).
-  if (reporte === REPORTE_ID.ITBIS) {
-    const r = await consultarResumenITBISAction(seleccion.filtro);
-    return r.ok ? (
-      <PanelResumenITBIS resumen={r.data} seleccion={seleccion} />
-    ) : (
-      <MensajeError code={r.error.code} message={r.error.message} />
-    );
-  }
-  if (reporte === REPORTE_ID.IT1) {
-    const r = await consultarCasillasIT1Action(seleccion.filtro);
-    return r.ok ? (
-      <PanelCasillasIT1 casillas={r.data} seleccion={seleccion} />
-    ) : (
-      <MensajeError code={r.error.code} message={r.error.message} />
-    );
-  }
-  if (reporte === REPORTE_ID.DGII_606 || reporte === REPORTE_ID.DGII_607 || reporte === REPORTE_ID.DGII_608) {
+  // DGII 606/607/608 — a format card, not a consultable dataset (the TXT export re-gates server-side).
+  if (
+    reporte === REPORTE_ID.DGII_606 ||
+    reporte === REPORTE_ID.DGII_607 ||
+    reporte === REPORTE_ID.DGII_608
+  ) {
     return <PanelDgiiTxt reporte={reporte} seleccion={seleccion} />;
   }
 
+  // Registry dispatch — call the row's consult action and render its typed success/error.
+  const entradaReporte = REGISTRO_REPORTES[reporte];
+  if (entradaReporte !== undefined) {
+    const r = await entradaReporte.consultar(seleccion.filtro);
+    return r.ok ? (
+      entradaReporte.render(r.data, seleccion)
+    ) : (
+      <MensajeError code={r.error.code} message={r.error.message} />
+    );
+  }
+
+  // Not-yet-wired report — honest placeholder, no query.
   return (
     <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
       Este reporte se habilita en una entrega posterior.
