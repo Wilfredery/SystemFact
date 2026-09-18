@@ -6,6 +6,7 @@
  * that the query never crosses the tenant boundary.
  */
 
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
@@ -32,7 +33,7 @@ interface PaginadoFixture {
 
 async function seedPaginadoFixture(): Promise<PaginadoFixture> {
   const db = getHarnessDb();
-  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const suffix = randomUUID();
 
   const empresaA = await db.empresa.create({
     data: {

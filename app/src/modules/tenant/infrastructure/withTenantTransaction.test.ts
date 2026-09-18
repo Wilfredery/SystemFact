@@ -8,6 +8,7 @@
 
 import "dotenv/config";
 import assert from "node:assert";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { withTenantTransaction, NestedTenantTransactionError, type PrismaTx } from "./withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
@@ -19,7 +20,7 @@ const guc = async (tx: PrismaTx, n: string) => ((await tx.$queryRaw<Guc[]>`SELEC
 const now = () => new Date().toISOString();
 
 const createEmpresa = async () => {
-  const rnc = `WTT-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const rnc = `WTT-${randomUUID()}`;
   const [row] = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.is_bootstrap', 'true', true)`;
     await tx.$executeRaw`INSERT INTO "EMPRESA" ("nombreComercial","rnc","razonSocial","direccionFiscal","telefono","correo","logo","regimenFiscal","createdAt","updatedAt") VALUES ('WTT', ${rnc}, 'WTT', 'x', '0', 'x', '', 'NORMAL', ${now()}::timestamptz, ${now()}::timestamptz)`;

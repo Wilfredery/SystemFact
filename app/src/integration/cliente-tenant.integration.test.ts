@@ -21,6 +21,7 @@
  * the server-side decision, not a mocked return.
  */
 
+import { randomUUID } from "node:crypto";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { Decimal } from "decimal.js";
@@ -79,7 +80,7 @@ describe("cliente tenant integration (real DB)", () => {
   ): Promise<number> {
     return withTenantTransaction(ctx, async (tx) => {
       const r = await crearCliente(tx, ctx, {
-        nombre: `Cliente-${Date.now()}-${Math.random()}`,
+        nombre: `Cliente-${randomUUID()}`,
         telefono: "809-555-0000",
         direccion: "Av. 1",
         identificacionFiscal: RNC_OK,
