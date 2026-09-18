@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.8](https://github.com/Wilfredery/SystemFact/compare/v0.11.7...v0.11.8) (2026-09-18)
+
+### Refactored
+
+* **reportes,auditoria:** extract pure `resolverRangoSD(entrada, now)` (SD-range resolve/preset/validate/UTC-convert) and pure `normalizarAccion`/`normalizarTexto` trim helpers out of the two `normalizarFiltro` functions (SDD `backend-quality-polish` slice 1c — S3776 cognitive-complexity, behavior-preserving; existing filter suites stay green, no test churn) (#62 pending)
+
 ## [0.11.7](https://github.com/Wilfredery/SystemFact/compare/v0.11.6...v0.11.7) (2026-09-18)
 
 ### Refactored
