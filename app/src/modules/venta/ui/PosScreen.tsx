@@ -51,7 +51,7 @@ type Mensaje =
 /** A stock warning enriched with the cart product name for display only. */
 type AvisoStock = StockWarning & { nombre: string };
 
-export function PosScreen({ esAdmin }: { esAdmin: boolean }) {
+export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
   const [lineas, setLineas] = useState<readonly CarroLinea[]>([]);
   const [cliente, setCliente] = useState<SeleccionCliente>({
     id: null,
@@ -217,6 +217,17 @@ export function PosScreen({ esAdmin }: { esAdmin: boolean }) {
     setConfirmandoId(null);
   }
 
+  // Save-button caption: flat if/else instead of the previous nested ternary
+  // (S3358). Same state → same label; no behavior change.
+  let etiquetaBotonGuardar: string;
+  if (guardando) {
+    etiquetaBotonGuardar = "Saving…";
+  } else if (editandoId === null) {
+    etiquetaBotonGuardar = "Save draft";
+  } else {
+    etiquetaBotonGuardar = `Update draft #${editandoId}`;
+  }
+
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 md:p-6">
       <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
@@ -304,11 +315,7 @@ export function PosScreen({ esAdmin }: { esAdmin: boolean }) {
               disabled={lineas.length === 0 || guardando}
               className="h-11 rounded-lg bg-indigo-600 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {guardando
-                ? "Saving…"
-                : editandoId === null
-                  ? "Save draft"
-                  : `Update draft #${editandoId}`}
+              {etiquetaBotonGuardar}
             </button>
             {editandoId !== null && (
               <button

@@ -222,12 +222,14 @@ function FilaCobro({
   readonly onAbrir: (id: Abierto) => void;
   readonly onCobrado: () => Promise<void> | void;
 }) {
-  const badge =
-    tono === "mora"
-      ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
-      : tono === "parcial"
-        ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-        : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+  // Lookup instead of a nested ternary (S3358); `tono` is exhaustively typed
+  // `"pendiente" | "parcial" | "mora"`, so the map covers every value the old
+  // `else` branch handled. Rendering output is unchanged.
+  const badge = {
+    mora: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+    parcial: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+    pendiente: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+  }[tono];
 
   return (
     <li data-testid={`cxc-fila-${fila.facturaId}`} className="py-2">

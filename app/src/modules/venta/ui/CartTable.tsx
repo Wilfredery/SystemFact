@@ -15,10 +15,10 @@ export function CartTable({
   onPrecioChange,
   onRemove,
 }: {
-  lineas: readonly LineaPreview[];
-  onCantidadChange: (productoId: number, valor: string) => void;
-  onPrecioChange: (productoId: number, valor: string) => void;
-  onRemove: (productoId: number) => void;
+  readonly lineas: readonly LineaPreview[];
+  readonly onCantidadChange: (productoId: number, valor: string) => void;
+  readonly onPrecioChange: (productoId: number, valor: string) => void;
+  readonly onRemove: (productoId: number) => void;
 }) {
   return (
     <section aria-label="Cart" className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">

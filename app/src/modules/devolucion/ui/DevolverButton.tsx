@@ -17,7 +17,7 @@
 import { useState } from "react";
 import { ReturnForm } from "./ReturnForm";
 
-export function DevolverButton({ ventaId }: { ventaId: number }) {
+export function DevolverButton({ ventaId }: { readonly ventaId: number }) {
   const [abierto, setAbierto] = useState(false);
   // While a dialog toggle is in flight (a click already processed), the button
   // stays disabled so a same-cycle double event cannot flip it twice.

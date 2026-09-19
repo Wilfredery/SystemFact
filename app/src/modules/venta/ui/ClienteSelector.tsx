@@ -30,8 +30,8 @@ export function ClienteSelector({
   value,
   onChange,
 }: {
-  value: SeleccionCliente;
-  onChange: (s: SeleccionCliente) => void;
+  readonly value: SeleccionCliente;
+  readonly onChange: (s: SeleccionCliente) => void;
 }) {
   const [clientes, setClientes] = useState<ClienteOpcion[]>([]);
   const [registroAbierto, setRegistroAbierto] = useState(false);
