@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.15](https://github.com/Wilfredery/SystemFact/compare/v0.11.14...v0.11.15) (2026-09-18)
+
+### Refactored
+
+* **ui:** mechanical quality-polish batch (SDD `backend-quality-polish` stage 5a) - `readonly` prop typing across the 11 venta/devolucion/login-layout component prop objects (S6759, type-only), `formatearMonto` thousands-grouping regex in `venta/ui/carro.ts` replaced with a pinned `en-US` `Intl.NumberFormat` plus a colocated `formatearMonto.test.ts` behavioural lock (S8786, presentation-only; the provably-redundant `dec === "00"` branch dropped), two nested ternaries flattened to an exhaustive `tono` badge lookup (`cobros/ui/CxcBoardScreen.tsx`) and a save-caption if/else (`venta/ui/PosScreen.tsx`) (S3358), and `venta/ui/DiscountPanel.tsx` label text wrapped in `<span>` to match the codebase's own label convention (S6772); no behaviour change - 945 unit tests green (937 baseline + 8 lock tests), `tsc --noEmit` and lint clean
+
 ## [0.11.14](https://github.com/Wilfredery/SystemFact/compare/v0.11.13...v0.11.14) (2026-09-18)
 
 ### Chores
