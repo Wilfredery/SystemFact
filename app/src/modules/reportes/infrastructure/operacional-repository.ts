@@ -77,6 +77,58 @@ function paramVentana(ventana: VentanaFiltro): {
 }
 
 /**
+ * Named SQL fragment — the `LIMIT`/`OFFSET` page tail. When `pag` is present the
+ * aggregate is paged (25-default / 100-clamp screen); when absent it returns the
+ * FULL filtered set (the CSV export). Both paths share this one fragment so the
+ * predicate is byte-identical and screen totals agree with exports by
+ * construction (EXP-2). Named by business intent; extracted from the repeated
+ * raw `pag ? Prisma.sql`...` : Prisma.empty` tail (S4624).
+ */
+export function limitePaginaSql(pag?: Paginacion): Prisma.Sql {
+  return pag ? Prisma.sql`LIMIT ${pag.limit} OFFSET ${pag.offset}` : Prisma.empty;
+}
+
+/**
+ * Named SQL fragment — the confirmed-sale tenant predicate for a statement whose
+ * `VENTA` relation is aliased `v` (both the direct reads and the
+ * `DETALLE_VENTA ⋈ VENTA` reads share this alias). Pins `empresaId`, keeps only
+ * `CONFIRMADA` rows, then adds the OPTIONAL Santo-Domingo date window and
+ * branch narrowing: a `null` bound drops that predicate but NEVER the tenant
+ * pin (DB-3/DB-5). Used identically by the day rows, day count, per-product
+ * ranking, its count and its totals so screen and export never drift (EXP-2);
+ * extracted from the repeated raw `WHERE` (S4624). Bind order is preserved:
+ * empresaId, desde×2, hasta×2, sucursal×2.
+ */
+function whereVentaConfirmadaEnTx(
+  ctx: TenantCtx,
+  ventana: VentanaFiltro,
+): Prisma.Sql {
+  const { sucursal, desde, hasta } = paramVentana(ventana);
+  return Prisma.sql`
+    WHERE v."empresaId" = ${ctx.empresaId}
+      AND v."estado" = 'CONFIRMADA'
+      AND (${desde}::timestamptz IS NULL OR v."fecha" >= ${desde})
+      AND (${hasta}::timestamptz IS NULL OR v."fecha" <= ${hasta})
+      AND (${sucursal}::int IS NULL OR v."sucursalId" = ${sucursal})`;
+}
+
+/**
+ * Named SQL fragment — the valorized-inventory tenant predicate. `INVENTARIO`
+ * (`i`) is RLS-anchored through its `SUCURSAL` (`s`), so we pin `empresaId` via
+ * the sucursal join and add the OPTIONAL explicit branch filter (a `null` bound
+ * drops the branch narrowing, never the company pin). Used by both the detail
+ * read and its count (S4624); bind order empresaId, sucursal×2.
+ */
+function whereInventarioPorEmpresaSucursal(
+  ctx: TenantCtx,
+  sucursal: number | null,
+): Prisma.Sql {
+  return Prisma.sql`
+    WHERE s."empresaId" = ${ctx.empresaId}
+      AND (${sucursal}::int IS NULL OR i."sucursalId" = ${sucursal})`;
+}
+
+/**
  * OP-1 — confirmed sales grouped by SANTO DOMINGO calendar day. `fecha AT TIME ZONE
  * 'America/Santo_Domingo'` lets the DB's IANA timezone database (a dedicated zone library,
  * AGENTS.md "no manual hour arithmetic") resolve the SD wall clock; the `::date` cast buckets
@@ -90,21 +142,16 @@ export async function ventasPorPeriodoEnTx(
   ventana: VentanaFiltro,
   pag?: Paginacion,
 ): Promise<VentasPeriodoFila[]> {
-  const { sucursal, desde, hasta } = paramVentana(ventana);
   return tx.$queryRaw<VentasPeriodoFila[]>`
     SELECT
       to_char((v."fecha" AT TIME ZONE 'America/Santo_Domingo')::date, 'YYYY-MM-DD') AS "fechaSD",
       COALESCE(SUM(v."total"), 0)::numeric(12, 2)::text AS "neto",
       COUNT(*)::int                                     AS "operaciones"
     FROM "VENTA" v
-    WHERE v."empresaId" = ${ctx.empresaId}
-      AND v."estado" = 'CONFIRMADA'
-      AND (${desde}::timestamptz IS NULL OR v."fecha" >= ${desde})
-      AND (${hasta}::timestamptz IS NULL OR v."fecha" <= ${hasta})
-      AND (${sucursal}::int IS NULL OR v."sucursalId" = ${sucursal})
+    ${whereVentaConfirmadaEnTx(ctx, ventana)}
     GROUP BY 1
     ORDER BY 1 DESC
-    ${pag ? Prisma.sql`LIMIT ${pag.limit} OFFSET ${pag.offset}` : Prisma.empty}`;
+    ${limitePaginaSql(pag)}`;
 }
 
 /** Number of distinct SD calendar days with confirmed sales in the filter (the row total). */
@@ -113,16 +160,11 @@ export async function contarDiasVentasEnTx(
   ctx: TenantCtx,
   ventana: VentanaFiltro,
 ): Promise<number> {
-  const { sucursal, desde, hasta } = paramVentana(ventana);
   const [fila] = await tx.$queryRaw<{ total: number }[]>`
     SELECT COUNT(*)::int AS "total" FROM (
       SELECT DISTINCT (v."fecha" AT TIME ZONE 'America/Santo_Domingo')::date AS d
       FROM "VENTA" v
-      WHERE v."empresaId" = ${ctx.empresaId}
-        AND v."estado" = 'CONFIRMADA'
-        AND (${desde}::timestamptz IS NULL OR v."fecha" >= ${desde})
-        AND (${hasta}::timestamptz IS NULL OR v."fecha" <= ${hasta})
-        AND (${sucursal}::int IS NULL OR v."sucursalId" = ${sucursal})
+      ${whereVentaConfirmadaEnTx(ctx, ventana)}
     ) s`;
   return fila?.total ?? 0;
 }
@@ -140,7 +182,6 @@ export async function productosVendidosEnTx(
   ventana: VentanaFiltro,
   pag?: Paginacion,
 ): Promise<ProductoVendidoLeido[]> {
-  const { sucursal, desde, hasta } = paramVentana(ventana);
   return tx.$queryRaw<ProductoVendidoLeido[]>`
     SELECT
       p."id"::int                                     AS "productoId",
@@ -150,14 +191,10 @@ export async function productosVendidosEnTx(
     FROM "DETALLE_VENTA" d
     JOIN "VENTA" v    ON v."id" = d."ventaId"
     JOIN "PRODUCTO" p ON p."id" = d."productoId"
-    WHERE v."empresaId" = ${ctx.empresaId}
-      AND v."estado" = 'CONFIRMADA'
-      AND (${desde}::timestamptz IS NULL OR v."fecha" >= ${desde})
-      AND (${hasta}::timestamptz IS NULL OR v."fecha" <= ${hasta})
-      AND (${sucursal}::int IS NULL OR v."sucursalId" = ${sucursal})
+    ${whereVentaConfirmadaEnTx(ctx, ventana)}
     GROUP BY p."id", p."nombre"
     ORDER BY SUM(d."cantidad") DESC, SUM(d."subtotalLinea") DESC, p."id" ASC
-    ${pag ? Prisma.sql`LIMIT ${pag.limit} OFFSET ${pag.offset}` : Prisma.empty}`;
+    ${limitePaginaSql(pag)}`;
 }
 
 /** Number of distinct products sold in the window (the row total for pagination). */
@@ -166,17 +203,12 @@ export async function contarProductosVendidosEnTx(
   ctx: TenantCtx,
   ventana: VentanaFiltro,
 ): Promise<number> {
-  const { sucursal, desde, hasta } = paramVentana(ventana);
   const [fila] = await tx.$queryRaw<{ total: number }[]>`
     SELECT COUNT(*)::int AS "total" FROM (
       SELECT d."productoId"
       FROM "DETALLE_VENTA" d
       JOIN "VENTA" v ON v."id" = d."ventaId"
-      WHERE v."empresaId" = ${ctx.empresaId}
-        AND v."estado" = 'CONFIRMADA'
-        AND (${desde}::timestamptz IS NULL OR v."fecha" >= ${desde})
-        AND (${hasta}::timestamptz IS NULL OR v."fecha" <= ${hasta})
-        AND (${sucursal}::int IS NULL OR v."sucursalId" = ${sucursal})
+      ${whereVentaConfirmadaEnTx(ctx, ventana)}
       GROUP BY d."productoId"
     ) s`;
   return fila?.total ?? 0;
@@ -188,18 +220,13 @@ export async function totalesProductosVendidosEnTx(
   ctx: TenantCtx,
   ventana: VentanaFiltro,
 ): Promise<TotalesProductosLeidos> {
-  const { sucursal, desde, hasta } = paramVentana(ventana);
   const [fila] = await tx.$queryRaw<{ totalUnidades: string; totalMonto: string }[]>`
     SELECT
       COALESCE(SUM(d."cantidad"), 0)::numeric(12, 3)::text      AS "totalUnidades",
       COALESCE(SUM(d."subtotalLinea"), 0)::numeric(12, 2)::text AS "totalMonto"
     FROM "DETALLE_VENTA" d
     JOIN "VENTA" v ON v."id" = d."ventaId"
-    WHERE v."empresaId" = ${ctx.empresaId}
-      AND v."estado" = 'CONFIRMADA'
-      AND (${desde}::timestamptz IS NULL OR v."fecha" >= ${desde})
-      AND (${hasta}::timestamptz IS NULL OR v."fecha" <= ${hasta})
-      AND (${sucursal}::int IS NULL OR v."sucursalId" = ${sucursal})`;
+    ${whereVentaConfirmadaEnTx(ctx, ventana)}`;
   return {
     totalUnidades: fila?.totalUnidades ?? "0.000",
     totalMonto: fila?.totalMonto ?? "0.00",
@@ -234,10 +261,9 @@ export async function inventarioValorizadoEnTx(
     FROM "INVENTARIO" i
     JOIN "PRODUCTO" p ON p."id" = i."productoId"
     JOIN "SUCURSAL" s ON s."id" = i."sucursalId"
-    WHERE s."empresaId" = ${ctx.empresaId}
-      AND (${sucursal}::int IS NULL OR i."sucursalId" = ${sucursal})
+    ${whereInventarioPorEmpresaSucursal(ctx, sucursal)}
     ORDER BY (i."cantidad" * p."costoPromedio") DESC, i."sucursalId" ASC, p."id" ASC
-    ${pag ? Prisma.sql`LIMIT ${pag.limit} OFFSET ${pag.offset}` : Prisma.empty}`;
+    ${limitePaginaSql(pag)}`;
 }
 
 /** Number of per-branch stock lines in the (branch) filter (the row total for pagination). */
@@ -251,8 +277,7 @@ export async function contarInventarioValorizadoEnTx(
     SELECT COUNT(*)::int AS "total"
     FROM "INVENTARIO" i
     JOIN "SUCURSAL" s ON s."id" = i."sucursalId"
-    WHERE s."empresaId" = ${ctx.empresaId}
-      AND (${sucursal}::int IS NULL OR i."sucursalId" = ${sucursal})`;
+    ${whereInventarioPorEmpresaSucursal(ctx, sucursal)}`;
   return fila?.total ?? 0;
 }
 
