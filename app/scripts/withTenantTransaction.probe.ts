@@ -1,8 +1,14 @@
 /**
- * Integration test for withTenantTransaction.
+ * Standalone GUC/RLS probe for withTenantTransaction.
  *
- * REQUIRES: Local Postgres running with DATABASE_URL set.
- * RUN VIA: `npx tsx src/modules/tenant/infrastructure/withTenantTransaction.test.ts`
+ * Lives in app/scripts/ on purpose: Jest ignores the directory (see
+ * jest.config.js) and it is outside Sonar sources, so the real Postgres
+ * probe is not mistaken for a unit test (S2187). It exercises the happy-path
+ * tenant GUCs + cross-tenant RLS, the rollback GUC revert, and nested-call
+ * rejection against a live database.
+ *
+ * REQUIRES: Local Postgres running with DATABASE_URL set (e.g. sf-postgres).
+ * RUN VIA: `pnpm probe:tenant` (tsx scripts/withTenantTransaction.probe.ts).
  * NOT via: `pnpm test` (Jest CJS/ESM gap for Prisma).
  */
 
@@ -10,7 +16,7 @@ import "dotenv/config";
 import assert from "node:assert";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { withTenantTransaction, NestedTenantTransactionError, type PrismaTx } from "./withTenantTransaction";
+import { withTenantTransaction, NestedTenantTransactionError, type PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 
 type Guc = { v: string | null };
