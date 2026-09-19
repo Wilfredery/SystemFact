@@ -12,7 +12,7 @@ import { useState, type FormEvent } from "react";
 import { listarProductosAction } from "@/modules/producto/http/actions";
 import type { ProductoOpcion } from "./carro";
 
-export function ProductSearch({ onAdd }: { onAdd: (p: ProductoOpcion) => void }) {
+export function ProductSearch({ onAdd }: { readonly onAdd: (p: ProductoOpcion) => void }) {
   const [termino, setTermino] = useState("");
   const [resultados, setResultados] = useState<ProductoOpcion[]>([]);
   const [buscando, setBuscando] = useState(false);

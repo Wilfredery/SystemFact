@@ -46,8 +46,8 @@ export function ReturnForm({
   ventaId,
   onClose,
 }: {
-  ventaId: number;
-  onClose: () => void;
+  readonly ventaId: number;
+  readonly onClose: () => void;
 }) {
   const [cargando, setCargando] = useState(true);
   const [lineas, setLineas] = useState<readonly LineaFormulario[]>([]);

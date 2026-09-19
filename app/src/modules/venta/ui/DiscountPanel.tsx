@@ -14,8 +14,8 @@ export function DiscountPanel({
   descuento,
   onChange,
 }: {
-  descuento: Descuento;
-  onChange: (d: Descuento) => void;
+  readonly descuento: Descuento;
+  readonly onChange: (d: Descuento) => void;
 }) {
   const esPorcentaje = descuento.descuentoTipo === DESCUENTO_TIPO.PORCENTAJE;
   return (
@@ -23,7 +23,7 @@ export function DiscountPanel({
       <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Header discount (admin)</h2>
       <div className="flex items-end gap-2">
         <label className="text-xs text-zinc-600 dark:text-zinc-400">
-          Type
+          <span>Type</span>
           <select
             aria-label="Discount type"
             value={descuento.descuentoTipo}
@@ -40,7 +40,7 @@ export function DiscountPanel({
           </select>
         </label>
         <label className="text-xs text-zinc-600 dark:text-zinc-400">
-          Value
+          <span>Value</span>
           <input
             type="text"
             inputMode="decimal"

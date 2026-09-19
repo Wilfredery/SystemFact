@@ -41,14 +41,14 @@ export function DraftList({
   onCancel,
   onConfirm,
 }: {
-  items: readonly BorradorFila[];
-  cargando: boolean;
-  editandoId: number | null;
+  readonly items: readonly BorradorFila[];
+  readonly cargando: boolean;
+  readonly editandoId: number | null;
   /** Sale id whose confirm is in flight; its button is disabled (single-shot). */
-  confirmandoId: number | null;
-  onLoad: (id: number) => void;
-  onCancel: (id: number) => void;
-  onConfirm: (id: number) => void;
+  readonly confirmandoId: number | null;
+  readonly onLoad: (id: number) => void;
+  readonly onCancel: (id: number) => void;
+  readonly onConfirm: (id: number) => void;
 }) {
   return (
     <section aria-label="My drafts" className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">

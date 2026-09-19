@@ -169,11 +169,18 @@ export function calcularVistaPrevia(
 
 const MONTO_RE = /^(\d+)(\.(\d{1,2}))?$/;
 
+// Presentation-only en-US grouping. The locale is pinned so the thousands
+// separator stays a comma regardless of the server default; the decimal part is
+// appended verbatim below so the rendered value never depends on locale decimal
+// handling. The integer part is a plain digit run (Decimal(12,2) → ≤10 digits),
+// so Number() is exact for every in-domain input.
+const MONTO_AGRUPADOR = new Intl.NumberFormat("en-US", { useGrouping: true });
+
 /** Presentation-only grouping of a fixed-point string: `1234.5` → `1,234.50`. */
 export function formatearMonto(valor: string): string {
   const m = MONTO_RE.exec(valor.trim());
   if (m === null) return valor;
-  const entero = m[1].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const entero = MONTO_AGRUPADOR.format(Number(m[1]));
   const dec = (m[3] ?? "").padEnd(2, "0");
-  return dec === "00" && !valor.includes(".") ? `${entero}.00` : `${entero}.${dec}`;
+  return `${entero}.${dec}`;
 }
