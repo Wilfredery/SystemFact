@@ -1,5 +1,10 @@
 # Changelog
 
+# [0.11.17](https://github.com/Wilfredery/SystemFact/compare/v0.11.16...v0.11.17) (2026-09-19)
+
+### Documentation
+
+* **sdd:** archive backend-quality-polish — canonical backend-code-quality spec + final gate report (8-PR chain, 63→28 issues, 0 BLOCKER/CRITICAL, dup 1.0%) (#71 pending)
 ## [0.11.16](https://github.com/Wilfredery/SystemFact/compare/v0.11.15...v0.11.16) (2026-09-19)
 
 ### Refactored
@@ -16,55 +21,55 @@
 
 ### Chores
 
-* **deps:** override vulnerable prisma transitive bundles (SDD `backend-quality-polish` stage 4, R-QC-03) — `lodash` 4.17.21→4.18.1, `deepmerge-ts` 7.1.5→8.0.2 and `mysql2` 3.15.3→3.24.4 arrive only inside the `prisma@7.10.0` bundle and are pinned by prisma's own ranges, so they are forced to their GHSA-patched floors via `app/pnpm-workspace.yaml` `overrides` (pnpm 11+ ignores `package.json#pnpm.overrides`); Prisma is already at the newest compatible 7.x (8.x is RC-only) so no version bump applies; the open `mysql2 >=3.22.0` floor resolves to 3.24.4, which also clears the 3.23.1 decompression-bomb advisory; verified `prisma validate`/`generate` pass, `pnpm audit --prod` = 0, 937 unit + 195 integration tests green, tsc/lint clean
+* **deps:** override vulnerable prisma transitive bundles (SDD `backend-quality-polish` stage 4, R-QC-03) â€” `lodash` 4.17.21â†’4.18.1, `deepmerge-ts` 7.1.5â†’8.0.2 and `mysql2` 3.15.3â†’3.24.4 arrive only inside the `prisma@7.10.0` bundle and are pinned by prisma's own ranges, so they are forced to their GHSA-patched floors via `app/pnpm-workspace.yaml` `overrides` (pnpm 11+ ignores `package.json#pnpm.overrides`); Prisma is already at the newest compatible 7.x (8.x is RC-only) so no version bump applies; the open `mysql2 >=3.22.0` floor resolves to 3.24.4, which also clears the 3.23.1 decompression-bomb advisory; verified `prisma validate`/`generate` pass, `pnpm audit --prod` = 0, 937 unit + 195 integration tests green, tsc/lint clean
 
 ## [0.11.13](https://github.com/Wilfredery/SystemFact/compare/v0.11.12...v0.11.13) (2026-09-18)
 
 ### Tests
 
-* **quality-polish:** wire honest real-database integration coverage into the Sonar lab (SDD `backend-quality-polish` slice 3) — add a `pnpm coverage:integration` script (`test:integration` + `--coverage --coverageReporters=lcov --coverageDirectory=coverage-integration`) and scope `jest.integration.config.js` `collectCoverageFrom` to backend `src/**` sources only (excluding the generated Prisma client, the integration/test-support harnesses and the Next.js `src/app/**` pages, which the `node`-env integration run cannot instrument), so the emitted `coverage-integration/lcov.info` merges with the unit lcov via a comma-separated `sonar.javascript.lcov.reportPaths` (documented in `app/README.md`); test-DB `DATABASE_URL` still comes from the git-ignored `app/.env.integration` (no secrets committed) and no application-code smell is touched (verified: 937 unit + 195 integration tests, `tsc --noEmit` and lint green)
+* **quality-polish:** wire honest real-database integration coverage into the Sonar lab (SDD `backend-quality-polish` slice 3) â€” add a `pnpm coverage:integration` script (`test:integration` + `--coverage --coverageReporters=lcov --coverageDirectory=coverage-integration`) and scope `jest.integration.config.js` `collectCoverageFrom` to backend `src/**` sources only (excluding the generated Prisma client, the integration/test-support harnesses and the Next.js `src/app/**` pages, which the `node`-env integration run cannot instrument), so the emitted `coverage-integration/lcov.info` merges with the unit lcov via a comma-separated `sonar.javascript.lcov.reportPaths` (documented in `app/README.md`); test-DB `DATABASE_URL` still comes from the git-ignored `app/.env.integration` (no secrets committed) and no application-code smell is touched (verified: 937 unit + 195 integration tests, `tsc --noEmit` and lint green)
 
 ## [0.11.12](https://github.com/Wilfredery/SystemFact/compare/v0.11.11...v0.11.12) (2026-09-18)
 
 ### Refactored
 
-* **tenant:** relocate the `withTenantTransaction` GUC/RLS integration probe out of the Jest/Sonar source tree to `app/scripts/withTenantTransaction.probe.ts` (SDD `backend-quality-polish` slice 2) so the tsx-only probe is no longer flagged as a source-less test (S2187); imports rewritten to `@/modules/...`, `pnpm probe:tenant` script added, the now-redundant per-file Jest exclusion dropped (`scripts/` stays excluded), and the sibling `-options.test` header updated to the new path — no `.itest.ts` rename; GUC behavior coverage is unchanged (the mocked timeout/`set_config`-failure cases and the live-probe assertions both stay)
+* **tenant:** relocate the `withTenantTransaction` GUC/RLS integration probe out of the Jest/Sonar source tree to `app/scripts/withTenantTransaction.probe.ts` (SDD `backend-quality-polish` slice 2) so the tsx-only probe is no longer flagged as a source-less test (S2187); imports rewritten to `@/modules/...`, `pnpm probe:tenant` script added, the now-redundant per-file Jest exclusion dropped (`scripts/` stays excluded), and the sibling `-options.test` header updated to the new path â€” no `.itest.ts` rename; GUC behavior coverage is unchanged (the mocked timeout/`set_config`-failure cases and the live-probe assertions both stay)
 
 ## [0.11.11](https://github.com/Wilfredery/SystemFact/compare/v0.11.10...v0.11.11) (2026-09-18)
 
 ### Refactored
 
-* **quality-polish:** pass-2 complexity split of 5 updater/normalizer functions so every one clears the Sonar S3776 ≤15 cognitive-complexity ceiling — `actualizarProducto` 25→10 (pure `validarInvariantsFiscales` + async `sondarIntegridadReferencial`), `actualizarProveedor` 23→13 (pure `prepararPatchProveedor`/`resolverRncFinalSeguro` + async `sondaRncDuplicado` + `calcularDifAuditoria`, row guards inline to avoid non-null assertions), `actualizarCliente` 21→12 (pure `prepararValidacionCliente` + async `sondaFiscalDuplicada` + `calcularDifAuditoria`), `resolverRangoSD` 18→8 (`resolverPresetFechas` + `validarRangoPersonalizado` + `normalizarFechaCruda`, error precedence unchanged) and `confirmarVenta` 16→15 (PRE-consume pure `resolverRechazoCredito`; the consume→flip→invoice→salidas/cobro R-V15 chain stays inline and ordered) (SDD `backend-quality-polish` slice 1f — behavior-preserving: the 937-test unit suite and the confirmar/cliente/reportes integration suites pass with zero golden or characterization churn)
+* **quality-polish:** pass-2 complexity split of 5 updater/normalizer functions so every one clears the Sonar S3776 â‰¤15 cognitive-complexity ceiling â€” `actualizarProducto` 25â†’10 (pure `validarInvariantsFiscales` + async `sondarIntegridadReferencial`), `actualizarProveedor` 23â†’13 (pure `prepararPatchProveedor`/`resolverRncFinalSeguro` + async `sondaRncDuplicado` + `calcularDifAuditoria`, row guards inline to avoid non-null assertions), `actualizarCliente` 21â†’12 (pure `prepararValidacionCliente` + async `sondaFiscalDuplicada` + `calcularDifAuditoria`), `resolverRangoSD` 18â†’8 (`resolverPresetFechas` + `validarRangoPersonalizado` + `normalizarFechaCruda`, error precedence unchanged) and `confirmarVenta` 16â†’15 (PRE-consume pure `resolverRechazoCredito`; the consumeâ†’flipâ†’invoiceâ†’salidas/cobro R-V15 chain stays inline and ordered) (SDD `backend-quality-polish` slice 1f â€” behavior-preserving: the 937-test unit suite and the confirmar/cliente/reportes integration suites pass with zero golden or characterization churn)
 
 ## [0.11.10](https://github.com/Wilfredery/SystemFact/compare/v0.11.9...v0.11.10) (2026-09-18)
 
 ### Refactored
 
-* **venta,devolucion:** extract pure pre-consume helpers `verificarDisponibilidadPreNcf` (R-V15 hard stock-preview predicate) and `resolverLineasContraVentaOriginal` (R-D5 original-line freeze) with colocated unit tests; close both S3735 `void` findings (drop the unused NCF `secuencial` capture in `confirmarVenta`; explicit if-and-return guard replaces the unreachable `void gate` dismissal in `cancelarVentaConfirmada`) and fix S6582 on the factura guard via optional chaining (SDD `backend-quality-polish` slice 1e — behavior-preserving; the consume→flip→invoice→salidas/cobro ordering stays inline and ordered, the confirmar/devolucion and cancelar-confirmada integration suites pass unmodified)
+* **venta,devolucion:** extract pure pre-consume helpers `verificarDisponibilidadPreNcf` (R-V15 hard stock-preview predicate) and `resolverLineasContraVentaOriginal` (R-D5 original-line freeze) with colocated unit tests; close both S3735 `void` findings (drop the unused NCF `secuencial` capture in `confirmarVenta`; explicit if-and-return guard replaces the unreachable `void gate` dismissal in `cancelarVentaConfirmada`) and fix S6582 on the factura guard via optional chaining (SDD `backend-quality-polish` slice 1e â€” behavior-preserving; the consumeâ†’flipâ†’invoiceâ†’salidas/cobro ordering stays inline and ordered, the confirmar/devolucion and cancelar-confirmada integration suites pass unmodified)
 
 ## [0.11.9](https://github.com/Wilfredery/SystemFact/compare/v0.11.8...v0.11.9) (2026-09-18)
 
 ### Refactored
 
-* **reportes:** dispatch-only `REPORTE_ID — {consultar, Panel}` registry + single dispatch in the `/reportes` page, replacing the 10 per-report action+Panel conditionals (SDD `backend-quality-polish` slice 1d — S3776 cognitive-complexity, behavior-preserving; authorization stays in the server actions, DB-2 integration suites untouched)
+* **reportes:** dispatch-only `REPORTE_ID â€” {consultar, Panel}` registry + single dispatch in the `/reportes` page, replacing the 10 per-report action+Panel conditionals (SDD `backend-quality-polish` slice 1d â€” S3776 cognitive-complexity, behavior-preserving; authorization stays in the server actions, DB-2 integration suites untouched)
 
 ## [0.11.8](https://github.com/Wilfredery/SystemFact/compare/v0.11.7...v0.11.8) (2026-09-18)
 
 ### Refactored
 
-* **reportes,auditoria:** extract pure `resolverRangoSD(entrada, now)` (SD-range resolve/preset/validate/UTC-convert) and pure `normalizarAccion`/`normalizarTexto` trim helpers out of the two `normalizarFiltro` functions (SDD `backend-quality-polish` slice 1c — S3776 cognitive-complexity, behavior-preserving; existing filter suites stay green, no test churn) (#62 pending)
+* **reportes,auditoria:** extract pure `resolverRangoSD(entrada, now)` (SD-range resolve/preset/validate/UTC-convert) and pure `normalizarAccion`/`normalizarTexto` trim helpers out of the two `normalizarFiltro` functions (SDD `backend-quality-polish` slice 1c â€” S3776 cognitive-complexity, behavior-preserving; existing filter suites stay green, no test churn) (#62 pending)
 
 ## [0.11.7](https://github.com/Wilfredery/SystemFact/compare/v0.11.6...v0.11.7) (2026-09-18)
 
 ### Refactored
 
-* **venta,proveedor:** decompose `prepararLineasVenta` into pure `validarPrecondicionesLineas`/`construirLineasPersistibles`/`colectarWarningsStock` + async `validarDescuentosAutorizadosYTopes`, and extract pure `construirPatchProveedor`/`resolverRncFinal` (SDD `backend-quality-polish` slice 1b — S3776 cognitive-complexity, behavior-preserving; colocated discount-branch unit tests added)
+* **venta,proveedor:** decompose `prepararLineasVenta` into pure `validarPrecondicionesLineas`/`construirLineasPersistibles`/`colectarWarningsStock` + async `validarDescuentosAutorizadosYTopes`, and extract pure `construirPatchProveedor`/`resolverRncFinal` (SDD `backend-quality-polish` slice 1b â€” S3776 cognitive-complexity, behavior-preserving; colocated discount-branch unit tests added)
 
 ## [0.11.6](https://github.com/Wilfredery/SystemFact/compare/v0.11.5...v0.11.6) (2026-09-18)
 
 ### Chores
 
-* **agents:** codify release conventions — every PR carries its own version bump, semver `refactor:`/`test:` → PATCH, UTF-8 BOM rule for machine-consumed files (#59 CI root cause)
+* **agents:** codify release conventions â€” every PR carries its own version bump, semver `refactor:`/`test:` â†’ PATCH, UTF-8 BOM rule for machine-consumed files (#59 CI root cause)
 
 ## [0.11.5](https://github.com/Wilfredery/SystemFact/compare/v0.11.4...v0.11.5) (2026-09-18)
 
@@ -87,40 +92,40 @@
 
 ### Documentation
 
-* **sdd:** archive fase-7b-reportes â€” 6 canonical specs synced + chain close report (#54) ([v0.11.2](https://github.com/Wilfredery/SystemFact/releases/tag/v0.11.2))
+* **sdd:** archive fase-7b-reportes Ã¢â‚¬â€ 6 canonical specs synced + chain close report (#54) ([v0.11.2](https://github.com/Wilfredery/SystemFact/releases/tag/v0.11.2))
 
 ## [0.11.1](https://github.com/Wilfredery/SystemFact/compare/v0.11.0...v0.11.1) (2026-09-17)
 
 ### Chores
 
-* release 0.11.0 â€” package.json bump 0.5.0 â†’ 0.11.0, manifest and CHANGELOG backfill (#53) ([v0.11.1](https://github.com/Wilfredery/SystemFact/releases/tag/v0.11.1))
+* release 0.11.0 Ã¢â‚¬â€ package.json bump 0.5.0 Ã¢â€ â€™ 0.11.0, manifest and CHANGELOG backfill (#53) ([v0.11.1](https://github.com/Wilfredery/SystemFact/releases/tag/v0.11.1))
 
 ## [0.11.0](https://github.com/Wilfredery/SystemFact/compare/v0.10.0...v0.11.0) (2026-09-17)
 
 ### Features
 
-* **reportes:** slice E â€” IT-1 fiscal summary + DGII 606/607/608 TXT exports (#52): signed per-period ITBIS summary + IT-1 casilla self-check; DGII fixed-width exporters 607/606/608 (DB-backed B02 threshold, deterministic cap split, en-cero, U1 encoding gates); `/reportes/exportar-txt` route, fiscal panel and actions (Fiscal Admin-only, no audit rows) ([v0.11.0](https://github.com/Wilfredery/SystemFact/releases/tag/v0.11.0))
-* **reportes:** slice D â€” per-product rentabilidad report (#51): current-cost margin math, REN-3 limitation surfaced, rentabilidad panel + CSV ([v0.10.0](https://github.com/Wilfredery/SystemFact/releases/tag/v0.10.0))
-* **reportes:** slice C â€” CxC aging, CxP and comparativa financiera (#50): ADR-017-derived balances, aging buckets, Cobrador branch-pin, cash-flow window deltas ([v0.9.0](https://github.com/Wilfredery/SystemFact/releases/tag/v0.9.0))
-* **reportes:** slice B â€” operational reports + CSV export + aggregation indexes (#49): product ranking, stock state, sales by period, inventory valuation, invoice state ([v0.8.0](https://github.com/Wilfredery/SystemFact/releases/tag/v0.8.0))
+* **reportes:** slice E Ã¢â‚¬â€ IT-1 fiscal summary + DGII 606/607/608 TXT exports (#52): signed per-period ITBIS summary + IT-1 casilla self-check; DGII fixed-width exporters 607/606/608 (DB-backed B02 threshold, deterministic cap split, en-cero, U1 encoding gates); `/reportes/exportar-txt` route, fiscal panel and actions (Fiscal Admin-only, no audit rows) ([v0.11.0](https://github.com/Wilfredery/SystemFact/releases/tag/v0.11.0))
+* **reportes:** slice D Ã¢â‚¬â€ per-product rentabilidad report (#51): current-cost margin math, REN-3 limitation surfaced, rentabilidad panel + CSV ([v0.10.0](https://github.com/Wilfredery/SystemFact/releases/tag/v0.10.0))
+* **reportes:** slice C Ã¢â‚¬â€ CxC aging, CxP and comparativa financiera (#50): ADR-017-derived balances, aging buckets, Cobrador branch-pin, cash-flow window deltas ([v0.9.0](https://github.com/Wilfredery/SystemFact/releases/tag/v0.9.0))
+* **reportes:** slice B Ã¢â‚¬â€ operational reports + CSV export + aggregation indexes (#49): product ranking, stock state, sales by period, inventory valuation, invoice state ([v0.8.0](https://github.com/Wilfredery/SystemFact/releases/tag/v0.8.0))
 
 ## [0.7.0](https://github.com/Wilfredery/SystemFact/compare/v0.6.1...v0.7.0) (2026-09-17)
 
 ### Features
 
-* **reportes:** slice A â€” shared reportes infra + role-aware dashboard (#48): filter/pagination/role-gate contracts, Santo-Domingo calendar boundaries, RFC4180 CSV writer seam, company-wide read widen, dashboard KPIs, selector-first `/reportes` shell ([#48](https://github.com/Wilfredery/SystemFact/pull/48))
+* **reportes:** slice A Ã¢â‚¬â€ shared reportes infra + role-aware dashboard (#48): filter/pagination/role-gate contracts, Santo-Domingo calendar boundaries, RFC4180 CSV writer seam, company-wide read widen, dashboard KPIs, selector-first `/reportes` shell ([#48](https://github.com/Wilfredery/SystemFact/pull/48))
 
 ## [0.6.1](https://github.com/Wilfredery/SystemFact/compare/v0.6.0...v0.6.1) (2026-09-17)
 
 ### Documentation
 
-* **sdd:** archive fase-7a-auditoria â€” spec sync + archive report (#47)
+* **sdd:** archive fase-7a-auditoria Ã¢â‚¬â€ spec sync + archive report (#47)
 
 ## [0.6.0](https://github.com/Wilfredery/SystemFact/compare/v0.5.0...v0.6.0) (2026-09-17)
 
 ### Features
 
-* **auditoria:** fase 7a â€” audit consultation screen, cobros/auth write backfill, append-only audit port (#46): admin `/auditoria` screen, `AuditoriaWritePort`, LOGIN/LOGOUT/PAGAR audit events, tenant read indexes
+* **auditoria:** fase 7a Ã¢â‚¬â€ audit consultation screen, cobros/auth write backfill, append-only audit port (#46): admin `/auditoria` screen, `AuditoriaWritePort`, LOGIN/LOGOUT/PAGAR audit events, tenant read indexes
 
 ## [0.5.0](https://github.com/Wilfredery/SystemFact/compare/v0.4.2...v0.5.0) (2026-09-15)
 
