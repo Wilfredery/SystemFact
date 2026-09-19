@@ -46,7 +46,7 @@ export const SEPARADOR_LINEA = "\r\n";
  * the line. An empty/`null` value becomes a full-width blank (every field is present even if blank).
  */
 export function rellenarAlnum(valor: string | null | undefined, longitud: number): string {
-  const s = valor === null || valor === undefined ? "" : valor;
+  const s = valor ?? "";
   if (s.length >= longitud) return s.slice(0, longitud);
   return s.padEnd(longitud, " ");
 }

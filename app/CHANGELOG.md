@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.16](https://github.com/Wilfredery/SystemFact/compare/v0.11.15...v0.11.16) (2026-09-19)
+
+### Refactored
+
+* **inventario,reportes:** backend quality-polish batch + dedup (SDD `backend-quality-polish` stage 5b, R-QC-02/R-QC-05) - `inventario-repository.ts`: extract the shared async `guardarPertenenciaProductosEnTx` Phase-A ownership read used by the ajustar/entrada-compra/salidas/reposicion/devolucion batches (each batch skeleton and lock/write ordering stays separate; entrances vs exits never merged) and unify the three per-path audit emitters into one `registrarAuditoriaStockEnTx` parameterized by `AccionAuditoria` (AJUSTAR/CREAR/ACTUALIZAR), removing the duplicated guard + audit blocks with zero behaviour change; `reportes/infrastructure/cxp-repository.ts` + `operacional-repository.ts`: replace the repeated raw SQL segments with business-intent named `Prisma.Sql` fragments (`joinPagosAplicadosEnTx`, `whereVentaConfirmadaEnTx`, `whereInventarioPorEmpresaSucursal`, shared `limitePaginaSql`) preserving bind order and byte-identical screen/CSV predicate parity (EXP-2); `reportes/domain/dgii/formato.ts`: `rellenarAlnum` nullish-guard ternary to `??` (S6606); no undefined-vs-null patch semantics touched; verified 945 unit + 195 integration tests green (all affected DB-backed suites unmodified), `tsc --noEmit` and lint clean
+
 ## [0.11.15](https://github.com/Wilfredery/SystemFact/compare/v0.11.14...v0.11.15) (2026-09-18)
 
 ### Refactored

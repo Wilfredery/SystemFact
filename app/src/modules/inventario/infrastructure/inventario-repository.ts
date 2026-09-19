@@ -159,16 +159,45 @@ async function productoExisteEnEmpresa(
 }
 
 /**
- * Append-only audit row for a manual stock adjustment. Runs inside the same
- * transaction as the mutation: a rolled-back adjustment rolls this back too.
+ * Shared Phase-A ownership guard for every batch path: each product id must
+ * belong to `ctx.empresaId` before any lock or write. The FIRST foreign product
+ * throws `INVENTARIO_NO_ENCONTRADO`, so a cross-tenant batch persists zero
+ * changes. Read-only with respect to the ledger — it never mutates stock, so a
+ * batch may call it freely before its own lock/write phases. Only this shared
+ * read is deduplicated: each batch (entrada / salida / reposición / devolución)
+ * keeps its OWN skeleton and ordering; entrances vs exits are never merged
+ * (R-QC-05). The single-product adjustment reuses it with a one-element list so
+ * the throw context (`{ productoId }`) stays byte-identical.
  */
-async function registrarAjusteEnAuditoria(
+async function guardarPertenenciaProductosEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  productoIds: readonly number[],
+): Promise<void> {
+  for (const productoId of productoIds) {
+    const existe = await productoExisteEnEmpresa(tx, ctx.empresaId, productoId);
+    if (!existe) {
+      throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, { productoId });
+    }
+  }
+}
+
+/**
+ * Append-only audit row for ANY inventory stock change, the single emit shared
+ * by the three former per-path helpers. `accion` is the only variable: the
+ * manual adjustment logs `AJUSTAR`, a purchase entry logs `CREAR` (a new
+ * inbound), and a sale-exit / reposition / devolución logs `ACTUALIZAR`. Runs
+ * inside the same transaction as the mutation, so a rolled-back change rolls
+ * this back too. `entidad`/`idEntidad` are fixed to the Inventario row.
+ */
+async function registrarAuditoriaStockEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
   inventarioId: number,
-  motivo: string,
   anterior: string,
   nueva: string,
+  motivo: string,
+  accion: AccionAuditoria,
 ): Promise<void> {
   await tx.movimientoAuditoria.create({
     data: {
@@ -176,7 +205,7 @@ async function registrarAjusteEnAuditoria(
       sucursalId: ctx.sucursalId,
       usuarioId: ctx.usuarioId,
       fechaHora: new Date(),
-      accion: AccionAuditoria.AJUSTAR,
+      accion,
       entidad: "Inventario",
       idEntidad: String(inventarioId),
       valorAnterior: anterior,
@@ -205,12 +234,7 @@ export async function ajustarStockEnTx(
   ctx: TenantCtx,
   input: AjustarStockEnTxInput,
 ): Promise<MovimientoAplicado> {
-  const existe = await productoExisteEnEmpresa(tx, ctx.empresaId, input.productoId);
-  if (!existe) {
-    throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, {
-      productoId: input.productoId,
-    });
-  }
+  await guardarPertenenciaProductosEnTx(tx, ctx, [input.productoId]);
 
   // Ensure the per-branch row exists before locking it; a first-time
   // adjustment on a fresh product starts from a zero quantity.
@@ -273,13 +297,14 @@ export async function ajustarStockEnTx(
     },
   });
 
-  await registrarAjusteEnAuditoria(
+  await registrarAuditoriaStockEnTx(
     tx,
     ctx,
     ensured.id,
-    input.motivo,
     anterior.toFixed(3),
     nueva.toFixed(3),
+    input.motivo,
+    AccionAuditoria.AJUSTAR,
   );
 
   return {
@@ -379,31 +404,6 @@ async function bloquearProductoEnTx(
   return new Decimal(rows[0].costoPromedio);
 }
 
-/** Append-only audit row for a purchase stock entry (CREAR: a new inbound). */
-async function registrarEntradaEnAuditoria(
-  tx: PrismaTx,
-  ctx: TenantCtx,
-  inventarioId: number,
-  anterior: string,
-  nueva: string,
-  motivo: string,
-): Promise<void> {
-  await tx.movimientoAuditoria.create({
-    data: {
-      empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
-      usuarioId: ctx.usuarioId,
-      fechaHora: new Date(),
-      accion: AccionAuditoria.CREAR,
-      entidad: "Inventario",
-      idEntidad: String(inventarioId),
-      valorAnterior: anterior,
-      valorNuevo: nueva,
-      motivo,
-    },
-  });
-}
-
 /**
  * Add one positive quantity to the session branch's inventory row, append the
  * immutable `ENTRADA_COMPRA` movement (carrying `compraId`) and the audit row.
@@ -473,13 +473,14 @@ async function aplicarEntradaStockLineaEnTx(
     },
   });
 
-  await registrarEntradaEnAuditoria(
+  await registrarAuditoriaStockEnTx(
     tx,
     ctx,
     ensured.id,
     anterior.toFixed(3),
     nueva.toFixed(3),
     motivo,
+    AccionAuditoria.CREAR,
   );
 
   return {
@@ -546,12 +547,7 @@ export async function registrarEntradasCompraEnTx(
   const idsOrdenados = [...porProducto.keys()].sort((a, b) => a - b);
 
   // Phase A: ownership guard for every product BEFORE any write.
-  for (const productoId of idsOrdenados) {
-    const posee = await productoExisteEnEmpresa(tx, ctx.empresaId, productoId);
-    if (!posee) {
-      throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, { productoId });
-    }
-  }
+  await guardarPertenenciaProductosEnTx(tx, ctx, idsOrdenados);
 
   // Phase B: locked, company-wide weighted-average cost — one update per product.
   for (const productoId of idsOrdenados) {
@@ -658,31 +654,6 @@ export async function bloquearInventarioSucursalEnTx(
   };
 }
 
-/** Append-only audit row for a sale-exit / reposition stock change. */
-async function registrarMovimientoEnAuditoria(
-  tx: PrismaTx,
-  ctx: TenantCtx,
-  inventarioId: number,
-  anterior: string,
-  nueva: string,
-  motivo: string,
-): Promise<void> {
-  await tx.movimientoAuditoria.create({
-    data: {
-      empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
-      usuarioId: ctx.usuarioId,
-      fechaHora: new Date(),
-      accion: AccionAuditoria.ACTUALIZAR,
-      entidad: "Inventario",
-      idEntidad: String(inventarioId),
-      valorAnterior: anterior,
-      valorNuevo: nueva,
-      motivo,
-    },
-  });
-}
-
 /** Aggregate requested quantity per product; reject a non-positive magnitude. */
 function agruparDemandaPositiva(
   lineas: readonly SalidaVentaLinea[],
@@ -734,12 +705,7 @@ export async function registrarSalidasVentaEnTx(
   const idsOrdenados = [...demanda.keys()].sort((a, b) => a - b);
 
   // Phase A: ownership guard for every product before any lock/write.
-  for (const productoId of idsOrdenados) {
-    const posee = await productoExisteEnEmpresa(tx, ctx.empresaId, productoId);
-    if (!posee) {
-      throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, { productoId });
-    }
-  }
+  await guardarPertenenciaProductosEnTx(tx, ctx, idsOrdenados);
 
   // Phase B: lock the branch row and HARD-verify availability (throw on reject).
   const bloqueados = new Map<number, { inventarioId: number; restante: Decimal }>();
@@ -795,13 +761,14 @@ export async function registrarSalidasVentaEnTx(
         fecha: new Date(),
       },
     });
-    await registrarMovimientoEnAuditoria(
+    await registrarAuditoriaStockEnTx(
       tx,
       ctx,
       estado.inventarioId,
       anterior.toFixed(3),
       nueva.toFixed(3),
       input.motivo,
+      AccionAuditoria.ACTUALIZAR,
     );
     resultados.push({
       inventoryId: estado.inventarioId,
@@ -836,12 +803,7 @@ export async function registrarReposicionCancelacionEnTx(
   const idsOrdenados = [...acumulada.keys()].sort((a, b) => a - b);
 
   // Phase A: ownership guard before any lock/write.
-  for (const productoId of idsOrdenados) {
-    const posee = await productoExisteEnEmpresa(tx, ctx.empresaId, productoId);
-    if (!posee) {
-      throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, { productoId });
-    }
-  }
+  await guardarPertenenciaProductosEnTx(tx, ctx, idsOrdenados);
 
   // Phase B/C: lock each branch row (ascending), then credit + movement per line.
   const bloqueados = new Map<number, { inventarioId: number; actual: Decimal }>();
@@ -879,13 +841,14 @@ export async function registrarReposicionCancelacionEnTx(
         fecha: new Date(),
       },
     });
-    await registrarMovimientoEnAuditoria(
+    await registrarAuditoriaStockEnTx(
       tx,
       ctx,
       estado.inventarioId,
       anterior.toFixed(3),
       nueva.toFixed(3),
       input.motivo,
+      AccionAuditoria.ACTUALIZAR,
     );
     resultados.push({
       inventoryId: estado.inventarioId,
@@ -968,12 +931,7 @@ export async function registrarDevolucionEnTx(
   );
 
   // Phase A: ownership guard for every product before any lock/write.
-  for (const productoId of idsOrdenados) {
-    const posee = await productoExisteEnEmpresa(tx, ctx.empresaId, productoId);
-    if (!posee) {
-      throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, { productoId });
-    }
-  }
+  await guardarPertenenciaProductosEnTx(tx, ctx, idsOrdenados);
 
   // Phase B: lock each branch row (ascending).
   const bloqueados = new Map<number, { inventarioId: number; actual: Decimal }>();
@@ -1030,13 +988,14 @@ export async function registrarDevolucionEnTx(
         fecha: new Date(),
       },
     });
-    await registrarMovimientoEnAuditoria(
+    await registrarAuditoriaStockEnTx(
       tx,
       ctx,
       estado.inventarioId,
       anterior.toFixed(3),
       nueva.toFixed(3),
       input.motivo,
+      AccionAuditoria.ACTUALIZAR,
     );
     resultados.push({
       inventoryId: estado.inventarioId,

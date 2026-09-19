@@ -21,7 +21,7 @@ import { Prisma } from "@/generated/prisma/client";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import type { VentanaFiltro } from "./dashboard-repository";
-import type { Paginacion } from "./operacional-repository";
+import { limitePaginaSql, type Paginacion } from "./operacional-repository";
 import type { CxpFila } from "../domain/financiero";
 
 /** `empresaId` + optional branch/window params normalised to SQL-null bindables. */
@@ -58,6 +58,25 @@ function whereCxP(
 }
 
 /**
+ * Named SQL fragment — the pre-aggregated applied-payment sub-join. Correlates
+ * one row per purchase with `Σ PAGO_PROVEEDOR(estado='APLICADO')` under the
+ * pinned `empresaId`, aliased `pp` and joined on `c."id"`. Used identically by
+ * the detail, count and totals statements (so screen and CSV share one derived
+ * `total − Σpagos` and never drift), extracted from the repeated raw sub-join
+ * (S4624). Pre-aggregated to avoid a per-purchase query (AGENTS.md "No N+1").
+ */
+function joinPagosAplicadosEnTx(ctx: TenantCtx): Prisma.Sql {
+  return Prisma.sql`
+    LEFT JOIN (
+      SELECT "compraId", SUM("monto") AS "pagos"
+      FROM "PAGO_PROVEEDOR"
+      WHERE "empresaId" = ${ctx.empresaId}
+        AND "estado" = 'APLICADO'
+      GROUP BY "compraId"
+    ) pp ON pp."compraId" = c."id"`;
+}
+
+/**
  * The outstanding supplier-purchase rows (FIN-4). `pagos` is a pre-aggregated sub-join so there
  * is no per-purchase query (AGENTS.md "No N+1"); the derived `saldoPendiente` is `total − pagos`,
  * both `Decimal(12,2)` text. Ordered by oldest obligation first (the credit-control convention).
@@ -83,16 +102,10 @@ export async function cxpPendienteEnTx(
     FROM "COMPRA" c
     JOIN "PROVEEDOR" pr ON pr."id" = c."proveedorId"
     JOIN "SUCURSAL" s   ON s."id" = c."sucursalId"
-    LEFT JOIN (
-      SELECT "compraId", SUM("monto") AS "pagos"
-      FROM "PAGO_PROVEEDOR"
-      WHERE "empresaId" = ${ctx.empresaId}
-        AND "estado" = 'APLICADO'
-      GROUP BY "compraId"
-    ) pp ON pp."compraId" = c."id"
+    ${joinPagosAplicadosEnTx(ctx)}
     ${whereCxP(ctx, ventana)}
     ORDER BY c."fecha" ASC, c."id" ASC
-    ${pag ? Prisma.sql`LIMIT ${pag.limit} OFFSET ${pag.offset}` : Prisma.empty}`;
+    ${limitePaginaSql(pag)}`;
 }
 
 /** Number of outstanding purchase rows in the filter (the page-independent row total). */
@@ -104,13 +117,7 @@ export async function contarCxPEnTx(
   const [fila] = await tx.$queryRaw<{ total: number }[]>`
     SELECT COUNT(*)::int AS "total"
     FROM "COMPRA" c
-    LEFT JOIN (
-      SELECT "compraId", SUM("monto") AS "pagos"
-      FROM "PAGO_PROVEEDOR"
-      WHERE "empresaId" = ${ctx.empresaId}
-        AND "estado" = 'APLICADO'
-      GROUP BY "compraId"
-    ) pp ON pp."compraId" = c."id"
+    ${joinPagosAplicadosEnTx(ctx)}
     ${whereCxP(ctx, ventana)}`;
   return fila?.total ?? 0;
 }
@@ -125,13 +132,7 @@ export async function totalesCxPEnTx(
     SELECT
       COALESCE(SUM(c."total" - COALESCE(pp."pagos", 0)), 0)::numeric(12, 2)::text AS "saldoTotal"
     FROM "COMPRA" c
-    LEFT JOIN (
-      SELECT "compraId", SUM("monto") AS "pagos"
-      FROM "PAGO_PROVEEDOR"
-      WHERE "empresaId" = ${ctx.empresaId}
-        AND "estado" = 'APLICADO'
-      GROUP BY "compraId"
-    ) pp ON pp."compraId" = c."id"
+    ${joinPagosAplicadosEnTx(ctx)}
     ${whereCxP(ctx, ventana)}`;
   return { saldoTotal: fila?.saldoTotal ?? "0.00" };
 }
