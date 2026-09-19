@@ -1,7 +1,9 @@
 # ============================================================
 # NOT a workspace — this file holds pnpm 11+ configuration only.
-# We are NOT a monorepo (no `packages:` field). The file exists solely
-# to register `allowBuilds` (lifecycle scripts that may run during install).
+# We are NOT a monorepo (no `packages:` field). The file exists to
+# register `allowBuilds` (lifecycle scripts that may run during install)
+# and `overrides` (forced versions of vulnerable transitive deps).
+# pnpm 11+ reads these settings HERE, not from package.json#pnpm.
 # Ver: https://pnpm.io/settings
 #
 # If you need to add a package that runs build scripts (e.g. a new native
@@ -17,3 +19,19 @@ allowBuilds:
   prisma: true
   unrs-resolver: true
   workerd: false
+
+# Security advisory overrides — backend-quality-polish stage 4 (PR 4).
+# These three transitive deps arrive ONLY via the prisma@7.10.0 bundle
+# (prisma > @prisma/studio-core > @visx/* > lodash;
+#  prisma > @prisma/config > deepmerge-ts;
+#  prisma > mysql2) and their vulnerable versions are pinned by prisma's own
+# dependency ranges, so the only way to lift them above the GHSA patched
+# floors without waiting for a prisma release is to force them here.
+# Floors: lodash >=4.18.1 (GHSA-r5fr-rjxr-66jc / -f23m-r3pf-42rh / -xxjr-mmjv-4gpg),
+#         deepmerge-ts >=8.0.0 (GHSA-ggr8-5vv4-36mx),
+#         mysql2 >=3.22.0 (GHSA-3f6p-5ww8-9rcr; resolves to 3.24.4, which also
+#         clears the decompression-bomb GHSA-rgwj-5xj2-c3m3 fixed in 3.23.1).
+overrides:
+  lodash: '>=4.18.1'
+  deepmerge-ts: '>=8.0.0'
+  mysql2: '>=3.22.0'
