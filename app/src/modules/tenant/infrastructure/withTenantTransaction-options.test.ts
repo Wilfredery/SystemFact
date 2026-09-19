@@ -2,16 +2,16 @@
  * Unit tests — opciones (timeout) y manejo de fallo de set_config en
  * withTenantTransaction.
  *
- * Cubre los escenarios de spec que el archivo de integración
- * `withTenantTransaction.test.ts` (tsx/Postgres real) no ejercita:
+ * Cubre los escenarios de spec que el sondeo de integración
+ * `scripts/withTenantTransaction.probe.ts` (tsx/Postgres real) no ejercita:
  *   - WTT-001-B: override de timeout a 5 s.
  *   - WTT-001-C: override de timeout a 30 s.
  *   - WTT-002-B: rechazo de set_config (fail-fast, `fn` no corre).
  *   - WTT-004-B: el error SQL de set_config se propaga intacto al caller.
  *
  * Usa mocks de `@/lib/prisma` y de `tenant-runtime` para no requerir Postgres
- * (determinista y rápido). El test de integración real vive en el archivo
- * `withTenantTransaction.test.ts` (corre vía `npx tsx`).
+ * (determinista y rápido). El sondeo de integración real vive en el archivo
+ * `scripts/withTenantTransaction.probe.ts` (corre vía `pnpm probe:tenant`).
  */
 
 import {
