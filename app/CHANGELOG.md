@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.13](https://github.com/Wilfredery/SystemFact/compare/v0.11.12...v0.11.13) (2026-09-18)
+
+### Tests
+
+* **quality-polish:** wire honest real-database integration coverage into the Sonar lab (SDD `backend-quality-polish` slice 3) — add a `pnpm coverage:integration` script (`test:integration` + `--coverage --coverageReporters=lcov --coverageDirectory=coverage-integration`) and scope `jest.integration.config.js` `collectCoverageFrom` to backend `src/**` sources only (excluding the generated Prisma client, the integration/test-support harnesses and the Next.js `src/app/**` pages, which the `node`-env integration run cannot instrument), so the emitted `coverage-integration/lcov.info` merges with the unit lcov via a comma-separated `sonar.javascript.lcov.reportPaths` (documented in `app/README.md`); test-DB `DATABASE_URL` still comes from the git-ignored `app/.env.integration` (no secrets committed) and no application-code smell is touched (verified: 937 unit + 195 integration tests, `tsc --noEmit` and lint green)
+
 ## [0.11.12](https://github.com/Wilfredery/SystemFact/compare/v0.11.11...v0.11.12) (2026-09-18)
 
 ### Refactored
