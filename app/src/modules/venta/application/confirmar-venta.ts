@@ -28,6 +28,7 @@ import { registrarSalidasVenta } from "@/modules/inventario/application/registra
 import {
   evaluarCreditoPort,
   type CreditoRechazo,
+  type CreditResult,
 } from "@/modules/cobros/application/credit-port";
 import { registrarCobro } from "@/modules/cobros/application/registrar-cobro";
 import {
@@ -143,6 +144,25 @@ export function verificarDisponibilidadPreNcf(
 }
 
 /**
+ * PURE pre-consume credit rejection (R-V15, R-K2): a `CREDITO` sale the credit
+ * gate refused (`forma === "CREDITO" && !permitido`) is turned into the typed
+ * rejection result that relays the stable cobros code/message unchanged; every
+ * other outcome (a `CONTADO` sale, or an allowed `CREDITO`) yields `null` so the
+ * sale proceeds to the NCF consume. Reads only — no DB, no state. This is the
+ * second-largest pre-consume branch cluster, split out of `confirmarVenta` so the
+ * orchestrator stays inside the complexity ceiling while the gate still runs
+ * AFTER the hard stock preview and BEFORE the NCF lock/consume (burn-free).
+ */
+export function resolverRechazoCredito(
+  credito: CreditResult,
+): ConfirmarVentaResult | null {
+  if (credito.forma === "CREDITO" && !credito.permitido) {
+    return { ok: false, code: credito.code, message: credito.message };
+  }
+  return null;
+}
+
+/**
  * Recompute the invoice breakdown from the PERSISTED lines (R-F3): `subtotalGravado`
  * = Σ final bases at a rate > 0 (16% counts as gravado), `subtotalExento` = Σ bases
  * at rate 0, `itbis` = Σ per-line ITBIS. The header identity
@@ -241,9 +261,8 @@ export async function confirmarVenta(
     totalVenta: totales.total,
     fecha: new Date(),
   });
-  if (credito.forma === "CREDITO" && !credito.permitido) {
-    return { ok: false, code: credito.code, message: credito.message };
-  }
+  const rechazoCredito = resolverRechazoCredito(credito);
+  if (rechazoCredito !== null) return rechazoCredito;
 
   // 6. NCF lock + consume. Missing / exhausted / expired all THROW before advancing
   //    (nothing burned), so mapping them back to venta's stable codes is safe.

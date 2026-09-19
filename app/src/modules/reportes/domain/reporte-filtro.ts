@@ -167,27 +167,28 @@ function diasDelMes(y: number, m: number): number {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
+/** Trim a raw transport date to a bare SD calendar string, or `undefined` when blank. */
+function normalizarFechaCruda(
+  valor: string | null | undefined,
+): string | undefined {
+  return typeof valor === "string" && valor.trim() !== ""
+    ? valor.trim()
+    : undefined;
+}
+
 /**
- * Resolve the SD date window from either explicit `desde`/`hasta` or a full-period preset
- * (used only when both ends are absent), validate the `YYYY-MM-DD` wire shape, reject a
- * `desde > hasta` inversion, then convert to inclusive UTC bounds through the reused
- * {@link rangoFechasAUTC} seam. Pure in `(entrada, now)` — a blank value is "not provided",
- * NOT an invalid one; only a non-empty malformed date, an unknown preset, or an inversion
- * throws {@link ReporteDomainError}`(REPORTE_VALIDACION)` so the caller fails BEFORE a query.
+ * Resolve the requested `desde`/`hasta` pair when a full-period `preset` applies
+ * (used only while both ends are absent), and validate the preset token itself.
+ * A blank preset is "not provided"; a non-blank unknown token throws
+ * `REPORTE_VALIDACION` on the `preset` field regardless of whether explicit
+ * dates are present — the exact precedence {@link resolverRangoSD} relies on.
  */
-export function resolverRangoSD(
+function resolverPresetFechas(
   entrada: ReporteFiltroEntrada,
   now: Date,
-): { desde?: Date; hasta?: Date } {
-  let desde =
-    typeof entrada.desde === "string" && entrada.desde.trim() !== ""
-      ? entrada.desde.trim()
-      : undefined;
-  let hasta =
-    typeof entrada.hasta === "string" && entrada.hasta.trim() !== ""
-      ? entrada.hasta.trim()
-      : undefined;
-
+  desde: string | undefined,
+  hasta: string | undefined,
+): { desde: string | undefined; hasta: string | undefined } {
   const preset =
     typeof entrada.preset === "string" && entrada.preset.trim() !== ""
       ? entrada.preset.trim().toUpperCase()
@@ -197,28 +198,62 @@ export function resolverRangoSD(
     if (!esPresetPeriodico(preset)) {
       throw new ReporteDomainError(REPORTE_VALIDACION, { campo: "preset" });
     }
-    const r = presetARango(preset, now);
-    desde = r.desde;
-    hasta = r.hasta;
-  } else if (preset !== undefined && !esPresetPeriodico(preset)) {
+    return presetARango(preset, now);
+  }
+  if (preset !== undefined && !esPresetPeriodico(preset)) {
     throw new ReporteDomainError(REPORTE_VALIDACION, { campo: "preset" });
   }
+  return { desde, hasta };
+}
 
-  // Reject a shape-violating non-empty date BEFORE conversion (the seam validates a
-  // real calendar day; here we guard the `YYYY-MM-DD` wire shape + inversion).
+/**
+ * Validate an already-resolved SD window: reject a shape-violating non-empty
+ * date and a `desde > hasta` inversion, both BEFORE the UTC seam runs. Blank
+ * ends are "not provided" and skipped. Throws `REPORTE_VALIDACION` carrying the
+ * offending field, in the original desde → hasta → rango precedence.
+ */
+function validarRangoPersonalizado(
+  desde: string | undefined,
+  hasta: string | undefined,
+): void {
   if (desde !== undefined && !RE_DX_FECHA.test(desde)) {
     throw new ReporteDomainError(REPORTE_VALIDACION, { campo: "desde" });
   }
   if (hasta !== undefined && !RE_DX_FECHA.test(hasta)) {
     throw new ReporteDomainError(REPORTE_VALIDACION, { campo: "hasta" });
   }
-  // A bare-lexicographic `desde > hasta` comparison is calendar-correct for `YYYY-MM-DD`
-  // (ISO-like ordering), so a nonsense window is refused without a DB (DB-5).
+  // A bare-lexicographic `desde > hasta` comparison is calendar-correct for
+  // `YYYY-MM-DD` (ISO-like ordering), so a nonsense window is refused without
+  // a DB (DB-5).
   if (desde !== undefined && hasta !== undefined && desde > hasta) {
     throw new ReporteDomainError(REPORTE_VALIDACION, { campo: "rango" });
   }
+}
 
-  return rangoFechasAUTC({ desde, hasta });
+/**
+ * Resolve the SD date window from either explicit `desde`/`hasta` or a full-period preset
+ * (used only when both ends are absent), validate the `YYYY-MM-DD` wire shape, reject a
+ * `desde > hasta` inversion, then convert to inclusive UTC bounds through the reused
+ * {@link rangoFechasAUTC} seam. Pure in `(entrada, now)` — a blank value is "not provided",
+ * NOT an invalid one; only a non-empty malformed date, an unknown preset, or an inversion
+ * throws {@link ReporteDomainError}`(REPORTE_VALIDACION)` so the caller fails BEFORE a query.
+ *
+ * The preset resolution ({@link resolverPresetFechas}) and the custom-window validation
+ * ({@link validarRangoPersonalizado}) are split into pure helpers so the observable
+ * order — parse, resolve preset, then validate shape/inversion — and the error
+ * precedence stay identical while each function stays within the complexity ceiling.
+ */
+export function resolverRangoSD(
+  entrada: ReporteFiltroEntrada,
+  now: Date,
+): { desde?: Date; hasta?: Date } {
+  const desde = normalizarFechaCruda(entrada.desde);
+  const hasta = normalizarFechaCruda(entrada.hasta);
+
+  const rango = resolverPresetFechas(entrada, now, desde, hasta);
+  validarRangoPersonalizado(rango.desde, rango.hasta);
+
+  return rangoFechasAUTC({ desde: rango.desde, hasta: rango.hasta });
 }
 
 /**
