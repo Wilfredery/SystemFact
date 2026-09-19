@@ -29,6 +29,39 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Code quality & coverage scan (Sonar)
+
+The Sonar lab computes coverage from **two** LCOV reports merged together —
+unit tests and real-database integration tests. Each report path is listed in
+`sonar.javascript.lcov.reportPaths` (comma-separated). This keeps coverage
+honest: code that is only exercised end-to-end against Postgres (sale
+confirmation, NCF consumption, inventory movement, RLS) is credited, not just
+what the unit suite reaches.
+
+Generate the two reports first (unit output defaults to `coverage/`, the
+integration helper writes `coverage-integration/`):
+
+```bash
+# Unit coverage (lcov) -> coverage/lcov.info
+pnpm exec jest --coverage --coverageReporters=lcov --coverageDirectory=coverage
+
+# Integration coverage (lcov) -> coverage-integration/lcov.info
+# Requires sf-postgres up; DATABASE_URL / test-DB env come from app/.env.integration
+# (loaded by the integration globalSetup) and are NEVER committed.
+pnpm coverage:integration
+```
+
+Then scan, passing both report paths:
+
+```bash
+sonar-scanner \
+  -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info,coverage-integration/lcov.info
+```
+
+Both report directories are git-ignored; only the commands and the scan
+configuration are tracked. Secrets are supplied by the environment, never by
+the committed files.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.

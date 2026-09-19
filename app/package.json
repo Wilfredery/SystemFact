@@ -11,6 +11,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js -c jest.integration.config.js --runInBand --forceExit",
+    "coverage:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js -c jest.integration.config.js --runInBand --forceExit --coverage --coverageReporters=lcov --coverageDirectory=coverage-integration",
     "lint:commits": "tsx tools/ci/check-conventional-commits.ts",
     "probe:set-local": "tsx scripts/probe-set-local.ts",
     "probe:tenant": "tsx scripts/withTenantTransaction.probe.ts",

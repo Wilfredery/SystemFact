@@ -84,6 +84,24 @@ const config = {
   runInBand: true,
   testTimeout: 30_000,
   clearMocks: true,
+  // Honest coverage for the Sonar lab: produce an lcov whose path entries map
+  // ONLY to backend application sources (`src/**`), excluding the generated
+  // Prisma client, every test/harness file, and the Next.js `src/app/**`
+  // pages/routes. This config runs the real-database integration suite in a
+  // `node` environment with no JSX/`.tsx` transform, so UI adapters cannot be
+  // instrumented here — they are covered by the unit lcov instead. The two
+  // lcovs are merged in the scan via `sonar.javascript.lcov.reportPaths`.
+  // Run via `pnpm coverage:integration`; output lands in
+  // `coverage-integration/lcov.info`.
+  collectCoverageFrom: [
+    "src/**/*.ts",
+    "!src/app/**",
+    "!src/generated/**",
+    "!src/integration/**",
+    "!src/test-support/**",
+    "!src/**/*.test.ts",
+    "!src/**/*.spec.ts",
+  ],
 };
 
 module.exports = config;
