@@ -11,8 +11,22 @@
  */
 
 import { Decimal } from "decimal.js";
+import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
+import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import type { StockWarning } from "../domain/errors";
-import { verificarDisponibilidadPreNcf } from "./confirmar-venta";
+import { confirmarVenta, verificarDisponibilidadPreNcf } from "./confirmar-venta";
+import {
+  crearFacturaEnTx,
+  confirmarVentaFlipEnTx,
+  leerClienteParaElegibilidadEnTx,
+  leerFacturaAutomaticaDeEmpresaEnTx,
+  leerStockSucursalEnTx,
+  leerVentaParaConfirmarEnTx,
+  asignarCorrelativoFacturaEnTx,
+} from "../infrastructure/venta-repository";
+import { evaluarCreditoPort } from "@/modules/cobros/application/credit-port";
+import { registrarCobro } from "@/modules/cobros/application/registrar-cobro";
+import { consumirNcfEnTx } from "@/modules/ncf/application/consumir-ncf";
 
 // The helper under test is pure; stub the use case's DB-facing graph so the
 // module loads without touching the (jest-stubbed) generated Prisma enums —
@@ -110,5 +124,92 @@ describe("verificarDisponibilidadPreNcf (pure pre-consume availability)", () => 
       stock(4, "0.000"),
     ]);
     expect(resultado).toEqual([]);
+  });
+});
+
+// --- confirmarVenta orchestration (v2r-10 regression) -------------------------
+// Proves the guarded flip is invoked with the optimistic `updatedAt` token read
+// at step 1 (a concurrent draft edit bumps the column, so the flip's WHERE must
+// miss and the whole post-consume transaction throws — rolling the consumed NCF
+// back). GREEN in this suite requires naming the token in the flip contract.
+
+const txMock = {} as unknown as PrismaTx;
+const ctxMock: TenantCtx = { empresaId: 1, sucursalId: 2, usuarioId: 3, esAdmin: true };
+const UPDATED_AT = new Date("2026-01-10T00:00:00.000Z");
+
+describe("confirmarVenta (mocked repos, v2r-10 optimistic flip)", () => {
+  const ventaBorrador = {
+    id: 7,
+    estado: "BORRADOR",
+    sucursalId: 2,
+    clienteId: 99,
+    updatedAt: UPDATED_AT,
+    subtotal: "100.00",
+    descuento: "0.00",
+    lineas: [
+      {
+        productoId: 10,
+        cantidad: "1.000",
+        tasaItbis: "18",
+        subtotalLinea: "100.00",
+        itbisLinea: "18.00",
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (leerVentaParaConfirmarEnTx as jest.Mock).mockResolvedValue(ventaBorrador);
+    (leerFacturaAutomaticaDeEmpresaEnTx as jest.Mock).mockResolvedValue(true);
+    (leerClienteParaElegibilidadEnTx as jest.Mock).mockResolvedValue({
+      esConsumidorFinal: true,
+      identificacionFiscal: null,
+    });
+    (leerStockSucursalEnTx as jest.Mock).mockResolvedValue([
+      { productoId: 10, disponible: "50.000" },
+    ]);
+    (evaluarCreditoPort.evaluarCreditoCliente as jest.Mock).mockResolvedValue({
+      forma: "CONTADO",
+    });
+    (consumirNcfEnTx as jest.Mock).mockResolvedValue({
+      ncf: "B0200000522",
+      warning: undefined,
+    });
+    (confirmarVentaFlipEnTx as jest.Mock).mockResolvedValue({ flipUpdated: true });
+    (asignarCorrelativoFacturaEnTx as jest.Mock).mockResolvedValue("FAC-000001");
+    (crearFacturaEnTx as jest.Mock).mockResolvedValue({ id: 80 });
+    (registrarCobro as jest.Mock).mockResolvedValue({ ok: true });
+  });
+
+  it("passes the step-1 read updatedAt as the flip's optimistic token (v2r-10)", async () => {
+    const resultado = await confirmarVenta(txMock, ctxMock, { id: 7 });
+    expect(resultado.ok).toBe(true);
+    if (resultado.ok) expect(resultado.data.estado).toBe("CONFIRMADA");
+    expect(confirmarVentaFlipEnTx).toHaveBeenCalledWith(txMock, ctxMock, 7, UPDATED_AT);
+  });
+
+  it("THROWS CONCURRENCIA_CONFLICTO when the flip misses an edited draft — the consume rolls back (v2r-10)", async () => {
+    (confirmarVentaFlipEnTx as jest.Mock).mockResolvedValue({ flipUpdated: false });
+    await expect(confirmarVenta(txMock, ctxMock, { id: 7 })).rejects.toMatchObject({
+      code: "CONCURRENCIA_CONFLICTO",
+    });
+    // The reject (never a returned error) is what aborts the caller's
+    // `withTenantTransaction`, un-burning the already-consumed sequence number.
+    expect(crearFacturaEnTx).not.toHaveBeenCalled();
+  });
+
+  it("returns VENTA_INMUTABLE for an already-CONFIRMADA sale BEFORE any flip call", async () => {
+    (leerVentaParaConfirmarEnTx as jest.Mock).mockResolvedValue({
+      ...ventaBorrador,
+      estado: "CONFIRMADA",
+    });
+    const resultado = await confirmarVenta(txMock, ctxMock, { id: 7 });
+    expect(resultado).toEqual({
+      ok: false,
+      code: "VENTA_INMUTABLE",
+      message: expect.any(String),
+    });
+    expect(confirmarVentaFlipEnTx).not.toHaveBeenCalled();
+    expect(consumirNcfEnTx).not.toHaveBeenCalled();
   });
 });

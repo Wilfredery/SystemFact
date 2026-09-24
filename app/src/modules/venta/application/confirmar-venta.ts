@@ -283,9 +283,14 @@ export async function confirmarVenta(
 
   // ---- POST-CONSUME: every failure below MUST throw so the sequence rolls back. ----
 
-  // 7. Guarded flip. Zero rows = a concurrent confirm won → throw (never return) so
-  //    this transaction's consume is un-burnt and only one invoice survives.
-  const { flipUpdated } = await confirmarVentaFlipEnTx(tx, ctx, venta.id);
+  // 7. Guarded flip (v2r-10). Runs as ONE `UPDATE ... WHERE id AND empresaId
+  //    AND sucursalId AND estado='BORRADOR' AND updatedAt=<read value>`. Zero
+  //    rows = a concurrent confirm WON the flip, or a concurrent draft edit
+  //    landed (bumping `updatedAt`) since the step-1 read — both lose → throw
+  //    (never return) so this transaction's consume is un-burnt and only one
+  //    invoice survives. Adding the version token closes the TOCTOU where a
+  //    draft edited mid-confirm used to carry the STALE totals into the invoice.
+  const { flipUpdated } = await confirmarVentaFlipEnTx(tx, ctx, venta.id, venta.updatedAt);
   if (!flipUpdated) throw new VentaDomainError(CONCURRENCIA_CONFLICTO);
 
   // 8. Emit the FACTURA: recomputed breakdown (from the `totales` derived at 5b) +
