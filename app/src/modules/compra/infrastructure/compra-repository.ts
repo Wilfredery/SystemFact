@@ -433,6 +433,33 @@ async function asignarCorrelativoSiguienteEnTx(
 }
 
 /**
+ * COMPRA-row confirm lock (v2r-03). Serializes confirmation against a concurrent
+ * draft edit: the edit path updates the HEADER before replacing lines, so
+ * holding this row lock lets the confirm re-read converged lines (or fail
+ * cleanly) instead of confirming STALE totals over the editor's final ones
+ * (the TOCTOU v2r-03 closed). One `SELECT ... estado='BORRADOR' FOR UPDATE`: the
+ * WHERE predicate is re-evaluated after the lock wait (EvalPlanQual), so
+ * `lockable:false` means the row is NOT in a confirmable `BORRADOR` state by the
+ * time the lock was granted — e.g. a concurrent confirm won the flip first (the
+ * historical double-confirm race, now resolved deterministically at this lock,
+ * BEFORE the correlativo is allocated and any audit row is written).
+ */
+export async function bloquearCompraParaConfirmarEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  compraId: number,
+): Promise<{ lockable: boolean }> {
+  const rows = await tx.$queryRaw<{ id: number }[]>`
+    SELECT "id"
+    FROM "COMPRA"
+    WHERE "id" = ${compraId}::int
+      AND "empresaId" = ${ctx.empresaId}::int
+      AND "estado" = 'BORRADOR'::"EstadoCompra"
+    FOR UPDATE`;
+  return { lockable: rows.length > 0 };
+}
+
+/**
  * Guarded `BORRADOR → PENDIENTE` confirm. Allocates the correlativo (under the
  * empresa row lock), then performs ONE `UPDATE ... WHERE id AND empresaId AND
  * estado='BORRADOR'` writing `PENDIENTE`, the correlativo and the recomputed
