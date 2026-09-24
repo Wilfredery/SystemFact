@@ -11,6 +11,10 @@
  *      the receipt number is allocated (a replay burns nothing — R-C3).
  *   2. The referenced invoice must be a VIGENTE tenant invoice, else
  *      `FACTURA_COBRO_NO_VIGENTE`.
+ *   2b. The refund must never exceed what the client actually paid on that
+ *      invoice: `cobrado = total − saldoPendiente` derived from the SAME
+ *      row-locked facts, rejected with `REEMBOLSO_EXCEDE_SALDO` BEFORE the
+ *      receipt allocation (v2r-02 refund bound, mirror of `COBRO_EXCEDE_SALDO`).
  *   3. Only after the key is proven fresh is a receipt allocated (empresa lock)
  *      and the `REEMBOLSO/APLICADO` row inserted, recording `autorizadoPor`.
  *   4. A concurrent first-submit that races past the pre-check is caught at the
@@ -34,6 +38,7 @@ import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import {
   FACTURA_COBRO_NO_VIGENTE,
   PAGO_IDEMPOTENCIA_CONFLICTO,
+  REEMBOLSO_EXCEDE_SALDO,
   messageFor,
   type CobroErrorCode,
 } from "../domain/errors";
@@ -41,6 +46,7 @@ import {
   ESTADO_PAGO,
   TIPO_PAGO,
   aDecimalMonto,
+  reembolsoExcedeMontoCobrado,
   type CobroResult,
 } from "../domain/pago";
 import { bloquearYCalcularSaldoFacturaEnTx } from "../infrastructure/saldo-cxc.repository";
@@ -169,6 +175,19 @@ export async function registrarReembolso(
   const factura = await bloquearYCalcularSaldoFacturaEnTx(tx, ctx, input.facturaId);
   if (factura === null) {
     return buildError(FACTURA_COBRO_NO_VIGENTE);
+  }
+
+  // (2b) REFUND BOUND (audit v2r-02): a refund must never exceed what the client
+  //      actually paid on this invoice. `cobrado = total − saldoPendiente` is
+  //      derived from the SAME row-locked facts the canonical recompute just
+  //      produced above; an oversized refund is rejected with the stable code
+  //      BEFORE the receipt allocation, so a rejected refund burns no receipt
+  //      number and writes no `PAGO` row (regression: cobros-reembolso suite).
+  //      This mirrors the sibling collection guard `COBRO_EXCEDE_SALDO`
+  //      (registrar-cobro.ts) — the refund's counterpart, which the canonical
+  //      balance never sees because REEMBOLSO rows are excluded from the sums.
+  if (reembolsoExcedeMontoCobrado(monto, factura.total, factura.saldoPendiente)) {
+    return buildError(REEMBOLSO_EXCEDE_SALDO);
   }
 
   // (3) Receipt allocated only after the key is proven fresh.

@@ -12,6 +12,7 @@ import {
   CobroDomainError,
   PAGO_IDEMPOTENCIA_CONFLICTO,
   COBRO_EXCEDE_SALDO,
+  REEMBOLSO_EXCEDE_SALDO,
   CLIENTE_EN_MORA,
   LIMITE_CREDITO_EXCEDIDO,
   CREDITO_NO_HABILITADO,
@@ -23,11 +24,15 @@ import {
 } from "./errors";
 
 describe("cobros error catalog (600-series, R-C5)", () => {
-  it("owns exactly the eight spec-listed codes", () => {
-    expect([...COBRO_ERROR_CODES].sort()).toEqual(
+  it("owns exactly the nine spec-listed codes", () => {
+    // toStrictEqual (not toEqual): an unknowingly-missing export imports as
+    // `undefined`, and toEqual IGNORES undefined array entries — which would let
+    // this exact-list assertion pass vacuously before the code exists (TDD red).
+    expect([...COBRO_ERROR_CODES].sort()).toStrictEqual(
       [
         PAGO_IDEMPOTENCIA_CONFLICTO,
         COBRO_EXCEDE_SALDO,
+        REEMBOLSO_EXCEDE_SALDO,
         CLIENTE_EN_MORA,
         LIMITE_CREDITO_EXCEDIDO,
         CREDITO_NO_HABILITADO,

@@ -16,8 +16,10 @@
  * devolucion codes as a documented numeric sub-range — 601–604 for the B04
  * lifecycle and 605 for the R-D5 idempotency gate (see
  * `venta/domain/errors.ts`). The cobros module owns its OWN catalog, so this
- * module continues that numbering at **606–613** with the eight codes listed in
- * the cobros spec. The numeric suffix in each trailing comment is documentation
+ * module continues that numbering at **606–614** with the nine codes listed in
+ * the cobros spec plus the v2r-02 refund-bound code added by the security-audit
+ * remediation (a refund must never exceed what the client actually paid). The
+ * numeric suffix in each trailing comment is documentation
  * of the shared 600-series sequence only; the wire value is the stable string.
  *
  * The `details` map on each failure carries only minimal, locatable context
@@ -34,6 +36,7 @@ export const CREDITO_NO_HABILITADO = "CREDITO_NO_HABILITADO"; // 610
 export const FACTURA_COBRO_NO_VIGENTE = "FACTURA_COBRO_NO_VIGENTE"; // 611
 export const PAGO_NO_AUTORIZADO = "PAGO_NO_AUTORIZADO"; // 612
 export const PAGO_NO_ENCONTRADO = "PAGO_NO_ENCONTRADO"; // 613
+export const REEMBOLSO_EXCEDE_SALDO = "REEMBOLSO_EXCEDE_SALDO"; // 614
 
 export type CobroErrorCode =
   | typeof PAGO_IDEMPOTENCIA_CONFLICTO
@@ -43,7 +46,8 @@ export type CobroErrorCode =
   | typeof CREDITO_NO_HABILITADO
   | typeof FACTURA_COBRO_NO_VIGENTE
   | typeof PAGO_NO_AUTORIZADO
-  | typeof PAGO_NO_ENCONTRADO;
+  | typeof PAGO_NO_ENCONTRADO
+  | typeof REEMBOLSO_EXCEDE_SALDO;
 
 /** Ordered catalog — tests assert every code yields a stable message. */
 export const COBRO_ERROR_CODES: readonly CobroErrorCode[] = [
@@ -55,6 +59,7 @@ export const COBRO_ERROR_CODES: readonly CobroErrorCode[] = [
   FACTURA_COBRO_NO_VIGENTE,
   PAGO_NO_AUTORIZADO,
   PAGO_NO_ENCONTRADO,
+  REEMBOLSO_EXCEDE_SALDO,
 ];
 
 const MESSAGES: Readonly<Record<CobroErrorCode, string>> = {
@@ -73,6 +78,8 @@ const MESSAGES: Readonly<Record<CobroErrorCode, string>> = {
   [PAGO_NO_AUTORIZADO]:
     "No tiene permisos para registrar o autorizar este pago",
   [PAGO_NO_ENCONTRADO]: "El pago no existe en la empresa",
+  [REEMBOLSO_EXCEDE_SALDO]:
+    "El reembolso supera el monto efectivamente cobrado en la factura; ajuste el monto",
 };
 
 export function messageFor(code: CobroErrorCode): string {

@@ -109,3 +109,21 @@ export function aDecimalMonto(valor: string): Decimal {
   }
   return new Decimal(valor);
 }
+
+/**
+ * Refund bound (audit v2r-02). A refund must never exceed what the client
+ * actually paid on the invoice: `cobrado = total − saldoPendiente` derived
+ * from the SAME row-locked facts the canonical recompute just produced (the
+ * `SaldoFacturaBloqueado` pair the locked-balance query returns). It mirrors
+ * the sibling `COBRO_EXCEDE_SALDO` guard on the collection path
+ * (`registrar-cobro.ts`) — but for refunds, whose balance the canonical sum
+ * never sees. Pure decimal arithmetic, domain-only, no DB.
+ */
+export function reembolsoExcedeMontoCobrado(
+  monto: Decimal,
+  total: string,
+  saldoPendiente: string,
+): boolean {
+  const cobrado = new Decimal(total).minus(new Decimal(saldoPendiente));
+  return monto.greaterThan(cobrado);
+}
