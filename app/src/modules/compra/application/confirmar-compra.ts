@@ -24,6 +24,7 @@ import {
   requiredRetentionKeys,
 } from "../domain/calculators";
 import {
+  bloquearCompraParaConfirmarEnTx,
   confirmarCompraEnTx,
   leerCompraEnTx,
   leerProveedorClasificadoEnTx,
@@ -62,15 +63,24 @@ function buildError(
  * `CONFIG_RETENCION_FALTANTE` (no legal-default fallback). The state change,
  * the atomic `CMP-%06d` correlativo and the audit row all happen inside the
  * same transaction guarded by `estado='BORRADOR'`, so a retry or a concurrent
- * confirm produces no duplicate transition, number or audit row. NO inventory
- * movement is ever written here (3.4b seam only).
+ * confirm produces no duplicate transition, number or audit row.
+ *
+ * v2r-03: BEFORE any recompute, the COMPRA row itself is locked
+ * (`bloquearCompraParaConfirmarEnTx`). The draft edit path updates the header
+ * before replacing lines, so this lock serializes any in-flight edit and the
+ * totals are then re-derived from a CONVERGED re-read under the held lock —
+ * a draft edited mid-confirm can no longer surface with STALE header totals
+ * over its FINAL lines. A row that reached the lock in a non-`BORRADOR` state
+ * (a concurrent confirm won first) resolves deterministically as
+ * `CONCURRENCIA_CONFLICTO` before any correlativo allocation or audit write.
+ * NO inventory movement is ever written here (3.4b seam only).
  */
 export async function confirmarCompra(
   tx: PrismaTx,
   ctx: TenantCtx,
   input: ConfirmarCompraInput,
 ): Promise<ConfirmarCompraResult> {
-  const compra = await leerCompraEnTx(tx, ctx, input.id);
+  let compra = await leerCompraEnTx(tx, ctx, input.id);
   if (compra === null) {
     return buildError(COMPRA_NO_ENCONTRADA);
   }
@@ -78,6 +88,32 @@ export async function confirmarCompra(
   const transicion = transicionarConfirmar(compra.estado);
   if (!transicion.ok) {
     return buildError(transicion.code);
+  }
+
+  // 2b. COMPRA-row lock (v2r-03). Every line/total derived below must come from
+  // the state AFTER this lock: an edit either committed before it (visible to
+  // the re-read) or is serialized behind it (its header UPDATE parks here).
+  const bloqueo = await bloquearCompraParaConfirmarEnTx(tx, ctx, input.id);
+  if (!bloqueo.lockable) {
+    // The row was re-checked under the lock and is NOT in a confirmable
+    // `BORRADOR` state — a concurrent confirm won the flip. Re-read once to
+    // report the honest outcome instead of a blind conflict.
+    const reciente = await leerCompraEnTx(tx, ctx, input.id);
+    if (reciente === null) return buildError(COMPRA_NO_ENCONTRADA);
+    return buildError(CONCURRENCIA_CONFLICTO);
+  }
+
+  // 2c. CONVERGED re-read under the held lock: the confirm's totals, retentions
+  // and final UPDATE all derive from this single fresh snapshot. The gate is
+  // re-validated (the row is ours — it cannot have moved off `BORRADOR` — so
+  // this is a defensive invariant check, never a divergent branch).
+  compra = await leerCompraEnTx(tx, ctx, input.id);
+  if (compra === null) {
+    return buildError(COMPRA_NO_ENCONTRADA);
+  }
+  const convergencia = transicionarConfirmar(compra.estado);
+  if (!convergencia.ok) {
+    return buildError(convergencia.code);
   }
 
   const proveedor = await leerProveedorClasificadoEnTx(

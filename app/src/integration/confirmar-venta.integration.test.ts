@@ -15,9 +15,11 @@
  * not reach the database.
  */
 
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
-import { crearVenta } from "@/modules/venta/application/venta-service";
+import { actualizarVenta, crearVenta } from "@/modules/venta/application/venta-service";
 import { confirmarVenta } from "@/modules/venta/application/confirmar-venta";
 import { consultarSaldoCxC } from "@/modules/cobros/application/consultar-saldo-cxc";
 import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
@@ -152,6 +154,43 @@ async function sembrarFacturaVigente(ctx: TenantCtx, clienteId: number, ncf: str
     select: { id: true },
   });
   return f.id;
+}
+
+/** Dedicated single-connection blocker client (the devolucion pattern). */
+function crearClienteBloqueador(): PrismaClient {
+  const directUrl = process.env.DIRECT_URL;
+  if (directUrl === undefined || directUrl === "") {
+    throw new Error("DIRECT_URL is not set; the blocker needs a superuser connection.");
+  }
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString: directUrl, max: 1 }) });
+}
+
+interface WaitingPid {
+  readonly pid: number;
+}
+
+/**
+ * Poll until at least one transaction is parked on a lock (v2r-10 protocol).
+ * Fails loudly on timeout instead of proceeding non-deterministically.
+ */
+async function esperarUnEsperando(db: PrismaClient, contexto: string): Promise<void> {
+  const inicio = Date.now();
+  for (;;) {
+    const esperando = await db.$queryRaw<WaitingPid[]>`
+      SELECT a.pid
+      FROM pg_stat_activity a
+      WHERE a.wait_event_type = 'Lock'
+        AND a.wait_event IS NOT NULL
+        AND a.datname = current_database()
+        AND a.pid <> pg_backend_pid()`;
+    if (esperando.length >= 1) return;
+    if (Date.now() - inicio > 15_000) {
+      throw new Error(
+        `Race parking failed (${contexto}): no transaction waiting after 15s`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
 }
 
 describe("confirmarVenta (real DB, RLS on)", () => {
@@ -404,5 +443,94 @@ describe("confirmarVenta (real DB, RLS on)", () => {
     expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(522); // only the first sale burned
     expect(await db.factura.count({ where: { ventaId: id2 } })).toBe(0);
     expect(await db.pago.count({ where: { empresaId: ctx.empresaId, factura: { ventaId: id2 } } })).toBe(0);
+  });
+
+  it("draft edited while confirm is parked at the NCF lock: flip misses → CONCURRENCIA_CONFLICTO, full rollback (v2r-10)", async () => {
+    const prod = await productoConStock("toctou", "50.000");
+    await marcarFacturaAutomatica(ctx.empresaId, true);
+    await sembrarRango(ctx.empresaId, "B02", { rangoInicio: 500, rangoFin: 1000, secuenciaActual: 521 });
+    const id = await crearBorrador(ctx, prod); // 1 × 100.00 @18 → total 118.00
+
+    const db = getHarnessDb();
+    const blockerDb = crearClienteBloqueador();
+    let releaseBlocker!: () => void;
+    const unlocked = new Promise<void>((resolve) => {
+      releaseBlocker = resolve;
+    });
+    let signalLockHeld!: () => void;
+    const lockHeld = new Promise<void>((resolve) => {
+      signalLockHeld = resolve;
+    });
+
+    // The confirm's FIRST write lock is the NCF sequence row
+    // (`bloquearSecuenciaActivaEnTx` inside the consume); everything before it
+    // (read, gates, stock preview, credit gate) is a plain read — and crucially
+    // the step-5 stock preview takes NO row locks, so a concurrent draft edit
+    // commits freely while the confirm is parked at the NCF lock. Pre-fix the
+    // flip predicate had no version token: it matched regardless of the edit
+    // and CONFIRMED the stale read (v2r-10). Post-fix the flip's
+    // `WHERE ... AND updatedAt=<read value>` misses the edited header, the use
+    // case THROWS and the whole transaction (consume included) rolls back.
+    const blockerPromise = blockerDb.$transaction(
+      async (btx) => {
+        await btx.$executeRaw`
+          SELECT "id" FROM "NCF_SECUENCIA"
+          WHERE "empresaId" = ${ctx.empresaId}::int
+            AND "tipoNcf" = 'B02'::"TipoNcfSecuencia"
+          FOR UPDATE`;
+        signalLockHeld();
+        await unlocked;
+        throw new Error("blocker released (intentional rollback trigger)");
+      },
+      // Idle timeout must outlive the whole orchestration: the blocker sits idle
+      // (awaiting release) from lock acquisition, and under full-suite load the
+      // confirm can take many seconds to reach the NCF lock. 15s was comparable
+      // to the parking poll and the blocker expired mid-race, freeing the lock.
+      { timeout: 60_000 },
+    );
+    void blockerPromise.catch(() => undefined);
+
+    const confirmPromise = withTenantTransaction(ctx, (tx) => confirmarVenta(tx, ctx, { id }));
+    let editResult: Awaited<ReturnType<typeof actualizarVenta>> | null = null;
+    try {
+      await lockHeld;
+      await esperarUnEsperando(db, "confirm parked at the NCF lock");
+      // The draft edit commits while the confirm is parked: it replaces the
+      // lines AND bumps `updatedAt` (Prisma @updatedAt) — the optimistic token
+      // the flip must honor (v2r-10).
+      editResult = await withTenantTransaction(ctx, (tx) =>
+        actualizarVenta(tx, ctx, {
+          id,
+          fecha: new Date("2026-01-10T00:00:00.000Z"),
+          lineas: [{ productoId: prod, cantidad: "2", precioUnitario: "100.00", descuento: CERO }],
+        }),
+      );
+      releaseBlocker();
+      // The stale confirm THROWS (never returns): its consume rolls back.
+      await expect(confirmPromise).rejects.toMatchObject({
+        code: "CONCURRENCIA_CONFLICTO",
+      });
+    } finally {
+      releaseBlocker();
+      await Promise.allSettled([blockerPromise]);
+      await blockerDb.$disconnect();
+    }
+    expect(editResult?.ok).toBe(true);
+
+    // The edit survives; the confirm's EVERY side effect rolled back together.
+    const venta = await db.venta.findUnique({ where: { id }, include: { detalles: true } });
+    expect(venta?.estado).toBe("BORRADOR");
+    expect(venta?.detalles).toHaveLength(1);
+    expect(venta?.detalles[0].cantidad.toFixed(3)).toBe("2.000");
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521); // NCF un-burned
+    expect(await db.factura.count({ where: { ventaId: id } })).toBe(0); // no invoice
+    expect(await db.movimientoInventario.count({ where: { ventaId: id } })).toBe(0); // no debit
+    expect(await db.pago.count({ where: { empresaId: ctx.empresaId } })).toBe(0); // no COBRO
+    // Draft touched twice (CREAR + edit) — the rolled-back confirm wrote no audit.
+    expect(
+      await db.movimientoAuditoria.count({
+        where: { entidad: "Venta", idEntidad: String(id) },
+      }),
+    ).toBe(2);
   });
 });

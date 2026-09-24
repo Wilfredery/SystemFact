@@ -452,6 +452,13 @@ export interface VentaParaConfirmar {
   readonly estado: EstadoVentaCore;
   readonly sucursalId: number;
   readonly clienteId: number;
+  /**
+   * The header's `@updatedAt` at read time — the optimistic token for the guarded
+   * flip (v2r-10). A concurrent draft edit bumps it, so the flip's
+   * `WHERE ... AND updatedAt=<read value>` misses and the losing confirm throws
+   * (un-burning its consume) instead of confirming a stale read.
+   */
+  readonly updatedAt: Date;
   /** Server-frozen header money (identity terms for the invoice total). */
   readonly subtotal: string;
   readonly descuento: string;
@@ -482,6 +489,7 @@ export async function leerVentaParaConfirmarEnTx(
       estado: true,
       sucursalId: true,
       clienteId: true,
+      updatedAt: true,
       subtotal: true,
       descuento: true,
       detalles: {
@@ -502,6 +510,7 @@ export async function leerVentaParaConfirmarEnTx(
     estado: estadoVentaDesdeDb(row.estado),
     sucursalId: row.sucursalId,
     clienteId: row.clienteId,
+    updatedAt: row.updatedAt,
     subtotal: money(row.subtotal),
     descuento: money(row.descuento),
     lineas: row.detalles.map((l) => ({
@@ -646,17 +655,21 @@ export async function leerClienteParaElegibilidadEnTx(
 
 /**
  * Guarded `BORRADOR → CONFIRMADA` flip — the single-flip optimistic lock. Runs as
- * ONE `UPDATE ... WHERE id AND empresaId AND sucursalId AND estado='BORRADOR'`
- * (the compra cancel precedent). A zero-row result means a concurrent confirm
- * already flipped the row: the caller MUST throw (never return) because the flip
- * sits AFTER the NCF consume, so aborting the transaction un-burns the loser's
- * sequence number and leaves exactly one invoice (R-V15 "Double-click is
- * idempotent").
+ * ONE `UPDATE ... WHERE id AND empresaId AND sucursalId AND estado='BORRADOR'
+ * AND updatedAt=<expectedUpdatedAt>` (the compra cancel precedent + the draft
+ * edit's `@updatedAt` as a version token, v2r-10). A zero-row result means a
+ * concurrent confirm already flipped the row OR a concurrent draft edit landed
+ * between the read and this statement — both races lose: the caller MUST throw
+ * (never return) because the flip sits AFTER the NCF consume, so aborting the
+ * transaction un-burns the loser's sequence number and leaves exactly one
+ * invoice (R-V15 "Double-click is idempotent"; v2r-10 "Confirm must not
+ * overwrite a draft edited mid-confirm").
  */
 export async function confirmarVentaFlipEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
   ventaId: number,
+  expectedUpdatedAt: Date,
 ): Promise<{ flipUpdated: boolean }> {
   const result = await tx.venta.updateMany({
     where: {
@@ -664,6 +677,7 @@ export async function confirmarVentaFlipEnTx(
       empresaId: ctx.empresaId,
       sucursalId: ctx.sucursalId,
       estado: EstadoVenta.BORRADOR,
+      updatedAt: expectedUpdatedAt,
     },
     data: { estado: EstadoVenta.CONFIRMADA },
   });

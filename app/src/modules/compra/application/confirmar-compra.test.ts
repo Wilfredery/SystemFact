@@ -9,6 +9,7 @@
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import {
+  bloquearCompraParaConfirmarEnTx,
   confirmarCompraEnTx,
   leerCompraEnTx,
   leerProveedorClasificadoEnTx,
@@ -19,6 +20,7 @@ import { CompraDomainError, CONFIG_RETENCION_FALTANTE } from "../domain/errors";
 import { confirmarCompra } from "./confirmar-compra";
 
 jest.mock("../infrastructure/compra-repository", () => ({
+  bloquearCompraParaConfirmarEnTx: jest.fn(),
   confirmarCompraEnTx: jest.fn(),
   leerCompraEnTx: jest.fn(),
   leerProveedorClasificadoEnTx: jest.fn(),
@@ -47,6 +49,7 @@ const draft = {
 beforeEach(() => {
   jest.clearAllMocks();
   (leerCompraEnTx as jest.Mock).mockResolvedValue(draft);
+  (bloquearCompraParaConfirmarEnTx as jest.Mock).mockResolvedValue({ lockable: true });
   (leerProveedorClasificadoEnTx as jest.Mock).mockResolvedValue({
     id: 5,
     activo: true,
@@ -116,5 +119,53 @@ describe("confirmarCompra", () => {
     (leerCompraEnTx as jest.Mock).mockResolvedValue(null);
     const result = await confirmarCompra(tx, ctx, { id: 999 });
     expect(result.ok === false && result.code).toBe("COMPRA_NO_ENCONTRADA");
+  });
+
+  it("converges on lines edited after its primal read: totals come from the re-read under the lock (v2r-03)", async () => {
+    // A draft edit interleaved between the step-1 read and the confirm's guarded
+    // UPDATE used to be a lost race: totals derived from STALE lines while the
+    // FINAL pending purchase carries the edited ones (TOCTOU, v2r-03). Post-fix,
+    // the compra row lock serializes the edit, the re-read converges, and both the
+    // persisted totals AND the confirm result come from the fresh lines.
+    (leerCompraEnTx as jest.Mock)
+      .mockResolvedValueOnce(draft)
+      .mockResolvedValueOnce({
+        ...draft,
+        lineas: [
+          { productoId: 10, cantidad: "2.000", costoUnitario: "500.00", tasaItbis: "18" },
+        ],
+      });
+    const result = await confirmarCompra(tx, ctx, { id: 42 });
+    expect(bloquearCompraParaConfirmarEnTx).toHaveBeenCalledWith(tx, ctx, 42);
+    // 2×500 = 1000 gravado, itbis 180, total 1180; professional/fisica → ISR 15% = 150.
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        id: 42,
+        estado: "PENDIENTE",
+        correlativoInterno: "CMP-000001",
+        total: "1180.00",
+        retencionIsr: "150.00",
+        retencionItbis: "0.00",
+      },
+    });
+  });
+
+  it("returns CONCURRENCIA_CONFLICTO when the row is not lockable (concurrent edit holds it)", async () => {
+    (bloquearCompraParaConfirmarEnTx as jest.Mock).mockResolvedValue({ lockable: false });
+    const result = await confirmarCompra(tx, ctx, { id: 42 });
+    expect(result.ok === false && result.code).toBe("CONCURRENCIA_CONFLICTO");
+    expect(confirmarCompraEnTx).not.toHaveBeenCalled();
+    expect(registrarAuditCompraEnTx).not.toHaveBeenCalled();
+  });
+
+  it("returns COMPRA_NO_ENCONTRADA when the row vanished between the read and the lock", async () => {
+    (bloquearCompraParaConfirmarEnTx as jest.Mock).mockResolvedValue({ lockable: false });
+    (leerCompraEnTx as jest.Mock)
+      .mockResolvedValueOnce(draft)
+      .mockResolvedValueOnce(null);
+    const result = await confirmarCompra(tx, ctx, { id: 42 });
+    expect(result.ok === false && result.code).toBe("COMPRA_NO_ENCONTRADA");
+    expect(confirmarCompraEnTx).not.toHaveBeenCalled();
   });
 });

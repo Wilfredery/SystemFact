@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.18](https://github.com/Wilfredery/SystemFact/compare/v0.11.17...v0.11.18) (2026-09-24)
+
+### Bug Fixes
+
+* **compra,venta:** close confirm TOCTOU races against concurrent draft edits (run-2 security audit v2r-03 HIGH, v2r-10 MEDIUM) — `confirmarCompra` now locks the `COMPRA` row (`SELECT ... FOR UPDATE`, `estado='BORRADOR'`) before re-deriving totals from a converged re-read under the held lock, so a draft edited mid-confirm can no longer persist stale header totals over its final lines (the 354.00 divergence repro); `confirmarVenta` now pins the guard `updatedAt` snapshot in `confirmarVentaFlipEnTx` (`WHERE ... estado='BORRADOR' AND updatedAt=<read value>`, mirroring `actualizarVentaBorradorEnTx`), so a draft edited between read and flip fails the flip (zero rows) and the transaction throws — un-burning its NCF consume — instead of emitting an invoice with stale totals; regression coverage via real-DB integration suites (`compra-concurrency.integration.test.ts`, `confirmar-venta.integration.test.ts`: 2-connection interleavings, pg_locks assertions, persisted-header==final-lines convergence check, NCF-unburn check 521 no-consumption) and updated unit tests; verified 951 unit + 197 integration tests green, `tsc --noEmit`, lint, `prisma validate` and production build clean
+
 # [0.11.17](https://github.com/Wilfredery/SystemFact/compare/v0.11.16...v0.11.17) (2026-09-19)
 
 ### Documentation
