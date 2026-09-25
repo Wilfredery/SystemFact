@@ -282,6 +282,22 @@ export async function prepararLineasVenta(
     return ventaGuardadoError(LINEAS_VACIAS);
   }
 
+  // 1b. One product per sale (v2r-04): a repeated productoId is malformed at
+  // the boundary (mirror of the HTTP zod refine) AND invalid at the domain
+  // level — per-product quantities/discounts are single cells, so a duplicate
+  // could only arrive from a non-HTTP caller bypassing the transport check.
+  // Rejected here with the stable LINEA_INVALIDA code BEFORE the batch read,
+  // so the mirror fails fast exactly like the empty-set guard above.
+  {
+    const vistos = new Set<number>();
+    for (const l of lineas) {
+      if (vistos.has(l.productoId)) {
+        return ventaGuardadoError(LINEA_INVALIDA);
+      }
+      vistos.add(l.productoId);
+    }
+  }
+
   const headerDescuento = normalizarDescuento(input.descuentoCabecera);
 
   // 2. Batch product read (empresa-scoped), then pure per-line preconditions.

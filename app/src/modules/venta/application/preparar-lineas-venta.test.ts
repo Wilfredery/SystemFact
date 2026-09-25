@@ -23,6 +23,7 @@ import {
 } from "../infrastructure/config-repository";
 import { DESCUENTO_TIPO, type Descuento } from "../domain/venta";
 import {
+  LINEA_INVALIDA,
   LINEAS_VACIAS,
   PRODUCTO_NO_ENCONTRADO,
   PRODUCTO_INACTIVO,
@@ -126,6 +127,20 @@ describe("prepararLineasVenta — preconditions (validarPrecondicionesLineas)", 
       fecha: FECHA,
     });
     expect(!r.ok && r.code).toBe(PRODUCTO_INACTIVO);
+  });
+
+  // --- v2r-04: a sale may never carry the same product twice (per-product
+  // quantities must be a single cell, mirroring the HTTP zod refine). Guarded
+  // BEFORE the batch product read, so the mirror fails fast like LINEAS_VACIAS.
+
+  it("rejects a duplicated productoId with LINEA_INVALIDA before reading products", async () => {
+    const r = await prepararLineasVenta(tx, ctx, {
+      lineas: [linea(10, CERO, "1"), linea(10, CERO, "2")],
+      descuentoCabecera: CERO,
+      fecha: FECHA,
+    });
+    expect(!r.ok && r.code).toBe(LINEA_INVALIDA);
+    expect(leerProductosParaLineasVentaEnTx).not.toHaveBeenCalled();
   });
 });
 
