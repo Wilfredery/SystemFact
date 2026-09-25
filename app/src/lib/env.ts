@@ -22,24 +22,47 @@ const serverSchema = z.object({
 });
 
 /**
- * Roles whose connection string MUST NOT be used as DATABASE_URL because they
- * bypass RLS policies (either via SUPERUSER, BYPASSRLS, or owning the tables).
- * Only `DIRECT_URL` (used by `prisma migrate`) is allowed to use these.
+ * The ONLY role allowed as the `DATABASE_URL` username: a plain application
+ * role with no SUPERUSER/BYPASSRLS attribute and no ownership of the tables,
+ * so RLS policies are actually enforced. Created by migration
+ * `20260902150000_create_app_role`.
  *
- * If you find yourself wanting to set DATABASE_URL to one of these to debug
- * something, do it via a separate shell variable and a one-off script —
- * never via `.env` committed to the repo.
+ * `DIRECT_URL` (used by `prisma migrate`) is deliberately exempt — it must
+ * connect with a privileged role.
  */
-const SUPERUSER_LIKE_ROLES = new Set([
-  "postgres",
-  "postgresql",
-  "root",
-  "admin",
-  "dbo",
-  "sa",
-]);
+const APP_ROLE = "systemfact_app";
 
-function assertAppRoleUrl(url: string, label: string): void {
+/**
+ * The Supabase transaction-pooler username is the application role plus the
+ * project ref as a suffix: `systemfact_app.<project-ref>`.
+ */
+const APP_ROLE_POOLER_PREFIX = `${APP_ROLE}.`;
+
+/**
+ * True when `username` is the dedicated application role, in either accepted
+ * form: `systemfact_app` or the dotted pooler form `systemfact_app.<project-ref>`
+ * (any non-empty suffix). Comparison is case-insensitive after trimming.
+ *
+ * This is an ALLOWLIST on purpose. A denylist of "superuser-looking" names
+ * cannot be exhaustive: it misses privileged roles this project never named
+ * (`supabase_admin`) and every dotted pooler variant of them
+ * (`postgres.<project-ref>`, `supabase_admin.<project-ref>`), all of which
+ * silently bypass RLS. Deny-by-default is the only rule that stays closed as
+ * the platform adds roles.
+ */
+export function isAppRoleUsername(username: string): boolean {
+  const name = username.trim().toLowerCase();
+  if (name === APP_ROLE) return true;
+  if (!name.startsWith(APP_ROLE_POOLER_PREFIX)) return false;
+  return name.length > APP_ROLE_POOLER_PREFIX.length;
+}
+
+/**
+ * Enforce that `url` connects as the application role. Defense in depth
+ * (ADR-019): a `DATABASE_URL` that points at a privileged role disables every
+ * RLS policy in the database while still looking like a working configuration.
+ */
+export function assertAppRoleUrl(url: string, label: string): void {
   // Parse defensively — a malformed URL should fail with a clear error,
   // not silently pass through to the driver adapter.
   let parsed: URL;
@@ -56,13 +79,13 @@ function assertAppRoleUrl(url: string, label: string): void {
       `${label} must use the postgresql:// or postgres:// scheme (got "${parsed.protocol}").`,
     );
   }
-  const username = decodeURIComponent(parsed.username).toLowerCase();
-  if (SUPERUSER_LIKE_ROLES.has(username)) {
+  const username = decodeURIComponent(parsed.username).trim().toLowerCase();
+  if (!isAppRoleUsername(username)) {
     throw new Error(
-      `${label} uses role "${username}" which bypasses RLS policies. ` +
-        `Use the dedicated application role (e.g. systemfact_app) so that ` +
-        `multi-tenancy isolation is enforced at the database level. ` +
-        `For migrations, use DIRECT_URL with the privileged role.`,
+      `${label} must use the dedicated application role "${APP_ROLE}" so that ` +
+        `multi-tenancy isolation is enforced at the database level, but it uses ` +
+        `role "${username}", which bypasses RLS policies (SUPERUSER, BYPASSRLS or ` +
+        `table owner). For migrations, use DIRECT_URL with the privileged role.`,
     );
   }
 }
