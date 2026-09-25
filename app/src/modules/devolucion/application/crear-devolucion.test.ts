@@ -13,10 +13,15 @@
 
 import { Decimal } from "decimal.js";
 import {
+  CANTIDAD_EXCEDE_ORIGINAL,
   LINEA_INVALIDA,
   VentaDomainError,
 } from "../../venta/domain/errors";
-import { TIPO_REPOSICION, type TipoReposicion } from "../domain/devolucion";
+import {
+  TIPO_REPOSICION,
+  validarCantidadDevuelta,
+  type TipoReposicion,
+} from "../domain/devolucion";
 import {
   resolverLineasContraVentaOriginal,
   type LineaDevolucionInput,
@@ -148,5 +153,72 @@ describe("resolverLineasContraVentaOriginal (pure frozen-mirror resolver)", () =
       expect(resultado.originales[i]?.toString()).toBe(linea.productoId === 1 ? "5" : "8");
     });
     expect(resultado.cantidades[0]).toBeInstanceOf(Decimal);
+  });
+
+  // --- v2r-04: a product may occupy SEVERAL ORIGINAL rows (5.000 + 2.000 = 7.000
+  // sold on one factura). The original quantity per product is their SUM, so
+  // returning 6.000 is legal. Prior defect: the Map collapsed originals to the
+  // LAST row (2.000) and "6" was rejected with CANTIDAD_EXCEDE_ORIGINAL.
+
+  it("sums duplicate ORIGINAL rows of one product into a single sold quantity (5.000 + 2.000 = 7.000)", () => {
+    const resultado = resolverLineasContraVentaOriginal(
+      [retorno(1, "2.000")],
+      [ventaLinea(1, "5.000"), ventaLinea(1, "2.000")],
+    );
+    expect(resultado.originales.map((o) => o.toString())).toEqual(["7"]);
+    expect(() =>
+      validarCantidadDevuelta(
+        resultado.cantidades[0]!,
+        resultado.originales[0]!,
+        new Decimal(0),
+      ),
+    ).not.toThrow();
+  });
+
+  it("allows returning 6.000 of a product sold across two ORIGINAL rows (6 ≤ 7)", () => {
+    const resultado = resolverLineasContraVentaOriginal(
+      [retorno(1, "6.000")],
+      [ventaLinea(1, "5.000"), ventaLinea(1, "2.000")],
+    );
+    expect(resultado.originales.map((o) => o.toString())).toEqual(["7"]);
+    expect(() =>
+      validarCantidadDevuelta(
+        resultado.cantidades[0]!,
+        resultado.originales[0]!,
+        new Decimal(0),
+      ),
+    ).not.toThrow();
+  });
+
+  it("still caps a return above the SUMMED original (8.000 > 7.000)", () => {
+    const resultado = resolverLineasContraVentaOriginal(
+      [retorno(1, "8.000")],
+      [ventaLinea(1, "5.000"), ventaLinea(1, "2.000")],
+    );
+    expect(() =>
+      validarCantidadDevuelta(
+        resultado.cantidades[0]!,
+        resultado.originales[0]!,
+        new Decimal(0),
+      ),
+    ).toThrow(expect.objectContaining({ code: CANTIDAD_EXCEDE_ORIGINAL }));
+  });
+
+  it("fails LOUD with LINEA_INVALIDA when ORIGINAL rows of one product differ in precioUnitario", () => {
+    expect(() =>
+      resolverLineasContraVentaOriginal(
+        [retorno(1, "1")],
+        [ventaLinea(1, "5.000", "100.00"), ventaLinea(1, "2.000", "120.00")],
+      ),
+    ).toThrow(expect.objectContaining({ code: LINEA_INVALIDA, details: { productoId: 1 } }));
+  });
+
+  it("fails LOUD with LINEA_INVALIDA when ORIGINAL rows of one product differ in tasaItbis", () => {
+    expect(() =>
+      resolverLineasContraVentaOriginal(
+        [retorno(1, "1")],
+        [ventaLinea(1, "5.000", "120.00", "18"), ventaLinea(1, "2.000", "120.00", "16")],
+      ),
+    ).toThrow(expect.objectContaining({ code: LINEA_INVALIDA, details: { productoId: 1 } }));
   });
 });
