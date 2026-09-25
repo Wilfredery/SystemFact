@@ -468,6 +468,10 @@ model DetalleVenta {
   producto                      Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
   descuentoAutorizadoPorUsuario Usuario? @relation("DetalleVentaDescuentoAutorizado", fields: [descuentoAutorizadoPor], references: [id], onDelete: Restrict)
 
+  // v2r-04: a product appears at most ONCE per sale — per-product quantities
+  // and discounts are single cells in the detail (enforced at the boundary by
+  // the HTTP zod refine and in the application by prepararLineasVenta).
+  @@unique([ventaId, productoId], map: "DETALLE_VENTA_ventaId_productoId_key")
   @@map("DETALLE_VENTA")
 }
 
