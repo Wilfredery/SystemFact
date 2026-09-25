@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.20](https://github.com/Wilfredery/SystemFact/compare/v0.11.19...v0.11.20) (2026-09-25)
+
+### Bug Fixes
+
+* **rls,env,ci:** close run-2 security audit finding `usuariorol_isolation.missing-is_login_flow-branch` MEDIUM (Phase 3 remediation) — new hand-written migration `20260925120000_fix_usuariorol_login_flow` recreates the `usuariorol_isolation` policy with the single added clause `OR COALESCE(NULLIF(current_setting('app.is_login_flow', true), ''), '') = 'true'` in USING (mirroring `usuario_select` at `20260902120000_enable_rls` line 108, per that migration's own header lines 18-20 which document the USUARIO + USUARIO_ROL `findUnique` auth pair): the policy created at lines 157-179 of the same migration never carried the exception, so the post-`signInWithPassword` lookup of the caller's own role rows could not read them before a tenant context exists; WITH CHECK is deliberately unchanged, so the exception grants login-flow READ only and never login-flow writes; `assertAppRoleUrl` in `src/lib/env.ts` replaces the `SUPERUSER_LIKE_ROLES` denylist with a `systemfact_app` ALLOWLIST that accepts only `systemfact_app` and the dotted transaction-pooler form `systemfact_app.<project-ref>`, because a denylist of superuser-looking names can never be exhaustive and in fact admitted `supabase_admin` plus every dotted pooler variant (`postgres.<project-ref>`, `supabase_admin.<project-ref>`), each of which silently disables every RLS policy; `isAppRoleUsername` and `assertAppRoleUrl` are exported for direct testing and covered by a new `src/lib/env.test.ts` (20 cases: plain, dotted and mixed-case app role accepted; `supabase_admin`, `postgres`, `postgresql`, `root`, `admin`, `dbo`, `sa` and their dotted pooler forms rejected — all of which the old denylist let through, verified red against it); the `integration` CI job now runs `pnpm rls:verify` between database provisioning and the RLS-enforced Jest suite, so the role-level guarantees that were only ever checked by hand (not `postgres`/`supabase_admin`, no BYPASSRLS, not the table owner) now gate every PR; verified 989 unit tests green (969 baseline + 20 new), `tsc --noEmit`, lint (0 errors) and `prisma validate` clean
+
 ## [0.11.19](https://github.com/Wilfredery/SystemFact/compare/v0.11.18...v0.11.19) (2026-09-25)
 
 ### Bug Fixes
