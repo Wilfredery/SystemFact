@@ -16,6 +16,9 @@
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { registrarReposicionCancelacion } from "@/modules/inventario/application/registrar-salidas-venta";
+import { revertirPagosAplicadosDeVentaEnTx } from "@/modules/cobros/infrastructure/pago-repository";
+import { ESTADO_PAGO } from "@/modules/cobros/domain/pago";
+import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import {
   ESTADO_VENTA,
   DESCUENTO_CERO,
@@ -315,6 +318,7 @@ async function cancelarVentaConfirmada(
   if (!gate.permitido) {
     return cancelError(VENTA_INMUTABLE);
   }
+  const trimmed = motivo?.trim();
 
   // 1. Guarded CONFIRMADA → CANCELADA. Zero rows = a concurrent cancel/confirm won
   //    → typed conflict, and NOTHING else has run so there is nothing to roll back.
@@ -332,6 +336,31 @@ async function cancelarVentaConfirmada(
     // conflict (e.g. already annulled) — never a silent double-annul.
     throw new VentaDomainError(CONCURRENCIA_CONFLICTO, { ventaId });
   }
+
+  // 2b. Revert every live APLICADO payment of this sale IN THE SAME transaction
+  //     (v2r-09): a canceled CONTADO sale's recorded cash must not keep standing
+  //     as an APLICADO row against an ANULADA invoice. The factura read above
+  //     already holds the FACTURA row lock (FOR UPDATE), so no concurrent cobro
+  //     can land between this reversal and the annul. Zero live payments is a
+  //     legitimate no-op (a CREDIT sale never collected). Each flipped row gets
+  //     ONE append-only audit carrying the frozen money (accion ANULAR, matching
+  //     the invoice annul — the AccionAuditoria enum has no REVERTIR).
+  const pagosReversados = await revertirPagosAplicadosDeVentaEnTx(tx, ctx, ventaId);
+  for (const pago of pagosReversados) {
+    await registrarEventoAuditoriaEnTx(tx, ctx, {
+      accion: "ANULAR",
+      entidad: "Pago",
+      idEntidad: String(pago.id),
+      valorAnterior: JSON.stringify({
+        estado: ESTADO_PAGO.APLICADO,
+        tipo: pago.tipo,
+        monto: pago.monto,
+      }),
+      valorNuevo: JSON.stringify({ estado: ESTADO_PAGO.REVERTIDO }),
+      motivo: trimmed && trimmed.length > 0 ? trimmed : REPOSICION_MOTIVO_DEFECTO,
+    });
+  }
+
   const { annulled } = await anularFacturaDeVentaEnTx(tx, ctx, ventaId);
   if (!annulled) {
     // Lost the VIGENTE predicate after the read: abort so the flip rolls back.
@@ -342,7 +371,6 @@ async function cancelarVentaConfirmada(
   //    line, positive deltas, under the SAME ascending-product-id locks as the
   //    exit. Throws on a foreign product (post-flip → whole cancel rolls back).
   const lineas = await leerVentaParaConfirmarEnTx(tx, ctx, ventaId);
-  const trimmed = motivo?.trim();
   await registrarReposicionCancelacion(tx, ctx, {
     ventaId,
     motivo: trimmed && trimmed.length > 0 ? trimmed : REPOSICION_MOTIVO_DEFECTO,

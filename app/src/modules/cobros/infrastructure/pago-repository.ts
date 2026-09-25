@@ -11,7 +11,12 @@
 import { Prisma } from "@/generated/prisma/client";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
-import { METODO_PAGO, type EstadoPago, type TipoPago } from "../domain/pago";
+import {
+  METODO_PAGO,
+  ESTADO_PAGO,
+  type EstadoPago,
+  type TipoPago,
+} from "../domain/pago";
 
 /** A validated payment write payload — all money is a `Decimal(12,2)` string. */
 export interface CrearPagoInput {
@@ -148,4 +153,59 @@ export async function leerReciboEnTx(
     usuarioNombre: row.usuario.nombre,
     empresaNombre: row.empresa.nombreComercial,
   };
+}
+
+/**
+ * A live `APLICADO` payment row flipped to `REVERTIDO` by the confirmed-sale
+ * cancel chain (v2r-09). `monto` is the frozen `Decimal(12,2)` string so the
+ * caller's audit row carries the exact money that was reversed.
+ */
+export interface PagoAplicadoReversado {
+  readonly id: number;
+  readonly tipo: TipoPago;
+  readonly monto: string;
+}
+
+/**
+ * Reverts every live `APLICADO` payment of a sale (v2r-09): each row flips to
+ * `REVERTIDO` INSIDE the caller's same tenant transaction that cancels the sale
+ * and annuls its invoice, so recorded cash never strands as an `APLICADO` row
+ * against an `ANULADA` invoice. Rows are joined through the `FACTURA.ventaId`
+ * and pinned to the same empresa + sucursal (defense in depth on top of RLS);
+ * the flip is ONE guarded `updateMany ... WHERE estado='APLICADO'`, and the
+ * flipped rows are re-read afterward so the caller can append one audit row per
+ * reversed payment with the money frozen as Decimal strings. Zero rows is a
+ * legitimate no-op — a CREDIT sale or a cash sale with no payments yet. Only
+ * `estado` changes; money, tipo and correlativoRecibo are untouched and the row
+ * is NEVER deleted (the payment keeps its fiscal trace).
+ */
+export async function revertirPagosAplicadosDeVentaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  ventaId: number,
+): Promise<readonly PagoAplicadoReversado[]> {
+  await tx.pago.updateMany({
+    where: {
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      estado: ESTADO_PAGO.APLICADO,
+      factura: { ventaId, empresaId: ctx.empresaId },
+    },
+    data: { estado: ESTADO_PAGO.REVERTIDO },
+  });
+  const revertidos = await tx.pago.findMany({
+    where: {
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      estado: ESTADO_PAGO.REVERTIDO,
+      factura: { ventaId, empresaId: ctx.empresaId },
+    },
+    select: { id: true, tipo: true, monto: true },
+    orderBy: { id: "asc" },
+  });
+  return revertidos.map((p) => ({
+    id: p.id,
+    tipo: p.tipo,
+    monto: p.monto.toFixed(2),
+  }));
 }

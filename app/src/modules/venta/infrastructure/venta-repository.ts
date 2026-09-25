@@ -892,22 +892,32 @@ export async function registrarAuditFacturaEnTx(
   });
 }
 
-/** The sale's VIGENTE invoice id (for the cancel annul + audit), or `null`. */
+/**
+ * The sale's `VIGENTE` invoice id, read UNDER a `FOR UPDATE` row lock (the R-C2
+ * convention, same statement shape as `saldo-cxc.repository.ts`). The cancel
+ * chain needs the lock so its payment reversal + annul serialize against any
+ * concurrent collection on this invoice (`registrarCobro` takes the same lock):
+ * either the cobro commits before this read (its row is then visible to the
+ * reversal) or it waits until this transaction commits (and then finds the
+ * invoice `ANULADA`, so no fresh payment can land mid-annul). Returns `null`
+ * when the invoice is missing, not owned by this tenant, or not `VIGENTE` — the
+ * caller aborts (CONCURRENCIA_CONFLICTO) instead of double-annulling.
+ */
 export async function leerFacturaVigenteDeVentaEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
   ventaId: number,
 ): Promise<{ id: number } | null> {
-  const row = await tx.factura.findFirst({
-    where: {
-      ventaId,
-      empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
-      estado: EstadoDocumento.VIGENTE,
-    },
-    select: { id: true },
-  });
-  return row;
+  const rows = await tx.$queryRaw<{ id: number }[]>`
+    SELECT f."id"
+    FROM "FACTURA" f
+    WHERE f."ventaId" = ${ventaId}
+      AND f."empresaId" = ${ctx.empresaId}
+      AND f."sucursalId" = ${ctx.sucursalId}
+      AND f."estado" = 'VIGENTE'
+    FOR UPDATE`;
+  if (rows.length === 0) return null;
+  return { id: rows[0].id };
 }
 
 // --- listing / detail ---

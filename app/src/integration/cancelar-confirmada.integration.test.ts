@@ -18,6 +18,7 @@ import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenan
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { crearVenta, cancelarVenta } from "@/modules/venta/application/venta-service";
 import { confirmarVenta } from "@/modules/venta/application/confirmar-venta";
+import { bloquearYCalcularSaldoFacturaEnTx } from "@/modules/cobros/infrastructure/saldo-cxc.repository";
 import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 import { crearProductoVenta, fijarStock } from "./setup/venta-helpers";
 
@@ -153,6 +154,50 @@ describe("cancelarVenta confirmada (real DB, RLS on)", () => {
     expect(await db.movimientoInventario.count({ where: { ventaId } })).toBe(0);
     expect(await cantidadStock(ctx, prod.id)).toBe("10.000"); // unchanged
     expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521); // no NCF burn
+  });
+
+  it("3.10 — cancel of a paid CONTADO sale reverts the APLICADO COBRO to REVERTIDO in the same transaction (v2r-09)", async () => {
+    const { ventaId } = await confirmarVentaLista(ctx);
+    const db = getHarnessDb();
+
+    // CONTADO close-the-loop (confirm step 10): exactly one COBRO/APLICADO for
+    // the full invoice total exists BEFORE the cancel.
+    const factura = (await db.factura.findFirst({ where: { ventaId } }))!;
+    const pagos = await db.pago.findMany({ where: { facturaId: factura.id } });
+    expect(pagos).toHaveLength(1);
+    expect(pagos[0].tipo).toBe("COBRO");
+    expect(pagos[0].estado).toBe("APLICADO");
+    expect(pagos[0].monto.toFixed(2)).toBe(factura.total.toFixed(2));
+    const pagoId = pagos[0].id;
+
+    // The invoice is fully collected on the canonical CxC surface (ADR-017).
+    expect(
+      await withTenantTransaction(ctx, (tx) => bloquearYCalcularSaldoFacturaEnTx(tx, ctx, factura.id)),
+    ).toEqual({ total: factura.total.toFixed(2), saldoPendiente: "0.00" });
+
+    const r = await withTenantTransaction(ctx, (tx) => cancelarVenta(tx, ctx, { id: ventaId, motivo: "Devolución cliente" }));
+    expect(r.ok).toBe(true);
+    expect((await db.venta.findUnique({ where: { id: ventaId } }))?.estado).toBe("CANCELADA");
+
+    // SAME PAGO row (never deleted): flipped to REVERTIDO, type and money frozen.
+    const trasCancel = await db.pago.findUnique({ where: { id: pagoId } });
+    expect(trasCancel).not.toBeNull();
+    expect(trasCancel!.estado).toBe("REVERTIDO");
+    expect(trasCancel!.tipo).toBe("COBRO");
+    expect(trasCancel!.monto.toFixed(2)).toBe(factura.total.toFixed(2));
+
+    // The ANULADA invoice drops out of the canonical CxC surface — the pre-sale
+    // state ("no row") is exactly the post-cancel state ("no row").
+    expect(
+      await withTenantTransaction(ctx, (tx) => bloquearYCalcularSaldoFacturaEnTx(tx, ctx, factura.id)),
+    ).toBeNull();
+
+    // The payment reversal is audited append-only, 608-style (accion ANULAR — the
+    // AccionAuditoria enum has no REVERTIR, matching the invoice annul's action).
+    const audit = await db.movimientoAuditoria.findFirst({ where: { entidad: "Pago", idEntidad: String(pagoId), accion: "ANULAR" } });
+    expect(audit).not.toBeNull();
+    expect(JSON.parse(audit!.valorAnterior!)).toEqual({ estado: "APLICADO", tipo: "COBRO", monto: factura.total.toFixed(2) });
+    expect(JSON.parse(audit!.valorNuevo!)).toEqual({ estado: "REVERTIDO" });
   });
 
   it("concurrency — two parallel cancels of one confirmed sale admit exactly one winner", async () => {
