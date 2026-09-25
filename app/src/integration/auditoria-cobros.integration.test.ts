@@ -177,19 +177,25 @@ describe("audit write port wired into cobros (real DB, RLS on; R-C8/AU-2/AU-3)",
     const clienteId = await crearCliente("Acreedor Reembolso");
     const facturaId = await crearFacturaVigente(clienteId, "B01000000203", "5000.00");
 
+    // v2r-02: a refund is bound to actually-collected money, so seed a partial
+    // cobro FIRST — the pre-guard fixture refunded an unpaid invoice, which the
+    // bound now correctly rejects with REEMBOLSO_EXCEDE_SALDO.
+    const cobro = await cobrar(facturaId, "2000.00");
+    expect(cobro.ok).toBe(true);
+
     const primero = await reembolsar(facturaId, "500.00", "K-AUDIT");
     expect(primero.ok).toBe(true);
     if (!primero.ok) throw new Error("el primer reembolso debería comprometerse");
 
-    // One Pago, one PAGAR audit row after the first commit.
-    expect(await getHarnessDb().pago.count({ where: { empresaId: f.empresaA.id } })).toBe(1);
-    expect(await contarPagar(f.empresaA.id)).toBe(1);
+    // One Pago + one PAGAR audit row per committed effect (the cobro AND the refund).
+    expect(await getHarnessDb().pago.count({ where: { empresaId: f.empresaA.id } })).toBe(2);
+    expect(await contarPagar(f.empresaA.id)).toBe(2);
 
     // Replay: stable conflict, audit count flat (the key gate runs before the audit).
     const replay = await reembolsar(facturaId, "500.00", "K-AUDIT");
     expect(!replay.ok && replay.code).toBe(PAGO_IDEMPOTENCIA_CONFLICTO);
-    expect(await getHarnessDb().pago.count({ where: { empresaId: f.empresaA.id } })).toBe(1);
-    expect(await contarPagar(f.empresaA.id)).toBe(1);
+    expect(await getHarnessDb().pago.count({ where: { empresaId: f.empresaA.id } })).toBe(2);
+    expect(await contarPagar(f.empresaA.id)).toBe(2);
   });
 
   it("the new A PAGAR rows are invisible to empresa B's admin consultation", async () => {
