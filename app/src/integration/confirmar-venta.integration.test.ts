@@ -490,10 +490,17 @@ describe("confirmarVenta (real DB, RLS on)", () => {
     );
     void blockerPromise.catch(() => undefined);
 
-    const confirmPromise = withTenantTransaction(ctx, (tx) => confirmarVenta(tx, ctx, { id }));
     let editResult: Awaited<ReturnType<typeof actualizarVenta>> | null = null;
     try {
+      // The blocker must ALREADY hold the NCF lock before the confirm starts.
+      // Launched in parallel, a warm app pool lets the confirm finish the whole
+      // confirm (NCF consumed, venta confirmed, committed) before the blocker's
+      // fresh client acquires its FOR UPDATE — then nothing ever parks at the
+      // lock and the race poll times out (the intermittent v2r-10 flake).
       await lockHeld;
+      const confirmPromise = withTenantTransaction(ctx, (tx) =>
+        confirmarVenta(tx, ctx, { id }),
+      );
       await esperarUnEsperando(db, "confirm parked at the NCF lock");
       // The draft edit commits while the confirm is parked: it replaces the
       // lines AND bumps `updatedAt` (Prisma @updatedAt) — the optimistic token

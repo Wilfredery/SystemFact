@@ -38,6 +38,8 @@ import {
 } from "../infrastructure/config-repository";
 import { getOrCreateConsumidorFinalEnTx } from "@/modules/cliente/application/consumidor-final";
 import { registrarReposicionCancelacion } from "@/modules/inventario/application/registrar-salidas-venta";
+import { revertirPagosAplicadosDeVentaEnTx } from "@/modules/cobros/infrastructure/pago-repository";
+import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import { DESCUENTO_TIPO, type Descuento } from "../domain/venta";
 import {
   crearVenta,
@@ -78,6 +80,16 @@ jest.mock("../infrastructure/venta-repository", () => ({
 jest.mock("@/modules/inventario/application/registrar-salidas-venta", () => ({
   registrarReposicionCancelacion: jest.fn(),
   registrarSalidasVenta: jest.fn(),
+}));
+
+// The v2r-09 payment reversal + its append-only audit (driven by the confirmed
+// cancel chain); real behavior is covered in the integration suite.
+jest.mock("@/modules/cobros/infrastructure/pago-repository", () => ({
+  revertirPagosAplicadosDeVentaEnTx: jest.fn(),
+}));
+
+jest.mock("@/modules/auditoria/application/auditoria-write-port", () => ({
+  registrarEventoAuditoriaEnTx: jest.fn(),
 }));
 
 // Keep the REAL VentaConfigError / code (so `instanceof` in preparar works);
@@ -145,6 +157,10 @@ beforeEach(() => {
     lineas: [{ productoId: 10, cantidad: "5.000" }],
   });
   (registrarReposicionCancelacion as jest.Mock).mockResolvedValue([]);
+  // v2r-09: no live payments by default (the CONFIRMADA-cancel fixtures are a
+  // never-collected CREDIT sale); the reversal then is a zero-row no-op.
+  (revertirPagosAplicadosDeVentaEnTx as jest.Mock).mockResolvedValue([]);
+  (registrarEventoAuditoriaEnTx as jest.Mock).mockResolvedValue(undefined);
 });
 
 describe("crearVenta", () => {
@@ -298,9 +314,48 @@ describe("cancelarVenta", () => {
     expect(cancelarVentaConfirmadaEnTx).toHaveBeenCalledTimes(1);
     expect(anularFacturaDeVentaEnTx).toHaveBeenCalledTimes(1);
     expect(registrarReposicionCancelacion).toHaveBeenCalledTimes(1);
+    // v2r-09: the payment reversal runs (zero-row no-op here, a CREDIT sale never
+    // collected) BEFORE the annul — ordering inside the same transaction chain.
+    expect(revertirPagosAplicadosDeVentaEnTx).toHaveBeenCalledWith(tx, ctx, 7);
+    expect((anularFacturaDeVentaEnTx as jest.Mock).mock.invocationCallOrder[0]).toBeGreaterThan(
+      (revertirPagosAplicadosDeVentaEnTx as jest.Mock).mock.invocationCallOrder[0],
+    );
+    expect(registrarEventoAuditoriaEnTx).not.toHaveBeenCalled();
     // Both reversals are audited (Venta CANCELAR + Factura ANULAR).
     expect(registrarAuditVentaEnTx).toHaveBeenCalledTimes(1);
     expect(registrarAuditFacturaEnTx).toHaveBeenCalledTimes(1);
+  });
+
+  it("CONFIRMADA with live APLICADO payments: reverts them and audits ONE 'Pago' ANULAR per row, before the annul (v2r-09)", async () => {
+    (leerVentaEnTx as jest.Mock).mockResolvedValue({ id: 7, estado: "CONFIRMADA", sucursalId: 2, clienteId: 99, updatedAt: new Date() });
+    (revertirPagosAplicadosDeVentaEnTx as jest.Mock).mockResolvedValue([
+      { id: 41, tipo: "COBRO", monto: "500.00" },
+      { id: 42, tipo: "COBRO", monto: "100.00" },
+    ]);
+    const r = await cancelarVenta(tx, ctx, { id: 7, motivo: "Devolución cliente" });
+    expect(r.ok).toBe(true);
+    // The reversal precedes the annul inside the same transaction chain.
+    expect((anularFacturaDeVentaEnTx as jest.Mock).mock.invocationCallOrder[0]).toBeGreaterThan(
+      (revertirPagosAplicadosDeVentaEnTx as jest.Mock).mock.invocationCallOrder[0],
+    );
+    // One append-only audit per flipped row with the frozen money (accion ANULAR).
+    expect(registrarEventoAuditoriaEnTx).toHaveBeenCalledTimes(2);
+    expect(registrarEventoAuditoriaEnTx).toHaveBeenNthCalledWith(1, tx, ctx, {
+      accion: "ANULAR",
+      entidad: "Pago",
+      idEntidad: "41",
+      valorAnterior: JSON.stringify({ estado: "APLICADO", tipo: "COBRO", monto: "500.00" }),
+      valorNuevo: JSON.stringify({ estado: "REVERTIDO" }),
+      motivo: "Devolución cliente",
+    });
+    expect(registrarEventoAuditoriaEnTx).toHaveBeenNthCalledWith(2, tx, ctx, {
+      accion: "ANULAR",
+      entidad: "Pago",
+      idEntidad: "42",
+      valorAnterior: JSON.stringify({ estado: "APLICADO", tipo: "COBRO", monto: "100.00" }),
+      valorNuevo: JSON.stringify({ estado: "REVERTIDO" }),
+      motivo: "Devolución cliente",
+    });
   });
 
   it("CONFIRMADA flip race loses → CONCURRENCIA_CONFLICTO, no annul/reposition/audit", async () => {
@@ -308,6 +363,8 @@ describe("cancelarVenta", () => {
     (cancelarVentaConfirmadaEnTx as jest.Mock).mockResolvedValue({ cancelled: false });
     const r = await cancelarVenta(tx, ctx, { id: 7 });
     expect(!r.ok && r.code).toBe("CONCURRENCIA_CONFLICTO");
+    // Nothing after the lost flip runs — including the v2r-09 reversal.
+    expect(revertirPagosAplicadosDeVentaEnTx).not.toHaveBeenCalled();
     expect(anularFacturaDeVentaEnTx).not.toHaveBeenCalled();
     expect(registrarReposicionCancelacion).not.toHaveBeenCalled();
     expect(registrarAuditFacturaEnTx).not.toHaveBeenCalled();
@@ -317,6 +374,7 @@ describe("cancelarVenta", () => {
     (leerVentaEnTx as jest.Mock).mockResolvedValue({ id: 7, estado: "CONFIRMADA", sucursalId: 2, clienteId: 99, updatedAt: new Date() });
     (leerFacturaVigenteDeVentaEnTx as jest.Mock).mockResolvedValue(null);
     await expect(cancelarVenta(tx, ctx, { id: 7 })).rejects.toMatchObject({ code: "CONCURRENCIA_CONFLICTO" });
+    expect(revertirPagosAplicadosDeVentaEnTx).not.toHaveBeenCalled();
     expect(registrarReposicionCancelacion).not.toHaveBeenCalled();
   });
 });

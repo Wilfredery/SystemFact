@@ -161,6 +161,15 @@ function aDecimalCantidad(cantidad: string, productoId: number): Decimal {
  * the quantity-grammar probe keep throwing `VentaDomainError(LINEA_INVALIDA)`
  * at the same pre-write position (the outer catch maps them). No DB access:
  * it runs before the locking `leerStockSucursalEnTx` read.
+ *
+ * v2r-04: a product may legitimately span SEVERAL ORIGINAL rows of the same
+ * factura (e.g. 5.000 units at one price and 2.000 units elsewhere — the sale
+ * was billed in two detail rows). The frozen original for that product is the
+ * SUM of those row quantities: previously the Map collapsed every row to the
+ * LAST one, so returning 6.000 of 7.000 sold was wrongly rejected. Money and
+ * rate stay frozen from the original rows and MUST be homogeneous across them
+ * — a product billed at two different prices/rates has no single frozen
+ * mirror, so it fails LOUD with `LINEA_INVALIDA` (never a silent pick).
  */
 export function resolverLineasContraVentaOriginal(
   inputLineas: readonly LineaDevolucionInput[],
@@ -175,13 +184,35 @@ export function resolverLineasContraVentaOriginal(
   readonly cantidades: Decimal[];
   readonly originales: Decimal[];
 } {
-  const originalPorProducto = new Map(ventaLineas.map((l) => [l.productoId, l]));
+  // Group ORIGINAL rows per product: Σ cantidad, frozen money/rate. The rate/
+  // price comparison is NUMERIC (Decimal.equals, not string) so a rate stored
+  // as "18" in one row and "18.00" in another is still homogeneous.
+  const agrupado = new Map<number, { cantidad: Decimal; precioUnitario: string; tasaItbis: string }>();
+  for (const l of ventaLineas) {
+    const previo = agrupado.get(l.productoId);
+    if (previo === undefined) {
+      agrupado.set(l.productoId, {
+        cantidad: new Decimal(l.cantidad),
+        precioUnitario: l.precioUnitario,
+        tasaItbis: l.tasaItbis,
+      });
+      continue;
+    }
+    if (
+      !new Decimal(previo.precioUnitario).equals(new Decimal(l.precioUnitario)) ||
+      !new Decimal(previo.tasaItbis).equals(new Decimal(l.tasaItbis))
+    ) {
+      throw new VentaDomainError(LINEA_INVALIDA, { productoId: l.productoId });
+    }
+    previo.cantidad = previo.cantidad.plus(new Decimal(l.cantidad));
+  }
+
   const lineas: DetalleNotaCreditoInput[] = [];
   const cantidades: Decimal[] = [];
   const originales: Decimal[] = [];
   for (const l of inputLineas) {
     validarReturnType(l.tipoReposicion);
-    const original = originalPorProducto.get(l.productoId);
+    const original = agrupado.get(l.productoId);
     if (original === undefined) {
       throw new VentaDomainError(LINEA_INVALIDA, { productoId: l.productoId });
     }
@@ -194,7 +225,7 @@ export function resolverLineasContraVentaOriginal(
       tipoReposicion: l.tipoReposicion,
     });
     cantidades.push(cantidad);
-    originales.push(new Decimal(original.cantidad));
+    originales.push(original.cantidad);
   }
   return { lineas, cantidades, originales };
 }

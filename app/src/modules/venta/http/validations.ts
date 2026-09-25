@@ -66,6 +66,19 @@ const zLineaInput = z.object({
   }),
 });
 
+// A product may only appear ONCE per sale (v2r-04): per-product quantities and
+// discounts are single cells in the persisted detail, so a repeated productoId
+// on the wire is malformed input. The refine sits on the ARRAY (not on
+// zLineaInput, which is shared) and guards BOTH create and update — the domain
+// mirrors this invariant with LINEA_INVALIDA as defense-in-depth.
+const zLineasUnicas = z
+  .array(zLineaInput)
+  .min(1)
+  .refine(
+    (lineas) => new Set(lineas.map((l) => l.productoId)).size === lineas.length,
+    { message: "productoId repetido en las líneas" },
+  );
+
 // A positive discount is accepted at the boundary for BOTH roles; the
 // Administrador-only rule is re-enforced server-side in the use case (R-V8).
 export const zCrearVentaInput = z.object({
@@ -74,7 +87,7 @@ export const zCrearVentaInput = z.object({
   fecha: z.coerce.date().refine((d) => !Number.isNaN(d.getTime()), {
     message: "fecha inválida",
   }),
-  lineas: z.array(zLineaInput).min(1),
+  lineas: zLineasUnicas,
   descuentoCabecera: zDescuento.optional(),
 });
 export type CrearVentaInputDto = z.infer<typeof zCrearVentaInput>;
@@ -82,7 +95,7 @@ export type CrearVentaInputDto = z.infer<typeof zCrearVentaInput>;
 // Draft edit: full line replacement + optional client re-selection.
 export const zActualizarVentaInput = z.object({
   id: z.number().int().positive(),
-  lineas: z.array(zLineaInput).min(1),
+  lineas: zLineasUnicas,
   // undefined keeps the current client; null switches to contado/CF.
   clienteId: z.number().int().positive().nullable().optional(),
   fecha: z.coerce.date().refine((d) => !Number.isNaN(d.getTime()), {
