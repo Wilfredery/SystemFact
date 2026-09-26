@@ -46,7 +46,7 @@ export function validarLinea(
   tasaItbis: string,
 ): CompraErrorCode | null {
   if (!/^\d{1,9}(\.\d{1,3})?$/.test(input.cantidad)) return LINEA_INVALIDA;
-  if (!/^\d{1,9}(\.\d{1,2})?$/.test(input.costoUnitario)) return LINEA_INVALIDA;
+  if (!/^\d{1,10}(\.\d{1,2})?$/.test(input.costoUnitario)) return LINEA_INVALIDA;
   if (new Decimal(input.cantidad).lessThanOrEqualTo(0)) return LINEA_INVALIDA;
   if (new Decimal(input.costoUnitario).lessThan(0)) return LINEA_INVALIDA;
   if (!TASAS_ITBIS_VALIDAS.has(tasaItbis)) return LINEA_INVALIDA;

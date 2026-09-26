@@ -58,6 +58,31 @@ export const TIPO_NCF_COMPRA = {
 export type TipoNcfCompra = (typeof TIPO_NCF_COMPRA)[keyof typeof TIPO_NCF_COMPRA];
 
 /**
+ * The DGII grammar for a purchase receipt NCF — 11 POSITIONS: `B` + the 2-digit
+ * {@link TIPO_NCF_COMPRA} kind (B01 formal / B11 informal) + an EIGHT-digit zero-padded
+ * consecutive. That split is the frozen composition of the NCF engine itself
+ * (`ncf/domain/ncf-rules.ts` R-N2 `componerNcf`: `B` + 2-digit tipo + `%08d` = 11), so this
+ * grammar accepts exactly the values the system is able to emit and nothing else. Anchored at
+ * both ends, so length and shape are both pinned.
+ *
+ * It is a fiscal invariant, so it lives HERE in the pure domain (AGENTS.md: the domain owns
+ * business rules; the transport must not invent them) and the HTTP layer merely applies it.
+ * Two classes of bad value are rejected at the boundary:
+ *
+ *   - MALFORMED values (lowercase, a foreign prefix such as B02/B13, letters inside the
+ *     numeric part, 10 or 12 positions) — never a valid NCF. Note the prefix vocabulary is
+ *     NARROW on purpose: B02/B03/B04 are sales-side series (consumidor final, notas de
+ *     crédito/débito) and are NOT purchase NCFs.
+ *   - CONTROL CHARACTERS (CR/LF/TAB/NUL, and every other ASCII control). `Compra.ncf` is a
+ *     free-text nullable column, and the 606 export emits it raw into a FIXED-WIDTH record;
+ *     an interior CR/LF inside the 11 positions is byte-indistinguishable from the record
+ *     terminator, so it would split one record in two and desync the file against
+ *     CANTIDAD_REGISTROS. The character classes here admit nothing but `B` and digits, so
+ *     control characters cannot pass — the DGII sink strips them as a second line of defense.
+ */
+export const NCF_COMPRA_REGEX = /^B(?:01|11)\d{8}$/;
+
+/**
  * Supplier classification mirror. These literal unions match the frozen
  * `Proveedor` enum values (TipoProveedor / TipoPersona); they are re-declared
  * locally so the retention matrix stays self-contained and the compra domain
