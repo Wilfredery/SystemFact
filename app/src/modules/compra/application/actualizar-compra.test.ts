@@ -14,6 +14,7 @@ import {
   registrarAuditCompraEnTx,
 } from "../infrastructure/compra-repository";
 import { actualizarCompra } from "./actualizar-compra";
+import { NFC_INVALIDO, TIPO_NCF_DESACUERDO } from "../domain/errors";
 
 jest.mock("../infrastructure/compra-repository", () => ({
   actualizarCompraBorradorEnTx: jest.fn(),
@@ -91,5 +92,26 @@ describe("actualizarCompra", () => {
       lineas: [{ productoId: 10, cantidad: "1.000", costoUnitario: "250.00" }],
     });
     expect(result.ok === false && result.code).toBe("COMPRA_NO_ENCONTRADA");
+  });
+
+  it("rejects a malformed NCF with NFC_INVALIDO before any write", async () => {
+    const result = await actualizarCompra(tx, ctx, {
+      id: 7,
+      lineas: [{ productoId: 10, cantidad: "1.000", costoUnitario: "250.00" }],
+      ncf: "B01-001",
+    });
+    expect(result.ok === false && result.code).toBe("NFC_INVALIDO");
+    expect(actualizarCompraBorradorEnTx).not.toHaveBeenCalled();
+  });
+
+  it("rejects a B11 NCF typed as B01 with TIPO_NCF_DESACUERDO", async () => {
+    const result = await actualizarCompra(tx, ctx, {
+      id: 7,
+      lineas: [{ productoId: 10, cantidad: "1.000", costoUnitario: "250.00" }],
+      ncf: "B1100000001",
+      tipoNcf: "B01",
+    });
+    expect(result.ok === false && result.code).toBe("TIPO_NCF_DESACUERDO");
+    expect(actualizarCompraBorradorEnTx).not.toHaveBeenCalled();
   });
 });

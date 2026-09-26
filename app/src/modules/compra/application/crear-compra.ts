@@ -8,6 +8,9 @@ import {
 } from "../domain/errors";
 import {
   ESTADO_COMPRA,
+  normalizarNcfCompra,
+  validarNcfCompra,
+  validarTipoNcfCompra,
   type CompraResult,
   type EstadoCompraCore,
   type TipoNcfCompra,
@@ -62,6 +65,18 @@ export async function crearCompra(
   ctx: TenantCtx,
   input: CrearCompraInput,
 ): Promise<CrearCompraResult> {
+  // Pure fiscal rules first (no DB cost): malformed NCF or a kind/NCF mismatch
+  // never pays for product lookups.
+  const ncfError = validarNcfCompra(input.ncf);
+  if (ncfError) {
+    return buildError(ncfError);
+  }
+  const ncf = normalizarNcfCompra(input.ncf);
+  const tipoNcfError = validarTipoNcfCompra(ncf, input.tipoNcf);
+  if (tipoNcfError) {
+    return buildError(tipoNcfError);
+  }
+
   const proveedor = await leerProveedorClasificadoEnTx(
     tx,
     ctx.empresaId,
@@ -79,8 +94,6 @@ export async function crearCompra(
   if (!preparado.ok) {
     return buildError(preparado.code);
   }
-
-  const ncf = input.ncf && input.ncf.length > 0 ? input.ncf : null;
 
   try {
     const { id } = await crearCompraConLineasEnTx(tx, ctx, {

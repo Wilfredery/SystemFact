@@ -7,6 +7,9 @@ import {
   TIPO_COMPRA,
   TIPO_NCF_COMPRA,
   NCF_COMPRA_REGEX,
+  normalizarNcfCompra,
+  validarNcfCompra,
+  validarTipoNcfCompra,
   INVENTORY_SOURCE,
   puedeCancelar,
   puedeConfirmar,
@@ -102,6 +105,59 @@ describe("NCF_COMPRA_REGEX (11-position purchase NCF grammar)", () => {
     expect(NCF_COMPRA_REGEX.test("B0100000001")).toBe(true);
     expect(NCF_COMPRA_REGEX.test("B01\r\n123456")).toBe(false);
     expect(NCF_COMPRA_REGEX.test("B0100000001")).toBe(true);
+  });
+});
+
+describe("validarNcfCompra (domain NCF rule, below the transport)", () => {
+  it("accepts absent or blank NCF — the field is optional", () => {
+    expect(validarNcfCompra(null)).toBeNull();
+    expect(validarNcfCompra(undefined)).toBeNull();
+    expect(validarNcfCompra("")).toBeNull();
+    expect(validarNcfCompra("   ")).toBeNull();
+  });
+
+  it("accepts a well-formed NCF, including with surrounding whitespace", () => {
+    expect(validarNcfCompra("B0100000001")).toBeNull();
+    expect(validarNcfCompra("B1100000001")).toBeNull();
+    expect(validarNcfCompra("  B0100000001  ")).toBeNull();
+  });
+
+  it("rejects malformed or control-char values with the stable NFC_INVALIDO code", () => {
+    for (const ncf of [
+      "B01-001",
+      "b0100000001",
+      "B0200000001",
+      "B01000000012",
+      "B01\r\n123456",
+    ]) {
+      expect(validarNcfCompra(ncf)).toBe("NFC_INVALIDO");
+    }
+  });
+
+  it("normalizes to the trimmed canonical stored value", () => {
+    expect(normalizarNcfCompra("  B0100000001  ")).toBe("B0100000001");
+    expect(normalizarNcfCompra("   ")).toBeNull();
+    expect(normalizarNcfCompra(null)).toBeNull();
+    expect(normalizarNcfCompra(undefined)).toBeNull();
+  });
+});
+
+describe("validarTipoNcfCompra (NCF kind ↔ NCF prefix invariant)", () => {
+  it("accepts when the kind matches the NCF prefix", () => {
+    expect(validarTipoNcfCompra("B0100000001", "B01")).toBeNull();
+    expect(validarTipoNcfCompra("B1100000001", "B11")).toBeNull();
+  });
+
+  it("accepts when either field is absent (both are optional until received)", () => {
+    expect(validarTipoNcfCompra(null, "B01")).toBeNull();
+    expect(validarTipoNcfCompra(null, null)).toBeNull();
+    expect(validarTipoNcfCompra("B0100000001", null)).toBeNull();
+    expect(validarTipoNcfCompra("B1100000001", undefined)).toBeNull();
+  });
+
+  it("rejects a kind/NCF mismatch with the stable TIPO_NCF_DESACUERDO code", () => {
+    expect(validarTipoNcfCompra("B1100000001", "B01")).toBe("TIPO_NCF_DESACUERDO");
+    expect(validarTipoNcfCompra("B0100000001", "B11")).toBe("TIPO_NCF_DESACUERDO");
   });
 });
 

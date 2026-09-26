@@ -11,6 +11,9 @@ import {
 } from "../domain/errors";
 import {
   ESTADO_COMPRA,
+  normalizarNcfCompra,
+  validarNcfCompra,
+  validarTipoNcfCompra,
   type CompraLineaInput,
   type CompraResult,
   type TipoNcfCompra,
@@ -60,6 +63,18 @@ export async function actualizarCompra(
   ctx: TenantCtx,
   input: ActualizarCompraInput,
 ): Promise<ActualizarCompraResult> {
+  // Pure fiscal rules first (no DB cost): a malformed NCF or a kind/NCF
+  // mismatch never pays for the purchase/product reads below.
+  const ncfError = validarNcfCompra(input.ncf);
+  if (ncfError) {
+    return buildError(ncfError);
+  }
+  const ncf = normalizarNcfCompra(input.ncf);
+  const tipoNcfError = validarTipoNcfCompra(ncf, input.tipoNcf);
+  if (tipoNcfError) {
+    return buildError(tipoNcfError);
+  }
+
   const actual = await leerCompraEnTx(tx, ctx, input.id);
   if (actual === null) {
     return buildError(COMPRA_NO_ENCONTRADA);
@@ -85,8 +100,6 @@ export async function actualizarCompra(
     return buildError(preparado.code);
   }
 
-  const ncf = input.ncf && input.ncf.length > 0 ? input.ncf : null;
-
   try {
     const { updated } = await actualizarCompraBorradorEnTx(tx, ctx, input.id, {
       ncf,
@@ -107,7 +120,7 @@ export async function actualizarCompra(
       return buildError(CONCURRENCIA_CONFLICTO);
     }
 
-    await reemplazarLineasEnTx(tx, input.id, preparado.lineas);
+    await reemplazarLineasEnTx(tx, ctx, input.id, preparado.lineas);
 
     await registrarAuditCompraEnTx(
       tx,

@@ -19,6 +19,8 @@
 
 import {
   COMPRA_INMUTABLE,
+  NFC_INVALIDO,
+  TIPO_NCF_DESACUERDO,
   TRANSICION_INVALIDA,
   type CompraErrorCode,
 } from "./errors";
@@ -81,6 +83,56 @@ export type TipoNcfCompra = (typeof TIPO_NCF_COMPRA)[keyof typeof TIPO_NCF_COMPR
  *     control characters cannot pass — the DGII sink strips them as a second line of defense.
  */
 export const NCF_COMPRA_REGEX = /^B(?:01|11)\d{8}$/;
+
+/**
+ * Canonical stored value for an optional receipt NCF: the trimmed string, or
+ * `null` when absent/blank. The HTTP layer already trims via Zod (that is
+ * ergonomics); this keeps DIRECT application-layer callers (seeds,
+ * integrations, future routes) persisting the same canonical shape the wire
+ * produces, and mirrors the `empty → null` mapping of the draft use cases.
+ */
+export function normalizarNcfCompra(
+  ncf: string | null | undefined,
+): string | null {
+  if (ncf == null) {
+    return null;
+  }
+  const c = ncf.trim();
+  return c.length === 0 ? null : c;
+}
+
+/**
+ * Domain rule for the optional receipt NCF: absent/blank is legal, but a
+ * PRESENT value must match {@link NCF_COMPRA_REGEX}. Every writer of
+ * `Compra.ncf` must call this before persisting, so the fiscal grammar is
+ * enforced BELOW the transport — the wire merely applies the same rule
+ * earlier, with friendlier copy. Returns `null` on success or the stable
+ * `NFC_INVALIDO` catalog code.
+ */
+export function validarNcfCompra(
+  ncf: string | null | undefined,
+): CompraErrorCode | null {
+  const c = normalizarNcfCompra(ncf);
+  return c === null || NCF_COMPRA_REGEX.test(c) ? null : NFC_INVALIDO;
+}
+
+/**
+ * Cross-field fiscal invariant for the optional receipt NCF: when BOTH the NCF
+ * and a receipt kind are present they MUST agree (a `B01…` number ⇔ `B01`, a
+ * `B11…` number ⇔ `B11`). A B11 number typed as B01 would silently corrupt the
+ * DGII kind reported for the document, so the mismatch is a stable
+ * `TIPO_NCF_DESACUERDO` catalog error. Either field may be absent — both are
+ * optional until the purchase is received. Expects the caller's ALREADY
+ * validated + normalized `ncf` (`validarNcfCompra`/`normalizarNcfCompra`), so
+ * `slice(0, 3)` is safe.
+ */
+export function validarTipoNcfCompra(
+  ncf: string | null,
+  tipoNcf: TipoNcfCompra | null | undefined,
+): CompraErrorCode | null {
+  if (ncf === null || tipoNcf == null) return null;
+  return ncf.slice(0, 3) === tipoNcf ? null : TIPO_NCF_DESACUERDO;
+}
 
 /**
  * Supplier classification mirror. These literal unions match the frozen

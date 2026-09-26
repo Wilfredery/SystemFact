@@ -14,7 +14,12 @@ import {
   leerProductosParaLineasEnTx,
   registrarAuditCompraEnTx,
 } from "../infrastructure/compra-repository";
-import { CompraDomainError, NFC_DUPLICADO } from "../domain/errors";
+import {
+  CompraDomainError,
+  NFC_DUPLICADO,
+  NFC_INVALIDO,
+  TIPO_NCF_DESACUERDO,
+} from "../domain/errors";
 import { crearCompra, type CrearCompraInput } from "./crear-compra";
 
 jest.mock("../infrastructure/compra-repository", () => ({
@@ -131,7 +136,23 @@ describe("crearCompra", () => {
     (crearCompraConLineasEnTx as jest.Mock).mockRejectedValue(
       new CompraDomainError(NFC_DUPLICADO),
     );
-    const result = await crearCompra(tx, ctx, baseInput({ ncf: "B01-001" }));
+    const result = await crearCompra(tx, ctx, baseInput({ ncf: "B0100000001" }));
     expect(result.ok === false && result.code).toBe("NFC_DUPLICADO");
+  });
+
+  it("rejects a malformed NCF with NFC_INVALIDO before any write", async () => {
+    const result = await crearCompra(tx, ctx, baseInput({ ncf: "B01-001" }));
+    expect(result.ok === false && result.code).toBe("NFC_INVALIDO");
+    expect(crearCompraConLineasEnTx).not.toHaveBeenCalled();
+  });
+
+  it("rejects a B11 NCF typed as B01 with TIPO_NCF_DESACUERDO", async () => {
+    const result = await crearCompra(
+      tx,
+      ctx,
+      baseInput({ ncf: "B1100000001", tipoNcf: "B01" }),
+    );
+    expect(result.ok === false && result.code).toBe("TIPO_NCF_DESACUERDO");
+    expect(crearCompraConLineasEnTx).not.toHaveBeenCalled();
   });
 });
