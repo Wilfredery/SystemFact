@@ -44,9 +44,20 @@ export const SEPARADOR_LINEA = "\r\n";
  * padded with spaces"). A value longer than the field is TRUNCATED to the field width — the DGII
  * rule is that "longitudes de los campos no pueden ser diferentes", so overflow must never widen
  * the line. An empty/`null` value becomes a full-width blank (every field is present even if blank).
+ *
+ * ASCII CONTROL CHARACTERS (`\x00-\x1F`, `\x7F`) are STRIPPED before the pad/truncate: a DGII
+ * fixed-width record must be one physical line, and an interior CR/LF/TAB is byte-indistinguishable
+ * from the record terminator, so it would split a record in two and desync the file against
+ * CANTIDAD_REGISTROS. Stripping cannot fix dirty data's MEANING (a control-char NCF is still not a
+ * valid NCF, which the compra transport rejects on entry) — it guarantees only the layout invariant
+ * so a legacy row or a value accepted before that validation can never corrupt the file's shape.
+ *
+ * This is the single choke point for EVERY alphanumeric field of 606/607/608 (RNC, NCF, codes), so
+ * the guarantee is structural: no call site can bypass it. Sanitization precedes the width math, so
+ * the returned value is ALWAYS exactly `longitud` characters.
  */
 export function rellenarAlnum(valor: string | null | undefined, longitud: number): string {
-  const s = valor ?? "";
+  const s = (valor ?? "").replace(/[\x00-\x1F\x7F]/g, "");
   if (s.length >= longitud) return s.slice(0, longitud);
   return s.padEnd(longitud, " ");
 }

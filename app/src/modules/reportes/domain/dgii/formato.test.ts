@@ -34,6 +34,63 @@ describe("dgii/formato — rellenarAlnum (right space-pad, truncate)", () => {
   });
 });
 
+describe("dgii/formato — rellenarAlnum strips ASCII control chars (one physical line per record)", () => {
+  const SIN_CONTROL = /[\x00-\x1F\x7F]/;
+
+  it("removes an interior CRLF from an 11-char NCF and keeps the declared width", () => {
+    // "B01\r\n123456" is 11 chars, so a pad/truncate-only implementation returns it UNCHANGED
+    // and the CR/LF ship into the record (fingerprint dgii-606). Stripping first yields
+    // "B01123456" (9), which is then space-padded to the 11 declared columns.
+    const salida = rellenarAlnum("B01\r\n123456", 11);
+    expect(salida).toBe("B01123456  ");
+    expect(salida).toHaveLength(11);
+    expect(salida).not.toMatch(SIN_CONTROL);
+  });
+
+  it("removes a CR, LF, TAB, NUL or DEL sitting at index 2 (width still exact)", () => {
+    for (const ctl of ["\r", "\n", "\t", "\u0000", "\u001F", "\u007F"]) {
+      // 11 chars in, 10 after stripping, so the field is right-padded back to 11.
+      const salida = rellenarAlnum(`B0${ctl}12345678`, 11);
+      expect(salida).toBe("B012345678 ");
+      expect(salida).toHaveLength(11);
+      expect(salida).not.toMatch(SIN_CONTROL);
+    }
+  });
+
+  it("pads to the full width AFTER stripping, so the field never shortens", () => {
+    // "B01\r\n1" is 7 chars; stripped it is "B011" (4) and must still occupy 11 columns.
+    const salida = rellenarAlnum("B01\r\n1", 11);
+    expect(salida).toBe("B011       ");
+    expect(salida).toHaveLength(11);
+  });
+
+  it("strips a control-only value down to a full-width blank field (never absent)", () => {
+    expect(rellenarAlnum("\r\n", 11)).toBe("           ");
+    expect(rellenarAlnum("\t\u0000", 4)).toBe("    ");
+  });
+
+  it("keeps the SPACE character (0x20 is padding data, not a control char)", () => {
+    // Regression guard: stripping must never touch the padding character, or every
+    // right-padded field (RNC, blank NCF) would collapse and the layout would desync.
+    expect(rellenarAlnum("AB CD", 5)).toBe("AB CD");
+    expect(rellenarAlnum("130000000", 11)).toBe("130000000  ");
+    expect(rellenarAlnum("  1300", 6)).toBe("  1300");
+  });
+
+  it("leaves a control-free value byte-identical to the pure pad/truncate behaviour", () => {
+    const casos: ReadonlyArray<readonly [string, number, string]> = [
+      ["B0100000001", 11, "B0100000001"],
+      ["ABCDEFGHIJKL", 11, "ABCDEFGHIJK"], // truncation
+      ["130000000", 11, "130000000  "], // padding
+      ["", 11, "           "], // blank
+      ["AB", 4, "AB  "],
+    ];
+    for (const [valor, ancho, esperado] of casos) {
+      expect(rellenarAlnum(valor, ancho)).toBe(esperado);
+    }
+  });
+});
+
 describe("dgii/formato — rellenarEnteroIzq (zero left-pad)", () => {
   it("zero-left-pads a count to the declared width", () => {
     expect(rellenarEnteroIzq(7, 12)).toBe("000000000007");

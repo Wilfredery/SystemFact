@@ -199,3 +199,71 @@ describe("dgii/registro — 606 detail (23 cols) layout", () => {
     expect(new Decimal(fila.itbisPorAdelantar).toFixed(2)).toBe("180.00");
   });
 });
+
+describe("dgii/registro — a control-char NCF cannot desync the 606 record (fingerprint dgii-606)", () => {
+  const SIN_CONTROL = /[\x00-\x1F\x7F]/;
+
+  /** A purchase whose free-text `ncf` carries an interior CRLF (legacy dirty row / pre-F4 wire). */
+  const FILA_606_CRLF: FilaDetalle606 = {
+    rncProveedor: "131000000",
+    tipoIdentificacion: 1,
+    tipoBienesServicios: 9,
+    ncf: "B01\r\n123456", // 11 chars: the CR/LF would ship raw into D4 without the sink guard
+    ncfModificado: null,
+    fechaComprobante: new Date("2026-07-15T23:00:00.000Z"),
+    fechaPago: null,
+    montoServicios: "0.00",
+    montoBienes: "1000.00",
+    totalMontoFacturado: "1000.00",
+    itbisFacturado: "180.00",
+    itbisRetenido: "0.00",
+    itbisProporcionalidad: "0.00",
+    itbisAlCosto: "0.00",
+    itbisPorAdelantar: "0.00",
+    itbisPercibido: "0.00",
+    tipoRetencionIsr: 0,
+    montoRetencionRenta: "0.00",
+    isrPercibido: "0.00",
+    isc: "0.00",
+    otrosImp: "0.00",
+    propinaLegal: "0.00",
+    formaPago: 1,
+  };
+
+  it("emits a record with NO control character and the SAME 222-char width as a clean row", () => {
+    const linea = ensamblarDetalle606(FILA_606_CRLF);
+    expect(linea).not.toMatch(SIN_CONTROL);
+    expect(linea).not.toContain("\r");
+    expect(linea).not.toContain("\n");
+    expect(linea).toHaveLength(222);
+  });
+
+  it("keeps D4 at exactly 11 positions (offset 14 = D1 11 + D2 1 + D3 2)", () => {
+    const linea = ensamblarDetalle606(FILA_606_CRLF);
+    const d4 = linea.slice(14, 25);
+    expect(d4).toBe("B01123456  ");
+    expect(d4).toHaveLength(11);
+    // The column before it is intact, so the CR/LF did not shift the fixed-width layout.
+    expect(linea.startsWith("131000000  109")).toBe(true);
+  });
+
+  it("produces exactly 2 physical lines (header + 1 record) for CANTIDAD_REGISTROS=1", () => {
+    const header = ensamblarEncabezado5({
+      codigoInformacion: "606",
+      rnc: "130000000",
+      periodo: "202607",
+      cantidadRegistros: 1,
+      totalMontoFacturado: "1000.00",
+    });
+    const txt = ensamblarArchivo(header, [ensamblarDetalle606(FILA_606_CRLF)]);
+    // Trailing terminator ⇒ split length − 1 is the physical line count: 1 header + 1 record.
+    const lineasFisicas = txt.split(SEPARADOR_LINEA).length - 1;
+    expect(lineasFisicas).toBe(2);
+    expect(lineasFisicas).toBe(1 + 1); // header + CANTIDAD_REGISTROS
+    // Every physical line but the last terminator is a real, control-free line.
+    for (const linea of txt.split(SEPARADOR_LINEA)) {
+      expect(linea).not.toMatch(SIN_CONTROL);
+    }
+    expect(txt.split(SEPARADOR_LINEA).filter((l) => l !== "")).toHaveLength(2);
+  });
+});
