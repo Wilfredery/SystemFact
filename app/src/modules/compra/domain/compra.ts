@@ -19,6 +19,8 @@
 
 import {
   COMPRA_INMUTABLE,
+  NFC_INVALIDO,
+  TIPO_NCF_DESACUERDO,
   TRANSICION_INVALIDA,
   type CompraErrorCode,
 } from "./errors";
@@ -56,6 +58,81 @@ export const TIPO_NCF_COMPRA = {
   B11: "B11",
 } as const;
 export type TipoNcfCompra = (typeof TIPO_NCF_COMPRA)[keyof typeof TIPO_NCF_COMPRA];
+
+/**
+ * The DGII grammar for a purchase receipt NCF — 11 POSITIONS: `B` + the 2-digit
+ * {@link TIPO_NCF_COMPRA} kind (B01 formal / B11 informal) + an EIGHT-digit zero-padded
+ * consecutive. That split is the frozen composition of the NCF engine itself
+ * (`ncf/domain/ncf-rules.ts` R-N2 `componerNcf`: `B` + 2-digit tipo + `%08d` = 11), so this
+ * grammar accepts exactly the values the system is able to emit and nothing else. Anchored at
+ * both ends, so length and shape are both pinned.
+ *
+ * It is a fiscal invariant, so it lives HERE in the pure domain (AGENTS.md: the domain owns
+ * business rules; the transport must not invent them) and the HTTP layer merely applies it.
+ * Two classes of bad value are rejected at the boundary:
+ *
+ *   - MALFORMED values (lowercase, a foreign prefix such as B02/B13, letters inside the
+ *     numeric part, 10 or 12 positions) — never a valid NCF. Note the prefix vocabulary is
+ *     NARROW on purpose: B02/B03/B04 are sales-side series (consumidor final, notas de
+ *     crédito/débito) and are NOT purchase NCFs.
+ *   - CONTROL CHARACTERS (CR/LF/TAB/NUL, and every other ASCII control). `Compra.ncf` is a
+ *     free-text nullable column, and the 606 export emits it raw into a FIXED-WIDTH record;
+ *     an interior CR/LF inside the 11 positions is byte-indistinguishable from the record
+ *     terminator, so it would split one record in two and desync the file against
+ *     CANTIDAD_REGISTROS. The character classes here admit nothing but `B` and digits, so
+ *     control characters cannot pass — the DGII sink strips them as a second line of defense.
+ */
+export const NCF_COMPRA_REGEX = /^B(?:01|11)\d{8}$/;
+
+/**
+ * Canonical stored value for an optional receipt NCF: the trimmed string, or
+ * `null` when absent/blank. The HTTP layer already trims via Zod (that is
+ * ergonomics); this keeps DIRECT application-layer callers (seeds,
+ * integrations, future routes) persisting the same canonical shape the wire
+ * produces, and mirrors the `empty → null` mapping of the draft use cases.
+ */
+export function normalizarNcfCompra(
+  ncf: string | null | undefined,
+): string | null {
+  if (ncf == null) {
+    return null;
+  }
+  const c = ncf.trim();
+  return c.length === 0 ? null : c;
+}
+
+/**
+ * Domain rule for the optional receipt NCF: absent/blank is legal, but a
+ * PRESENT value must match {@link NCF_COMPRA_REGEX}. Every writer of
+ * `Compra.ncf` must call this before persisting, so the fiscal grammar is
+ * enforced BELOW the transport — the wire merely applies the same rule
+ * earlier, with friendlier copy. Returns `null` on success or the stable
+ * `NFC_INVALIDO` catalog code.
+ */
+export function validarNcfCompra(
+  ncf: string | null | undefined,
+): CompraErrorCode | null {
+  const c = normalizarNcfCompra(ncf);
+  return c === null || NCF_COMPRA_REGEX.test(c) ? null : NFC_INVALIDO;
+}
+
+/**
+ * Cross-field fiscal invariant for the optional receipt NCF: when BOTH the NCF
+ * and a receipt kind are present they MUST agree (a `B01…` number ⇔ `B01`, a
+ * `B11…` number ⇔ `B11`). A B11 number typed as B01 would silently corrupt the
+ * DGII kind reported for the document, so the mismatch is a stable
+ * `TIPO_NCF_DESACUERDO` catalog error. Either field may be absent — both are
+ * optional until the purchase is received. Expects the caller's ALREADY
+ * validated + normalized `ncf` (`validarNcfCompra`/`normalizarNcfCompra`), so
+ * `slice(0, 3)` is safe.
+ */
+export function validarTipoNcfCompra(
+  ncf: string | null,
+  tipoNcf: TipoNcfCompra | null | undefined,
+): CompraErrorCode | null {
+  if (ncf === null || tipoNcf == null) return null;
+  return ncf.slice(0, 3) === tipoNcf ? null : TIPO_NCF_DESACUERDO;
+}
 
 /**
  * Supplier classification mirror. These literal unions match the frozen

@@ -6,6 +6,10 @@ import {
   ESTADO_COMPRA,
   TIPO_COMPRA,
   TIPO_NCF_COMPRA,
+  NCF_COMPRA_REGEX,
+  normalizarNcfCompra,
+  validarNcfCompra,
+  validarTipoNcfCompra,
   INVENTORY_SOURCE,
   puedeCancelar,
   puedeConfirmar,
@@ -19,6 +23,7 @@ import {
   type InventoryEntryInput,
   type InventoryEntryPort,
 } from "./compra";
+import { componerNcf } from "@/modules/ncf/domain/ncf-rules";
 
 describe("ESTADO_COMPRA", () => {
   it("reaches BORRADOR/PENDIENTE/RECIBIDA/CANCELADA — never PAGADA/CONFIRMADA", () => {
@@ -42,6 +47,117 @@ describe("ESTADO_COMPRA", () => {
       "ALQUILER",
     ]);
     expect(Object.keys(TIPO_NCF_COMPRA)).toEqual(["B01", "B11"]);
+  });
+});
+
+describe("NCF_COMPRA_REGEX (11-position purchase NCF grammar)", () => {
+  it("accepts a well-formed B01 (formal) and B11 (informal) NCF", () => {
+    expect(NCF_COMPRA_REGEX.test("B0100000001")).toBe(true);
+    expect(NCF_COMPRA_REGEX.test("B1100000001")).toBe(true);
+    // Boundaries of the 8-digit consecutive: leading and trailing zeros are valid digits.
+    expect(NCF_COMPRA_REGEX.test("B0100000000")).toBe(true);
+    expect(NCF_COMPRA_REGEX.test("B1199999999")).toBe(true);
+  });
+
+  it("accepts EXACTLY the values the NCF engine composes (R-N2 `B` + 2-digit tipo + %08d)", () => {
+    // The grammar must not reject a single NCF the system itself is able to emit.
+    expect(NCF_COMPRA_REGEX.test(componerNcf("B01", 7))).toBe(true); // "B0100000007"
+    expect(NCF_COMPRA_REGEX.test(componerNcf("B11", 1))).toBe(true); // "B1100000001"
+  });
+
+  it("rejects a non-canonical case (the NCF is uppercase by definition)", () => {
+    expect(NCF_COMPRA_REGEX.test("b0100000001")).toBe(false);
+    expect(NCF_COMPRA_REGEX.test("B01abcde001")).toBe(false);
+  });
+
+  it("rejects a kind outside the purchase vocabulary (B02 formal-invoice series, B13, B00)", () => {
+    // B02 IS a real DGII series (consumidor final), but it is NOT a purchase NCF — B01/B11
+    // are. The grammar pins the vocabulary, it does not merely check "starts with B".
+    expect(NCF_COMPRA_REGEX.test("B0200000001")).toBe(false);
+    expect(NCF_COMPRA_REGEX.test("B1300000001")).toBe(false);
+    expect(NCF_COMPRA_REGEX.test("B0000000001")).toBe(false);
+  });
+
+  it("rejects letters or symbols inside the 8-digit consecutive", () => {
+    expect(NCF_COMPRA_REGEX.test("B01000000A1")).toBe(false);
+    expect(NCF_COMPRA_REGEX.test("B0100000 01")).toBe(false);
+    expect(NCF_COMPRA_REGEX.test("B01000000-1")).toBe(false);
+  });
+
+  it("rejects any length other than exactly 11 positions", () => {
+    expect(NCF_COMPRA_REGEX.test("B010000001")).toBe(false); // 10
+    expect(NCF_COMPRA_REGEX.test("B01000000012")).toBe(false); // 12 (a 9-digit consecutive)
+    expect(NCF_COMPRA_REGEX.test("B01")).toBe(false);
+  });
+
+  it("rejects an ASCII control character INSIDE the 11 positions (606 record-layout vector)", () => {
+    // Exactly 11 chars each, so ONLY the control character can be the reason for rejection.
+    expect(NCF_COMPRA_REGEX.test("B01\r\n123456")).toBe(false); // interior CRLF (the repro)
+    expect(NCF_COMPRA_REGEX.test("B0\r12345678")).toBe(false); // interior CR
+    expect(NCF_COMPRA_REGEX.test("B0\n12345678")).toBe(false); // interior LF
+    expect(NCF_COMPRA_REGEX.test("B0\t12345678")).toBe(false); // interior TAB
+    expect(NCF_COMPRA_REGEX.test("B0\u000012345678")).toBe(false); // interior NUL
+    expect(NCF_COMPRA_REGEX.test("B0\u007F12345678")).toBe(false); // interior DEL
+  });
+
+  it("is stateless across calls (no `g` flag, so `test` never carries a lastIndex)", () => {
+    expect(NCF_COMPRA_REGEX.test("B0100000001")).toBe(true);
+    expect(NCF_COMPRA_REGEX.test("B0100000001")).toBe(true);
+    expect(NCF_COMPRA_REGEX.test("B01\r\n123456")).toBe(false);
+    expect(NCF_COMPRA_REGEX.test("B0100000001")).toBe(true);
+  });
+});
+
+describe("validarNcfCompra (domain NCF rule, below the transport)", () => {
+  it("accepts absent or blank NCF — the field is optional", () => {
+    expect(validarNcfCompra(null)).toBeNull();
+    expect(validarNcfCompra(undefined)).toBeNull();
+    expect(validarNcfCompra("")).toBeNull();
+    expect(validarNcfCompra("   ")).toBeNull();
+  });
+
+  it("accepts a well-formed NCF, including with surrounding whitespace", () => {
+    expect(validarNcfCompra("B0100000001")).toBeNull();
+    expect(validarNcfCompra("B1100000001")).toBeNull();
+    expect(validarNcfCompra("  B0100000001  ")).toBeNull();
+  });
+
+  it("rejects malformed or control-char values with the stable NFC_INVALIDO code", () => {
+    for (const ncf of [
+      "B01-001",
+      "b0100000001",
+      "B0200000001",
+      "B01000000012",
+      "B01\r\n123456",
+    ]) {
+      expect(validarNcfCompra(ncf)).toBe("NFC_INVALIDO");
+    }
+  });
+
+  it("normalizes to the trimmed canonical stored value", () => {
+    expect(normalizarNcfCompra("  B0100000001  ")).toBe("B0100000001");
+    expect(normalizarNcfCompra("   ")).toBeNull();
+    expect(normalizarNcfCompra(null)).toBeNull();
+    expect(normalizarNcfCompra(undefined)).toBeNull();
+  });
+});
+
+describe("validarTipoNcfCompra (NCF kind ↔ NCF prefix invariant)", () => {
+  it("accepts when the kind matches the NCF prefix", () => {
+    expect(validarTipoNcfCompra("B0100000001", "B01")).toBeNull();
+    expect(validarTipoNcfCompra("B1100000001", "B11")).toBeNull();
+  });
+
+  it("accepts when either field is absent (both are optional until received)", () => {
+    expect(validarTipoNcfCompra(null, "B01")).toBeNull();
+    expect(validarTipoNcfCompra(null, null)).toBeNull();
+    expect(validarTipoNcfCompra("B0100000001", null)).toBeNull();
+    expect(validarTipoNcfCompra("B1100000001", undefined)).toBeNull();
+  });
+
+  it("rejects a kind/NCF mismatch with the stable TIPO_NCF_DESACUERDO code", () => {
+    expect(validarTipoNcfCompra("B1100000001", "B01")).toBe("TIPO_NCF_DESACUERDO");
+    expect(validarTipoNcfCompra("B0100000001", "B11")).toBe("TIPO_NCF_DESACUERDO");
   });
 });
 

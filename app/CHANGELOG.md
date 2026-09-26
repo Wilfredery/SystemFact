@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.21](https://github.com/Wilfredery/SystemFact/compare/v0.11.20...v0.11.21) (2026-09-26)
+
+### Bug Fixes
+
+* **compra,reportes,dgii:** close run-2 security audit finding `dgii-606:compra-ncf-free-text-control-chars` HIGH (Phase 4 remediation) — the purchase NCF input is no longer free text: `validarNcf` in `compra/http/validations.ts` enforces the frozen grammar `/^B(?:01|11)\d{8}$/` (11 chars) plus a Decimal(12,2) unit-cost bound at the wire, `crearCompra`/`actualizarCompra` re-enforce the same grammar and the tenant scope (`empresaId`/`sucursalId`) below the transport, and the domain shares one single-source quantity/cost width rule; the DGII exporters stop emitting attacker-influenced bytes: `ensamblarDetalle607`/`ensamblarDetalle606` normalize via that grammar, compose zero-fill before sanitize (never fabricating plausible NCFs), validate the composed text instead of the raw DB text, and fail loud — `formatearMonto` rejects non-finite values and scale > 2, `validarPeriodoAAAAMM` rejects non-`AAAAMM` periods, `ensamblarEncabezado5` asserts the `codigoInformacion` is 606/607, and every width overflow throws `ReporteDomainError` with one of the stable codes (`REPORTE_DGII_ANCHO_EXCEDIDO`, `REPORTE_DGII_PERIODO_INVALIDO`, `REPORTE_DGII_MONTO_INVALIDO`, `REPORTE_DGII_CODIGO_INVALIDO`); `TIPOS_NCF` (runtime list with derived `TipoNcf` union) is pinned against the generated Prisma `TipoNcfSecuencia` enum by a parity test, and the compra tests were typed honestly with `jest.mocked`; verified 322 unit tests green (reportes + compra + ncf modules), `tsc --noEmit`, lint 0 errors
+
 ## [0.11.20](https://github.com/Wilfredery/SystemFact/compare/v0.11.19...v0.11.20) (2026-09-25)
 
 ### Bug Fixes
