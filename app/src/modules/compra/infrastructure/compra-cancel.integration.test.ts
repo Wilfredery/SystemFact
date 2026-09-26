@@ -36,7 +36,8 @@ describe("compra cancel (real DB)", () => {
   });
 
   it("cancels with motivo, touches no inventory, and retains the NCF slot", async () => {
-    const ncf = `B01-KEEP-${fixture.empresaA.id}`;
+    // Grammar-conforming per-empresa NCF (F4: free-text NCFs were banned at the wire).
+    const ncf = `B01${String(fixture.empresaA.id).padStart(8, "0").slice(-8)}`;
     const id = await withTenantTransaction(ctx, async (tx) => {
       const r = await crearCompra(tx, ctx, {
         proveedorId: fixture.proveedores.formalJuridica.id,

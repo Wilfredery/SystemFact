@@ -31,6 +31,7 @@ const config = {
     "/src/generated/",
     "<rootDir>/scripts/",
     "/src/integration/",
+    "\\.integration\\.test\\.ts$",
   ],
   // Surface tsconfig's strict settings so tests catch the same type errors
   // as the production build.

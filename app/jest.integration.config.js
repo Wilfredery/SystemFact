@@ -21,7 +21,10 @@ const config = {
   },
   globalSetup: "<rootDir>/src/integration/setup/global-setup.ts",
   setupFilesAfterEnv: ["<rootDir>/src/integration/setup/setup-env.ts"],
-  testMatch: ["<rootDir>/src/integration/**/*.test.ts"],
+  testMatch: [
+    "<rootDir>/src/integration/**/*.test.ts",
+    "<rootDir>/src/modules/**/*.integration.test.ts",
+  ],
   transform: {
     // MUST come before the ts-jest pattern below — Jest uses the FIRST
     // matching transform, and the generated Prisma client (ESM-flavored
