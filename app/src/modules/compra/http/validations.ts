@@ -16,24 +16,30 @@
  */
 
 import { z } from "zod";
-import { NCF_COMPRA_REGEX, TIPO_COMPRA, TIPO_NCF_COMPRA } from "../domain/compra";
+import {
+  NCF_COMPRA_REGEX,
+  TIPO_COMPRA,
+  TIPO_NCF_COMPRA,
+  type TipoCompra,
+  type TipoNcfCompra,
+} from "../domain/compra";
+import { RE_CANTIDAD, RE_COSTO_UNITARIO } from "../domain/calculators";
 
-const zTipoCompra = z.enum([
-  TIPO_COMPRA.MERCANCIA,
-  TIPO_COMPRA.SERVICIO_PROFESIONAL,
-  TIPO_COMPRA.SERVICIO_TECNICO,
-  TIPO_COMPRA.ALQUILER,
-]);
+// Enums derived from the domain literals so adding a fiscal value can never
+// silently desync the transport (the same no-drift goal as RE_CANTIDAD above).
+const zTipoCompra = z.enum(
+  Object.values(TIPO_COMPRA) as [TipoCompra, ...TipoCompra[]],
+);
 
-const zTipoNcfCompra = z.enum([TIPO_NCF_COMPRA.B01, TIPO_NCF_COMPRA.B11]);
+const zTipoNcfCompra = z.enum(
+  Object.values(TIPO_NCF_COMPRA) as [TipoNcfCompra, ...TipoNcfCompra[]],
+);
 
-// Base-unit quantity: up to 9 integer digits and 3 decimals (Decimal(12,3)).
-const zCantidad = z.string().regex(/^\d{1,9}(\.\d{1,3})?$/, "cantidad inválida");
-// Unit cost: non-negative, up to 10 integer digits and 2 decimals (Decimal(12,2)
-// = 12 total digits at scale 2 → 12 − 2 = 10 integer digits at most).
-const zCostoUnitario = z
-  .string()
-  .regex(/^\d{1,10}(\.\d{1,2})?$/, "costoUnitario inválido");
+// Base-unit quantity and unit cost: the exact `Decimal(12,3)` / `Decimal(12,2)`
+// width rules live in the domain (`RE_CANTIDAD` / `RE_COSTO_UNITARIO`) so the
+// two layers can never drift again — the transport only re-applies them here.
+const zCantidad = z.string().regex(RE_CANTIDAD, "cantidad inválida");
+const zCostoUnitario = z.string().regex(RE_COSTO_UNITARIO, "costoUnitario inválido");
 
 const zLineaInput = z.object({
   productoId: z.number().int().positive(),
