@@ -25,14 +25,38 @@ export const REPORTE_NO_AUTORIZADO = "REPORTE_NO_AUTORIZADO";
 /** The requested filter/pagination payload is invalid (DB-5) — rejected before any query. */
 export const REPORTE_VALIDACION = "REPORTE_VALIDACION";
 
+/** A DGII fixed-width field was fed a value wider than the declared column (amount, NCF/RNC or
+ * code) — fail loud instead of silently widening/truncating the fiscal record. */
+export const REPORTE_DGII_ANCHO_EXCEDIDO = "REPORTE_DGII_ANCHO_EXCEDIDO";
+
+/** The DGII header `AAAAMM` period is malformed (not 6 digits or month not in 1..12) — a bad
+ * period desyncs the header line and the filename with no error otherwise. */
+export const REPORTE_DGII_PERIODO_INVALIDO = "REPORTE_DGII_PERIODO_INVALIDO";
+
+/** A DGII amount is not a finite number (NaN/Infinity from a ratio over a zero base) or carries
+ * more than 2 decimals — emitting it would cross-foot a wrong total that looks valid. */
+export const REPORTE_DGII_MONTO_INVALIDO = "REPORTE_DGII_MONTO_INVALIDO";
+
+/** The 606/607 header `codigoInformacion` is not the frozen `"606"`/`"607"` label — a mislabelled
+ * file fails at DGII with nothing pointing back. */
+export const REPORTE_DGII_CODIGO_INVALIDO = "REPORTE_DGII_CODIGO_INVALIDO";
+
 export type ReporteErrorCode =
   | typeof REPORTE_NO_AUTORIZADO
-  | typeof REPORTE_VALIDACION;
+  | typeof REPORTE_VALIDACION
+  | typeof REPORTE_DGII_ANCHO_EXCEDIDO
+  | typeof REPORTE_DGII_PERIODO_INVALIDO
+  | typeof REPORTE_DGII_MONTO_INVALIDO
+  | typeof REPORTE_DGII_CODIGO_INVALIDO;
 
 /** Ordered catalog — a test asserts every code yields a stable message. */
 export const REPORTES_ERROR_CODES: readonly ReporteErrorCode[] = [
   REPORTE_NO_AUTORIZADO,
   REPORTE_VALIDACION,
+  REPORTE_DGII_ANCHO_EXCEDIDO,
+  REPORTE_DGII_PERIODO_INVALIDO,
+  REPORTE_DGII_MONTO_INVALIDO,
+  REPORTE_DGII_CODIGO_INVALIDO,
 ];
 
 const MESSAGES: Readonly<Record<ReporteErrorCode, string>> = {
@@ -40,6 +64,14 @@ const MESSAGES: Readonly<Record<ReporteErrorCode, string>> = {
     "No tiene permisos para consultar este reporte",
   [REPORTE_VALIDACION]:
     "El filtro del reporte no es válido; revise los valores ingresados",
+  [REPORTE_DGII_ANCHO_EXCEDIDO]:
+    "Un valor del archivo DGII excede el ancho fijo de su campo; revise los datos de origen",
+  [REPORTE_DGII_PERIODO_INVALIDO]:
+    "El período del archivo DGII no es válido; debe usar AAAAMM con mes entre 01 y 12",
+  [REPORTE_DGII_MONTO_INVALIDO]:
+    "Un monto del archivo DGII no es un número finito o tiene más de 2 decimales; revise los datos de origen",
+  [REPORTE_DGII_CODIGO_INVALIDO]:
+    "El código de comprobante del encabezado DGII no es 606 ni 607",
 };
 
 export function messageFor(code: ReporteErrorCode): string {

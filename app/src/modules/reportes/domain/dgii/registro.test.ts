@@ -10,7 +10,6 @@
  * byte offsets. The B04 negative amount and the cross-foot carry into the exact line here.
  */
 
-import { Decimal } from "decimal.js";
 import { SEPARADOR_LINEA } from "./formato";
 import { distribuirFormasPago607 } from "./pagos-607";
 import {
@@ -26,6 +25,10 @@ import {
   type FilaDetalle607,
   type FilaDetalle608,
 } from "./registro";
+import {
+  REPORTE_DGII_CODIGO_INVALIDO,
+  ReporteDomainError,
+} from "../errors";
 
 /** A helper repeating a zero amount `n` times (the many "no value" columns). */
 const ceros = (n: number): string => "000000000.00".repeat(n);
@@ -101,6 +104,17 @@ describe("dgii/registro — 607 encabezado matches the register count", () => {
     expect(linea).toBe("607" + "130000000  " + "202607" + "000000000001" + "0000000001000.00");
     expect(linea).toHaveLength(48);
   });
+
+  it("rejects a mislabelled file code (defense-in-depth: transport input bypasses TS types)", () => {
+    const malo = { ...encabezado, codigoInformacion: "609" } as unknown as EncabezadoDGII;
+    try {
+      ensamblarEncabezado5(malo);
+      throw new Error("ensamblarEncabezado5 did not throw for 609");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ReporteDomainError);
+      expect((e as ReporteDomainError).code).toBe(REPORTE_DGII_CODIGO_INVALIDO);
+    }
+  });
 });
 
 describe("dgii/registro — ensamblarArchivo (header + details, en-cero, header count = detail rows)", () => {
@@ -136,8 +150,9 @@ describe("dgii/registro — ensamblarArchivo (header + details, en-cero, header 
     const txt = ensamblarArchivo(ensamblarEncabezado5(cero), []);
     const lineas = txt.split(SEPARADOR_LINEA).filter((l) => l !== "");
     expect(lineas).toHaveLength(1); // ONLY the header
-    expect(lineas[0]).toContain("607");
-    expect(lineas[0]).toContain("000000000000"); // count 0, zero-left-padded
+    // Exact bytes (the sibling :125 form) so the count field cannot be confused with the 16-wide
+    // total-monto field that follows it in the 606/607 header.
+    expect(lineas[0]).toBe("607" + "130000000  " + "202607" + "000000000000" + "0000000000000.00");
     expect(txt.charCodeAt(0)).not.toBe(0xfeff); // no BOM at the head of the text (U1)
   });
 });
@@ -153,7 +168,7 @@ describe("dgii/registro — 608 detail (3 cols, no amount) + 608 header (no tota
     expect(linea).toBe("B0100000009" + "20260720" + "04");
     expect(linea).toHaveLength(21);
   });
-  it("the 608 header omits the total-monto field (48-16=... only count field)", () => {
+  it("the 608 header omits the total-monto field: 32 chars (no H5)", () => {
     const h: Encabezado608 = { codigoInformacion: "608", rnc: "130000000", periodo: "202607", cantidadRegistros: 3 };
     const linea = ensamblarEncabezado608(h);
     expect(linea).toBe("608" + "130000000  " + "202607" + "000000000003");
@@ -196,7 +211,6 @@ describe("dgii/registro — 606 detail (23 cols) layout", () => {
     expect(linea.endsWith("1")).toBe(true); // D23 forma pago
     // total width: 52 + (D8,D9,D10,D11,D12,D13,D14,D15,D16 = 9×12=108) + D17(1) + (D18..D22=5×12=60) + D23(1) = 222
     expect(linea).toHaveLength(222);
-    expect(new Decimal(fila.itbisPorAdelantar).toFixed(2)).toBe("180.00");
   });
 });
 

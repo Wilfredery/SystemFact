@@ -33,6 +33,7 @@ const draft = {
   estado: "BORRADOR",
   correlativoInterno: "",
   tipoCompra: "MERCANCIA",
+  sucursalId: 2,
   ncf: null,
   tipoNcf: null,
   proveedorId: 5,
@@ -41,17 +42,17 @@ const draft = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  (leerCompraEnTx as jest.Mock).mockResolvedValue(draft);
-  (leerProveedorClasificadoEnTx as jest.Mock).mockResolvedValue({
+  jest.mocked(leerCompraEnTx).mockResolvedValue(draft);
+  jest.mocked(leerProveedorClasificadoEnTx).mockResolvedValue({
     id: 5,
     activo: true,
     tipoProveedor: "FORMAL",
     tipoPersona: "JURIDICA",
   });
-  (leerProductosParaLineasEnTx as jest.Mock).mockResolvedValue([
+  jest.mocked(leerProductosParaLineasEnTx).mockResolvedValue([
     { id: 10, activo: true, tasaItbis: "0" },
   ]);
-  (actualizarCompraBorradorEnTx as jest.Mock).mockResolvedValue({ updated: true });
+  jest.mocked(actualizarCompraBorradorEnTx).mockResolvedValue({ updated: true });
 });
 
 describe("actualizarCompra", () => {
@@ -66,7 +67,7 @@ describe("actualizarCompra", () => {
   });
 
   it("rejects editing a PENDIENTE purchase (COMPRA_INMUTABLE)", async () => {
-    (leerCompraEnTx as jest.Mock).mockResolvedValue({ ...draft, estado: "PENDIENTE" });
+    jest.mocked(leerCompraEnTx).mockResolvedValue({ ...draft, estado: "PENDIENTE" });
     const result = await actualizarCompra(tx, ctx, {
       id: 7,
       lineas: [{ productoId: 10, cantidad: "1.000", costoUnitario: "250.00" }],
@@ -76,7 +77,7 @@ describe("actualizarCompra", () => {
   });
 
   it("returns CONCURRENCIA_CONFLICTO when the guarded header update loses", async () => {
-    (actualizarCompraBorradorEnTx as jest.Mock).mockResolvedValue({ updated: false });
+    jest.mocked(actualizarCompraBorradorEnTx).mockResolvedValue({ updated: false });
     const result = await actualizarCompra(tx, ctx, {
       id: 7,
       lineas: [{ productoId: 10, cantidad: "1.000", costoUnitario: "250.00" }],
@@ -86,7 +87,7 @@ describe("actualizarCompra", () => {
   });
 
   it("returns COMPRA_NO_ENCONTRADA for a missing purchase", async () => {
-    (leerCompraEnTx as jest.Mock).mockResolvedValue(null);
+    jest.mocked(leerCompraEnTx).mockResolvedValue(null);
     const result = await actualizarCompra(tx, ctx, {
       id: 7,
       lineas: [{ productoId: 10, cantidad: "1.000", costoUnitario: "250.00" }],
@@ -100,7 +101,7 @@ describe("actualizarCompra", () => {
       lineas: [{ productoId: 10, cantidad: "1.000", costoUnitario: "250.00" }],
       ncf: "B01-001",
     });
-    expect(result.ok === false && result.code).toBe("NFC_INVALIDO");
+    expect(result.ok === false && result.code).toBe(NFC_INVALIDO);
     expect(actualizarCompraBorradorEnTx).not.toHaveBeenCalled();
   });
 
@@ -111,7 +112,7 @@ describe("actualizarCompra", () => {
       ncf: "B1100000001",
       tipoNcf: "B01",
     });
-    expect(result.ok === false && result.code).toBe("TIPO_NCF_DESACUERDO");
+    expect(result.ok === false && result.code).toBe(TIPO_NCF_DESACUERDO);
     expect(actualizarCompraBorradorEnTx).not.toHaveBeenCalled();
   });
 });

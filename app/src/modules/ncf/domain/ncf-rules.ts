@@ -21,10 +21,13 @@ export type NcfWarning = typeof NCF_UMBRAL_90;
 
 /**
  * NCF sequence kinds backed by an `NCF_SECUENCIA` row (`TipoNcfSecuencia` enum).
- * Frozen value set mirrors the Prisma enum; kept as a plain union so the domain
- * stays free of generated-client imports.
+ * Single source for BOTH the runtime list and the union: the type is derived
+ * from the same frozen array, and a parity test pins the list against the
+ * generated Prisma enum so the domain stays free of generated-client imports
+ * while a schema-side change surfaces as a unit failure.
  */
-export type TipoNcf = "B01" | "B02" | "B03" | "B04" | "B11";
+export const TIPOS_NCF = ["B01", "B02", "B03", "B04", "B11"] as const;
+export type TipoNcf = (typeof TIPOS_NCF)[number];
 
 /**
  * D2 — pure eligibility RESULT types. `seleccionarTipoNcf` (venta/factura,
@@ -42,7 +45,12 @@ const PREFIJO = "B";
 const DIGITOS_TIPO = 2; // "B02" -> "02"
 const LONGITUD_CONSECUTIVO = 8; // %08d
 const MAX_CONSECUTIVO = 99_999_999; // largest value that stays within %08d
-const LARGO_NCF = 1 + DIGITOS_TIPO + LONGITUD_CONSECUTIVO; // 11
+/**
+ * The frozen DGII NCF length: `B` + 2 tipo digits + 8 consecutive = 11. Exported so the DGII
+ * fixed-width exporters consume the SAME constant the composer verifies against (formatos
+ * dgii/606-608 must never hold a second copy of a fiscal identifier width).
+ */
+export const LARGO_NCF = 1 + DIGITOS_TIPO + LONGITUD_CONSECUTIVO; // 11
 
 const ZONA_SD = "America/Santo_Domingo";
 // `en-CA` yields an ISO-like `YYYY-MM-DD`, which compares lexicographically in

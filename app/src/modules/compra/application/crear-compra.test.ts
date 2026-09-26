@@ -58,11 +58,11 @@ function baseInput(over: Partial<CrearCompraInput> = {}): CrearCompraInput {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  (leerProveedorClasificadoEnTx as jest.Mock).mockResolvedValue(proveedorFormal);
-  (leerProductosParaLineasEnTx as jest.Mock).mockResolvedValue([
+  jest.mocked(leerProveedorClasificadoEnTx).mockResolvedValue(proveedorFormal);
+  jest.mocked(leerProductosParaLineasEnTx).mockResolvedValue([
     { id: 10, activo: true, tasaItbis: "18" },
   ]);
-  (crearCompraConLineasEnTx as jest.Mock).mockResolvedValue({ id: 100 });
+  jest.mocked(crearCompraConLineasEnTx).mockResolvedValue({ id: 100 });
 });
 
 describe("crearCompra", () => {
@@ -79,7 +79,7 @@ describe("crearCompra", () => {
 
   it("freezes the product ITBIS rate per line at save time", async () => {
     await crearCompra(tx, ctx, baseInput());
-    const arg = (crearCompraConLineasEnTx as jest.Mock).mock.calls[0]?.[2];
+    const arg = jest.mocked(crearCompraConLineasEnTx).mock.calls[0]?.[2];
     expect(arg.lineas[0].tasaItbis).toBe("18");
     expect(arg.totales.retencionIsr).toBe("0.00");
     expect(arg.totales.retencionItbis).toBe("0.00");
@@ -102,14 +102,14 @@ describe("crearCompra", () => {
   });
 
   it("rejects a foreign/unknown product (empty lookup)", async () => {
-    (leerProductosParaLineasEnTx as jest.Mock).mockResolvedValue([]);
+    jest.mocked(leerProductosParaLineasEnTx).mockResolvedValue([]);
     const result = await crearCompra(tx, ctx, baseInput());
     expect(result.ok === false && result.code).toBe("PRODUCTO_NO_ENCONTRADO");
     expect(crearCompraConLineasEnTx).not.toHaveBeenCalled();
   });
 
   it("rejects an inactive product with LINEA_INVALIDA", async () => {
-    (leerProductosParaLineasEnTx as jest.Mock).mockResolvedValue([
+    jest.mocked(leerProductosParaLineasEnTx).mockResolvedValue([
       { id: 10, activo: false, tasaItbis: "18" },
     ]);
     const result = await crearCompra(tx, ctx, baseInput());
@@ -118,7 +118,7 @@ describe("crearCompra", () => {
   });
 
   it("rejects an inactive supplier", async () => {
-    (leerProveedorClasificadoEnTx as jest.Mock).mockResolvedValue({
+    jest.mocked(leerProveedorClasificadoEnTx).mockResolvedValue({
       ...proveedorFormal,
       activo: false,
     });
@@ -127,13 +127,13 @@ describe("crearCompra", () => {
   });
 
   it("rejects a missing supplier", async () => {
-    (leerProveedorClasificadoEnTx as jest.Mock).mockResolvedValue(null);
+    jest.mocked(leerProveedorClasificadoEnTx).mockResolvedValue(null);
     const result = await crearCompra(tx, ctx, baseInput());
     expect(result.ok === false && result.code).toBe("PROVEEDOR_NO_ENCONTRADO");
   });
 
   it("maps a duplicate NCF to a typed NFC_DUPLICADO result", async () => {
-    (crearCompraConLineasEnTx as jest.Mock).mockRejectedValue(
+    jest.mocked(crearCompraConLineasEnTx).mockRejectedValue(
       new CompraDomainError(NFC_DUPLICADO),
     );
     const result = await crearCompra(tx, ctx, baseInput({ ncf: "B0100000001" }));
@@ -142,7 +142,7 @@ describe("crearCompra", () => {
 
   it("rejects a malformed NCF with NFC_INVALIDO before any write", async () => {
     const result = await crearCompra(tx, ctx, baseInput({ ncf: "B01-001" }));
-    expect(result.ok === false && result.code).toBe("NFC_INVALIDO");
+    expect(result.ok === false && result.code).toBe(NFC_INVALIDO);
     expect(crearCompraConLineasEnTx).not.toHaveBeenCalled();
   });
 
@@ -152,7 +152,7 @@ describe("crearCompra", () => {
       ctx,
       baseInput({ ncf: "B1100000001", tipoNcf: "B01" }),
     );
-    expect(result.ok === false && result.code).toBe("TIPO_NCF_DESACUERDO");
+    expect(result.ok === false && result.code).toBe(TIPO_NCF_DESACUERDO);
     expect(crearCompraConLineasEnTx).not.toHaveBeenCalled();
   });
 });
