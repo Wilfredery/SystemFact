@@ -15,6 +15,8 @@ import {
   NCF_SEC_INEXISTENTE,
   FACTURA_AUTOMATICA_FALTA,
   STOCK_INSUFICIENTE_BLOQUEO,
+  FECHA_VENTA_FUTURA,
+  FECHA_VENTA_RETROACTIVA_EXCEDIDA,
   type VentaErrorCode,
 } from "../errors";
 
@@ -48,10 +50,13 @@ describe("venta error catalog — 5c confirm delta (R-V13 / R-V15)", () => {
     VENTA_NO_CONFIRMADA: true,
     // Phase-5d idempotency-gate delta (R-D5 amendment: 605).
     DEVOLUCION_YA_REGISTRADA: true,
+    // F5 sale-date band delta (audit v2r-11).
+    FECHA_VENTA_FUTURA: true,
+    FECHA_VENTA_RETROACTIVA_EXCEDIDA: true,
   };
 
-  it("carries exactly 24 stable codes (19 + the 5d return delta + the 605 gate)", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(24);
+  it("carries exactly 26 stable codes (24 + the F5 sale-date band pair)", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(26);
   });
 
   it("exposes the five confirm codes with distinct stable values", () => {
@@ -60,6 +65,13 @@ describe("venta error catalog — 5c confirm delta (R-V13 / R-V15)", () => {
     expect(NCF_SEC_INEXISTENTE).toBe("NCF_SEC_INEXISTENTE");
     expect(FACTURA_AUTOMATICA_FALTA).toBe("FACTURA_AUTOMATICA_FALTA");
     expect(STOCK_INSUFICIENTE_BLOQUEO).toBe("STOCK_INSUFICIENTE_BLOQUEO");
+  });
+
+  it("exposes the F5 sale-date band codes with distinct stable values and copy", () => {
+    expect(FECHA_VENTA_FUTURA).toBe("FECHA_VENTA_FUTURA");
+    expect(FECHA_VENTA_RETROACTIVA_EXCEDIDA).toBe("FECHA_VENTA_RETROACTIVA_EXCEDIDA");
+    expect(messageFor(FECHA_VENTA_FUTURA)).toBe("La fecha de la venta no puede ser futura");
+    expect(messageFor(FECHA_VENTA_RETROACTIVA_EXCEDIDA)).toMatch(/horizonte retroactivo/);
   });
 
   it("gives every catalog code a non-empty Spanish message (incl. the new five)", () => {

@@ -8,7 +8,11 @@
  * every empresa as ONE active row per (key, empresa) in a wide validity window,
  * using the business-confirmed defaults (`4.00`, `15` days — both adjustable,
  * and the running rule reads the stored value so changing it needs no deploy —
- * R-C3 / R-D2). It is SAFE TO RE-RUN (idempotent), mirroring
+ * R-C3 / R-D2). The F5 remediation of audit v2r-11 adds a THIRD key,
+ * `RETROACTIVO_FECHA_VENTA_DIAS` (default `7` calendar days), on the same
+ * footing: `leerRetroactivoFechaVentaEnTx` hard-fails
+ * `RETROACTIVO_FECHA_VENTA_FALTANTE` without it, so no empresa can save a sale
+ * dated outside the legal band. It is SAFE TO RE-RUN (idempotent), mirroring
  * `seed-retencion-config.ts`.
  *
  * Idempotency strategy (no migration, frozen `@@unique([empresaId, clave,
@@ -43,6 +47,17 @@ export const PLAZO_DEVOLUCION_SEED_VALOR = "15";
 
 /** The `ConfiguracionEmpresa` key this seed provisions for returns. */
 export const PLAZO_DEVOLUCION_CLAVE = "PLAZO_DEVOLUCION";
+
+/** The `ConfiguracionEmpresa` key this seed provisions for the sale-date band. */
+export const RETROACTIVO_FECHA_VENTA_CLAVE = "RETROACTIVO_FECHA_VENTA_DIAS";
+
+/**
+ * Business-confirmed retroactive horizon for a sale date, in calendar days
+ * (F5 remediation of audit v2r-11): future dates are ALWAYS rejected, and a sale
+ * may not be dated more than this many calendar days back. Adjustable in DB
+ * without a deploy, like every other key seeded here.
+ */
+export const RETROACTIVO_FECHA_VENTA_SEED_VALOR = "7";
 
 /**
  * Canonical validity window shared by every provisioned key (the same
@@ -150,9 +165,9 @@ async function seedClaveParaEmpresa(
 }
 
 /**
- * Seed the `DESC_MAX` and `PLAZO_DEVOLUCION` keys for ONE empresa. Each key
- * runs through the same demote + canonical upsert path, so a re-run never
- * duplicates and stray duplicates are demoted.
+ * Seed the `DESC_MAX`, `PLAZO_DEVOLUCION` and `RETROACTIVO_FECHA_VENTA_DIAS` keys
+ * for ONE empresa. Each key runs through the same demote + canonical upsert path,
+ * so a re-run never duplicates and stray duplicates are demoted.
  */
 export async function seedVentaConfigParaEmpresa(
   db: PrismaClient,
@@ -160,6 +175,12 @@ export async function seedVentaConfigParaEmpresa(
 ): Promise<void> {
   await seedClaveParaEmpresa(db, empresaId, DESC_MAX_CLAVE, DESC_MAX_SEED_VALOR);
   await seedClaveParaEmpresa(db, empresaId, PLAZO_DEVOLUCION_CLAVE, PLAZO_DEVOLUCION_SEED_VALOR);
+  await seedClaveParaEmpresa(
+    db,
+    empresaId,
+    RETROACTIVO_FECHA_VENTA_CLAVE,
+    RETROACTIVO_FECHA_VENTA_SEED_VALOR,
+  );
 }
 
 /**
@@ -191,7 +212,7 @@ async function main(): Promise<void> {
   try {
     const res = await seedVentaConfig(db);
     console.log(
-      `OK: seeded ${DESC_MAX_CLAVE}=${DESC_MAX_SEED_VALOR} and ${PLAZO_DEVOLUCION_CLAVE}=${PLAZO_DEVOLUCION_SEED_VALOR} for ${res.empresas} empresa(s) (idempotent).`,
+      `OK: seeded ${DESC_MAX_CLAVE}=${DESC_MAX_SEED_VALOR}, ${PLAZO_DEVOLUCION_CLAVE}=${PLAZO_DEVOLUCION_SEED_VALOR} and ${RETROACTIVO_FECHA_VENTA_CLAVE}=${RETROACTIVO_FECHA_VENTA_SEED_VALOR} for ${res.empresas} empresa(s) (idempotent).`,
     );
   } finally {
     await db.$disconnect();

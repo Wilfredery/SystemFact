@@ -16,7 +16,10 @@
  * `FACTURA_NO_VIGENTE`, `VENTA_NO_CONFIRMADA` — tasks 1.5, codes 601–604) plus
  * the R-D5 idempotency-gate code `DEVOLUCION_YA_REGISTRADA` (code 605, approved
  * design amendment: an identical retried return returns 605 and never burns a
- * second B04) for a frozen catalog of **24**.
+ * second B04) for a frozen catalog of **24**. The F5 remediation of audit
+ * finding `venta:crear-venta:backdated-fecha-devolucion-window` (v2r-11) adds two
+ * more — `FECHA_VENTA_FUTURA` and `FECHA_VENTA_RETROACTIVA_EXCEDIDA`, the two
+ * bounds of the sale-date band enforced by `domain/fecha-venta.ts` — for **26**.
  * `STOCK_INSUFICIENTE` and `NCF_UMBRAL_90` stay WARNING channels, never catalog
  * error codes.
  */
@@ -65,6 +68,13 @@ export const VENTA_NO_CONFIRMADA = "VENTA_NO_CONFIRMADA"; // 604
 // already emitted on a prior VIGENTE NC of the same factura is a RETRY, not a
 // cumulative return — it must be rejected BEFORE any write or B04 burn.
 export const DEVOLUCION_YA_REGISTRADA = "DEVOLUCION_YA_REGISTRADA"; // 605
+// F5 (audit v2r-11) sale-date band codes. The wire `fecha` used to be persisted
+// verbatim after a mere parseability check, so a forward-dated sale could anchor
+// the B04 return window out of reach while a backdated one could shift period
+// attribution. Both bounds are now enforced at the create/update boundary by
+// `domain/fecha-venta.ts` against the SERVER clock in `America/Santo_Domingo`.
+export const FECHA_VENTA_FUTURA = "FECHA_VENTA_FUTURA";
+export const FECHA_VENTA_RETROACTIVA_EXCEDIDA = "FECHA_VENTA_RETROACTIVA_EXCEDIDA";
 
 export type VentaErrorCode =
   | typeof VENTA_NO_ENCONTRADO
@@ -90,7 +100,9 @@ export type VentaErrorCode =
   | typeof CANTIDAD_EXCEDE_ORIGINAL
   | typeof FACTURA_NO_VIGENTE
   | typeof VENTA_NO_CONFIRMADA
-  | typeof DEVOLUCION_YA_REGISTRADA;
+  | typeof DEVOLUCION_YA_REGISTRADA
+  | typeof FECHA_VENTA_FUTURA
+  | typeof FECHA_VENTA_RETROACTIVA_EXCEDIDA;
 
 const MESSAGES: Record<VentaErrorCode, string> = {
   [VENTA_NO_ENCONTRADO]: "La venta no existe en la empresa",
@@ -129,6 +141,9 @@ const MESSAGES: Record<VentaErrorCode, string> = {
     "La venta original no está confirmada; no se puede devolver",
   [DEVOLUCION_YA_REGISTRADA]:
     "La devolución ya fue registrada para esta factura; no se puede emitir una nota de crédito duplicada",
+  [FECHA_VENTA_FUTURA]: "La fecha de la venta no puede ser futura",
+  [FECHA_VENTA_RETROACTIVA_EXCEDIDA]:
+    "La fecha de la venta supera el horizonte retroactivo permitido",
 };
 
 export function messageFor(code: VentaErrorCode): string {

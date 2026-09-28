@@ -11,6 +11,12 @@
  * 5b lifecycle is DRAFT-FIRST: `crearVenta` produces a `BORRADOR`, `actualizarVenta`
  * replaces all lines while still `BORRADOR` (guarded), and `cancelarVenta` moves
  * `BORRADOR → CANCELADA` (guarded). Nothing here confirms or touches NCF/stock.
+ *
+ * F5 remediation of audit v2r-11: BOTH save paths first run
+ * {@link validarFechaVentaEnTx}, which bounds the wire `fecha` to
+ * `hoy_SD − horizonteDias … hoy_SD` against the SERVER clock. The value used to
+ * be persisted verbatim after a mere parseability check, letting a client shift
+ * the B04 return-window anchor and every period attribution.
  */
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
@@ -37,6 +43,8 @@ import {
   type VentaErrorCode,
   type VentaResult,
 } from "../domain/errors";
+import { validarFechaVenta } from "../domain/fecha-venta";
+import { leerRetroactivoFechaVentaEnTx } from "../infrastructure/config-repository";
 import {
   crearVentaConLineasEnTx,
   actualizarVentaBorradorEnTx,
@@ -64,6 +72,37 @@ import {
 } from "./venta-guardado";
 
 // --- Create ----------------------------------------------------------------
+
+/**
+ * R-F5 (audit v2r-11) — the sale-date band gate, shared by create and update so
+ * the two paths can never drift.
+ *
+ * Both bounds come from the SERVER clock: the horizon is read from the tenant
+ * config and the wire `fecha` is compared against that same instant, so a stale
+ * or hostile client clock cannot widen the band. A `VentaDomainError` (one of the
+ * two frozen catalog codes) becomes a typed save result; ANY other throw is a
+ * defect and propagates. A missing `RETROACTIVO_FECHA_VENTA_DIAS` row throws
+ * `VentaConfigError` and is deliberately NOT caught — a tenant without the
+ * parameter has no legal band, and failing loud beats silently defaulting it
+ * (AGENTS.md: parameters from DB, never hardcoded constants).
+ */
+async function validarFechaVentaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  fecha: Date,
+): Promise<{ ok: true } | { ok: false; code: VentaErrorCode; message: string }> {
+  const ahora = new Date();
+  const horizonteDias = await leerRetroactivoFechaVentaEnTx(tx, ctx.empresaId, ahora);
+  try {
+    validarFechaVenta(fecha, horizonteDias, ahora);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof VentaDomainError) {
+      return { ok: false, code: err.code, message: err.message };
+    }
+    throw err;
+  }
+}
 
 export interface CrearVentaInput {
   /** `null` (contado) resolves to the empresa's Consumidor Final. */
@@ -96,6 +135,13 @@ export async function crearVenta(
   ctx: TenantCtx,
   input: CrearVentaInput,
 ): Promise<CrearVentaResult> {
+  // Earliest possible point: an out-of-band `fecha` is rejected before the client
+  // resolution, the batch product read or ANY write. The persisted `fecha` is
+  // the anchor of the B04 return window and of period attribution, so this is the
+  // only place a sale can be bound.
+  const fechaOk = await validarFechaVentaEnTx(tx, ctx, input.fecha);
+  if (!fechaOk.ok) return fechaOk;
+
   const resuelto = await resolverClienteParaVentaEnTx(tx, ctx, input.clienteId);
   if (!resuelto.ok) return resuelto;
 
@@ -178,6 +224,13 @@ export async function actualizarVenta(
     input.clienteId === undefined ? actual.clienteId : input.clienteId;
   const resuelto = await resolverClienteParaVentaEnTx(tx, ctx, clienteIdAResolver);
   if (!resuelto.ok) return resuelto;
+
+  // R-F5: the wire `fecha` drives the ITBIS-rate and DESC_MAX window selection
+  // inside `prepararLineasVenta`, so an out-of-band value must be rejected before
+  // those parameters are picked (the guarded update itself only writes
+  // clienteId + totales; the persisted B04 anchor is bound at CREATE).
+  const fechaOk = await validarFechaVentaEnTx(tx, ctx, input.fecha);
+  if (!fechaOk.ok) return fechaOk;
 
   const preparado = await prepararLineasVenta(tx, ctx, {
     lineas: input.lineas,
