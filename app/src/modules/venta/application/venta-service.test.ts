@@ -33,8 +33,10 @@ import {
 } from "../infrastructure/venta-repository";
 import {
   leerConfigVentaEnTx,
+  leerRetroactivoFechaVentaEnTx,
   VentaConfigError,
   DESC_MAX_FALTANTE,
+  RETROACTIVO_FECHA_VENTA_FALTANTE,
 } from "../infrastructure/config-repository";
 import { getOrCreateConsumidorFinalEnTx } from "@/modules/cliente/application/consumidor-final";
 import { registrarReposicionCancelacion } from "@/modules/inventario/application/registrar-salidas-venta";
@@ -98,7 +100,11 @@ jest.mock("../infrastructure/config-repository", () => {
   const actual = jest.requireActual(
     "../infrastructure/config-repository",
   ) as Record<string, unknown>;
-  return { ...actual, leerConfigVentaEnTx: jest.fn() };
+  return {
+    ...actual,
+    leerConfigVentaEnTx: jest.fn(),
+    leerRetroactivoFechaVentaEnTx: jest.fn(),
+  };
 });
 
 jest.mock("@/modules/cliente/application/consumidor-final", () => ({
@@ -146,6 +152,11 @@ beforeEach(() => {
   (leerStockSucursalEnTx as jest.Mock).mockResolvedValue([{ productoId: 10, disponible: "50.000" }]);
   (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
   (leerConfigVentaEnTx as jest.Mock).mockResolvedValue("25.00");
+  // F5: the sale-date band. `FECHA` (2026-01-10) is far in the past, so the
+  // default mock opens the band wide enough for the historical fixtures here;
+  // the two bounds themselves are pinned in `domain/__tests__/fecha-venta.spec.ts`
+  // and the band is exercised at the real horizon in the integration suite.
+  (leerRetroactivoFechaVentaEnTx as jest.Mock).mockResolvedValue(999);
   (crearVentaConLineasEnTx as jest.Mock).mockResolvedValue({ id: 500 });
   (actualizarVentaBorradorEnTx as jest.Mock).mockResolvedValue({ updated: true });
   (cancelarVentaEnTx as jest.Mock).mockResolvedValue({ cancelled: true });
@@ -243,6 +254,134 @@ describe("crearVenta", () => {
     const r = await crearVenta(tx, ctx, baseCreate());
     expect(!r.ok && r.code).toBe("PRODUCTO_NO_ENCONTRADO");
     expect(crearVentaConLineasEnTx).not.toHaveBeenCalled();
+  });
+});
+
+// --- F5: sale-date band (audit v2r-11) --------------------------------------
+
+/** One millisecond-day — the SD-calendar shift used by the domain gate. */
+const UN_DIA_MS = 86_400_000;
+/** `n` calendar days before NOW (the server instant the gate reads). */
+function diasAtras(n: number): Date {
+  return new Date(Date.now() - n * UN_DIA_MS);
+}
+/** `n` calendar days after NOW. */
+function diasAdelante(n: number): Date {
+  return new Date(Date.now() + n * UN_DIA_MS);
+}
+
+describe("crearVenta — sale-date band gate (F5, audit v2r-11)", () => {
+  it("rejects a future-dated `fecha` with FECHA_VENTA_FUTURA, nothing persisted", async () => {
+    (leerRetroactivoFechaVentaEnTx as jest.Mock).mockResolvedValue(7);
+    const r = await crearVenta(tx, ctx, baseCreate({ fecha: diasAdelante(1) }));
+
+    expect(!r.ok && r.code).toBe("FECHA_VENTA_FUTURA");
+    expect(crearVentaConLineasEnTx).not.toHaveBeenCalled();
+    expect(reemplazarLineasVentaEnTx).not.toHaveBeenCalled();
+    expect(registrarAuditVentaEnTx).not.toHaveBeenCalled();
+  });
+
+  it("rejects a backdate past the horizon with FECHA_VENTA_RETROACTIVA_EXCEDIDA", async () => {
+    (leerRetroactivoFechaVentaEnTx as jest.Mock).mockResolvedValue(7);
+    // 8 calendar days back with a 7-day horizon — one day past the edge.
+    const r = await crearVenta(tx, ctx, baseCreate({ fecha: diasAtras(8) }));
+
+    expect(!r.ok && r.code).toBe("FECHA_VENTA_RETROACTIVA_EXCEDIDA");
+    expect(crearVentaConLineasEnTx).not.toHaveBeenCalled();
+    expect(registrarAuditVentaEnTx).not.toHaveBeenCalled();
+  });
+
+  it("accepts a backdate INSIDE the horizon (yesterday at the default 7 days)", async () => {
+    (leerRetroactivoFechaVentaEnTx as jest.Mock).mockResolvedValue(7);
+    const ayer = diasAtras(1);
+    const r = await crearVenta(tx, ctx, baseCreate({ fecha: ayer }));
+
+    expect(r.ok).toBe(true);
+    expect(crearVentaConLineasEnTx).toHaveBeenCalledTimes(1);
+    // The (legal) backdated date is what gets persisted — the gate bounds it, it
+    // does not rewrite it.
+    expect((crearVentaConLineasEnTx as jest.Mock).mock.calls[0]?.[2].fecha).toBe(ayer);
+  });
+
+  it("runs BEFORE the client resolver — the earliest possible point, zero work", async () => {
+    (leerRetroactivoFechaVentaEnTx as jest.Mock).mockResolvedValue(7);
+    await crearVenta(tx, ctx, baseCreate({ fecha: diasAdelante(1) }));
+
+    expect(leerRetroactivoFechaVentaEnTx).toHaveBeenCalledWith(tx, 1, expect.any(Date));
+    expect(leerClienteParaVentaEnTx).not.toHaveBeenCalled();
+    expect(getOrCreateConsumidorFinalEnTx).not.toHaveBeenCalled();
+    expect(leerProductosParaLineasVentaEnTx).not.toHaveBeenCalled();
+  });
+
+  it("reads the horizon against the SERVER clock, never the wire `fecha`", async () => {
+    (leerRetroactivoFechaVentaEnTx as jest.Mock).mockResolvedValue(7);
+    const antes = new Date();
+    await crearVenta(tx, ctx, baseCreate({ fecha: diasAdelante(1) }));
+    const argFecha = (leerRetroactivoFechaVentaEnTx as jest.Mock).mock.calls[0]?.[2] as Date;
+
+    // The config window is resolved at "now", so a client cannot widen the band
+    // by asking for a date in the past.
+    expect(argFecha.getTime()).toBeGreaterThanOrEqual(antes.getTime() - 1000);
+    expect(argFecha.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
+  });
+
+  it("fails LOUD (throws) when the tenant has no RETROACTIVO_FECHA_VENTA_DIAS row", async () => {
+    // Deliberately NOT a typed save result: without the parameter there is no
+    // legal band, and defaulting it in code is forbidden (never a hardcoded
+    // constant). A missing tenant config is a deployment defect.
+    (leerRetroactivoFechaVentaEnTx as jest.Mock).mockRejectedValue(
+      new VentaConfigError(RETROACTIVO_FECHA_VENTA_FALTANTE, { empresaId: 1 }),
+    );
+    await expect(crearVenta(tx, ctx, baseCreate())).rejects.toMatchObject({
+      code: RETROACTIVO_FECHA_VENTA_FALTANTE,
+    });
+    expect(crearVentaConLineasEnTx).not.toHaveBeenCalled();
+  });
+});
+
+describe("actualizarVenta — sale-date band gate (F5, audit v2r-11)", () => {
+  it("rejects a future-dated `fecha` before parameter selection and any write", async () => {
+    (leerVentaEnTx as jest.Mock).mockResolvedValue({ id: 7, estado: "BORRADOR", sucursalId: 2, clienteId: 99, updatedAt: new Date() });
+    (leerRetroactivoFechaVentaEnTx as jest.Mock).mockResolvedValue(7);
+    const r = await actualizarVenta(tx, ctx, {
+      id: 7,
+      lineas: [{ productoId: 10, cantidad: "1", precioUnitario: "100.00", descuento: CERO }],
+      fecha: diasAdelante(1),
+    });
+
+    expect(!r.ok && r.code).toBe("FECHA_VENTA_FUTURA");
+    // The wire `fecha` selects the ITBIS-rate / DESC_MAX windows inside
+    // `prepararLineasVenta`, so nothing may run before the gate.
+    expect(leerProductosParaLineasVentaEnTx).not.toHaveBeenCalled();
+    expect(actualizarVentaBorradorEnTx).not.toHaveBeenCalled();
+    expect(reemplazarLineasVentaEnTx).not.toHaveBeenCalled();
+    expect(registrarAuditVentaEnTx).not.toHaveBeenCalled();
+  });
+
+  it("rejects a backdate past the horizon on update too", async () => {
+    (leerVentaEnTx as jest.Mock).mockResolvedValue({ id: 7, estado: "BORRADOR", sucursalId: 2, clienteId: 99, updatedAt: new Date() });
+    (leerRetroactivoFechaVentaEnTx as jest.Mock).mockResolvedValue(7);
+    const r = await actualizarVenta(tx, ctx, {
+      id: 7,
+      lineas: [{ productoId: 10, cantidad: "1", precioUnitario: "100.00", descuento: CERO }],
+      fecha: diasAtras(30),
+    });
+
+    expect(!r.ok && r.code).toBe("FECHA_VENTA_RETROACTIVA_EXCEDIDA");
+    expect(actualizarVentaBorradorEnTx).not.toHaveBeenCalled();
+  });
+
+  it("a missing sale still reports VENTA_NO_ENCONTRADO ahead of the band gate", async () => {
+    // The gate runs AFTER the existence/state read on update, so a foreign id
+    // stays indistinguishable from a missing one.
+    (leerVentaEnTx as jest.Mock).mockResolvedValue(null);
+    const r = await actualizarVenta(tx, ctx, {
+      id: 7,
+      lineas: [{ productoId: 10, cantidad: "1", precioUnitario: "100.00", descuento: CERO }],
+      fecha: diasAdelante(1),
+    });
+    expect(!r.ok && r.code).toBe("VENTA_NO_ENCONTRADO");
+    expect(leerRetroactivoFechaVentaEnTx).not.toHaveBeenCalled();
   });
 });
 

@@ -48,7 +48,20 @@ async function crearOperador(): Promise<number> {
   return u.id;
 }
 
-async function guardarConCabecera(usuarioId: number, header: { descuentoTipo: "PORCENTAJE" | "MONTO"; descuentoValor: string }, fecha = new Date("2026-01-10T00:00:00.000Z")) {
+/**
+ * Default sale date for the DESC_MAX scenarios: the SERVER instant.
+ *
+ * These tests are about discount rules, not dates, and the F5 sale-date band
+ * (audit v2r-11) now rejects anything more than `RETROACTIVO_FECHA_VENTA_DIAS`
+ * calendar days back — the seeded default is 7, so a hardcoded 2026 fixture
+ * would be rejected by the band BEFORE the DESC_MAX cap under test ever ran.
+ * Do not re-pin this to a fixed date: the band is validated against the server
+ * clock, so any hardcoded value eventually rots past the horizon. Date semantics
+ * are proven in `venta-retroactivo.integration.test.ts`.
+ */
+const FECHA_SERVER = (): Date => new Date();
+
+async function guardarConCabecera(usuarioId: number, header: { descuentoTipo: "PORCENTAJE" | "MONTO"; descuentoValor: string }, fecha = FECHA_SERVER()) {
   const ctx = ctxA(fixture!, usuarioId);
   return withTenantTransaction(ctx, (tx) =>
     crearVenta(tx, ctx, {
@@ -213,7 +226,7 @@ describe("venta-config DESC_MAX (real DB)", () => {
     const r = await withTenantTransaction(ctx, (tx) =>
       crearVenta(tx, ctx, {
         clienteId: null,
-        fecha: new Date("2026-01-10T00:00:00.000Z"),
+        fecha: FECHA_SERVER(),
         // 10% line discount on a 100.00 gross line, cap is 4%.
         lineas: [{ productoId: prodA, cantidad: "1", precioUnitario: "100.00", descuento: pct("10.00") }],
       }),

@@ -1,12 +1,13 @@
 /**
- * Unit test — venta-config seed (task 2.13 "seed script unit").
+ * Unit test — venta-config seed (task 2.13 "seed script unit"; extended by the
+ * F5 audit v2r-11 remediation with the third key).
  *
  * Asserts the seed's SHAPE without a DB (the real idempotency-on-re-run is proven
- * in the integration suite): the business defaults `DESC_MAX = 4.00` and
- * `PLAZO_DEVOLUCION = 15` in the wide canonical window, the
- * demote-others + upsert-canonical idempotency strategy, and that the per-empresa
- * pass targets BOTH keys. This mirrors how the retention seed's constants are the
- * single source the fixtures align to.
+ * in the integration suite): the business defaults `DESC_MAX = 4.00`,
+ * `PLAZO_DEVOLUCION = 15` and `RETROACTIVO_FECHA_VENTA_DIAS = 7` in the wide
+ * canonical window, the demote-others + upsert-canonical idempotency strategy,
+ * and that the per-empresa pass targets ALL THREE keys. This mirrors how the
+ * retention seed's constants are the single source the fixtures align to.
  */
 
 import {
@@ -17,6 +18,8 @@ import {
   DESC_MAX_CLAVE,
   PLAZO_DEVOLUCION_SEED_VALOR,
   PLAZO_DEVOLUCION_CLAVE,
+  RETROACTIVO_FECHA_VENTA_SEED_VALOR,
+  RETROACTIVO_FECHA_VENTA_CLAVE,
   CLAVE_SEED_VIGENCIA,
 } from "./seed-venta-config";
 
@@ -54,11 +57,14 @@ function makeFakeDb(
   return { db: db as never, calls };
 }
 
-it("seeds the business defaults for the DESC_MAX and PLAZO_DEVOLUCION keys in a wide window", async () => {
+it("seeds the business defaults for the DESC_MAX, PLAZO_DEVOLUCION and RETROACTIVO_FECHA_VENTA_DIAS keys in a wide window", async () => {
   expect(DESC_MAX_CLAVE).toBe("DESC_MAX");
   expect(DESC_MAX_SEED_VALOR).toBe("4.00");
   expect(PLAZO_DEVOLUCION_CLAVE).toBe("PLAZO_DEVOLUCION");
   expect(PLAZO_DEVOLUCION_SEED_VALOR).toBe("15");
+  // F5 (audit v2r-11): the sale-date band ships as 7 calendar days.
+  expect(RETROACTIVO_FECHA_VENTA_CLAVE).toBe("RETROACTIVO_FECHA_VENTA_DIAS");
+  expect(RETROACTIVO_FECHA_VENTA_SEED_VALOR).toBe("7");
   expect(CLAVE_SEED_VIGENCIA.inicio.getUTCFullYear()).toBe(2000);
   expect(CLAVE_SEED_VIGENCIA.fin.getUTCFullYear()).toBe(2099);
 
@@ -66,15 +72,19 @@ it("seeds the business defaults for the DESC_MAX and PLAZO_DEVOLUCION keys in a 
   await seedVentaConfigParaEmpresa(db, 42);
 
   // One demote + one upsert PER KEY (idempotency strategy).
-  expect(calls.updateMany).toHaveLength(2);
-  expect(calls.upsert).toHaveLength(2);
+  expect(calls.updateMany).toHaveLength(3);
+  expect(calls.upsert).toHaveLength(3);
 
   const upserts = calls.upsert as {
     where: { empresaId_clave_vigenciaInicio: { empresaId: number; clave: string } };
     create: { valor: string; clave: string; activa: boolean };
   }[];
   const claves = upserts.map((u) => u.where.empresaId_clave_vigenciaInicio.clave);
-  expect(claves).toEqual(["DESC_MAX", "PLAZO_DEVOLUCION"]);
+  expect(claves).toEqual([
+    "DESC_MAX",
+    "PLAZO_DEVOLUCION",
+    "RETROACTIVO_FECHA_VENTA_DIAS",
+  ]);
 
   const descMax = upserts.find(
     (u) => u.where.empresaId_clave_vigenciaInicio.clave === "DESC_MAX",
@@ -89,6 +99,13 @@ it("seeds the business defaults for the DESC_MAX and PLAZO_DEVOLUCION keys in a 
   expect(plazo.where.empresaId_clave_vigenciaInicio.empresaId).toBe(42);
   expect(plazo.create.valor).toBe("15");
   expect(plazo.create.activa).toBe(true);
+
+  const retroactivo = upserts.find(
+    (u) => u.where.empresaId_clave_vigenciaInicio.clave === "RETROACTIVO_FECHA_VENTA_DIAS",
+  )!;
+  expect(retroactivo.where.empresaId_clave_vigenciaInicio.empresaId).toBe(42);
+  expect(retroactivo.create.valor).toBe("7");
+  expect(retroactivo.create.activa).toBe(true);
 });
 
 it("runs once per empresa on the company-wide pass", async () => {
@@ -147,6 +164,6 @@ it("R-V17: a single overlapping stray still self-heals via demote + canonical up
   // per key.
   const { db, calls } = makeFakeDb([], [W("2001-01-01", "2099-01-01")]);
   await seedVentaConfigParaEmpresa(db, 42);
-  expect(calls.updateMany).toHaveLength(2);
-  expect(calls.upsert).toHaveLength(2);
+  expect(calls.updateMany).toHaveLength(3);
+  expect(calls.upsert).toHaveLength(3);
 });

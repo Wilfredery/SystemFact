@@ -9,7 +9,10 @@
  * it, mirroring how `CONFIG_RETENCION_FALTANTE` lives in `compra`'s config
  * reader. `PLAZO_DEVOLUCION_FALTANTE` follows the same rule (R-D2): the return
  * window is a tenant parameter with a seeded default (task 1.9), never a
- * hardcoded domain constant. The application composes `{@link
+ * hardcoded domain constant. The F5 remediation of audit v2r-11 adds a THIRD key
+ * on the same footing — `RETROACTIVO_FECHA_VENTA_DIAS`, the retroactive horizon
+ * of the sale-date band, with `RETROACTIVO_FECHA_VENTA_FALTANTE` as its hard-fail
+ * code. The application composes `{@link
  * VentaConfigErrorCode}` into the sale/returns contracts (see
  * `application/venta-guardado.ts` and `crear-devolucion.ts`) — the domain never
  * imports this module, preserving ADR-013 purity.
@@ -42,15 +45,19 @@ import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransac
  */
 export const DESC_MAX_FALTANTE = "DESC_MAX_FALTANTE";
 export const PLAZO_DEVOLUCION_FALTANTE = "PLAZO_DEVOLUCION_FALTANTE";
+export const RETROACTIVO_FECHA_VENTA_FALTANTE = "RETROACTIVO_FECHA_VENTA_FALTANTE";
 export type VentaConfigErrorCode =
   | typeof DESC_MAX_FALTANTE
-  | typeof PLAZO_DEVOLUCION_FALTANTE;
+  | typeof PLAZO_DEVOLUCION_FALTANTE
+  | typeof RETROACTIVO_FECHA_VENTA_FALTANTE;
 
 const MENSAJES: Record<VentaConfigErrorCode, string> = {
   [DESC_MAX_FALTANTE]:
     "Falta la configuración DESC_MAX requerida; no se puede aplicar el descuento",
   [PLAZO_DEVOLUCION_FALTANTE]:
     "Falta la configuración PLAZO_DEVOLUCION requerida; no se puede calcular el plazo de devolución",
+  [RETROACTIVO_FECHA_VENTA_FALTANTE]:
+    "Falta la configuración RETROACTIVO_FECHA_VENTA_DIAS requerida; no se puede validar la fecha de la venta",
 };
 
 export function messageForVentaConfig(code: VentaConfigErrorCode): string {
@@ -182,6 +189,73 @@ export async function leerPlazoDevolucionEnTx(
       empresaId,
       clave: CLAVE_PLAZO_DEVOLUCION,
       motivo: "valor_no_entero_positivo",
+    });
+  }
+
+  return Number(trimmed);
+}
+
+/** `ConfiguracionEmpresa.clave` identifier for the sale-date band horizon. */
+const CLAVE_RETROACTIVO_FECHA_VENTA = "RETROACTIVO_FECHA_VENTA_DIAS";
+
+/**
+ * Load the tenant retroactive horizon for the sale date, in calendar days
+ * (F5 remediation of audit v2r-11).
+ *
+ * THE DEFAULT IS THE SEED (business-confirmed 7), never a hardcoded fallback
+ * here: a missing or expired key throws
+ * `VentaConfigError(RETROACTIVO_FECHA_VENTA_FALTANTE)` — a CONFIG defect that
+ * fails loud from the save use case, mirroring the `DESC_MAX_FALTANTE` /
+ * `PLAZO_DEVOLUCION_FALTANTE` discipline (required-keys parity, no legal-default
+ * escape hatch, cap never hardcoded).
+ *
+ * `@param fecha` is the SERVER instant (`new Date()`), NOT the wire sale date:
+ * the horizon is a live tenant parameter, so it is resolved against the wall
+ * clock rather than a client-controlled value.
+ *
+ * GRAMMAR DELTA vs {@link leerPlazoDevolucionEnTx}: `0` is LEGAL here (it means
+ * "only today's date may be recorded" — a legitimate strict setting), whereas
+ * the return window requires a strictly positive day count. The leading-`/^\d{1,3}$/`
+ * grammar and the R-V17 `vigenciaInicio DESC` tie-break are identical.
+ *
+ * @returns the horizon as a whole number of calendar days (≥ 0).
+ * @throws VentaConfigError(RETROACTIVO_FECHA_VENTA_FALTANTE) when no active row
+ *         covers `fecha` or the stored value is not a non-negative integer.
+ */
+export async function leerRetroactivoFechaVentaEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  fecha: Date,
+): Promise<number> {
+  const row = await tx.configuracionEmpresa.findFirst({
+    where: {
+      empresaId,
+      clave: CLAVE_RETROACTIVO_FECHA_VENTA,
+      activa: true,
+      vigenciaInicio: { lte: fecha },
+      vigenciaFin: { gte: fecha },
+    },
+    // Same R-V17 deterministic tie-break as the DESC_MAX / PLAZO_DEVOLUCION
+    // readers: overlapping windows resolve to the NEWEST `vigenciaInicio`; the
+    // seed asserts zero overlap so this never hides corrupted config.
+    orderBy: { vigenciaInicio: "desc" },
+    select: { valor: true },
+  });
+
+  if (row === null) {
+    throw new VentaConfigError(RETROACTIVO_FECHA_VENTA_FALTANTE, {
+      empresaId,
+      clave: CLAVE_RETROACTIVO_FECHA_VENTA,
+    });
+  }
+
+  const trimmed = row.valor.trim();
+  // A whole number of calendar days, `0`..`999` inclusive (allows "0", "7", "30").
+  if (!/^\d{1,3}$/.test(trimmed)) {
+    throw new VentaConfigError(RETROACTIVO_FECHA_VENTA_FALTANTE, {
+      empresaId,
+      clave: CLAVE_RETROACTIVO_FECHA_VENTA,
+      motivo: "valor_no_entero_no_negativo",
     });
   }
 

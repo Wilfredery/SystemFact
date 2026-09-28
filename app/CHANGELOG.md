@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.22](https://github.com/Wilfredery/SystemFact/compare/v0.11.21...v0.11.22) (2026-09-28)
+
+### Bug Fixes
+
+* **venta:** close run-2 security audit finding `v2r-11:fecha-venta-unbounded` MEDIUM (Phase 5 remediation) — the sale date is now bounded at the application boundary against the server clock: pure `validarFechaVenta` in `venta/domain/fecha-venta.ts` accepts only `[hoy_SD − horizonte, hoy_SD]` inclusive (America/Santo_Domingo calendar days via ICU `en-CA` compare) and always rejects the future, with the per-empresa horizon read from the DB (`RETROACTIVO_FECHA_VENTA_DIAS`, seeded default `7`, may be `0`, newest-`vigenciaInicio` tie-break); a missing config row fails loud (`RETROACTIVO_FECHA_VENTA_FALTANTE`) instead of silently widening the window; `crearVenta` and `actualizarVenta` both gate through `validarFechaVentaEnTx` (create before the client resolver, update after the existence read so a foreign id stays `VENTA_NO_ENCONTRADO`), and rejections surface stable codes `FECHA_VENTA_FUTURA` / `FECHA_VENTA_RETROACTIVA_EXCEDIDA` as typed errors without touching CF/NCF/audit/stock; integration `venta-retroactivo` replay proves the harness horizon `999` is confined to fixtures while production runs at `7` (sale exactly at max is accepted, one day beyond throws before any write); deploy-time integrity guard `pnpm config:verify` (`tools/scripts/verify-venta-config.ts`) audits every empresa for `DESC_MAX`, `PLAZO_DEVOLUCION` and `RETROACTIVO_FECHA_VENTA_DIAS` active and in force, exiting 1 with all missing pairs — it reads through `DIRECT_URL` (the app role outside a tenant transaction sees zero rows because `CONFIGURACION_EMPRESA` has RLS ENABLE+FORCE keyed on `app.current_empresa_id` default `'0'`) and runs in CI only inside the E2E seed step, never in the Jest integration job whose fixtures create empresas without business seeds; verified 1073 unit + 207 integration tests green (including the new fecha-venta, config-repository, venta-service suites), `tsc --noEmit`, lint 0 errors, `pnpm config:verify` exit 0 against the seeded DB, `git diff --check` clean
+
 ## [0.11.21](https://github.com/Wilfredery/SystemFact/compare/v0.11.20...v0.11.21) (2026-09-26)
 
 ### Bug Fixes

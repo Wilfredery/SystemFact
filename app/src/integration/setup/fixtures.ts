@@ -13,6 +13,15 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { RETROACTIVO_FECHA_VENTA_CLAVE } from "../../../tools/scripts/seed-venta-config";
+
+/**
+ * Deliberately WIDE retroactive horizon for the shared harness. See the
+ * `seedTenantFixture` block that uses it: the harness pins historical sale
+ * dates, and the 7-day production band is proven where it matters (the focused
+ * `venta-retroactivo` suite overrides the row to 7).
+ */
+const HORIZONTE_LARGO_FIXTURE = "999";
 
 let harnessClient: PrismaClient | null = null;
 
@@ -108,6 +117,14 @@ export interface TenantFixtureRetencion {
   };
 }
 
+/** The F5 sale-date band rows created per empresa by the shared fixture. */
+export interface TenantFixtureRetroactivoFechaVenta {
+  /** Config row of empresa A — override `valor` to re-band a suite. */
+  readonly empresaAId: number;
+  /** Config row of empresa B — override `valor` to re-band a suite. */
+  readonly empresaBId: number;
+}
+
 export interface TenantFixture {
   readonly empresaA: { readonly id: number };
   readonly empresaB: { readonly id: number };
@@ -119,6 +136,7 @@ export interface TenantFixture {
   readonly inventarios: TenantFixtureInventarios;
   readonly proveedores: TenantFixtureProveedores;
   readonly retencion: TenantFixtureRetencion;
+  readonly retroactivoFechaVenta: TenantFixtureRetroactivoFechaVenta;
 }
 
 const UNIQUE_SUFFIX = (): string => randomUUID();
@@ -327,6 +345,26 @@ export async function seedTenantFixture(): Promise<TenantFixture> {
   const cfgItbis100 = await crearConfig(empresaA.id, "RET_ITBIS_100", "100");
   const cfgItbis30 = await crearConfig(empresaA.id, "RET_ITBIS_30", "30");
 
+  // --- F5 sale-date band (audit v2r-11) for empresas A and B ----------------
+  // `leerRetroactivoFechaVentaEnTx` hard-fails
+  // `RETROACTIVO_FECHA_VENTA_FALTANTE` when this row is absent, so ANY
+  // use-case-driven suite in this harness needs it. The VALUE is deliberately
+  // WIDE (999) rather than the production default (7): many suites here pin
+  // historical sale dates to assert report/margin/retention windows, and the
+  // 7-day band is exactly what would break them for no added signal. The real
+  // default, the inclusive edges and the B04 regression are proven in
+  // `venta-retroactivo.integration.test.ts`, which overrides this row to 7.
+  const cfgRetroactivoA = await crearConfig(
+    empresaA.id,
+    RETROACTIVO_FECHA_VENTA_CLAVE,
+    HORIZONTE_LARGO_FIXTURE,
+  );
+  const cfgRetroactivoB = await crearConfig(
+    empresaB.id,
+    RETROACTIVO_FECHA_VENTA_CLAVE,
+    HORIZONTE_LARGO_FIXTURE,
+  );
+
   return {
     empresaA: { id: empresaA.id },
     empresaB: { id: empresaB.id },
@@ -361,6 +399,10 @@ export async function seedTenantFixture(): Promise<TenantFixture> {
         RET_ITBIS_100: cfgItbis100.id,
         RET_ITBIS_30: cfgItbis30.id,
       },
+    },
+    retroactivoFechaVenta: {
+      empresaAId: cfgRetroactivoA.id,
+      empresaBId: cfgRetroactivoB.id,
     },
   };
 }
