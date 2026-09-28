@@ -9,9 +9,11 @@
  */
 
 import { Prisma } from "@/generated/prisma/client";
+import { EstadoCompra, TipoCompra } from "@/generated/prisma/enums";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { desactivarProveedor } from "@/modules/proveedor/application/desactivar-proveedor";
+import { PROVEEDOR_TIENE_COMPRAS } from "@/modules/proveedor/domain/errors";
 import {
   getHarnessDb,
   seedTenantFixture,
@@ -41,62 +43,62 @@ describe("proveedor deactivation guard (real DB)", () => {
         sucursalId: ctx.sucursalId,
         proveedorId,
         usuarioId: ctx.usuarioId,
-        tipoCompra: "MERCANCIA",
-        estado: "BORRADOR",
+        tipoCompra: TipoCompra.MERCANCIA,
+        estado: EstadoCompra.BORRADOR,
         subtotal: new Prisma.Decimal("100.00"),
         subtotalGravado: new Prisma.Decimal("100.00"),
-        itbis: new Prisma.Decimal(0),
-        subtotalExento: new Prisma.Decimal(0),
-        retencionIsr: new Prisma.Decimal(0),
-        retencionItbis: new Prisma.Decimal(0),
+        itbis: new Prisma.Decimal("0"),
+        subtotalExento: new Prisma.Decimal("0"),
+        retencionIsr: new Prisma.Decimal("0"),
+        retencionItbis: new Prisma.Decimal("0"),
         total: new Prisma.Decimal("100.00"),
         correlativoInterno: `CMP-GUARD-${ctx.empresaId}-${Date.now()}`,
         fecha: new Date("2026-01-10T00:00:00.000Z"),
       },
       select: { id: true, estado: true },
     });
-    // Render the RLS-scoped context over the actual transaction used by the guard.
+
+    // A live purchase in this tenant blocks deactivation.
     await withTenantTransaction(ctx, async (tx) => {
       const bloqueado = await desactivarProveedor(tx, ctx, { id: proveedorId });
-      expect(bloqueado.ok === false && bloqueado.code).toBe("PROVEEDOR_TIENE_COMPRAS");
+      expect(bloqueado).toMatchObject({ ok: false, code: PROVEEDOR_TIENE_COMPRAS });
     });
 
-    // Cross-tenant isolation: a purchase injected under the SAME supplier but the
-// OTHER company must not block this tenant's supplier — the guard is scoped by
-// empresaId, so a dropped tenant filter would surface here as a false block.
+    // Cancelling releases the guard for this tenant.
+    await withTenantTransaction(ctx, async (tx) => {
+      await tx.compra.update({
+        where: { id: compra.id },
+        data: { estado: EstadoCompra.CANCELADA },
+      });
+    });
+
+    // Cross-tenant isolation: inject a live purchase under the SAME supplier id
+    // but the OTHER company. It is now the only live row for this supplier, so
+    // the count below must ignore it — a dropped tenant filter would count it
+    // and report PROVEEDOR_TIENE_COMPRAS here, failing the final deactivation.
     await db.compra.create({
       data: {
         empresaId: fixture.empresaB.id,
         sucursalId: fixture.sucursalB1.id,
         proveedorId,
         usuarioId: fixture.usuarios.adminB.id,
-        tipoCompra: "MERCANCIA",
-        estado: "BORRADOR",
+        tipoCompra: TipoCompra.MERCANCIA,
+        estado: EstadoCompra.BORRADOR,
         subtotal: new Prisma.Decimal("50.00"),
         subtotalGravado: new Prisma.Decimal("50.00"),
-        itbis: new Prisma.Decimal(0),
-        subtotalExento: new Prisma.Decimal(0),
-        retencionIsr: new Prisma.Decimal(0),
-        retencionItbis: new Prisma.Decimal(0),
+        itbis: new Prisma.Decimal("0"),
+        subtotalExento: new Prisma.Decimal("0"),
+        retencionIsr: new Prisma.Decimal("0"),
+        retencionItbis: new Prisma.Decimal("0"),
         total: new Prisma.Decimal("50.00"),
         correlativoInterno: `CMP-GUARD-X-${ctx.empresaId}-${Date.now()}`,
         fecha: new Date("2026-01-10T00:00:00.000Z"),
       },
     });
-    // The live purchase in THIS tenant still blocks (the cross-tenant row above
-    // must not count), so the guard keeps reporting PROVEEDOR_TIENE_COMPRAS.
-    await withTenantTransaction(ctx, async (tx) => {
-      const sigueBloqueado = await desactivarProveedor(tx, ctx, { id: proveedorId });
-      expect(sigueBloqueado.ok === false && sigueBloqueado.code).toBe("PROVEEDOR_TIENE_COMPRAS");
-    });
 
-    // Cancelling releases the guard, so deactivation now succeeds.
-    // (The cross-tenant purchase remains live and must stay invisible here.)
+    // Only the cross-tenant row is live, so deactivation must succeed when the
+    // guard is tenant-scoped; this is the single step with real isolation power.
     await withTenantTransaction(ctx, async (tx) => {
-      await tx.compra.update({
-        where: { id: compra.id },
-        data: { estado: "CANCELADA" },
-      });
       const okDesactivar = await desactivarProveedor(tx, ctx, { id: proveedorId });
       expect(okDesactivar.ok).toBe(true);
     });
