@@ -21,6 +21,8 @@ export const CONFIG_RETENCION_FALTANTE = "CONFIG_RETENCION_FALTANTE";
 export const CORRELATIVO_CONFLICTO = "CORRELATIVO_CONFLICTO";
 export const CONCURRENCIA_CONFLICTO = "CONCURRENCIA_CONFLICTO";
 export const NFC_DUPLICADO = "NFC_DUPLICADO";
+export const NFC_INVALIDO = "NFC_INVALIDO";
+export const TIPO_NCF_DESACUERDO = "TIPO_NCF_DESACUERDO";
 export const NO_AUTORIZADO = "NO_AUTORIZADO";
 export const SESION_INVALIDA = "SESION_INVALIDA";
 // fase-3-4b receipt wiring: branch scoping for `recibirCompra` and the stable
@@ -42,6 +44,8 @@ export type CompraErrorCode =
   | typeof CORRELATIVO_CONFLICTO
   | typeof CONCURRENCIA_CONFLICTO
   | typeof NFC_DUPLICADO
+  | typeof NFC_INVALIDO
+  | typeof TIPO_NCF_DESACUERDO
   | typeof NO_AUTORIZADO
   | typeof SESION_INVALIDA
   | typeof COMPRA_SUCURSAL_INVALIDA
@@ -63,6 +67,8 @@ const MESSAGES: Record<CompraErrorCode, string> = {
   [CONCURRENCIA_CONFLICTO]:
     "Otro usuario modificó la compra; recargue y reintente",
   [NFC_DUPLICADO]: "Ya existe una compra con ese NCF en la empresa",
+  [NFC_INVALIDO]: "El NCF no es válido (debe ser B01 o B11 + 8 dígitos)",
+  [TIPO_NCF_DESACUERDO]: "El tipo de NCF no coincide con el prefijo del NCF (B01/B11)",
   [NO_AUTORIZADO]: "No tiene permisos para realizar esta acción",
   [SESION_INVALIDA]: "Sesión no válida o expirada",
   [COMPRA_SUCURSAL_INVALIDA]:

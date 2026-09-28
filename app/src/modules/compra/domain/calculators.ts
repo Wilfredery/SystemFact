@@ -10,12 +10,17 @@
  *      hardcoded). The matrix and {@link requiredRetentionKeys} stay in lockstep
  *      so confirmation knows which tenant config keys are applicable.
  *
- * Rounding: money is `Decimal(12,2)`; every intermediate product is rounded
- * half-up to two decimals, matching how the values are stored per line.
+ * Rounding: money is `Decimal(12,2)`. Line ITBIS is computed on the line's
+ * UNROUNDED subtotal (base-then-tax — rounding the base first would silently
+ * change fiscal output) and only the RESULT is rounded half-up. Every summed
+ * total is then a sum of already-2-decimal parts, so `round2` routes all money
+ * OUTPUT through a single rounding mechanism (a future change to half-even
+ * touches one function, not eight call sites).
  */
 
 import { Decimal } from "decimal.js";
 import { LINEA_INVALIDA, type CompraErrorCode } from "./errors";
+import { esTasaItbisValida } from "@/modules/producto/domain/producto";
 import type {
   ClaseProveedor,
   CompraLineaCalculada,
@@ -31,8 +36,16 @@ import { CLASE_PROVEEDOR, TIPO_COMPRA, TIPO_PERSONA } from "./compra";
 /** Canonical zero amount for the `Decimal(12,2)` money columns. */
 export const MONTO_CERO = "0.00";
 
-/** Accepted per-line ITBIS rates (Ley 30-26): 18 / 16 / 0 percent. */
-const TASAS_ITBIS_VALIDAS = new Set(["18", "16", "0"]);
+/**
+ * Width bounds for draft-line decimals, derived from the ERD v4.7 column
+ * precision: quantity is `Decimal(12,3)` → up to 9 integer digits + 3 decimals;
+ * unit cost is `Decimal(12,2)` → up to 10 integer digits + 2 decimals.
+ * Exported so the HTTP layer reuses the SAME literals instead of
+ * hand-duplicating them (they drifted once already: the unit-cost bound had to
+ * be corrected from `{1,9}` to `{1,10}` in BOTH copies during F4).
+ */
+export const RE_CANTIDAD = /^\d{1,9}(\.\d{1,3})?$/;
+export const RE_COSTO_UNITARIO = /^\d{1,10}(\.\d{1,2})?$/;
 
 /**
  * Validate a draft line at the domain boundary: a strictly positive base-unit
@@ -45,11 +58,11 @@ export function validarLinea(
   input: CompraLineaInput,
   tasaItbis: string,
 ): CompraErrorCode | null {
-  if (!/^\d{1,9}(\.\d{1,3})?$/.test(input.cantidad)) return LINEA_INVALIDA;
-  if (!/^\d{1,9}(\.\d{1,2})?$/.test(input.costoUnitario)) return LINEA_INVALIDA;
+  if (!RE_CANTIDAD.test(input.cantidad)) return LINEA_INVALIDA;
+  if (!RE_COSTO_UNITARIO.test(input.costoUnitario)) return LINEA_INVALIDA;
   if (new Decimal(input.cantidad).lessThanOrEqualTo(0)) return LINEA_INVALIDA;
   if (new Decimal(input.costoUnitario).lessThan(0)) return LINEA_INVALIDA;
-  if (!TASAS_ITBIS_VALIDAS.has(tasaItbis)) return LINEA_INVALIDA;
+  if (!esTasaItbisValida(tasaItbis)) return LINEA_INVALIDA;
   return null;
 }
 
@@ -119,11 +132,11 @@ export function calcularTotales(
   const total = subtotal.plus(itbis);
 
   return {
-    subtotalGravado: subtotalGravado.toFixed(2),
-    itbis: itbis.toFixed(2),
-    subtotalExento: subtotalExento.toFixed(2),
-    subtotal: subtotal.toFixed(2),
-    total: total.toFixed(2),
+    subtotalGravado: round2(subtotalGravado),
+    itbis: round2(itbis),
+    subtotalExento: round2(subtotalExento),
+    subtotal: round2(subtotal),
+    total: round2(total),
   };
 }
 
@@ -235,7 +248,7 @@ export function calcularRetenciones(
   }
 
   return {
-    retencionIsr: retencionIsr.toFixed(2),
-    retencionItbis: retencionItbis.toFixed(2),
+    retencionIsr: round2(retencionIsr),
+    retencionItbis: round2(retencionItbis),
   };
 }

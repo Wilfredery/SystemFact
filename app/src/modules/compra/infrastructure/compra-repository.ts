@@ -331,15 +331,21 @@ export async function crearCompraConLineasEnTx(
 
 /**
  * Replace a draft's lines atomically: delete the existing `DETALLE_COMPRA` rows
- * and insert the recomputed ones. Only ever called after a guarded header
- * update proved the purchase was still a `BORRADOR` (see actualizar).
+ * and insert the recomputed ones. Scoped to the tenant through the parent
+ * purchase (multi-tenancy rule: a delete/reinsert by bare `compraId` would have
+ * no `empresaId` evidence and rely on RLS alone — AGENTS.md requires the
+ * explicit filter). Only ever called after a guarded header update proved the
+ * purchase was still a `BORRADOR` (see actualizar).
  */
 export async function reemplazarLineasEnTx(
   tx: PrismaTx,
+  ctx: TenantCtx,
   compraId: number,
   lineas: readonly CompraLineaCalculada[],
 ): Promise<void> {
-  await tx.detalleCompra.deleteMany({ where: { compraId } });
+  await tx.detalleCompra.deleteMany({
+    where: { compraId, compra: { empresaId: ctx.empresaId } },
+  });
   if (lineas.length === 0) return;
   await tx.detalleCompra.createMany({
     data: lineas.map((l) => ({

@@ -29,7 +29,12 @@ import {
   formatearMonto,
   rellenarAlnum,
   rellenarEnteroIzq,
+  validarPeriodoAAAAMM,
 } from "./formato";
+import {
+  REPORTE_DGII_CODIGO_INVALIDO,
+  ReporteDomainError,
+} from "../errors";
 import type { FormasPago607 } from "./pagos-607";
 
 /**
@@ -104,15 +109,24 @@ export function ensamblarDetalle607(f: FilaDetalle607): string {
 
 /** A 606/607 header record (the shared 5-field shape — research §3/§4). */
 export interface EncabezadoDGII {
-  readonly codigoInformacion: string; // "606" | "607"
+  readonly codigoInformacion: "606" | "607"; // H1 — the file-type label, frozen
   readonly rnc: string; // remitter's RNC (no dashes)
   readonly periodo: string; // AAAAMM
   readonly cantidadRegistros: number; // this file's detail count (≤ cap)
   readonly totalMontoFacturado: string; // Σ base, Decimal string
 }
 
-/** Assemble a 606/607 encabezado (H1–H5). The header is NOT counted in CANTIDAD_REGISTROS. */
+/** Assemble a 606/607 encabezado (H1–H5). The header is NOT counted in CANTIDAD_REGISTROS.
+ * The period and the file-type label are both asserted before being laid out (a free-string
+ * period or a mislabelled file can never be emitted raw). */
 export function ensamblarEncabezado5(h: EncabezadoDGII): string {
+  validarPeriodoAAAAMM(h.periodo);
+  if (h.codigoInformacion !== "606" && h.codigoInformacion !== "607") {
+    // Defense-in-depth: TS already narrows the type, but transport input can bypass types.
+    throw new ReporteDomainError(REPORTE_DGII_CODIGO_INVALIDO, {
+      codigo: h.codigoInformacion,
+    });
+  }
   return ensamblarLinea([
     h.codigoInformacion, // H1 (literal "606"/"607")
     rellenarAlnum(h.rnc, LARGO_RNC), // H2
@@ -207,9 +221,11 @@ export interface Encabezado608 {
 
 /**
  * Assemble the 608 encabezado: `608` + RNC(11) + periodo(6) + CANTIDAD_REGISTROS(12) — the 608
- * header carries NO total-monto field (research §5: "No amounts are reported in 608").
+ * header carries NO total-monto field (research §5: "No amounts are reported in 608"). The period
+ * is validated before being laid out, exactly like the 606/607 header.
  */
 export function ensamblarEncabezado608(h: Encabezado608): string {
+  validarPeriodoAAAAMM(h.periodo);
   return ensamblarLinea([
     h.codigoInformacion,
     rellenarAlnum(h.rnc, LARGO_RNC),

@@ -242,4 +242,22 @@ describe("validarLinea", () => {
       validarLinea({ productoId: 1, cantidad: "1.000", costoUnitario: "10.00" }, "12"),
     ).toBe("LINEA_INVALIDA");
   });
+
+  it("accepts a unit cost at the Decimal(12,2) ceiling (10 integer digits)", () => {
+    expect(
+      validarLinea(
+        { productoId: 1, cantidad: "1.000", costoUnitario: "1000000000.00" },
+        "18",
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects a unit cost beyond Decimal(12,2) (11 integer digits)", () => {
+    expect(
+      validarLinea(
+        { productoId: 1, cantidad: "1.000", costoUnitario: "10000000000.00" },
+        "18",
+      ),
+    ).toBe("LINEA_INVALIDA");
+  });
 });

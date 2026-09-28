@@ -3,8 +3,12 @@
  *
  * Covers R-N2 (frozen 11-char composition), R-N3 (90% threshold warning,
  * never fails) and R-N5 (Santo Domingo calendar-day expiry via the injected
- * clock, NEVER a raw UTC-instant compare). No database, no Prisma: the domain
- * is pure (ADR-013).
+ * clock, NEVER a raw UTC-instant compare). No database: the domain is pure
+ * (ADR-013). The ONE parity test imports only the GENERATED enum constants
+ * (no `PrismaClient` instantiation, no DB) to prove the domain's `TipoNcf`
+ * union tracks Prisma's `TipoNcfSecuencia` exactly — the domain stays free of
+ * generated-client imports, so a schema-side enum change surfaces as a unit
+ * failure instead of a silent fiscal-identifier drift.
  *
  * Composition note: the change docs literally print `B02000000522` (12 chars)
  * while ALSO asserting "exactly 11 characters" and the `B + 2-digit tipo +
@@ -13,13 +17,25 @@
  * authoritative rule (11 chars). The deviation is reported for the docs.
  */
 
+import { TipoNcfSecuencia } from "../../../../generated/prisma/enums";
 import {
   componerNcf,
   calcularUmbral90,
   esRangoVencidoSD,
   fechaEnSD,
   NCF_UMBRAL_90,
+  TIPOS_NCF,
 } from "../ncf-rules";
+
+describe("ncf-rules — TipoNcf ↔ Prisma TipoNcfSecuencia parity (no drift)", () => {
+  it("the domain union matches the generated enum's members exactly", () => {
+    // The domain unions the SAME frozen set the DB enforces. A schema-side addition/removal
+    // fails here (unit, DB-free) instead of letting componerNcf build an NCF the DB rejects.
+    const dominio = [...TIPOS_NCF].sort();
+    const prisma = Object.values(TipoNcfSecuencia).sort();
+    expect(dominio).toEqual(prisma);
+  });
+});
 
 describe("ncf-rules — componerNcf (R-N2, frozen 11-char composition)", () => {
   it("composes B02 / 522 as exactly 'B0200000522' (11 chars, no RNC)", () => {

@@ -9,6 +9,10 @@
 
 import {
   REPORTES_ERROR_CODES,
+  REPORTE_DGII_ANCHO_EXCEDIDO,
+  REPORTE_DGII_CODIGO_INVALIDO,
+  REPORTE_DGII_MONTO_INVALIDO,
+  REPORTE_DGII_PERIODO_INVALIDO,
   REPORTE_NO_AUTORIZADO,
   REPORTE_VALIDACION,
   messageFor,
@@ -83,7 +87,14 @@ describe("rolesPermitidosParaReporte — per-report matrix (decision 5)", () => 
 
 describe("error catalog (19-directivas §9)", () => {
   it("every stable code yields a non-empty message", () => {
-    expect(REPORTES_ERROR_CODES).toEqual([REPORTE_NO_AUTORIZADO, REPORTE_VALIDACION]);
+    expect(REPORTES_ERROR_CODES).toEqual([
+      REPORTE_NO_AUTORIZADO,
+      REPORTE_VALIDACION,
+      REPORTE_DGII_ANCHO_EXCEDIDO,
+      REPORTE_DGII_PERIODO_INVALIDO,
+      REPORTE_DGII_MONTO_INVALIDO,
+      REPORTE_DGII_CODIGO_INVALIDO,
+    ]);
     for (const code of REPORTES_ERROR_CODES) {
       expect(messageFor(code).length).toBeGreaterThan(0);
     }
