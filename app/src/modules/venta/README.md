@@ -68,9 +68,10 @@ deferred to 5c when the board is available.
 | application | `application/resolver-cliente-venta.ts` | R-V10 client resolver: `null` → Consumidor Final via `getOrCreateConsumidorFinalEnTx` (5a seam); given id → empresa-scoped active check → typed `CLIENTE_*` codes. |
 | application | `application/venta-guardado.ts` | Composed sale-save result type (`VentaErrorCode` ∪ `DESC_MAX_FALTANTE`) so the domain catalog stays frozen at its pinned codes (19 from 5c). |
 | infrastructure | `infrastructure/venta-repository.ts` | The only Prisma surface: tenant/branch-scoped reads, guarded `updateMany` (estado + `updatedAt` token), replace-lines, audit append, branch stock reads, role check. |
-| infrastructure | `infrastructure/config-repository.ts` | venta-config `leerConfigVentaEnTx`: hard-fail `DESC_MAX` read (R-C1); owns the `DESC_MAX_FALTANTE` code and `VentaConfigError`. |
+| infrastructure | `infrastructure/config-repository.ts` | Hard-fail reads for the business config keys — `leerConfigVentaEnTx` (`DESC_MAX`, R-C1), `leerPlazoDevolucionEnTx` (`PLAZO_DEVOLUCION`, strictly positive) and `leerRetroactivoFechaVentaEnTx` (`RETROACTIVO_FECHA_VENTA_DIAS`, may be `0`); owns the `*_FALTANTE` codes and `VentaConfigError`. All three resolve the newest `vigenciaInicio` (R-V17). |
 | http | `http/{validations,actions}.ts` | Zod transport boundary + thin `"use server"` actions wrapped in `withTenantTransaction` (ESLint `server-action-must-wrap-tenant`); CRUD roles Administrador + Operador. |
-| tools | `../../../tools/scripts/seed-venta-config.ts` | `pnpm seed:venta`: idempotent one-active-`DESC_MAX`-row-per-empresa seed (default `4.00`). |
+| tools | `../../../tools/scripts/seed-venta-config.ts` | `pnpm seed:venta`: idempotent one-active-row-per-empresa seed for the three business keys — `DESC_MAX` (default `4.00`), `PLAZO_DEVOLUCION` (`15`) and `RETROACTIVO_FECHA_VENTA_DIAS` (`7`, F5 sale-date band). |
+| tools | `../../../tools/scripts/verify-venta-config.ts` | `pnpm config:verify`: integrity smoke check for the required venta config keys; mirrors `verify-rls.ts`. Fails the deploy/CI before a sale is blocked at runtime. |
 
 - **Concurrency (R-V3/R-V4):** guarded `updateMany ... WHERE estado='BORRADOR'`
   with an affected-rows check is the lock. Because a draft edit leaves `estado`

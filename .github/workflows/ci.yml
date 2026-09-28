@@ -335,6 +335,12 @@ jobs:
           pnpm seed:venta
           pnpm seed:ncf
           pnpm seed:cliente
+          # Integridad de configuracion: toda empresa debe tener las claves de
+          # negocio activas y vigentes, o las ventas se bloquean en runtime.
+          # Solo aqui (no en el job de integracion): el job de Jest siembra sus
+          # empresas desde app/src/integration/setup/fixtures.ts, que no ejecuta
+          # los seeds de negocio y fallaría por diseño.
+          pnpm config:verify
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium

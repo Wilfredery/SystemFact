@@ -203,6 +203,10 @@ fixtures de integración.
 # Desde app/, con DIRECT_URL (rol operador/superuser) o DATABASE_URL en .env:
 pnpm seed:venta
 # → OK: seeded DESC_MAX=4.00 for N empresa(s) (idempotent).
+# Después, confirma que la configuración quedó completa y vigente:
+pnpm config:verify
+# → OK: all N empresa(s) have DESC_MAX, PLAZO_DEVOLUCION,
+#   RETROACTIVO_FECHA_VENTA_DIAS active and in force
 ```
 
 > Nota de rol: igual que `seed:retencion` y `seed:cliente`, recorre todas las
@@ -255,6 +259,8 @@ pnpm prisma migrate deploy
 pnpm seed:retencion     # retention config (compra parity)
 pnpm seed:cliente       # per-empresa Consumidor Final (contado default)
 pnpm seed:venta         # DESC_MAX so discounted drafts can be saved
+pnpm config:verify      # confirma que toda empresa tiene DESC_MAX, PLAZO_DEVOLUCION y
+                        #   RETROACTIVO_FECHA_VENTA_DIAS activas y vigentes
 pnpm seed:ncf           # B01/B02 dev ranges so confirmation can consume (5c)
 pnpm dev                # Next.js dev server → http://localhost:3000
 ```
@@ -314,7 +320,7 @@ en la BD local (venta, factura, secuencia, movimiento). Spec:
 | Prerequisito | Cómo |
 |---|---|
 | Postgres local arriba + migrations | `docker compose up -d` + `pnpm prisma migrate deploy` |
-| Datos sembrados (en orden) | `pnpm seed:venta` → `pnpm seed:ncf` → `pnpm seed:cliente` |
+| Datos sembrados (en orden) | `pnpm seed:venta` → `pnpm config:verify` → `pnpm seed:ncf` → `pnpm seed:cliente` |
 | Usuario Supabase Auth espejo | un Auth user cuyo `nombreUsuario` exista en la BD local con sucursal y stock del producto |
 | Browser | `npx playwright install chromium` |
 
