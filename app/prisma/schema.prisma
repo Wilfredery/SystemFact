@@ -730,7 +730,7 @@ model NcfSecuencia {
 model ConfiguracionEmpresa {
   id             Int      @id @default(autoincrement())
   empresaId      Int
-  clave          String   @db.VarChar(255) // TASA_ITBIS, RET_ISR_15, RET_ISR_2, RET_ITBIS_100, RET_ITBIS_30, DESC_MAX, PLAZO_DEVOLUCION, PLAZO_CREDITO
+  clave          String   @db.VarChar(255) // TASA_ITBIS, RET_ISR_15, RET_ISR_2, RET_ITBIS_100, RET_ITBIS_30, DESC_MAX, PLAZO_DEVOLUCION, PLAZO_CREDITO, RETROACTIVO_FECHA_VENTA_DIAS
   valor          String   @db.VarChar(255)
   vigenciaInicio DateTime @db.Timestamptz(6) // ITBIS parametrizable con vigencia (05, §15)
   vigenciaFin    DateTime @db.Timestamptz(6)
