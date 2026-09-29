@@ -46,6 +46,14 @@ IT-1 MUST be rendered as a casilla worksheet for manual OFV entry: débito fisca
 - THEN D17+D18+D19+D20 equals the gross total to the cent
 - TEST: unit
 
+#### Scenario: D5 Tipo-Ingreso is a single verified digit
+
+- GIVEN the official DGII 607 instructivo, whose D5 "Tipo de Ingreso" field is a one-character code over classes `1`–`6`
+- WHEN a tenant's configured Tipo-Ingreso mapping is loaded
+- THEN only values matching `/^[1-6]$/` are kept; a zero-padded `"01"`, an out-of-range or non-numeric value is DISCARDED at the config boundary and the class falls back to the documented default `"1"`
+- AND a part is never shipped with a D5 value DGII would reject, since `"01"` is two characters in a one-character field and shifts every following column
+- TEST: unit
+
 ### Requirement: FIS-4 — Formato 606 layout (compras)
 
 606 TXT source MUST be `Compra` with estado ∈ {RECIBIDA, PAGADA} only (BORRADOR/PENDIENTE/CANCELADA excluded). Header: same 5-field shape with code "606". Detail (current ~23-col layout): proveedor RNC/TipoId · TipoBienesServicios 01–11 · NCF · NCF-Modificado · FechaComp · FechaPago · MontoServicios · MontoBienes · ITBISFacturado · ITBISRetenido · ITBIS-Proporcionalidad art.349 · ITBIS-al-Costo · ITBIS-por-Adelantar (derived) · ITBISPercibido · TipoRetenciónISR 1–8 · MontoRetenciónRenta · ISRPercibido · ISC · OtrosImp · Propina · FormaPago 01–07.

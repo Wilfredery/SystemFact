@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.23](https://github.com/Wilfredery/SystemFact/compare/v0.11.22...v0.11.23) (2026-09-29)
+
+### Bug Fixes
+
+* **reportes,dgii:** close run-2 security audit finding `v2r-07:reportes-export-unbounded` HIGH (Phase 6 remediation) — the DGII TXT fiscal exporters no longer allow unbounded or cross-month payloads: `generarTxt606`/`generarTxt607`/`generarTxt608` enforce a single calendar month in `America/Santo_Domingo` via the pure `periodoSdDeVentana`/`periodoAprobadoDeVentana` guard in `reportes/domain/dgii/ventana.ts`, so the `PERIODO=AAAAMM` header can never be filed under a period the guard did not approve (a 31-day window `2026-04-01..2026-05-01` could previously label April rows as `202605`); oversized exports fail fast with `REPORTE_DGII_VENTANA_EXCEDIDA` / `REPORTE_DGII_TAMANO_EXCEDIDO` (50 MiB UTF-8 byte cap `verificarTamanoExportacionDgii` shared by 606/607/608) before any query, with `ReportResult.details` carrying the concrete reason to export month by month; also aligned the 607 `tipo-ingreso` grammar with the official DGII instructivo (single digit 1–6): `esCodigoTipoIngresoValido` pins `/^[1-6]$/`, `leerMapaTipoIngreso607EnTx` discards invalid configured values at the repository boundary, and the default stays `1`; verified 1104 unit tests green across 116 suites (including the new ventana/tipo-ingreso suites), `tsc --noEmit`, lint 0 errors, `prisma validate` clean, `lint:commits` clean; integration coverage runs in CI against real Postgres 16 (local run requires the out-of-band harness role password)
+
 ## [0.11.22](https://github.com/Wilfredery/SystemFact/compare/v0.11.21...v0.11.22) (2026-09-28)
 
 ### Bug Fixes

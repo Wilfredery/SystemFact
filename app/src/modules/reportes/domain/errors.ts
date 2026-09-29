@@ -41,13 +41,21 @@ export const REPORTE_DGII_MONTO_INVALIDO = "REPORTE_DGII_MONTO_INVALIDO";
  * file fails at DGII with nothing pointing back. */
 export const REPORTE_DGII_CODIGO_INVALIDO = "REPORTE_DGII_CODIGO_INVALIDO";
 
+/** A DGII export window is missing, open-ended, or spans more than one SD calendar month. */
+export const REPORTE_DGII_VENTANA_EXCEDIDA = "REPORTE_DGII_VENTANA_EXCEDIDA";
+
+/** An assembled DGII TXT part exceeds the 50 MiB response cap, so it cannot be served. */
+export const REPORTE_DGII_TAMANO_EXCEDIDO = "REPORTE_DGII_TAMANO_EXCEDIDO";
+
 export type ReporteErrorCode =
   | typeof REPORTE_NO_AUTORIZADO
   | typeof REPORTE_VALIDACION
   | typeof REPORTE_DGII_ANCHO_EXCEDIDO
   | typeof REPORTE_DGII_PERIODO_INVALIDO
   | typeof REPORTE_DGII_MONTO_INVALIDO
-  | typeof REPORTE_DGII_CODIGO_INVALIDO;
+  | typeof REPORTE_DGII_CODIGO_INVALIDO
+  | typeof REPORTE_DGII_VENTANA_EXCEDIDA
+  | typeof REPORTE_DGII_TAMANO_EXCEDIDO;
 
 /** Ordered catalog — a test asserts every code yields a stable message. */
 export const REPORTES_ERROR_CODES: readonly ReporteErrorCode[] = [
@@ -57,6 +65,8 @@ export const REPORTES_ERROR_CODES: readonly ReporteErrorCode[] = [
   REPORTE_DGII_PERIODO_INVALIDO,
   REPORTE_DGII_MONTO_INVALIDO,
   REPORTE_DGII_CODIGO_INVALIDO,
+  REPORTE_DGII_VENTANA_EXCEDIDA,
+  REPORTE_DGII_TAMANO_EXCEDIDO,
 ];
 
 const MESSAGES: Readonly<Record<ReporteErrorCode, string>> = {
@@ -72,6 +82,10 @@ const MESSAGES: Readonly<Record<ReporteErrorCode, string>> = {
     "Un monto del archivo DGII no es un número finito o tiene más de 2 decimales; revise los datos de origen",
   [REPORTE_DGII_CODIGO_INVALIDO]:
     "El código de comprobante del encabezado DGII no es 606 ni 607",
+  [REPORTE_DGII_VENTANA_EXCEDIDA]:
+    "Debe indicar un período dentro de un solo mes calendario para los archivos DGII 606, 607 y 608; exporte mes a mes",
+  [REPORTE_DGII_TAMANO_EXCEDIDO]:
+    "El archivo DGII excede el tamaño máximo permitido; reduzca el período o el alcance de la consulta",
 };
 
 export function messageFor(code: ReporteErrorCode): string {

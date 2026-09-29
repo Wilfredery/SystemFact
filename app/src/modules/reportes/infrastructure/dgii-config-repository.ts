@@ -21,6 +21,7 @@
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { MapaTipoIngreso } from "../domain/dgii/tipo-ingreso";
+import { esCodigoTipoIngresoValido } from "../domain/dgii/tipo-ingreso";
 
 /** `ConfiguracionEmpresa.clave` for the 607 B02 consumption-detail threshold. */
 const CLAVE_UMBRAL_CONSUMO_607 = "UMBRAL_CONSUMO_607";
@@ -64,8 +65,10 @@ export async function leerUmbralConsumo607EnTx(
 /**
  * Load the tenant's 607 D5 Tipo-Ingreso code table (a JSON object keyed on document class → DGII
  * income code), or an empty map when unconfigured/unparseable (the domain resolver then applies
- * its single documented default). The table itself is research-UNVERIFIED (U3), so this is the
- * config seam the pre-validation tool confirms; parsing failure NEVER invents a code.
+ * its single documented default). Entries whose value is not a well-formed single-digit 1–6 code
+ * are dropped: the table is tenant data, so a typo must degrade to the default rather than emit a
+ * file DGII rejects. The table itself is research-UNVERIFIED (U3), so this is the config seam the
+ * pre-validation tool confirms; parsing failure NEVER invents a code.
  */
 export async function leerMapaTipoIngreso607EnTx(
   tx: PrismaTx,
@@ -89,8 +92,12 @@ export async function leerMapaTipoIngreso607EnTx(
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     const mapa: Record<string, string> = {};
     for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof v === "string") mapa[k] = v;
-      else if (typeof v === "number") mapa[k] = String(v);
+      const codigo = typeof v === "string" ? v : typeof v === "number" ? String(v) : null;
+      // A configured code that is not a well-formed single digit 1–6 (a zero-padded "01", a "7",
+      // a non-number) is DISCARDED here, at the boundary: D5 is a one-character field, so such a
+      // value would ship a malformed file. Dropping the entry makes the domain resolver apply the
+      // documented default for that class instead — the grammar is never guessed around.
+      if (codigo !== null && esCodigoTipoIngresoValido(codigo)) mapa[k] = codigo;
     }
     return mapa;
   } catch {
