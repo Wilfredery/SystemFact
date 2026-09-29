@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.24](https://github.com/Wilfredery/SystemFact/compare/v0.11.23...v0.11.24) (2026-09-29)
+
+### Bug Fixes
+
+* **venta:** remove the manual `pnpm seed:venta` step as the only path for the sale-date band — new data migration `20260929120000_seed_retroactivo_fecha_venta_dias` provisions `RETROACTIVO_FECHA_VENTA_DIAS=7` (canonical window `2000-01-01…2099-12-31`) for every existing empresa at `migrate deploy` time, so sales can no longer be blocked by a forgotten manual seed after deploy; idempotent by the frozen compound unique index `("empresaId","clave","vigenciaInicio")` via `ON CONFLICT DO NOTHING` (no-ops when the seed already ran, creates exactly the missing rows when it did not — verified `INSERT 0 0` / `INSERT 0 1` against real Postgres 16), values copied from the same constants `seed-venta-config.ts` uses (one source of truth); deliberately scoped to the new key only because `DESC_MAX`/`PLAZO_DEVOLUCION` keep the seed script's R-V17 demote + fail-fast repair that a plain INSERT cannot replicate safely; `SETUP-LOCAL.md` runbook and venta README updated; verified `tsc --noEmit` exit 0 and seed unit suite 7/7
+
 ## [0.11.23](https://github.com/Wilfredery/SystemFact/compare/v0.11.22...v0.11.23) (2026-09-29)
 
 ### Bug Fixes
