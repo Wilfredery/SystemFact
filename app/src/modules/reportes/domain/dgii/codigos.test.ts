@@ -9,7 +9,9 @@
  */
 
 import {
+  LARGO_TIPO_INGRESO,
   TIPO_INGRESO_POR_DEFECTO,
+  esCodigoTipoIngresoValido,
   resolverTipoIngreso,
 } from "./tipo-ingreso";
 import {
@@ -28,17 +30,37 @@ import {
   correspondeA606,
 } from "./mapeo-606";
 
-describe("dgii/tipo-ingreso — U3 backed by a DB map, safe default otherwise (task 5.2)", () => {
-  it("returns the configured code for a class present in the map", () => {
-    const mapa = { B01: "01", B02: "02", B04: "04" };
-    expect(resolverTipoIngreso("B01", mapa)).toBe("01");
-    expect(resolverTipoIngreso("B04", mapa)).toBe("04");
+describe("dgii/tipo-ingreso — the D5 field is a SINGLE digit (1–6), not a padded 2-char code", () => {
+  it("returns the configured SINGLE-DIGIT code for a class present in the map", () => {
+    const mapa = { B01: "1", B02: "2", B04: "4" };
+    expect(resolverTipoIngreso("B01", mapa)).toBe("1");
+    expect(resolverTipoIngreso("B04", mapa)).toBe("4");
+    // A one-digit code is written verbatim: the writer left-pads it to LARGO_TIPO_INGRESO, which
+    // for 1 is the digit itself. Never "01" — that is TWO characters in a one-character field and
+    // shifts every following column of the 607 detail row.
+    for (const clase of ["B01", "B02", "B04"]) {
+      expect(resolverTipoIngreso(clase, mapa).length).toBe(LARGO_TIPO_INGRESO);
+    }
   });
+
+  it("accepts every official 1–6 code and rejects anything else", () => {
+    for (const c of ["1", "2", "3", "4", "5", "6"]) expect(esCodigoTipoIngresoValido(c)).toBe(true);
+    for (const c of ["0", "7", "9", "01", "02", "10", "1.0", "", "x", " 1"]) {
+      expect(esCodigoTipoIngresoValido(c)).toBe(false);
+    }
+  });
+
   it("falls back to the SINGLE documented default for an unconfigured class (never a per-row guess)", () => {
-    expect(resolverTipoIngreso("B99", { B01: "01" })).toBe(TIPO_INGRESO_POR_DEFECTO);
+    expect(resolverTipoIngreso("B99", { B01: "1" })).toBe(TIPO_INGRESO_POR_DEFECTO);
     expect(resolverTipoIngreso("B01", {})).toBe(TIPO_INGRESO_POR_DEFECTO);
     // An empty configured value is treated as unset, not as a real code.
     expect(resolverTipoIngreso("B01", { B01: "" })).toBe(TIPO_INGRESO_POR_DEFECTO);
+  });
+
+  it("the default itself is a valid 1-digit code and fits the field", () => {
+    expect(TIPO_INGRESO_POR_DEFECTO).toBe("1");
+    expect(esCodigoTipoIngresoValido(TIPO_INGRESO_POR_DEFECTO)).toBe(true);
+    expect(TIPO_INGRESO_POR_DEFECTO.length).toBe(LARGO_TIPO_INGRESO);
   });
 });
 
