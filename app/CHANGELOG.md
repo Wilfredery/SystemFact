@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.25](https://github.com/Wilfredery/SystemFact/compare/v0.11.24...v0.11.25) (2026-09-29)
+
+### Documentation
+
+* **schema:** document the `RETROACTIVO_FECHA_VENTA_DIAS` key in the `ConfiguracionEmpresa.clave` comment so the schema comment mirrors the full key catalog (`DESC_MAX`, `PLAZO_DEVOLUCION`, and the sale-date retroactivity horizon provisioned by migration `20260929120000_seed_retroactivo_fecha_venta_dias`); `prisma validate` clean
+
 ## [0.11.24](https://github.com/Wilfredery/SystemFact/compare/v0.11.23...v0.11.24) (2026-09-29)
 
 ### Bug Fixes
