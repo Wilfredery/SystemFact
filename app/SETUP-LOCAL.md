@@ -213,6 +213,12 @@ pnpm config:verify
 > empresas y necesita una conexión sin contexto de un solo tenant (usa
 > `DIRECT_URL` en local).
 
+> Nota (2026-09-29): `RETROACTIVO_FECHA_VENTA_DIAS` se provisiona automáticamente
+> con la migración `20260929120000_seed_retroactivo_fecha_venta_dias` para toda
+> empresa existente (INSERT idempotente sobre la unique compuesta). El seed sigue
+> siendo la vía para `DESC_MAX`/`PLAZO_DEVOLUCION` y para ambientes donde el deploy
+> de migraciones no precedió al seed.
+
 Ejecutar **antes** de habilitar borradores con descuento en un entorno nuevo.
 
 ## Seed de secuencias NCF (B01/B02) — confirmación de ventas (fase 5c)
@@ -258,7 +264,7 @@ cd app
 pnpm prisma migrate deploy
 pnpm seed:retencion     # retention config (compra parity)
 pnpm seed:cliente       # per-empresa Consumidor Final (contado default)
-pnpm seed:venta         # DESC_MAX so discounted drafts can be saved
+pnpm seed:venta         # DESC_MAX/PLAZO_DEVOLUCION (RETROACTIVO ya viene con la migración)
 pnpm config:verify      # confirma que toda empresa tiene DESC_MAX, PLAZO_DEVOLUCION y
                         #   RETROACTIVO_FECHA_VENTA_DIAS activas y vigentes
 pnpm seed:ncf           # B01/B02 dev ranges so confirmation can consume (5c)
