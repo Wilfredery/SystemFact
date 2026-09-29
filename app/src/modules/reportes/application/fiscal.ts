@@ -27,7 +27,6 @@ import { REPORTE_ID, type ReporteId } from "../domain/catalogo";
 import { error, type ReportResult } from "../domain/reporte-resultado";
 import { REPORTE_NO_AUTORIZADO, ReporteDomainError, messageFor } from "../domain/errors";
 import type { ReporteFiltro } from "../domain/reporte-filtro";
-import { fechaEnSD } from "../domain/zona-horaria";
 import {
   construirCasillasIT1,
   construirResumenITBIS,
@@ -35,6 +34,7 @@ import {
   type ResumenITBIS,
 } from "../domain/fiscal";
 import { periodoAAAAMM } from "../domain/dgii/formato";
+import { periodoAprobadoDeVentana, verificarTamanoExportacionDgii } from "../domain/dgii/ventana";
 import {
   TOPE_606_POR_DEFECTO,
   TOPE_607,
@@ -102,18 +102,6 @@ export function esReporteTxtFiscal(id: ReporteId): boolean {
   return id === REPORTE_ID.DGII_606 || id === REPORTE_ID.DGII_607 || id === REPORTE_ID.DGII_608;
 }
 
-/**
- * Resolve the DGII `PERIODO` (AAAAMM + numeric year/month) for the export from the (already UTC-
- * bracketed) SD window: the SD calendar month of the window END (or start when the end is open),
- * the natural "which month am I filing" anchor. No manual hour math — the reused SD seam.
- */
-function periodoDeFiltro(filtro: ReporteFiltro, now: Date): { anio: number; mes: number } {
-  const ancla = filtro.hasta ?? filtro.desde ?? now;
-  const sd = fechaEnSD(ancla); // "YYYY-MM-DD"
-  const [anio, mes] = sd.split("-").map(Number);
-  return { anio: anio as number, mes: mes as number };
-}
-
 /** Σ of the base monto across a set of 607 detail rows (the H5 total for a part's header). */
 function sumarMontoFacturado(filas: readonly FilaDetalle607[]): string {
   return filas
@@ -178,7 +166,7 @@ export async function generarTxt607(
     requireRnc(rnc);
 
     const leidas = await filas607EnTx(txw, ctx, ventanaDe(filtro));
-    const periodo = periodoDeFiltro(filtro, now);
+    const periodo = periodoAprobadoDeVentana(filtro);
     const filas: FilaDetalle607[] = [];
     for (const r of leidas) {
       if (!esComprobanteDeVenta607(r.tipoNcf)) continue;
@@ -217,6 +205,8 @@ export async function generarTxt607(
       };
       return ensamblarArchivo(ensamblarEncabezado5(header), parte.map(ensamblarDetalle607));
     });
+  }, () => {
+    periodoAprobadoDeVentana(filtro);
   });
 }
 
@@ -230,14 +220,13 @@ export async function generarTxt606(
   tx: PrismaTx,
   ctx: TenantCtx,
   filtro: ReporteFiltro,
-  now: Date = new Date(),
 ): Promise<ReportResult<TxtExportacion>> {
   return conPermisoFiscalTxt(tx, ctx, REPORTE_ID.DGII_606, async (txw) => {
     const rnc = await leerRncEmpresaEnTx(txw, ctx.empresaId);
     requireRnc(rnc);
 
     const leidas = await filas606EnTx(txw, ctx, ventanaDe(filtro));
-    const periodo = periodoDeFiltro(filtro, now);
+    const periodo = periodoAprobadoDeVentana(filtro);
     const filas: FilaDetalle606[] = leidas.map((r) => {
       const informal = r.tipoProveedor === "INFORMAL";
       // The supplier's OWN fiscal id drives D1/D2, via the same pure derivation as 607: a valid
@@ -290,6 +279,8 @@ export async function generarTxt606(
       };
       return ensamblarArchivo(ensamblarEncabezado5(header), parte.map(ensamblarDetalle606));
     });
+  }, () => {
+    periodoAprobadoDeVentana(filtro);
   });
 }
 
@@ -302,34 +293,31 @@ export async function generarTxt608(
   tx: PrismaTx,
   ctx: TenantCtx,
   filtro: ReporteFiltro,
-  now: Date = new Date(),
 ): Promise<ReportResult<TxtExportacion>> {
   return conPermisoFiscalTxt(tx, ctx, REPORTE_ID.DGII_608, async (txw) => {
     const rnc = await leerRncEmpresaEnTx(txw, ctx.empresaId);
     requireRnc(rnc);
 
     const leidas = await filas608EnTx(txw, ctx, ventanaDe(filtro));
-    const periodo = periodoDeFiltro(filtro, now);
+    const periodo = periodoAprobadoDeVentana(filtro);
     const filas: FilaDetalle608[] = leidas.map((r) => ({
       ncf: r.ncf,
       fechaComprobante: r.fechaComprobante,
       tipoAnulacion: mapearTipoAnulacion(r.motivo),
     }));
-    const trozos = trocearRegistros(filas, TOPE_608);
-    const partes: TxtParte[] = trozos.map((parte, i) => {
+    // 608 ships through the SAME assembler as 606/607, so the response cap and the filename
+    // rules have one implementation. Only the header differs: 608 carries NO amounts.
+    return armarExportacion("608", rnc, periodo, filas, TOPE_608, (parte) => {
       const header: Encabezado608 = {
         codigoInformacion: "608",
         rnc,
         periodo: periodoAAAAMM(periodo.anio, periodo.mes),
         cantidadRegistros: parte.length,
       };
-      return {
-        filename: nombreArchivoDGII("608", rnc, periodo.anio, periodo.mes, i + 1, trozos.length),
-        txt: ensamblarArchivo(ensamblarEncabezado608(header), parte.map(ensamblarDetalle608)),
-        registros: parte.length,
-      };
+      return ensamblarArchivo(ensamblarEncabezado608(header), parte.map(ensamblarDetalle608));
     });
-    return { codigo: "608", cantidadArchivos: partes.length, partes };
+  }, () => {
+    periodoAprobadoDeVentana(filtro);
   });
 }
 
@@ -348,20 +336,31 @@ function requireRnc(rnc: string): void {
 /**
  * The fiscal TXT gate wrapper: it delegates to the SHARED {@link conPermisoOperativo} gate + widen
  * (so authorization is byte-identical to the on-screen consultation, EXP-4) and maps a thrown
- * {@link ReporteDomainError} (the blank-RNC refusal) back into a typed `ReportResult`. Anything not
- * a known domain error PROPAGATES (never swallowed — AGENTS.md "no try/catch that swallows errors").
+ * {@link ReporteDomainError} (the blank-RNC refusal, or a guard refusal) back into a typed
+ * `ReportResult` — forwarding the error's `details` so the guard's context reaches the caller
+ * instead of dying at this seam. Anything not a known domain error PROPAGATES (never swallowed —
+ * AGENTS.md "no try/catch that swallows errors").
  */
 async function conPermisoFiscalTxt(
   tx: PrismaTx,
   ctx: TenantCtx,
   reporteId: ReporteId,
   lectura: (tx: PrismaTx) => Promise<TxtExportacion>,
+  /**
+   * A PURE precheck run BEFORE {@link conPermisoOperativo}, i.e. before the role read and before
+   * any aggregate: the one-calendar-month window rule, which applies to 606, 607 AND 608 because
+   * all three file under a single `PERIODO` header. It lives here (not inside `lectura`) so an
+   * unservable export never opens a transaction's worth of work, and it is inside this `try` so its
+   * stable code still surfaces as a typed `ReportResult` instead of escaping the use case.
+   */
+  precheck?: () => void,
 ): Promise<ReportResult<TxtExportacion>> {
   try {
+    precheck?.();
     return await conPermisoOperativo(tx, ctx, reporteId, lectura);
   } catch (e) {
     if (e instanceof ReporteDomainError) {
-      return error(e.code, messageFor(e.code));
+      return error(e.code, messageFor(e.code), e.details);
     }
     throw e;
   }
@@ -373,7 +372,7 @@ async function conPermisoFiscalTxt(
  * identical rows yield identical parts. A zero-row register yields one en-cero part.
  */
 function armarExportacion<T>(
-  codigo: "606" | "607",
+  codigo: "606" | "607" | "608",
   rnc: string,
   periodo: { anio: number; mes: number },
   filas: readonly T[],
@@ -381,11 +380,17 @@ function armarExportacion<T>(
   ensamblar: (parte: readonly T[]) => string,
 ): TxtExportacion {
   const trozos = trocearRegistros(filas, tope);
-  const partes: TxtParte[] = trozos.map((parte, i) => ({
-    filename: nombreArchivoDGII(codigo, rnc, periodo.anio, periodo.mes, i + 1, trozos.length),
-    txt: ensamblar(parte),
-    registros: parte.length,
-  }));
+  const partes: TxtParte[] = trozos.map((parte, i) => {
+    const txt = ensamblar(parte);
+    // Every assembled part ships through here, so the response cap has a SINGLE enforcement
+    // point for all three formats (606/607/608) and cannot be forgotten on one of them.
+    verificarTamanoExportacionDgii(codigo, txt);
+    return {
+      filename: nombreArchivoDGII(codigo, rnc, periodo.anio, periodo.mes, i + 1, trozos.length),
+      txt,
+      registros: parte.length,
+    };
+  });
   return { codigo, cantidadArchivos: partes.length, partes };
 }
 
@@ -407,7 +412,7 @@ export async function generarTxtReporte(
   now: Date = new Date(),
 ): Promise<ReportResult<TxtExportacion>> {
   if (reporteId === REPORTE_ID.DGII_607) return generarTxt607(tx, ctx, filtro, now);
-  if (reporteId === REPORTE_ID.DGII_606) return generarTxt606(tx, ctx, filtro, now);
-  if (reporteId === REPORTE_ID.DGII_608) return generarTxt608(tx, ctx, filtro, now);
+  if (reporteId === REPORTE_ID.DGII_606) return generarTxt606(tx, ctx, filtro);
+  if (reporteId === REPORTE_ID.DGII_608) return generarTxt608(tx, ctx, filtro);
   return error(REPORTE_NO_AUTORIZADO, messageFor(REPORTE_NO_AUTORIZADO));
 }

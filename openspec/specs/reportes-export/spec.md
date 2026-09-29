@@ -74,3 +74,46 @@ The `/reportes` UI MUST list available reports BEFORE offering export (decision 
 - WHEN it is opened directly and the user hits Exportar
 - THEN the same filtered view renders and the CSV matches it
 - TEST: e2e
+
+### Requirement: EXP-6 — Bounded DGII export: one calendar month and a 50 MiB response cap
+
+A DGII TXT export (606, 607, 608) MUST be bounded on two axes, both refused with stable typed codes
+**before any aggregate runs**, so an unservable export does no database work and never surfaces as a
+`Prisma` `P2028` (interactive-transaction timeout).
+
+1. **One-calendar-month window.** Each of the three formats files under a single `PERIODO` = AAAAMM
+   header, so the requested window MUST lie inside ONE `America/Santo_Domingo` calendar month: the SD
+   month of `desde` equals the SD month of `hasta`. Bounding "days" is NOT equivalent — 2026-04-01
+   .. 2026-05-01 is 31 days yet spans two months, and the header takes the window END's month, so the
+   file would be filed as May while carrying April's rows. Month containment subsumes the 31-day
+   maximum (no SD month is longer) and makes the mislabeling unrepresentable. An ABSENT or one-sided
+   window is refused as unbounded. Refusal code: `REPORTE_DGII_VENTANA_EXCEDIDA`.
+2. **Assembled response size.** Every assembled TXT part MUST be at most 50 MiB
+   (52 428 800 bytes), measured in UTF-8 BYTES and never JS characters (detail rows carry accented
+   names). The cap has ONE enforcement point in the shared assembler, so no format can miss it.
+   Refusal code: `REPORTE_DGII_TAMANO_EXCEDIDO`.
+
+Both refusals MUST reach the caller as a typed `ReportResult` carrying the guard's minimal `details`
+(which SD months were straddled; which format exceeded the cap and at what size), so the operator
+can act without reading server logs.
+
+#### Scenario: Cross-month window refused for every DGII format
+
+- GIVEN a window `2026-04-01` .. `2026-05-01`
+- WHEN a 606, 607 or 608 export is requested
+- THEN each returns `REPORTE_DGII_VENTANA_EXCEDIDA` and zero database reads occurred
+- TEST: unit
+
+#### Scenario: A legal month is never over-blocked
+
+- GIVEN a window `2026-04-01` .. `2026-04-30`, whose stored end bound is `2026-05-01T03:59:59.999Z`
+- WHEN any DGII export is requested
+- THEN it is accepted and the header reads `202604` — the month is resolved on the SD calendar, not on the UTC instant
+- TEST: unit
+
+#### Scenario: Oversized part names the format that broke the cap
+
+- GIVEN an assembled 606 part larger than 50 MiB
+- WHEN the export runs
+- THEN it returns `REPORTE_DGII_TAMANO_EXCEDIDO` with `details.codigo = "606"`
+- TEST: unit
