@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.26](https://github.com/Wilfredery/SystemFact/compare/v0.11.25...v0.11.26) (2026-10-01)
+
+### Bug Fixes
+
+* **db:** land the `USUARIO.authUserId` storage half of run-2 security audit finding `v2r-01` (ADR-014 binding hardening), schema only. Adds a nullable `USUARIO.authUserId UUID` column plus a hand-written `UNIQUE PARTIAL` index `usuario_auth_user_id_uk ... WHERE "authUserId" IS NOT NULL`; the Prisma DSL cannot express a partial index, and annotating `@unique` would misdescribe it as total. A second migration installs a `BEFORE UPDATE` trigger that raises when a row already carries an `authUserId` and the update tries to null it, so a bound identity can never be silently un-linked at the database level. The column is nullable and deliberately NOT backfilled: `sub` values live in Supabase Auth, not Postgres, so any offline backfill would have to fabricate UUIDs. **This PR carries no application code.** Nothing reads or writes `authUserId` yet, so the trigger is dormant and the column stays null for every existing row; the identity-resolution half that actually binds the session lands in the follow-up PR.
+
 ## [0.11.25](https://github.com/Wilfredery/SystemFact/compare/v0.11.24...v0.11.25) (2026-09-29)
 
 ### Documentation

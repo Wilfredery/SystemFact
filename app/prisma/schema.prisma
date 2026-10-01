@@ -248,6 +248,12 @@ model Usuario {
   passwordHash  String   @db.VarChar(255)
   email         String?  @db.VarChar(255) // opcional, NO único (solo avisos/recuperación)
   activo        Boolean  @default(true)
+  // Immutable Supabase Auth identifier (`sub`, a UUID). This is the ONLY value
+  // per-request identity resolution is allowed to trust: ADR-014 makes email a
+  // non-credential, and Auth admins can mutate it, so a binding keyed on the
+  // synthetic email is not tamper-resistant. Bound lazily on the first
+  // successful login; NULL means "never logged in since the column existed".
+  authUserId    String?  @db.Uuid
   version       Int      @default(1) // optimistic locking (Directiva §10)
   createdAt     DateTime @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @db.Timestamptz(6)
@@ -270,6 +276,13 @@ model Usuario {
   anulacionesAutorizadas     Anulacion[]            @relation("AnulacionAutorizada")
   movimientosAuditoria       MovimientoAuditoria[]
   movimientosInventario      MovimientoInventario[]
+
+  // The unique index on `authUserId` is a PARTIAL index written by hand in
+  // migration 20260930120000_usuario_auth_user_id, because the Prisma DSL cannot
+  // express `WHERE "authUserId" IS NOT NULL`. It is deliberately NOT declared
+  // as `@unique` here: Prisma only exposes `@unique`/`@id` fields through
+  // `findUnique`, and the partial predicate would be invisible to it anyway.
+  // Lookups therefore use `findFirst`, which the partial index still serves.
 
   @@map("USUARIO")
 }
