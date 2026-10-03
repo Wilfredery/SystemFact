@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.29](https://github.com/Wilfredery/SystemFact/compare/v0.11.28...v0.11.29) (2026-10-03)
+
+### Bug Fixes
+
+* **eslint:** Restore enforcement of the custom rule systemfact/server-action-must-wrap-tenant for the per-use-case Server Action files introduced in v0.11.28 (actions.login.ts, actions.user.ts, actions.logout.ts, actions.shared.ts, actions.devolver.ts). The rule was gated twice and both gates matched only the exact filename actions.ts, so every split file carrying Prisma access was unguarded. The config glob now also covers src/**/actions.*.ts and src/**/actions.*.tsx and the rule filename regex accepts an optional dotted suffix (actions followed by an optional .name then .ts/.tsx). Because that widened gate also matched actions.test.ts and actions.spec.ts, the rule now early-returns for any test or spec filename before the actions-file check, keeping integration fixtures that call prisma.*.deleteMany() out of the security rule instead of pushing authors toward an eslint-disable comment that would mask real violations in the same file. Rule suite 28/28 passing, full-repo lint 0 errors, tsc --noEmit 0 errors.
+
 ## [0.11.28](https://github.com/Wilfredery/SystemFact/compare/v0.11.27...v0.11.28) (2026-10-02)
 
 ### Code Refactoring
