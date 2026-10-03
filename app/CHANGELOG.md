@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.11.28](https://github.com/Wilfredery/SystemFact/compare/v0.11.27...v0.11.28) (2026-10-02)
+
+### Code Refactoring
+
+* **http:** split backend-pure Server Actions (auth, devolucion) into operation/shared files with barrel re-exports; behavior preserved. Fix Next.js build by making shared helpers async under Server Actions context. tsc --noEmit OK, production build OK.
 ## [0.11.27](https://github.com/Wilfredery/SystemFact/compare/v0.11.26...v0.11.27) (2026-10-01)
 
 ### Bug Fixes
