@@ -78,6 +78,28 @@ ruleTester.run(RULE_NAME, rule, {
       filename: "app/src/lib/utils.ts",
       code: "export async function helper() { return prisma.empresa.findMany(); }",
     },
+    // test/spec files are excluded even with unwrapped prisma access
+    {
+      filename: "app/src/modules/producto/http/actions.test.ts",
+      code: "export async function testHelper() { await prisma.empresa.findMany(); }",
+    },
+    {
+      filename: "app/src/modules/producto/http/actions.spec.ts",
+      code: "export async function specHelper() { await prisma.empresa.findMany(); }",
+    },
+    // split action files with proper wrap stay in scope and pass
+    {
+      filename: "app/src/modules/auth/http/actions.login.ts",
+      code: "export async function login() { return withTenantTransaction(ctx, async (tx) => { await prisma.empresa.findMany(); }); }",
+    },
+    {
+      filename: "app/src/modules/auth/http/actions.shared.ts",
+      code: "export const obtenerUsuarioActual = async () => { return withTenantTransaction(ctx, async (tx) => { await prisma.usuario.findFirst(); }); };",
+    },
+    {
+      filename: "app/src/modules/devolucion/http/actions.devolver.ts",
+      code: "export async function devolver() { await withTenantTransaction(ctx, async (tx) => {}); }",
+    },
   ],
   invalid: [
     // arrow export with prisma outside the wrap
@@ -114,6 +136,22 @@ ruleTester.run(RULE_NAME, rule, {
     {
       filename: actionsFilename,
       code: "export async function nested() { const cb = async () => prisma.empresa.findMany(); await withTenantTransaction(ctx, async (tx) => {}); return cb(); }",
+      errors: [{ messageId: "missingTenantWrap" }],
+    },
+    // split action file with unwrapped prisma access — must report
+    {
+      filename: "app/src/modules/auth/http/actions.login.ts",
+      code: "export async function login() { await prisma.empresa.findMany(); }",
+      errors: [{ messageId: "missingTenantWrap" }],
+    },
+    {
+      filename: "app/src/modules/devolucion/http/actions.shared.ts",
+      code: "export const shared = async () => { const data = await prisma.empresa.findMany(); return data; };",
+      errors: [{ messageId: "missingTenantWrap" }],
+    },
+    {
+      filename: "app/src/modules/devolucion/http/actions.devolver.ts",
+      code: "export default async function devolver() { await prisma.empresa.findMany(); }",
       errors: [{ messageId: "missingTenantWrap" }],
     },
   ],

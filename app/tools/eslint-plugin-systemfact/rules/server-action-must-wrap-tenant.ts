@@ -146,7 +146,14 @@ export const rule = ESLintUtils.RuleCreator(
   defaultOptions: [],
   create(context) {
     const filename = context.filename ?? context.getFilename();
-    const isActionsFile = /[\\/]actions\.tsx?$/.test(filename);
+    // Anchor the test/spec exclusion to the basename: an unanchored substring
+    // match over the absolute path would silently disable this rule for the
+    // whole repo whenever the checkout path itself contains ".test.".
+    const basename = filename.split(/[\\/]/).pop() ?? filename;
+    if (/\.(?:test|spec)\.tsx?$/.test(basename)) {
+      return {};
+    }
+    const isActionsFile = /[\\/]actions(?:\.[^.]+)?\.tsx?$/.test(filename);
     if (!isActionsFile) {
       return {};
     }

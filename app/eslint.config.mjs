@@ -11,7 +11,12 @@ const eslintConfig = defineConfig([
     rules: {
       "systemfact/server-action-must-wrap-tenant": "error",
     },
-    files: ["src/**/actions.ts", "src/**/actions.tsx"],
+    files: [
+      "src/**/actions.ts",
+      "src/**/actions.tsx",
+      "src/**/actions.*.ts",
+      "src/**/actions.*.tsx",
+    ],
   },
   // Override default ignores of eslint-config-next.
   globalIgnores([
