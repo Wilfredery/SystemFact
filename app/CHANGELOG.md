@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.30](https://github.com/Wilfredery/SystemFact/compare/v0.11.29...v0.11.30) (2026-10-06)
+
+### Code Refactoring
+
+* **http:** split proveedor actions into lectura/escritura with shared helpers ([#87](https://github.com/Wilfredery/SystemFact/pull/87)) ([4696eeb](https://github.com/Wilfredery/SystemFact/commit/4696eebb889da82be74eadec717f8acd22a782e2))
+
 ## [0.11.29](https://github.com/Wilfredery/SystemFact/compare/v0.11.28...v0.11.29) (2026-10-05)
 
 ### Bug Fixes
