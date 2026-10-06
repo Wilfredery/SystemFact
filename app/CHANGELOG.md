@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.36](https://github.com/Wilfredery/SystemFact/compare/v0.11.35...v0.11.36) (2026-10-06)
+
+### Code Refactoring
+
+* **http:** split venta actions into lectura/escritura with shared helpers (final module of selective backend refactor) ([#94](https://github.com/Wilfredery/SystemFact/pull/94)) ([c20ac0b186f621fd66ca6fa66a13d44f858e610c](https://github.com/Wilfredery/SystemFact/commit/c20ac0b186f621fd66ca6fa66a13d44f858e610c))
+
 ## [0.11.35](https://github.com/Wilfredery/SystemFact/compare/v0.11.34...v0.11.35) (2026-10-06)
 
 ### Code Refactoring
