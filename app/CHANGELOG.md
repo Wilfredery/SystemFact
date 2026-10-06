@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.35](https://github.com/Wilfredery/SystemFact/compare/v0.11.34...v0.11.35) (2026-10-06)
+
+### Code Refactoring
+
+* **http:** split reportes actions into read-only lectura/shared with barrel (no write actions exist) ([#93](https://github.com/Wilfredery/SystemFact/pull/93)) ([9118c1ddd0ba3b4a3f4c85638f5600cbf1fa3634](https://github.com/Wilfredery/SystemFact/commit/9118c1ddd0ba3b4a3f4c85638f5600cbf1fa3634))
+
 ## [0.11.34](https://github.com/Wilfredery/SystemFact/compare/v0.11.33...v0.11.34) (2026-10-06)
 
 ### Code Refactoring
