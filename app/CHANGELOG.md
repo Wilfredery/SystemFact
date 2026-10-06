@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.32](https://github.com/Wilfredery/SystemFact/compare/v0.11.31...v0.11.32) (2026-10-06)
+
+### Code Refactoring
+
+* **http:** split producto actions into lectura/escritura with shared helpers ([#89](https://github.com/Wilfredery/SystemFact/pull/89)) ([ae60512dc30c43f0d5885a0f0a11e26ec1e3f45b](https://github.com/Wilfredery/SystemFact/commit/ae60512dc30c43f0d5885a0f0a11e26ec1e3f45b))
+
 ## [0.11.31](https://github.com/Wilfredery/SystemFact/compare/v0.11.30...v0.11.31) (2026-10-06)
 
 ### Code Refactoring
