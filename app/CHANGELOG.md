@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.31](https://github.com/Wilfredery/SystemFact/compare/v0.11.30...v0.11.31) (2026-10-06)
+
+### Code Refactoring
+
+* **http:** split cobros actions into lectura/escritura with shared helpers ([#88](https://github.com/Wilfredery/SystemFact/pull/88)) ([74670f3](https://github.com/Wilfredery/SystemFact/commit/74670f33c4712a128cbda37fb1d421b93d7c4897))
+
 ## [0.11.29](https://github.com/Wilfredery/SystemFact/compare/v0.11.28...v0.11.29) (2026-10-05)
 
 ### Bug Fixes
