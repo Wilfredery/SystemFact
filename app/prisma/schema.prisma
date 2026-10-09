@@ -248,11 +248,11 @@ model Usuario {
   passwordHash  String   @db.VarChar(255)
   email         String?  @db.VarChar(255) // opcional, NO único (solo avisos/recuperación)
   activo        Boolean  @default(true)
-  // Immutable Supabase Auth identifier (`sub`, a UUID). This is the ONLY value
-  // per-request identity resolution is allowed to trust: ADR-014 makes email a
-  // non-credential, and Auth admins can mutate it, so a binding keyed on the
-  // synthetic email is not tamper-resistant. Bound lazily on the first
-  // successful login; NULL means "never logged in since the column existed".
+  // Immutable Supabase Auth identifier (`sub`, a UUID): the ONLY value the
+  // per-request identity path trusts. Rationale (why email is not one, ADR-014
+  // / audit v2r-01): auth/infrastructure/auth-identity.ts + auth/README.md.
+  // Bound lazily on the first successful login; NULL means "never logged in
+  // since the column existed".
   authUserId    String?  @db.Uuid
   version       Int      @default(1) // optimistic locking (Directiva §10)
   createdAt     DateTime @default(now()) @db.Timestamptz(6)

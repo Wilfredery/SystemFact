@@ -69,10 +69,11 @@ export async function setTenantContext(
  *      `*_enable_rls`, policy `usuario_select`).
  *   3. `buildTenantContext(...)` para armar el contexto final.
  *
- * El email sintético NO participa: ADR-014 lo declara no-credencial y un admin
- * de Auth puede cambiarlo, así que un binding por email no es a prueba de
- * manipulación. Una fila con `authUserId IS NULL` (nuncalogueada desde que
- * existe la columna) resuelve `null` y el usuario debe volver a entrar una vez.
+ * El email sintético NO participa en la resolución; el rationale canónico
+ * (ADR-014 / v2r-01) vive en `auth/infrastructure/auth-identity.ts` y
+ * `auth/README.md`. Una fila con `authUserId IS NULL` (nunca logueada desde
+ * que existe la columna) resuelve `null` y el usuario debe volver a entrar
+ * una vez.
  */
 export async function getCurrentTenantContext(
   supabase: SupabaseClient,

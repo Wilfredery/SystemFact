@@ -1,13 +1,14 @@
 /**
  * Normalization of the Supabase Auth `sub` claim (ADR-014 / audit v2r-01).
  *
- * Pure TypeScript — no imports from infrastructure, Next.js, React, Prisma or
+ * Pure TypeScript - no imports from infrastructure, Next.js, React, Prisma or
  * Supabase.
  *
- * The `sub` is the ONLY session value per-request identity resolution is
- * allowed to trust. ADR-014 makes email a non-credential, and an Auth admin can
- * mutate it, so a binding keyed on the synthetic email is not tamper-resistant.
- * `USUARIO.authUserId` stores this value and is bound lazily at login.
+ * Why the `sub` is the ONLY trusted identity value: see the canonical
+ * rationale in `auth/infrastructure/auth-identity.ts` (module docblock) and
+ * `auth/README.md`. In summary: email is a mutable Auth attribute, so only
+ * the immutable `sub` is tamper-resistant; `USUARIO.authUserId` stores it
+ * and is bound lazily at login.
  *
  * `sub` is a UUID in Supabase Auth. Validating the shape here — before any query
  * reaches Postgres — keeps a malformed claim from surfacing as a database cast
