@@ -57,7 +57,7 @@ describe("seed-ncf (real DB, R-N6)", () => {
     for (const fila of filas) {
       expect(fila.activa).toBe(true);
       // D7: nothing consumed at provisioning time.
-      expect(fila.secuenciaActual).toBe(fila.rangoInicio - 1);
+      expect(fila.secuenciaActual).toBe(fila.rangoInicio - 1n);
       // %08d-consistent (never 9-digit): both bounds inside the composition space.
       expect(fila.rangoInicio).toBeGreaterThanOrEqual(1);
       expect(fila.rangoFin).toBeLessThanOrEqual(NCF_MAX_CONSECUTIVO);
@@ -90,8 +90,8 @@ describe("seed-ncf (real DB, R-N6)", () => {
       consumirNcfEnTx(tx, ctx, "B02"),
     );
     const filaB02 = NCF_RANGOS_SEED.find((r) => r.tipoNcf === "B02")!;
-    expect(secuencial).toBe(filaB02.rangoInicio);
-    expect(ncf).toBe(`B02${String(secuencial).padStart(8, "0")}`);
+    expect(secuencial).toBe(BigInt(filaB02.rangoInicio));
+    expect(ncf).toBe(`B02${secuencial.toString().padStart(8, "0")}`);
     expect(ncf).toHaveLength(11);
 
     // Re-run the seed: same three rows, advanced counter preserved.
@@ -100,7 +100,7 @@ describe("seed-ncf (real DB, R-N6)", () => {
     const despues = await filasB(f.empresaB.id);
     expect(despues).toHaveLength(3);
     const b02 = despues.find((r) => r.tipoNcf === "B02")!;
-    expect(b02.secuenciaActual).toBe(filaB02.rangoInicio); // NOT rewound (consumed stays consumed)
+    expect(b02.secuenciaActual).toBe(BigInt(filaB02.rangoInicio)); // NOT rewound (consumed stays consumed)
     expect(b02.activa).toBe(true);
   });
 
@@ -111,12 +111,12 @@ describe("seed-ncf (real DB, R-N6)", () => {
     // Simulate a real authorized range assigned after provisioning.
     await db.ncfSecuencia.update({
       where: { empresaId_tipoNcf: { empresaId: f.empresaB.id, tipoNcf: "B01" } },
-      data: { rangoInicio: 500000, rangoFin: 599999 },
+      data: { rangoInicio: 500000n, rangoFin: 599999n },
     });
 
     await expect(seedNcfParaEmpresa(db, f.empresaB.id)).rejects.toThrow(/overlap/i);
     // The untouched B02 keeps its planned range (fail-fast before any write).
     const b02 = (await filasB(f.empresaB.id)).find((r) => r.tipoNcf === "B02")!;
-    expect(b02.rangoInicio).toBe(NCF_RANGOS_SEED.find((r) => r.tipoNcf === "B02")!.rangoInicio);
+    expect(b02.rangoInicio).toBe(BigInt(NCF_RANGOS_SEED.find((r) => r.tipoNcf === "B02")!.rangoInicio));
   });
 });

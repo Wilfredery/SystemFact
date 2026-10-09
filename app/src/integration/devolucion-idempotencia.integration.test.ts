@@ -102,9 +102,9 @@ describe("devolucion idempotent retry (real DB, RLS on)", () => {
         {
           empresaId: ctx.empresaId,
           tipoNcf: "B02",
-          rangoInicio: 500,
-          rangoFin: 1000,
-          secuenciaActual: 521,
+          rangoInicio: BigInt(500),
+          rangoFin: BigInt(1000),
+          secuenciaActual: BigInt(521),
           vigenciaInicio: new Date("2000-01-01T00:00:00.000Z"),
           vigenciaFin: VIG_FIN,
           activa: true,
@@ -112,9 +112,9 @@ describe("devolucion idempotent retry (real DB, RLS on)", () => {
         {
           empresaId: ctx.empresaId,
           tipoNcf: "B04",
-          rangoInicio: 201,
-          rangoFin: 300,
-          secuenciaActual: 200,
+          rangoInicio: BigInt(201),
+          rangoFin: BigInt(300),
+          secuenciaActual: BigInt(200),
           vigenciaInicio: new Date("2000-01-01T00:00:00.000Z"),
           vigenciaFin: VIG_FIN,
           activa: true,
@@ -148,7 +148,7 @@ describe("devolucion idempotent retry (real DB, RLS on)", () => {
     const secuenciaAntes = (await db.ncfSecuencia.findUnique({
       where: { empresaId_tipoNcf: { empresaId: ctx.empresaId, tipoNcf: "B04" } },
     }))!;
-    expect(secuenciaAntes.secuenciaActual).toBe(201); // exactly one burn so far
+    expect(secuenciaAntes.secuenciaActual).toBe(201n); // exactly one burn so far
     const ncsAntes = await db.notaCredito.findMany({ where: { facturaOriginalId: facturaId } });
     expect(ncsAntes).toHaveLength(1);
     const detallesAntes = await db.detalleNotaCredito.count();

@@ -48,9 +48,9 @@ async function sembrarRango(
     data: {
       empresaId,
       tipoNcf: tipo,
-      rangoInicio: s.rangoInicio,
-      rangoFin: s.rangoFin,
-      secuenciaActual: s.secuenciaActual,
+      rangoInicio: BigInt(s.rangoInicio),
+      rangoFin: BigInt(s.rangoFin),
+      secuenciaActual: BigInt(s.secuenciaActual),
       vigenciaInicio: VIGENCIA_INICIO,
       vigenciaFin: s.vigenciaFin ?? VIGENCIA_FIN_VIGENTE,
       activa: s.activa ?? true,
@@ -58,12 +58,12 @@ async function sembrarRango(
   });
 }
 
-async function leerSecuencia(empresaId: number, tipo: "B01" | "B02"): Promise<number> {
+async function leerSecuencia(empresaId: number, tipo: "B01" | "B02"): Promise<bigint> {
   const db = getHarnessDb();
   const row = await db.ncfSecuencia.findUnique({
     where: { empresaId_tipoNcf: { empresaId, tipoNcf: tipo } },
   });
-  return row?.secuenciaActual ?? -1;
+  return row?.secuenciaActual ?? -1n;
 }
 
 /** Consume once inside a fresh tenant transaction; returns the port result. */
@@ -95,9 +95,9 @@ describe("ncf consume (real DB, RLS on)", () => {
 
     expect(r.ncf).toBe("B0200000522");
     expect(r.tipo).toBe("B02");
-    expect(r.secuencial).toBe(522);
+    expect(r.secuencial).toBe(522n);
     expect(r.warning).toBeUndefined();
-    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(522);
+    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(522n);
   });
 
   it("missing active sequence hard-fails NCF_SEC_INEXISTENTE with zero writes (R-N1)", async () => {
@@ -105,7 +105,7 @@ describe("ncf consume (real DB, RLS on)", () => {
     await expect(consumirUnaVez(ctx, "B01")).rejects.toMatchObject({
       code: "NCF_SEC_INEXISTENTE",
     });
-    expect(await leerSecuencia(ctx.empresaId, "B01")).toBe(-1); // still absent
+    expect(await leerSecuencia(ctx.empresaId, "B01")).toBe(-1n); // still absent
     expect(await getHarnessDb().ncfSecuencia.count()).toBe(0);
   });
 
@@ -120,7 +120,7 @@ describe("ncf consume (real DB, RLS on)", () => {
       code: "NCF_SEC_INEXISTENTE",
     });
     // The inactive row is untouched: last-used stays at 521.
-    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(521);
+    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(521n);
   });
 
   it("exhausted range blocks with NCF_AGOTADA and advances nothing (R-N4)", async () => {
@@ -132,7 +132,7 @@ describe("ncf consume (real DB, RLS on)", () => {
     await expect(consumirUnaVez(ctx, "B02")).rejects.toMatchObject({
       code: "NCF_AGOTADA",
     });
-    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(1000);
+    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(1000n);
   });
 
   it("expired range (day after, SD) blocks with NCF_VENCIDA and advances nothing (R-N5)", async () => {
@@ -145,7 +145,7 @@ describe("ncf consume (real DB, RLS on)", () => {
     await expect(consumirUnaVez(ctx, "B02")).rejects.toMatchObject({
       code: "NCF_VENCIDA",
     });
-    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(521);
+    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(521n);
   });
 
   it("surfaces the 90% threshold as an out-of-band warning without failing (R-N3)", async () => {
@@ -155,9 +155,9 @@ describe("ncf consume (real DB, RLS on)", () => {
       secuenciaActual: 949,
     });
     const r = await consumirUnaVez(ctx, "B02");
-    expect(r.secuencial).toBe(950); // consumed normally
+    expect(r.secuencial).toBe(950n); // consumed normally
     expect(r.warning).toBe(NCF_UMBRAL_90); // warning attached, not an error
-    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(950);
+    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(950n);
   });
 
   it("concurrent consumes serialize to distinct sequentials (R-N1)", async () => {
@@ -172,11 +172,11 @@ describe("ncf consume (real DB, RLS on)", () => {
       consumirUnaVez(ctx, "B02"),
     ]);
 
-    const sequenciales = [ra.secuencial, rb.secuencial].sort((a, b) => a - b);
-    expect(sequenciales).toEqual([522, 523]);
+    const sequenciales = [ra.secuencial, rb.secuencial].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    expect(sequenciales).toEqual([522n, 523n]);
     expect(new Set([ra.ncf, rb.ncf]).size).toBe(2);
     // @@unique([empresaId,tipoNcf]) never violated → exactly one row, at 523.
-    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(523);
+    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(523n);
     expect(await getHarnessDb().ncfSecuencia.count({ where: { empresaId: ctx.empresaId } })).toBe(1);
   });
 
@@ -195,7 +195,7 @@ describe("ncf consume (real DB, RLS on)", () => {
     ).rejects.toThrow("boom after consume");
 
     // Rollback restored the counter — nothing was burned.
-    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(521);
+    expect(await leerSecuencia(ctx.empresaId, "B02")).toBe(521n);
   });
 
   it("typed error exposes a stable code with no Prisma internals leaked", async () => {

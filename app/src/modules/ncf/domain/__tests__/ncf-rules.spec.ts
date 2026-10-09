@@ -39,29 +39,31 @@ describe("ncf-rules — TipoNcf ↔ Prisma TipoNcfSecuencia parity (no drift)", 
 
 describe("ncf-rules — componerNcf (R-N2, frozen 11-char composition)", () => {
   it("composes B02 / 522 as exactly 'B0200000522' (11 chars, no RNC)", () => {
-    const ncf = componerNcf("B02", 522);
+    const ncf = componerNcf("B02", 522n);
     // Authoritative rule: B + 2-digit tipo + %08d => 1 + 2 + 8 = 11 chars.
     expect(ncf).toBe("B0200000522");
     expect(ncf).toHaveLength(11);
   });
 
   it("prefix always matches the requested tipo (two tipo digits)", () => {
-    expect(componerNcf("B01", 7)).toBe("B0100000007");
-    expect(componerNcf("B03", 0)).toBe("B0300000000");
-    expect(componerNcf("B04", 12345678)).toBe("B0412345678");
-    expect(componerNcf("B11", 1)).toBe("B1100000001");
+    expect(componerNcf("B01", 7n)).toBe("B0100000007");
+    expect(componerNcf("B03", 0n)).toBe("B0300000000");
+    expect(componerNcf("B04", 12345678n)).toBe("B0412345678");
+    expect(componerNcf("B11", 1n)).toBe("B1100000001");
   });
 
   it("rejects a secuencial that would break the 11-char invariant", () => {
     // 99_999_999 is the largest 8-digit consecutivo (=> 11 chars total).
-    expect(componerNcf("B02", 99_999_999)).toHaveLength(11);
+    expect(componerNcf("B02", 99_999_999n)).toHaveLength(11);
     // 100_000_000 is 9 digits: it can never be a valid %08d consecutive.
-    expect(() => componerNcf("B02", 100_000_000)).toThrow(RangeError);
+    expect(() => componerNcf("B02", 100_000_000n)).toThrow(RangeError);
   });
 
-  it("rejects a negative or non-integer secuencial", () => {
-    expect(() => componerNcf("B02", -1)).toThrow(RangeError);
-    expect(() => componerNcf("B02", 5.5)).toThrow(RangeError);
+  it("rejects a negative secuencial (a bigint is always an integer)", () => {
+    // The old non-integer guard (5.5) is structurally impossible for a bigint:
+    // the type itself guarantees integral values, so only the negative case
+    // remains as a runtime failure.
+    expect(() => componerNcf("B02", -1n)).toThrow(RangeError);
   });
 });
 
@@ -69,33 +71,33 @@ describe("ncf-rules — calcularUmbral90 (R-N3, threshold warning, never fails)"
   it("emits NCF_UMBRAL_90 when used reaches exactly 90% (inclusive)", () => {
     // rangoInicio=1, rangoFin=10 → total=10; consumido=9 → used=9 → 90%.
     expect(
-      calcularUmbral90({ rangoInicio: 1, rangoFin: 10, secuenciaActual: 9 }),
+      calcularUmbral90({ rangoInicio: 1n, rangoFin: 10n, secuenciaActual: 9n }),
     ).toBe(NCF_UMBRAL_90);
   });
 
   it("emits NCF_UMBRAL_90 on the spec 500–1000 range once it crosses 90%", () => {
     // total=501 → 90% boundary is used=450.9, i.e. secuenciaActual=950.
     expect(
-      calcularUmbral90({ rangoInicio: 500, rangoFin: 1000, secuenciaActual: 949 }),
+      calcularUmbral90({ rangoInicio: 500n, rangoFin: 1000n, secuenciaActual: 949n }),
     ).toBeNull();
     expect(
-      calcularUmbral90({ rangoInicio: 500, rangoFin: 1000, secuenciaActual: 950 }),
+      calcularUmbral90({ rangoInicio: 500n, rangoFin: 1000n, secuenciaActual: 950n }),
     ).toBe(NCF_UMBRAL_90);
   });
 
   it("emits nothing below the 90% threshold", () => {
     expect(
-      calcularUmbral90({ rangoInicio: 500, rangoFin: 1000, secuenciaActual: 522 }),
+      calcularUmbral90({ rangoInicio: 500n, rangoFin: 1000n, secuenciaActual: 522n }),
     ).toBeNull();
   });
 
   it("never throws on degenerate ranges — it only reports a warning", () => {
     // Empty / inverted range: cannot evaluate a fraction, must not fail.
     expect(
-      calcularUmbral90({ rangoInicio: 1000, rangoFin: 500, secuenciaActual: 700 }),
+      calcularUmbral90({ rangoInicio: 1000n, rangoFin: 500n, secuenciaActual: 700n }),
     ).toBeNull();
     expect(
-      calcularUmbral90({ rangoInicio: 5, rangoFin: 5, secuenciaActual: 5 }),
+      calcularUmbral90({ rangoInicio: 5n, rangoFin: 5n, secuenciaActual: 5n }),
     ).toBe(NCF_UMBRAL_90); // 1/1 = 100% >= 90%
   });
 });

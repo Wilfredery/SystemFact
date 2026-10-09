@@ -58,9 +58,9 @@ async function sembrarRango(
     data: {
       empresaId,
       tipoNcf: tipo,
-      rangoInicio: s.rangoInicio,
-      rangoFin: s.rangoFin,
-      secuenciaActual: s.secuenciaActual,
+      rangoInicio: BigInt(s.rangoInicio),
+      rangoFin: BigInt(s.rangoFin),
+      secuenciaActual: BigInt(s.secuenciaActual),
       vigenciaInicio: new Date("2000-01-01T00:00:00.000Z"),
       vigenciaFin: VIG_FIN,
       activa: true,
@@ -69,11 +69,11 @@ async function sembrarRango(
 }
 
 /** The current B04 pointer for empresa A. */
-async function leerSecuenciaB04(empresaAId: number): Promise<number> {
+async function leerSecuenciaB04(empresaAId: number): Promise<bigint> {
   const row = await getHarnessDb().ncfSecuencia.findUnique({
     where: { empresaId_tipoNcf: { empresaId: empresaAId, tipoNcf: "B04" } },
   });
-  return row?.secuenciaActual ?? -1;
+  return row?.secuenciaActual ?? -1n;
 }
 
 /** Priced product with branch-A1 stock; returns its id. */
@@ -169,7 +169,7 @@ describe("devolucion cumulative cap (real DB, RLS on)", () => {
     const r2 = await devolver(ventaId, prod, "2.000");
     expect(r2.ok).toBe(true);
     const secuenciaTrasPriors = await leerSecuenciaB04(ctx.empresaId);
-    expect(secuenciaTrasPriors).toBe(202); // B04 range seeded at 200, two burns
+    expect(secuenciaTrasPriors).toBe(202n); // B04 range seeded at 200, two burns
 
     const db = getHarnessDb();
     const priorSum = await db.detalleNotaCredito.aggregate({
@@ -197,7 +197,7 @@ describe("devolucion cumulative cap (real DB, RLS on)", () => {
     expect(total._sum?.cantidad?.toFixed(3)).toBe("4.500");
     // One VENDIBLE movement per NC (prices frozen at 100.00).
     expect(await db.movimientoInventario.count({ where: { notaCreditoId: { in: ncs.map((n) => n.id) } } })).toBe(3);
-    expect(await leerSecuenciaB04(ctx.empresaId)).toBe(203); // exactly three burns
+    expect(await leerSecuenciaB04(ctx.empresaId)).toBe(203n); // exactly three burns
   });
 
   it("cap exhausted: prior NCs returned 2.000+3.000 of 5; a further unit rejects and writes NOTHING (incl. no NCF burn)", async () => {
@@ -214,7 +214,7 @@ describe("devolucion cumulative cap (real DB, RLS on)", () => {
 
     const db = getHarnessDb();
     const secuenciaAntes = await leerSecuenciaB04(ctx.empresaId);
-    expect(secuenciaAntes).toBe(202);
+    expect(secuenciaAntes).toBe(202n);
     const ncsAntes = await db.notaCredito.findMany({ where: { facturaOriginalId: facturaId } });
     expect(ncsAntes).toHaveLength(2);
     const detallesAntes = await db.detalleNotaCredito.count();
@@ -235,6 +235,6 @@ describe("devolucion cumulative cap (real DB, RLS on)", () => {
     expect(await db.movimientoInventario.count()).toBe(movimientosAntes);
     expect(await db.movimientoAuditoria.count()).toBe(auditAntes);
     expect(await db.movimientoAuditoria.count({ where: { entidad: "NotaCredito" } })).toBe(2);
-    expect(await leerSecuenciaB04(ctx.empresaId)).toBe(202);
+    expect(await leerSecuenciaB04(ctx.empresaId)).toBe(202n);
   });
 });

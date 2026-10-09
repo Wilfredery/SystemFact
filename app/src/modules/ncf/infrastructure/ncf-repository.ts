@@ -10,20 +10,19 @@
  * so the row is visible/lockable only inside the acting company. Per AGENTS.md
  * we ALSO pin `empresaId` explicitly in the WHERE — never relying on RLS alone.
  *
- * `secuenciaActual` is the LAST USED value (D7). Integers are cast `::int` so
- * Prisma returns JS numbers (the tsconfig target below ES2020 cannot emit BigInt
- * literals), mirroring `compra-repository.asignarCorrelativoSiguienteEnTx`.
+ * `secuenciaActual` is the LAST USED value (D7). Since H4 the three range/sequence
+ * columns are `BIGINT` (Prisma `BigInt`), returned as native JS `bigint` values.
  */
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TipoNcf } from "../domain/ncf-rules";
 
-/** A locked active sequence row, integer-cast for safe JS arithmetic. */
+/** A locked active sequence row; range/sequence values are native `bigint` (H4). */
 export interface SecuenciaBloqueada {
   readonly id: number;
-  readonly rangoInicio: number;
-  readonly rangoFin: number;
-  readonly secuenciaActual: number;
+  readonly rangoInicio: bigint;
+  readonly rangoFin: bigint;
+  readonly secuenciaActual: bigint;
   readonly vigenciaFin: Date;
 }
 
@@ -41,16 +40,16 @@ export async function bloquearSecuenciaActivaEnTx(
   const filas = await tx.$queryRaw<
     {
       id: number;
-      rangoInicio: number;
-      rangoFin: number;
-      secuenciaActual: number;
+      rangoInicio: bigint;
+      rangoFin: bigint;
+      secuenciaActual: bigint;
       vigenciaFin: Date;
     }[]
   >`
     SELECT "id"::int AS "id",
-           "rangoInicio"::int AS "rangoInicio",
-           "rangoFin"::int AS "rangoFin",
-           "secuenciaActual"::int AS "secuenciaActual",
+           "rangoInicio" AS "rangoInicio",
+           "rangoFin" AS "rangoFin",
+           "secuenciaActual" AS "secuenciaActual",
            "vigenciaFin" AS "vigenciaFin"
     FROM "NCF_SECUENCIA"
     WHERE "empresaId" = ${empresaId}
@@ -81,11 +80,11 @@ export async function avanzarSecuenciaEnTx(
   tx: PrismaTx,
   empresaId: number,
   id: number,
-  nuevoValor: number,
+  nuevoValor: bigint,
 ): Promise<number> {
   const afectados = await tx.$executeRaw`
     UPDATE "NCF_SECUENCIA"
-    SET "secuenciaActual" = ${nuevoValor}::int
+    SET "secuenciaActual" = ${nuevoValor}
     WHERE "id" = ${id}::int
       AND "empresaId" = ${empresaId}::int`;
   return afectados;
