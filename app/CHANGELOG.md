@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.38](https://github.com/Wilfredery/SystemFact/compare/v0.11.37...v0.11.38) (2026-10-09)
+
+### Chores
+
+* **auth:** close the non-blocking review follow-ups from the native bounded review of the v2r-01 change — fix the run-together word in the tenant-runtime resolution docblock (`nuncalogueada` → `nunca logueada`), consolidate the duplicated v2r-01 rationale into the canonical narrative (`auth/infrastructure/auth-identity.ts` + `auth/README.md`; TS/schema comments now point at it, applied migration SQL stays frozen), and add direct unit coverage for `getCurrentTenantContext` (7 tests pinning sub-keyed resolution, enumerated select, login-flow RLS pin and derived `esAdmin` — `R3-002`).
+
 ## [0.11.37](https://github.com/Wilfredery/SystemFact/compare/v0.11.36...v0.11.37) (2026-10-09)
 
 ### Bug Fixes
