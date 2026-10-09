@@ -69,12 +69,16 @@ async function main() {
  * name-only check while removing the guarantee.
  */
 async function verifyV2r01IdentityControls(): Promise<void> {
+  // Query by the EXACT index name, never indexes[0] of an ILIKE scan: pg_indexes
+  // returns rows in arbitrary order, so any other index on authUserId (a plain
+  // secondary index) could win [0] and make this check abort with a false
+  // negative -- or silently stand in for the real one (audit finding R3-001).
   const indexes = await prisma.$queryRaw<IndexRow[]>`
     SELECT indexname, indexdef
     FROM pg_indexes
     WHERE schemaname = current_schema()
       AND tablename = 'USUARIO'
-      AND indexdef ILIKE '%authUserId%'`;
+      AND indexname = 'usuario_auth_user_id_uk'`;
 
   const bindingIndex = indexes[0];
   if (bindingIndex === undefined) {

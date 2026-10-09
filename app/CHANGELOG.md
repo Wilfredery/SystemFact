@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.37](https://github.com/Wilfredery/SystemFact/compare/v0.11.36...v0.11.37) (2026-10-09)
+
+### Bug Fixes
+
+* **auth:** pin verify-rls v2r-01 index check by the exact index name instead of the first row of an unordered `pg_indexes` scan (`R3-001`, native bounded review) ([#81](https://github.com/Wilfredery/SystemFact/pull/81)) ([c70fac9](https://github.com/Wilfredery/SystemFact/commit/c70fac9))
+
 ## [0.11.36](https://github.com/Wilfredery/SystemFact/compare/v0.11.35...v0.11.36) (2026-10-06)
 
 ### Code Refactoring
