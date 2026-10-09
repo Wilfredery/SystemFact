@@ -119,10 +119,12 @@ export async function seedNcfParaEmpresa(
       },
       select: { rangoInicio: true, rangoFin: true },
     });
+    // Since H4 the columns are BigInt: compare against the seed plan as native
+    // bigint (5n !== 5, strict equality never mixes the two types).
     if (
       existente !== null &&
-      (existente.rangoInicio !== rango.rangoInicio ||
-        existente.rangoFin !== rango.rangoFin)
+      (existente.rangoInicio !== BigInt(rango.rangoInicio) ||
+        existente.rangoFin !== BigInt(rango.rangoFin))
     ) {
       // Same-key rows ALWAYS share (i.e. "overlap") the window; a different
       // range is indeterminate corruption or a live DGII authorization.
@@ -144,10 +146,10 @@ export async function seedNcfParaEmpresa(
       create: {
         empresaId,
         tipoNcf: rango.tipoNcf,
-        rangoInicio: rango.rangoInicio,
-        rangoFin: rango.rangoFin,
+        rangoInicio: BigInt(rango.rangoInicio),
+        rangoFin: BigInt(rango.rangoFin),
         // D7 last-used: zero consumed at provisioning.
-        secuenciaActual: rango.rangoInicio - 1,
+        secuenciaActual: BigInt(rango.rangoInicio - 1),
         vigenciaInicio: NCF_SEED_VIGENCIA.inicio,
         vigenciaFin: NCF_SEED_VIGENCIA.fin,
         activa: true,

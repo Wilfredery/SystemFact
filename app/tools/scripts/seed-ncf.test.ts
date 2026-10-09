@@ -24,9 +24,9 @@ jest.mock("@/generated/prisma/client", () => ({ PrismaClient: class {} }));
 jest.mock("@prisma/adapter-pg", () => ({ PrismaPg: class {} }));
 
 interface SecFila {
-  rangoInicio: number;
-  rangoFin: number;
-  secuenciaActual: number;
+  rangoInicio: bigint;
+  rangoFin: bigint;
+  secuenciaActual: bigint;
   activa: boolean;
 }
 
@@ -102,16 +102,16 @@ describe("seedNcfParaEmpresa", () => {
       expect(["B01", "B02", "B04"]).toContain(up.where.empresaId_tipoNcf.tipoNcf);
       expect(up.create.activa).toBe(true);
       expect(up.create.secuenciaActual).toBe(
-        (up.create.rangoInicio as number) - 1,
+        (up.create.rangoInicio as bigint) - 1n,
       );
     }
   });
 
   it("re-run on the canonical rows is idempotent and NEVER rewrites the live counter", async () => {
     const { db, upserts } = makeFakeDb({
-      B01: { rangoInicio: 1, rangoFin: 100, secuenciaActual: 42, activa: true },
-      B02: { rangoInicio: 101, rangoFin: 200, secuenciaActual: 101, activa: true },
-      B04: { rangoInicio: 201, rangoFin: 300, secuenciaActual: 250, activa: true },
+      B01: { rangoInicio: 1n, rangoFin: 100n, secuenciaActual: 42n, activa: true },
+      B02: { rangoInicio: 101n, rangoFin: 200n, secuenciaActual: 101n, activa: true },
+      B04: { rangoInicio: 201n, rangoFin: 300n, secuenciaActual: 250n, activa: true },
     });
     await seedNcfParaEmpresa(db, 7);
 
@@ -127,9 +127,9 @@ describe("seedNcfParaEmpresa", () => {
   it("FAILS FAST when a same-key row holds a different (real DGII) range", async () => {
     const { db, upserts } = makeFakeDb({
       B01: {
-        rangoInicio: 500000,
-        rangoFin: 599999,
-        secuenciaActual: 500001,
+        rangoInicio: 500000n,
+        rangoFin: 599999n,
+        secuenciaActual: 500001n,
         activa: true,
       },
     });
