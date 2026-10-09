@@ -211,20 +211,24 @@ _cliente actions at 260 lines, ~534 diff estimate — +34% over the 400 budget �
 
 Deliberately single-phase: the 2-PR sub-chain planned as Phases 11+12 is superseded by the maintainer's 1-PR-per-module decision.
 
-- [ ] **11.1** Create `app/src/modules/cliente/http/shared.ts` with pure helpers. No `"use server"` directive. Exports: `ok`, `error`, `ActionResult<Cliente>`, `ClienteDto`, `ROLES_GESTION_CLIENTES`, `ROLES_ADMIN_ONLY`. **Constraint**: `toDto(c: Cliente): ClienteDto` is synchronous (no `async`); `ROLES_GESTION_CLIENTES = ["Administrador", "Operador"]` and `ROLES_ADMIN_ONLY = ["Administrador"]` are constants. Do NOT force `async` — the design explicitly removes the directive from `shared.ts` to avoid this anti-pattern.
-- [ ] **11.2** Create `app/src/modules/cliente/http/actions.escritura.ts` with `"use server"` directive. Move verbatim: write actions (`crearClienteAction`, `actualizarClienteAction`, `desactivarClienteAction`). **Critical**: the two-stage credit check (`llevaCamposDeCredito(...)` then a second `tieneRolPermitidoEnTx` with `ROLES_ADMIN_ONLY`) must survive as a single contiguous body inside one action — it may NOT be split across two modules.
-- [ ] **11.3** Create `app/src/modules/cliente/http/actions.lectura.ts` with `"use server"` directive. Move verbatim: read actions (`listarClienteAction`, `obtenerClienteAction`).
-- [ ] **11.4** Create `app/src/modules/cliente/http/actions.ts` barrel: re-export escritura + lectura actions and `export type { ActionResult } from "./shared";`. Pure re-export file — no `"use server"`, no executable code.
-- [ ] **11.5** Verify: `pnpm exec tsc --noEmit` — exit 0.
-- [ ] **11.6** Verify: `pnpm lint` — 0 errors; baseline is 16 pre-existing warnings (`auth`, `devolucion` only), no regression.
-- [ ] **11.7** Verify: `pnpm exec jest src/modules/cliente/http/actions.test.ts` — all tests green through the unchanged barrel.
-- [ ] **11.8** Verify: `pnpm build` — production build passes.
-- [ ] **11.9** Confirm `app/src/modules/cliente/http/actions.test.ts` and any sibling `validations.ts` are byte-identical to `master` (`git diff` shows no change).
-- [ ] **11.10** Confirm no UTF-8 BOM in the four split files (first bytes must not be `EF BB BF`).
-- [ ] **11.11** Bump version PATCH in `app/package.json` + `.release-please-manifest.json` + `app/CHANGELOG.md` (entry references the PR number), commit as `chore(release): bump <version>`.
-- [ ] **11.12** PR with labels `type:refactor` + `size:exception`; merge with **Squash and merge** only.
+> **Delivered as a SINGLE PR: PR #91 → `dc8ce71`, version 0.11.33, merged 2026-10-06T21:16:39Z**
+> with labels `type:refactor` + `size:exception` (GitHub API, verified 2026-10-09).
+> Checkboxes reconciled against `master` @ `3d68ed0` during archive (2026-10-09).
 
-**Rollback boundary:** `git revert <merge-sha>` — one revert restores the whole cliente module.
+- [x] **11.1** Create `app/src/modules/cliente/http/shared.ts` with pure helpers. No `"use server"` directive. Exports: `ok`, `error`, `ActionResult<Cliente>`, `ClienteDto`, `ROLES_GESTION_CLIENTES`, `ROLES_ADMIN_ONLY`. **Constraint**: `toDto(c: Cliente): ClienteDto` is synchronous (no `async`); `ROLES_GESTION_CLIENTES = ["Administrador", "Operador"]` and `ROLES_ADMIN_ONLY = ["Administrador"]` are constants. Do NOT force `async` — the design explicitly removes the directive from `shared.ts` to avoid this anti-pattern. _Archive reconciliation 2026-10-09: shipped as specified — `shared.ts` 59 lines, `toDto` synchronous (line 44), both role constants present with exact values._
+- [x] **11.2** Create `app/src/modules/cliente/http/actions.escritura.ts` with `"use server"` directive. Move verbatim: write actions (`crearClienteAction`, `actualizarClienteAction`, `desactivarClienteAction`). **Critical**: the two-stage credit check (`llevaCamposDeCredito(...)` then a second `tieneRolPermitidoEnTx` with `ROLES_ADMIN_ONLY`) must survive as a single contiguous body inside one action — it may NOT be split across two modules. _Archive reconciliation 2026-10-09: three write actions present; two-stage credit check verified contiguous in `actions.escritura.ts` (`llevaCamposDeCredito` gate at line 95 → `ROLES_ADMIN_ONLY`)._
+- [x] **11.3** Create `app/src/modules/cliente/http/actions.lectura.ts` with `"use server"` directive. Move verbatim: read actions (`listarClienteAction`, `obtenerClienteAction`). _Correction recorded 2026-10-09: the actual read action is `listarClientesAction` (plural), not `listarClienteAction`; plus `obtenerClienteAction`. Both present in `actions.lectura.ts` (86 lines)._
+- [x] **11.4** Create `app/src/modules/cliente/http/actions.ts` barrel: re-export escritura + lectura actions and `export type { ActionResult } from "./shared";`. Pure re-export file — no `"use server"`, no executable code. _Verified: barrel is 3 lines, re-exports only._
+- [x] **11.5** Verify: `pnpm exec tsc --noEmit` — exit 0. _Re-run on `master` @ `3d68ed0`, 2026-10-09: exit 0._
+- [x] **11.6** Verify: `pnpm lint` — 0 errors; baseline is 16 pre-existing warnings (`auth`, `devolucion` only), no regression. _Re-run 2026-10-09: exit 0 — 0 errors, 16 warnings (auth/devolucion baseline unchanged)._
+- [x] **11.7** Verify: `pnpm exec jest src/modules/cliente/http/actions.test.ts` — all tests green through the unchanged barrel. _Re-run 2026-10-09: PASS (4 suites / 46 tests across cliente+compra+venta modules, exit 0)._
+- [x] **11.8** Verify: `pnpm build` — production build passes. _Evidence: required `CI gate` (strict) was green on PR #91 before merge; build not re-run locally at archive._
+- [x] **11.9** Confirm `app/src/modules/cliente/http/actions.test.ts` and any sibling `validations.ts` are byte-identical to `master` (`git diff` shows no change). _Verified: `git diff dc8ce71^ 3d68ed0 -- app/src/modules/cliente/http/` touches only the 4 split files; `actions.test.ts` and `validation.ts` (actual name, singular) absent from the diff — byte-identical._
+- [x] **11.10** Confirm no UTF-8 BOM in the four split files (first bytes must not be `EF BB BF`). _Verified 2026-10-09: all four files no-BOM._
+- [x] **11.11** Bump version PATCH in `app/package.json` + `.release-please-manifest.json` + `app/CHANGELOG.md` (entry references the PR number), commit as `chore(release): bump <version>`. _Landed: squash `dc8ce71` carries `chore(release): bump version to 0.11.33`; CHANGELOG 0.11.33 references #91._
+- [x] **11.12** PR with labels `type:refactor` + `size:exception`; merge with **Squash and merge** only. _Merged: PR #91 closed with `merged_at` 2026-10-06T21:16:39Z; labels verified via GitHub API._
+
+**Rollback boundary:** `git revert dc8ce71` — one revert restores the whole cliente module.
 
 ## Phase 12: compra/http Split — Single PR (Slice 7)
 
@@ -232,21 +236,24 @@ _compra actions at 339 lines, ~692 diff estimate — +73% over the 400 budget �
 
 _Highest blast radius in the change: 17 application importers, purchase/NCF path. Fan-in 17 makes this the most-coupled `http/` module. Do it after Phases 11 has shipped and is proven green._
 
-- [ ] **12.1** Create `app/src/modules/compra/http/shared.ts` with pure helpers. No `"use server"` directive. Exports: `ok`, `error`, `ActionResult<Compra>`, `CompraDto`, `ROLES_COMPRA`. `ROLES_COMPRA = ["Administrador"]` (Administrador-only).
-- [ ] **12.2** Create `app/src/modules/compra/http/actions.escritura.ts` with `"use server"` directive. Move verbatim: write actions (`crearCompraAction`, `actualizarCompraAction`, `desactivarCompraAction`). Note: compra has no two-stage credit check; simpler authorization gate.
-- [ ] **12.3** Create `app/src/modules/compra/http/actions.lectura.ts` with `"use server"` directive. Move verbatim: read actions (`listarCompraAction`, `obtenerCompraAction`).
-- [ ] **12.4** Create `app/src/modules/compra/http/actions.ts` barrel: re-export escritura + lectura actions and `export type { ActionResult } from "./shared";`.
-- [ ] **12.5** Verify: `pnpm exec tsc --noEmit` — exit 0.
-- [ ] **12.6** Verify: `pnpm lint` — 0 errors, no regression on the 16-warning baseline.
-- [ ] **12.7** Verify: `pnpm exec jest src/modules/compra/http/actions.test.ts`.
-- [ ] **12.8** Verify: `pnpm build`.
-- [ ] **12.9** Confirm `actions.test.ts` and sibling files are byte-identical to `master`.
-- [ ] **12.10** Confirm no UTF-8 BOM in the split files.
-- [ ] **12.11** Check the blast radius: confirm every importer resolves through the barrel (no import path changed).
-- [ ] **12.12** Bump version PATCH + CHANGELOG entry referencing the PR number.
-- [ ] **12.13** PR with labels `type:refactor` + `size:exception`; merge with **Squash and merge** only.
+> **Delivered as a SINGLE PR: PR #92 → `3a51969`, version 0.11.34, merged 2026-10-06T21:35:55Z**
+> with labels `type:refactor` + `size:exception` (GitHub API, verified 2026-10-09).
 
-**Rollback boundary:** `git revert <merge-sha>` — one revert restores the whole compra module.
+- [x] **12.1** Create `app/src/modules/compra/http/shared.ts` with pure helpers. No `"use server"` directive. Exports: `ok`, `error`, `ActionResult<Compra>`, `CompraDto`, `ROLES_COMPRA`. `ROLES_COMPRA = ["Administrador"]` (Administrador-only). _Correction recorded 2026-10-09: actual `shared.ts` (25 lines) exports `ok`, `error`, `ActionResult<T>` (error codes typed as `CompraErrorCode` imported from `../domain/errors`), `ROLES_ADMIN_ONLY = ["Administrador"]` (the plan's `ROLES_COMPRA` under its real name, same Administrador-only semantics), and `resolverCtx`. No `CompraDto` — none existed in the original file, so there was nothing to move verbatim._
+- [x] **12.2** Create `app/src/modules/compra/http/actions.escritura.ts` with `"use server"` directive. Move verbatim: write actions (`crearCompraAction`, `actualizarCompraAction`, `desactivarCompraAction`). Note: compra has no two-stage credit check; simpler authorization gate. _Correction recorded 2026-10-09: escritura holds **five** write actions — `crearCompraAction`, `actualizarCompraAction`, `confirmarCompraAction`, `cancelarCompraAction`, `recibirCompraAction`. There is no `desactivarCompraAction` in this module (the plan named it in error)._
+- [x] **12.3** Create `app/src/modules/compra/http/actions.lectura.ts` with `"use server"` directive. Move verbatim: read actions (`listarCompraAction`, `obtenerCompraAction`). _Correction recorded 2026-10-09: the actual read action is `listarComprasAction` (plural), plus `obtenerCompraAction`. Both present (155 lines)._
+- [x] **12.4** Create `app/src/modules/compra/http/actions.ts` barrel: re-export escritura + lectura actions and `export type { ActionResult } from "./shared";`. _Verified: barrel is 3 lines, re-exports only._
+- [x] **12.5** Verify: `pnpm exec tsc --noEmit` — exit 0. _Re-run on `master` @ `3d68ed0`, 2026-10-09: exit 0._
+- [x] **12.6** Verify: `pnpm lint` — 0 errors, no regression on the 16-warning baseline. _Re-run 2026-10-09: exit 0 — 0 errors, 16 warnings._
+- [x] **12.7** Verify: `pnpm exec jest src/modules/compra/http/actions.test.ts`. _Re-run 2026-10-09: PASS (actions.test.ts + validations.test.ts both green)._
+- [x] **12.8** Verify: `pnpm build`. _Evidence: required `CI gate` (strict) was green on PR #92 before merge; build not re-run locally at archive._
+- [x] **12.9** Confirm `actions.test.ts` and sibling files are byte-identical to `master`. _Verified: `git diff 3a51969^ 3d68ed0 -- app/src/modules/compra/http/` touches only the 4 split files; `actions.test.ts`, `validations.ts` and `validations.test.ts` absent from the diff._
+- [x] **12.10** Confirm no UTF-8 BOM in the split files. _Verified 2026-10-09: all four files no-BOM._
+- [x] **12.11** Check the blast radius: confirm every importer resolves through the barrel (no import path changed). _Verified 2026-10-09: `git grep` for `actions.lectura`/`actions.escritura` returns hits only inside each module's own `http/` dir (the barrels); zero references from application/, UI or any other layer._
+- [x] **12.12** Bump version PATCH + CHANGELOG entry referencing the PR number. _Landed: squash `3a51969` carries `chore(release): bump version to 0.11.34`; CHANGELOG 0.11.34 references #92._
+- [x] **12.13** PR with labels `type:refactor` + `size:exception`; merge with **Squash and merge** only. _Merged: PR #92 closed with `merged_at` 2026-10-06T21:35:55Z; labels verified via GitHub API._
+
+**Rollback boundary:** `git revert 3a51969` — one revert restores the whole compra module.
 
 ## Phase 13: reportes/http Split — Single PR (Slice 8)
 
@@ -254,19 +261,23 @@ _reportes actions at 294 lines, ~602 diff estimate — +51% over the 400 budget 
 
 _Medium-high risk: fan-in 11, UI-wired, **no test coverage** per the design risk table. Verification leans harder on `tsc`, `lint` and `build` because there is no test suite to catch a broken export._
 
-- [ ] **13.1** Create `app/src/modules/reportes/http/shared.ts` with pure helpers. No `"use server"` directive. Exports: `ok`, `error`, `ActionResult<Reporte>`, `ReporteDto`.
-- [ ] **13.2** Create `app/src/modules/reportes/http/actions.escritura.ts` with `"use server"` directive. Move verbatim: write actions.
-- [ ] **13.3** Create `app/src/modules/reportes/http/actions.lectura.ts` with `"use server"` directive. Move verbatim: read actions.
-- [ ] **13.4** Create `app/src/modules/reportes/http/actions.ts` barrel: re-export both sides plus `export type { ActionResult } from "./shared";`.
-- [ ] **13.5** Verify: `pnpm exec tsc --noEmit` — exit 0. **This is the primary safety net here** (no tests).
-- [ ] **13.6** Verify: `pnpm lint` — 0 errors, no regression.
-- [ ] **13.7** Verify: `pnpm build` — production build passes (catches broken `"use server"` surface).
-- [ ] **13.8** Explicitly enumerate every export before/after and diff the two lists — none lost, none invented. Record the lists in the PR description.
-- [ ] **13.9** Confirm sibling files are byte-identical to `master`; no BOM.
-- [ ] **13.10** Bump version PATCH + CHANGELOG entry referencing the PR number.
-- [ ] **13.11** PR with labels `type:refactor` + `size:exception`; merge with **Squash and merge** only.
+> **Delivered as a SINGLE PR: PR #93 → `ea63d75`, version 0.11.35, merged 2026-10-06T22:12:44Z**
+> with labels `type:refactor` + `size:exception` (GitHub API, verified 2026-10-09).
+> Module shipped **read-only**: `shared.ts` + `actions.lectura.ts` + barrel — no `actions.escritura.ts`.
 
-**Rollback boundary:** `git revert <merge-sha>` — one revert restores the whole reportes module.
+- [x] **13.1** Create `app/src/modules/reportes/http/shared.ts` with pure helpers. No `"use server"` directive. Exports: `ok`, `error`, `ActionResult<Reporte>`, `ReporteDto`. _Correction recorded 2026-10-09: actual `shared.ts` (29 lines) exports `ActionResult<T>` and `ReportesAccionesErrorCode` (moved from the original file) plus `ok`/`error`; no `ReporteDto` existed in the original, so there was nothing to move verbatim._
+- [x] **13.2** Create `app/src/modules/reportes/http/actions.escritura.ts` with `"use server"` directive. Move verbatim: write actions. _Correction recorded 2026-10-09: **N/A — reportes has no write actions** (read-only module; all 11 actions are `consultar*` queries). No `actions.escritura.ts` exists; the read-only shape shipped instead._
+- [x] **13.3** Create `app/src/modules/reportes/http/actions.lectura.ts` with `"use server"` directive. Move verbatim: read actions. _Verified: `actions.lectura.ts` (267 lines) holds all 11 `consultar*Action` functions._
+- [x] **13.4** Create `app/src/modules/reportes/http/actions.ts` barrel: re-export both sides plus `export type { ActionResult } from "./shared";`. _Verified: barrel is 2 lines — re-exports the 11 lectura actions + `ActionResult` and `ReportesAccionesErrorCode` types._
+- [x] **13.5** Verify: `pnpm exec tsc --noEmit` — exit 0. **This is the primary safety net here** (no tests). _Re-run on `master` @ `3d68ed0`, 2026-10-09: exit 0._
+- [x] **13.6** Verify: `pnpm lint` — 0 errors, no regression. _Re-run 2026-10-09: exit 0 — 0 errors, 16 warnings._
+- [x] **13.7** Verify: `pnpm build` — production build passes (catches broken `"use server"` surface). _Evidence: required `CI gate` (strict) was green on PR #93 before merge; build not re-run locally at archive._
+- [x] **13.8** Explicitly enumerate every export before/after and diff the two lists — none lost, none invented. Record the lists in the PR description. _Verified 2026-10-09 from git: pre-split `actions.ts` exported 2 types (`ReportesAccionesErrorCode`, `ActionResult`) + 11 `consultar*` actions; the post-split barrel re-exports exactly the same 2 types + same 11 actions — none lost, none invented._
+- [x] **13.9** Confirm sibling files are byte-identical to `master`; no BOM. _Verified: `git diff ea63d75^ 3d68ed0 -- app/src/modules/reportes/http/` touches only 3 files (barrel rewrite + 2 new); `validations.ts` absent from the diff. `shared.ts`/`actions.lectura.ts`/`actions.ts` no-BOM._
+- [x] **13.10** Bump version PATCH + CHANGELOG entry referencing the PR number. _Landed: squash `ea63d75` carries `chore(release): bump version to 0.11.35`; CHANGELOG 0.11.35 references #93._
+- [x] **13.11** PR with labels `type:refactor` + `size:exception`; merge with **Squash and merge** only. _Merged: PR #93 closed with `merged_at` 2026-10-06T22:12:44Z; labels verified via GitHub API._
+
+**Rollback boundary:** `git revert ea63d75` — one revert restores the whole reportes module.
 
 ## Phase 14: venta/http Split — Single PR (Slice 9)
 
@@ -274,20 +285,24 @@ _venta actions at 329 lines, ~672 diff estimate — +68% over the 400 budget →
 
 _High fan-in: 5 UI-importing modules, VC path. Final slice of the change._
 
-- [ ] **14.1** Create `app/src/modules/venta/http/shared.ts` with pure helpers. No `"use server"` directive. Exports: `ok`, `error`, `ActionResult<Venta>`, `VentaDto`.
-- [ ] **14.2** Create `app/src/modules/venta/http/actions.escritura.ts` with `"use server"` directive. Move verbatim: write actions (`crearVentaAction`, `actualizarVentaAction`, `desactivarVentaAction`).
-- [ ] **14.3** Create `app/src/modules/venta/http/actions.lectura.ts` with `"use server"` directive. Move verbatim: read actions (`listarVentaAction`, `obtenerVentaAction`).
-- [ ] **14.4** Create `app/src/modules/venta/http/actions.ts` barrel: re-export both sides plus `export type { ActionResult } from "./shared";`.
-- [ ] **14.5** Verify: `pnpm exec tsc --noEmit` — exit 0.
-- [ ] **14.6** Verify: `pnpm lint` — 0 errors, no regression.
-- [ ] **14.7** Verify: `pnpm exec jest src/modules/venta/http/actions.test.ts`.
-- [ ] **14.8** Verify: `pnpm build`.
-- [ ] **14.9** Confirm sibling files byte-identical to `master`; no BOM.
-- [ ] **14.10** Confirm the 5 UI-importing modules still resolve every import through the barrel.
-- [ ] **14.11** Bump version PATCH + CHANGELOG entry referencing the PR number.
-- [ ] **14.12** PR with labels `type:refactor` + `size:exception`; merge with **Squash and merge** only.
+> **Delivered as a SINGLE PR: PR #94 → `3d68ed0`, version 0.11.36, merged 2026-10-06T22:29:56Z**
+> with labels `type:refactor` + `size:exception` (GitHub API, verified 2026-10-09).
+> Final module of the change; `master` HEAD at archive time.
 
-**Rollback boundary:** `git revert <merge-sha>` — one revert restores the whole venta module.
+- [x] **14.1** Create `app/src/modules/venta/http/shared.ts` with pure helpers. No `"use server"` directive. Exports: `ok`, `error`, `ActionResult<Venta>`, `VentaDto`. _Correction recorded 2026-10-09: actual `shared.ts` (41 lines) exports `ROLES_VENTA = ["Administrador", "Operador"]`, `VentaAccionesErrorCode`, `ActionResult<T>`, `ok`, **`fail`** (the plan said `error`; venta's failure helper is named `fail`) and `resolverCtx`. No `VentaDto` existed in the original file, so there was nothing to move verbatim._
+- [x] **14.2** Create `app/src/modules/venta/http/actions.escritura.ts` with `"use server"` directive. Move verbatim: write actions (`crearVentaAction`, `actualizarVentaAction`, `desactivarVentaAction`). _Correction recorded 2026-10-09: escritura holds `crearVentaAction`, `actualizarVentaAction`, `cancelarVentaAction`, `confirmarVentaAction` — there is no `desactivarVentaAction` (the plan named it in error; venta cancels/confirmss, it does not deactivate)._
+- [x] **14.3** Create `app/src/modules/venta/http/actions.lectura.ts` with `"use server"` directive. Move verbatim: read actions (`listarVentaAction`, `obtenerVentaAction`). _Correction recorded 2026-10-09: the actual read action is `listarVentasAction` (plural), plus `obtenerVentaAction`. Both present (159 lines)._
+- [x] **14.4** Create `app/src/modules/venta/http/actions.ts` barrel: re-export both sides plus `export type { ActionResult } from "./shared";`. _Verified: barrel is 3 lines, re-exports only._
+- [x] **14.5** Verify: `pnpm exec tsc --noEmit` — exit 0. _Re-run on `master` @ `3d68ed0`, 2026-10-09: exit 0._
+- [x] **14.6** Verify: `pnpm lint` — 0 errors, no regression. _Re-run 2026-10-09: exit 0 — 0 errors, 16 warnings._
+- [x] **14.7** Verify: `pnpm exec jest src/modules/venta/http/actions.test.ts`. _Correction recorded 2026-10-09: **no `actions.test.ts` exists for venta** (the plan assumed one). The module's unchanged `validations.test.ts` passes: re-run 2026-10-09 PASS._
+- [x] **14.8** Verify: `pnpm build`. _Evidence: required `CI gate` (strict) was green on PR #94 before merge; build not re-run locally at archive._
+- [x] **14.9** Confirm sibling files byte-identical to `master`; no BOM. _Verified: `git diff 3d68ed0^ 3d68ed0 -- app/src/modules/venta/http/` touches only the 4 split files; `validations.ts` and `validations.test.ts` absent from the diff. All four split files no-BOM._
+- [x] **14.10** Confirm the 5 UI-importing modules still resolve every import through the barrel. _Verified 2026-10-09: `git grep` for `actions.lectura`/`actions.escritura` returns hits only inside each module's own `http/` dir; zero references from any UI or application file — all consumers resolve through the `actions.ts` barrel._
+- [x] **14.11** Bump version PATCH + CHANGELOG entry referencing the PR number. _Landed: squash `3d68ed0` carries `chore(release): bump version to 0.11.36`; CHANGELOG 0.11.36 references #94._
+- [x] **14.12** PR with labels `type:refactor` + `size:exception`; merge with **Squash and merge** only. _Merged: PR #94 closed with `merged_at` 2026-10-06T22:29:56Z; labels verified via GitHub API._
+
+**Rollback boundary:** `git revert 3d68ed0` — one revert restores the whole venta module.
 
 ---
 
@@ -300,10 +315,14 @@ Slices are ordered by the design's rollout specification:
 
 **Why this order:** The design explicitly states "Rollout order is Slice 0 first and alone — it is a security-control restoration and must be green before any further split widens the surface it governs." Slice 1 is next as the only single-PR slice (under 400 budget), which validates the per-slice shape without the complexity of sub-chains. Slices 2–9 follow in design order, so each child PR's diff contains only its own module's changes and remains independently revertible.
 
-> **The sub-chain was only ever used once — for categoria (Slice 2).** From Slice 3
-> onward every module ships as one PR. The *order* is still honoured; only the
-> 2-PR-per-module split is not. The fan-in rationale for the ordering stands:
-> `cliente` → `compra` → `reportes` → `venta`, ending with the most-coupled modules.
+> **Correction 2026-10-09 (git evidence): no module ever merged as a 2-PR
+> sub-chain.** Categoria's escritura *and* lectura halves both live in commit
+> `3c7c63f`, squashed into PR #84 `bbeef04` together with the eslint fix and
+> the inventario split — the planned sub-chain for Slice 2 never landed as
+> separate PRs. The *order* is still honoured; only the 2-PR-per-module split
+> never materialised. The fan-in rationale for the ordering stands:
+> `cliente` → `compra` → `reportes` → `venta`, ending with the most-coupled
+> modules.
 
 ## Delivery Strategy Divergence
 
@@ -313,15 +332,25 @@ materialised. Actual delivery:
 | Slice | Module | Delivery | PR | Merge SHA | Version |
 |-------|--------|----------|----|-----------|---------|
 | 0 | ESLint tenant-wrapper hardening | single PR | #84 | `bbeef04` | 0.11.29 |
-| 1 | inventario | single PR | — | merged pre-2026-10-06 | — |
-| 2 | categoria | 2-PR sub-chain (Phases 3–4) | — | merged pre-2026-10-06 | — |
+| 1 | inventario | single PR (rides Slice 0 squash) | #84 | `bbeef04` (content commit `3c7c63f`) | 0.11.29 |
+| 2 | categoria | Phases 3–4 collapsed into one commit | #84 | `bbeef04` (content commit `3c7c63f`) | 0.11.29 |
 | 3 | proveedor | **single PR** + `size:exception` | **#87** | `40155a4` | 0.11.30 |
 | 4 | cobros | **single PR** + `size:exception` | **#88** | `6fbe9d3` | 0.11.31 |
 | 5 | producto | **single PR** + `size:exception` | **#89** | `56bd574` | 0.11.32 |
-| 6 | cliente | single PR + `size:exception` (planned) | pending | — | — |
-| 7 | compra | single PR + `size:exception` (planned) | pending | — | — |
-| 8 | reportes | single PR + `size:exception` (planned) | pending | — | — |
-| 9 | venta | single PR + `size:exception` (planned) | pending | — | — |
+| 6 | cliente | **single PR** + `size:exception` | **#91** | `dc8ce71` | 0.11.33 |
+| 7 | compra | **single PR** + `size:exception` | **#92** | `3a51969` | 0.11.34 |
+| 8 | reportes | **single PR** + `size:exception` (read-only) | **#93** | `ea63d75` | 0.11.35 |
+| 9 | venta | **single PR** + `size:exception` (final module) | **#94** | `3d68ed0` | 0.11.36 |
+
+> Backfilled 2026-10-09 from git history during archive. **Slices 1–2:** both
+> landed inside PR #84's squash commit `bbeef04` — their content is commit
+> `3c7c63f` ("split inventario and categoria … (slices 1, 2a)"), which contains
+> inventario's four split files **and** categoria's escritura *and* lectura
+> halves together, i.e. the planned categoria 2-PR sub-chain never merged as
+> separate PRs. **Slices 6–9:** SHAs are the squash commits on `master`
+> (verified present on GitHub `master`, which matches local byte-for-byte).
+> The CHANGELOG links PR-*head* SHAs (e.g. `06b1862` for #91, `c20ac0b` for
+> #94) which are pre-squash commits and intentionally differ from the table.
 
 Working rules adopted from Slice 3 onward:
 
@@ -339,12 +368,11 @@ Working rules adopted from Slice 3 onward:
 
 ## Progress
 
-**Slices 0–5 (Phases 1–10) are complete and merged into `master`**
-(verified 2026-10-06, `master` @ `56bd574`, version `0.11.32`):
+**Slices 0–5 (Phases 1–10) complete and merged** (mid-change snapshot verified 2026-10-06, `master` @ `56bd574`, version `0.11.32`):
 
 - Slice 0 (Phase 1) — ESLint `server-action-must-wrap-tenant` widened to `actions.*.ts` + test early-return. PR #84 → `bbeef04`.
-- Slice 1 (Phase 2) — `inventario/http` split into `shared.ts` + `actions.lectura.ts` + `actions.escritura.ts` + barrel.
-- Slice 2 (Phases 3–4) — `categoria/http` split into the same shape (the only 2-PR sub-chain actually run).
+- Slice 1 (Phase 2) — `inventario/http` split into `shared.ts` + `actions.lectura.ts` + `actions.escritura.ts` + barrel. _Backfill 2026-10-09: landed inside PR #84 → `bbeef04` (content commit `3c7c63f`), version 0.11.29._
+- Slice 2 (Phases 3–4) — `categoria/http` split into the same shape. _Correction 2026-10-09: git shows both halves in the single commit `3c7c63f` inside PR #84 — the planned 2-PR sub-chain never merged as separate PRs._
 - Slice 3 (Phases 5–6) — `proveedor/http` split, **single PR #87 → `40155a4`**, version 0.11.30.
 - Slice 4 (Phases 7–8) — `cobros/http` split, **single PR #88 → `6fbe9d3`**, version 0.11.31.
 - Slice 5 (Phases 9–10) — `producto/http` split, **single PR #89 → `56bd574`**, version 0.11.32.
@@ -373,25 +401,42 @@ Verification evidence for Slice 5 / producto (PR #89):
 | Split result | `shared.ts` 22 · `actions.lectura.ts` 76 · `actions.escritura.ts` 179 · `actions.ts` 3 — `validations.ts` and `actions.test.ts` byte-identical |
 
 **Delivery strategy diverged from the plan above.** The intended 18-PR
-`feature-branch-chain` never happened past Slice 2: Slices 0–1 landed through
-ordinary PRs targeting `master`, and Slices 3–5 landed as single PRs with
-`size:exception`. Treat the chain description as historical design intent, not
-as the structure to resume.
+`feature-branch-chain` never happened: Slices 0–2 landed inside PR #84's
+squash, and Slices 3–9 each landed as a single PR with `size:exception`.
+Treat the chain description as historical design intent, not as the
+structure to resume.
+
+**All 10 slices (0–9) are complete and merged into `master`**
+(verified 2026-10-09, `master` @ `3d68ed0`, version `0.11.36`):
+
+- Slice 6 (Phase 11) — `cliente/http` split, **single PR #91 → `dc8ce71`**, version 0.11.33.
+- Slice 7 (Phase 12) — `compra/http` split, **single PR #92 → `3a51969`**, version 0.11.34.
+- Slice 8 (Phase 13) — `reportes/http` split (read-only: shared + lectura + barrel, no escritura), **single PR #93 → `ea63d75`**, version 0.11.35.
+- Slice 9 (Phase 14) — `venta/http` split, **single PR #94 → `3d68ed0`**, version 0.11.36 — final module.
+
+Verification evidence for Phases 11–14 (re-run on `master` @ `3d68ed0`, 2026-10-09, during archive):
+
+| Check | Result |
+| --- | --- |
+| `pnpm exec tsc --noEmit` | exit 0 |
+| `pnpm lint` | 0 errors, 16 pre-existing warnings (`auth`, `devolucion` — no regression) |
+| `pnpm exec jest` (cliente/compra/venta module tests) | 4 suites / 46 tests passed, exit 0 |
+| `git diff <split>^ 3d68ed0 -- <module>/http/` | each module: only its own split files changed; tests/validations byte-identical |
+| BOM check (12 split files, 11 present + reportes escritura N/A) | none start with `EF BB BF` |
+| Barrel isolation grep (`actions.lectura`/`actions.escritura`) | hits only inside each module's own `http/` dir — zero outside references |
+| PRs #91–#94 (GitHub API) | closed with `merged_at` 2026-10-06; labels `type:refactor` + `size:exception`; squash commits on `master` match subjects |
+| Production build | not re-run locally at archive; required `CI gate` (strict) was green on each merged PR |
 
 ## Next Step
 
-**Phase 11 — `cliente/http` Split, Single PR (Slice 6)**, then Phase 12
-(`compra`), Phase 13 (`reportes`), Phase 14 (`venta`).
+**None — all phases complete; change archived 2026-10-09** to
+`openspec/changes/archive/2026-10-09-refactor-selective-backend-organization/`
+after delta-spec sync. Both open housekeeping items are resolved:
 
-Remaining scope: **Phases 11–14 = 24 tasks** across cliente, compra, reportes
-and venta.
-
-Open housekeeping (not blocking Phase 11):
-
-- Reconcile the remaining phase headings in *Review Workload Forecast* →
-  already reflected in Phases 11–14, which supersede the old Phases 11–18.
-- Decide whether the slice-1 / slice-2 PR numbers should be backfilled into
-  *Delivery Strategy Divergence* once located in git history.
+- *Review Workload Forecast* table left intact as historical forecast (status
+  note at the top of this file governs).
+- Slice-1 / slice-2 PR numbers backfilled in *Delivery Strategy Divergence*
+  (both rode PR #84 / `bbeef04` / 0.11.29).
 
 `master` is branch-protected: every PR needs the `CI gate` check green with
 `strict: true`, plus `enforce_admins`. **The one-approving-review requirement
