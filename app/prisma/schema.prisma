@@ -727,9 +727,9 @@ model NcfSecuencia {
   id              Int              @id @default(autoincrement())
   empresaId       Int
   tipoNcf         TipoNcfSecuencia // B01-B04 + B11: facturas, notas y compras a informales
-  rangoInicio     Int
-  rangoFin        Int
-  secuenciaActual Int
+  rangoInicio     BigInt
+  rangoFin        BigInt
+  secuenciaActual BigInt
   vigenciaInicio  DateTime         @db.Timestamptz(6)
   vigenciaFin     DateTime         @db.Timestamptz(6)
   activa          Boolean          @default(true)
