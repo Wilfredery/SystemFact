@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.0](https://github.com/Wilfredery/SystemFact/compare/v0.11.38...v0.12.0) (2026-10-09)
+
+### Features
+
+* **ncf:** convert `NCF_SECUENCIA` range/sequence columns to BigInt (`bigint` end-to-end: schema, migration `20261009202000_ncf_secuencia_bigint`, domain rules, repository raw queries and tests; `%08d` fiscal composition unchanged). Closes the explicit deferred item H4 from the Prisma schema evaluation.
+
 ## [0.11.38](https://github.com/Wilfredery/SystemFact/compare/v0.11.37...v0.11.38) (2026-10-09)
 
 ### Chores

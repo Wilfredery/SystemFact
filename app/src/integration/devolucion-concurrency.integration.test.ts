@@ -177,9 +177,9 @@ describe("devolucion same-factura race (real DB, RLS on)", () => {
         {
           empresaId: ctx.empresaId,
           tipoNcf: "B02",
-          rangoInicio: 500,
-          rangoFin: 1000,
-          secuenciaActual: 521,
+          rangoInicio: BigInt(500),
+          rangoFin: BigInt(1000),
+          secuenciaActual: BigInt(521),
           vigenciaInicio: new Date("2000-01-01T00:00:00.000Z"),
           vigenciaFin: VIG_FIN,
           activa: true,
@@ -187,9 +187,9 @@ describe("devolucion same-factura race (real DB, RLS on)", () => {
         {
           empresaId: ctx.empresaId,
           tipoNcf: "B04",
-          rangoInicio: 201,
-          rangoFin: 300,
-          secuenciaActual: 200,
+          rangoInicio: BigInt(201),
+          rangoFin: BigInt(300),
+          secuenciaActual: BigInt(200),
           vigenciaInicio: new Date("2000-01-01T00:00:00.000Z"),
           vigenciaFin: VIG_FIN,
           activa: true,
@@ -277,7 +277,7 @@ describe("devolucion same-factura race (real DB, RLS on)", () => {
     const seq = (await db.ncfSecuencia.findUnique({
       where: { empresaId_tipoNcf: { empresaId: ctx.empresaId, tipoNcf: "B04" } },
     }))!;
-    expect(seq.secuenciaActual).toBe(201);
+    expect(seq.secuenciaActual).toBe(201n);
 
     // Stock: the winner's VENDIBLE return restored the one debited unit → 10;
     // the loser wrote nothing. No negative stock anywhere.

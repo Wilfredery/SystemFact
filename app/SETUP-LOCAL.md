@@ -98,6 +98,34 @@ psql -h localhost -p 5433 -U postgres -d postgres \
 - La migration `20260902150000_create_app_role` crea el rol idempotentemente sin password
 - La migration `20260902140000_disable_rls_bypass` quita BYPASSRLS al rol postgres (en Supabase)
 
+### Reconstrucción del entorno de integración local (`sf-postgres`)
+
+Si el contenedor o el volumen de `sf-postgres` se recrea desde cero, los roles
+y grants del harness de integración reaparecen con **un solo comando**:
+
+```bash
+docker exec -i sf-postgres psql -U postgres -d postgres \
+  -v ON_ERROR_STOP=1 < app/tools/scripts/provision-integration-roles.sql
+```
+
+El script es idempotente (re-ejecutable n veces) y se auto-verifica: crea
+`systemfact_app` e `it_migrator` (parity con `20260902150000_create_app_role`),
+otorga `pg_read_all_stats` a ambos, reaplica los DDL grants del rol de app,
+y al final imprime un NOTICE con las brechas restantes (o `OK`).
+
+Dos cosas quedan **intencionalmente out-of-band**, igual que arriba:
+`CREATE DATABASE systemfact_test` y los passwords de los roles (nunca en el repo).
+
+**Qué resuelve `pg_read_all_stats`:** el protocolo de concurrencia de las
+suites de integración ("race parking": confirmar-venta, venta-lifecycle,
+compra-concurrency, devolucion-concurrency) sondea `pg_stat_activity` para
+contar transacciones estacionadas en un row lock. Sin ese privilegio Postgres
+le oculta a `systemfact_app` los `wait_event_type` de las conexiones ajenas
+(`query` sale como `<insufficient privilege>`), el poller nunca ve los 2
+waiters y las suites abortan con `Race parking failed: fewer than two
+transactions are waiting`. En CI no ocurre porque ahí poller y racers usan el
+mismo rol; el grant hace que **local** se comporte igual siempre.
+
 ## Workflow diario
 
 ### Iteración local

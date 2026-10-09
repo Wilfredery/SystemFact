@@ -61,8 +61,8 @@ describe("NCF_COMPRA_REGEX (11-position purchase NCF grammar)", () => {
 
   it("accepts EXACTLY the values the NCF engine composes (R-N2 `B` + 2-digit tipo + %08d)", () => {
     // The grammar must not reject a single NCF the system itself is able to emit.
-    expect(NCF_COMPRA_REGEX.test(componerNcf("B01", 7))).toBe(true); // "B0100000007"
-    expect(NCF_COMPRA_REGEX.test(componerNcf("B11", 1))).toBe(true); // "B1100000001"
+    expect(NCF_COMPRA_REGEX.test(componerNcf("B01", 7n))).toBe(true); // "B0100000007"
+    expect(NCF_COMPRA_REGEX.test(componerNcf("B11", 1n))).toBe(true); // "B1100000001"
   });
 
   it("rejects a non-canonical case (the NCF is uppercase by definition)", () => {

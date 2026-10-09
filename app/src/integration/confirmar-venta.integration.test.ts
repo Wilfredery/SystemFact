@@ -51,9 +51,9 @@ async function sembrarRango(
     data: {
       empresaId,
       tipoNcf: tipo,
-      rangoInicio: s.rangoInicio,
-      rangoFin: s.rangoFin,
-      secuenciaActual: s.secuenciaActual,
+      rangoInicio: BigInt(s.rangoInicio),
+      rangoFin: BigInt(s.rangoFin),
+      secuenciaActual: BigInt(s.secuenciaActual),
       vigenciaInicio: new Date("2000-01-01T00:00:00.000Z"),
       vigenciaFin: VIG_FIN,
       activa: true,
@@ -61,9 +61,9 @@ async function sembrarRango(
   });
 }
 
-async function leerSecuenciaActual(empresaId: number, tipo: "B01" | "B02"): Promise<number> {
+async function leerSecuenciaActual(empresaId: number, tipo: "B01" | "B02"): Promise<bigint> {
   const row = await getHarnessDb().ncfSecuencia.findUnique({ where: { empresaId_tipoNcf: { empresaId, tipoNcf: tipo } } });
-  return row?.secuenciaActual ?? -1;
+  return row?.secuenciaActual ?? -1n;
 }
 
 async function crearBorrador(
@@ -224,7 +224,7 @@ describe("confirmarVenta (real DB, RLS on)", () => {
     // Sale untouched, no invoice, and the seeded sequence was NOT advanced.
     expect((await getHarnessDb().venta.findUnique({ where: { id } }))?.estado).toBe("BORRADOR");
     expect(await getHarnessDb().factura.count({ where: { ventaId: id } })).toBe(0);
-    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521);
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521n);
   });
 
   it("HARD stock preview rejects BEFORE burning (R-V15, 2.5) and a foreign-branch sale is not confirmable", async () => {
@@ -237,7 +237,7 @@ describe("confirmarVenta (real DB, RLS on)", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe("STOCK_INSUFICIENTE_BLOQUEO");
     expect(await getHarnessDb().factura.count({ where: { ventaId: id } })).toBe(0);
-    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521); // no burn
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521n); // no burn
 
     // Foreign branch: same tenant, but the session is bound to A2 while the sale is A1's.
     const ctx2 = ctxA2(fixture!);
@@ -263,7 +263,7 @@ describe("confirmarVenta (real DB, RLS on)", () => {
     const r2 = await withTenantTransaction(ctx, (tx) => confirmarVenta(tx, ctx, { id: id2 }));
     expect(r2.ok).toBe(false);
     if (!r2.ok) expect(r2.code).toBe("NCF_AGOTADA");
-    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(600); // unchanged
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(600n); // unchanged
     expect((await getHarnessDb().venta.findUnique({ where: { id: id2 } }))?.estado).toBe("BORRADOR");
   });
 
@@ -275,13 +275,13 @@ describe("confirmarVenta (real DB, RLS on)", () => {
 
     const primero = await withTenantTransaction(ctx, (tx) => confirmarVenta(tx, ctx, { id }));
     expect(primero.ok).toBe(true);
-    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(522);
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(522n);
 
     const segundo = await withTenantTransaction(ctx, (tx) => confirmarVenta(tx, ctx, { id }));
     expect(segundo.ok).toBe(false);
     if (!segundo.ok) expect(segundo.code).toBe("VENTA_INMUTABLE");
     // No second burn, exactly one invoice still.
-    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(522);
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(522n);
     expect(await getHarnessDb().factura.count({ where: { ventaId: id } })).toBe(1);
   });
 
@@ -300,7 +300,7 @@ describe("confirmarVenta (real DB, RLS on)", () => {
     expect(exitos).toHaveLength(1); // exactly one transaction commits the flip
     // The loser's post-consume race THREW (un-burning its sequence number on rollback),
     // so the net effect is a single advance and a single invoice.
-    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(522);
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(522n);
     expect(await getHarnessDb().factura.count({ where: { ventaId: id } })).toBe(1);
     expect((await getHarnessDb().venta.findUnique({ where: { id } }))?.estado).toBe("CONFIRMADA");
   });
@@ -358,7 +358,7 @@ describe("confirmarVenta (real DB, RLS on)", () => {
     expect(new Set(facs.map((f) => f.correlativoInterno)).size).toBe(2); // atomic, no dup
     // Sucursal GUC restored in the allocator's finally → both invoices land on A1.
     for (const f of facs) expect(f.sucursalId).toBe(ctx.sucursalId);
-    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(523); // two burns, serialized
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(523n); // two burns, serialized
   });
 
   it("emitted contado invoice is VIGENTE, 1:1 ventaId, closed as PAGADA, no stored balance (R-F1/R-F4/R-V15, 2.10)", async () => {
@@ -409,7 +409,7 @@ describe("confirmarVenta (real DB, RLS on)", () => {
     // The gate fired AFTER the stock preview but BEFORE the NCF lock → nothing burned:
     const db = getHarnessDb();
     expect((await db.venta.findUnique({ where: { id } }))?.estado).toBe("BORRADOR");
-    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521); // no burn
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521n); // no burn
     expect(await db.factura.count({ where: { ventaId: id } })).toBe(0); // no invoice
     expect(await db.movimientoInventario.count({ where: { ventaId: id } })).toBe(0); // no debit
     // No COBRO anywhere: the only receivable is the seeded 20,000 one, still unpaid.
@@ -440,7 +440,7 @@ describe("confirmarVenta (real DB, RLS on)", () => {
     ).rejects.toThrow("abort-after-confirm");
     // Everything (sale flip, NCF, invoice, debit, COBRO) rolled back together.
     expect((await db.venta.findUnique({ where: { id: id2 } }))?.estado).toBe("BORRADOR");
-    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(522); // only the first sale burned
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(522n); // only the first sale burned
     expect(await db.factura.count({ where: { ventaId: id2 } })).toBe(0);
     expect(await db.pago.count({ where: { empresaId: ctx.empresaId, factura: { ventaId: id2 } } })).toBe(0);
   });
@@ -529,7 +529,7 @@ describe("confirmarVenta (real DB, RLS on)", () => {
     expect(venta?.estado).toBe("BORRADOR");
     expect(venta?.detalles).toHaveLength(1);
     expect(venta?.detalles[0].cantidad.toFixed(3)).toBe("2.000");
-    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521); // NCF un-burned
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521n); // NCF un-burned
     expect(await db.factura.count({ where: { ventaId: id } })).toBe(0); // no invoice
     expect(await db.movimientoInventario.count({ where: { ventaId: id } })).toBe(0); // no debit
     expect(await db.pago.count({ where: { empresaId: ctx.empresaId } })).toBe(0); // no COBRO

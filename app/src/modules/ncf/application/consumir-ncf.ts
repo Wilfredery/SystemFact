@@ -53,7 +53,7 @@ export class NcfConsumoError extends Error {
 export interface ConsumirNcfResultado {
   readonly ncf: string;
   readonly tipo: TipoNcf;
-  readonly secuencial: number;
+  readonly secuencial: bigint;
   readonly warning?: NcfWarning;
 }
 

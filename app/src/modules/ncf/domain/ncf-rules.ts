@@ -76,19 +76,19 @@ export function fechaEnSD(valor: Date): string {
  * invariant: a consecutive that does not fit `%08d` (or a non-integer) fails
  * loud rather than silently producing an out-of-spec NCF.
  */
-export function componerNcf(tipo: TipoNcf, secuencial: number): string {
-  if (!Number.isInteger(secuencial) || secuencial < 0) {
+export function componerNcf(tipo: TipoNcf, secuencial: bigint): string {
+  if (secuencial < 0n) {
     throw new RangeError(
       `componerNcf: secuencial must be a non-negative integer, got ${String(secuencial)}`,
     );
   }
-  if (secuencial > MAX_CONSECUTIVO) {
+  if (secuencial > BigInt(MAX_CONSECUTIVO)) {
     throw new RangeError(
       `componerNcf: secuencial ${String(secuencial)} exceeds the ${String(LONGITUD_CONSECUTIVO)}-digit DGII consecutive (max ${String(MAX_CONSECUTIVO)})`,
     );
   }
   const digitosTipo = tipo.slice(PREFIJO.length);
-  const consecutivo = String(secuencial).padStart(LONGITUD_CONSECUTIVO, "0");
+  const consecutivo = secuencial.toString().padStart(LONGITUD_CONSECUTIVO, "0");
   const ncf = `${PREFIJO}${digitosTipo}${consecutivo}`;
   // Defensive: the two guards above already guarantee this; keep the invariant
   // explicit so any future edit to the constants trips immediately.
@@ -108,16 +108,16 @@ export function componerNcf(tipo: TipoNcf, secuencial: number): string {
  * division, so the inclusive boundary is not subject to rounding error.
  */
 export function calcularUmbral90(input: {
-  readonly rangoInicio: number;
-  readonly rangoFin: number;
-  readonly secuenciaActual: number;
+  readonly rangoInicio: bigint;
+  readonly rangoFin: bigint;
+  readonly secuenciaActual: bigint;
 }): NcfWarning | null {
   const { rangoInicio, rangoFin, secuenciaActual } = input;
-  const total = rangoFin - rangoInicio + 1;
-  if (total <= 0) return null; // empty/inverted range: nothing to warn about
+  const total = rangoFin - rangoInicio + 1n;
+  if (total <= 0n) return null; // empty/inverted range: nothing to warn about
   if (secuenciaActual > rangoFin) return null; // past exhaustion = error, not a warning
-  const used = secuenciaActual - rangoInicio + 1;
-  return 10 * used >= 9 * total ? NCF_UMBRAL_90 : null;
+  const used = secuenciaActual - rangoInicio + 1n;
+  return used * 10n >= total * 9n ? NCF_UMBRAL_90 : null;
 }
 
 /**
@@ -125,13 +125,13 @@ export function calcularUmbral90(input: {
  * `secuenciaActual` is the LAST used value; the next number to hand out is one
  * past it, and the range is exhausted once that next would pass `rangoFin`.
  */
-export function siguienteSecuencia(secuenciaActual: number): number {
-  return secuenciaActual + 1;
+export function siguienteSecuencia(secuenciaActual: bigint): bigint {
+  return secuenciaActual + 1n;
 }
 
 export function esRangoAgotado(input: {
-  readonly rangoFin: number;
-  readonly secuenciaActual: number;
+  readonly rangoFin: bigint;
+  readonly secuenciaActual: bigint;
 }): boolean {
   return siguienteSecuencia(input.secuenciaActual) > input.rangoFin;
 }

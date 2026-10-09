@@ -38,16 +38,16 @@ async function marcarFacturaAutomatica(empresaId: number): Promise<void> {
 async function sembrarRango(empresaId: number, tipo: "B01" | "B02", s: { rangoInicio: number; rangoFin: number; secuenciaActual: number }): Promise<void> {
   await getHarnessDb().ncfSecuencia.create({
     data: {
-      empresaId, tipoNcf: tipo, rangoInicio: s.rangoInicio, rangoFin: s.rangoFin,
-      secuenciaActual: s.secuenciaActual, vigenciaInicio: new Date("2000-01-01T00:00:00.000Z"),
+      empresaId, tipoNcf: tipo, rangoInicio: BigInt(s.rangoInicio), rangoFin: BigInt(s.rangoFin),
+      secuenciaActual: BigInt(s.secuenciaActual), vigenciaInicio: new Date("2000-01-01T00:00:00.000Z"),
       vigenciaFin: VIG_FIN, activa: true,
     },
   });
 }
 
-async function leerSecuenciaActual(empresaId: number, tipo: "B01" | "B02"): Promise<number> {
+async function leerSecuenciaActual(empresaId: number, tipo: "B01" | "B02"): Promise<bigint> {
   const row = await getHarnessDb().ncfSecuencia.findUnique({ where: { empresaId_tipoNcf: { empresaId, tipoNcf: tipo } } });
-  return row?.secuenciaActual ?? -1;
+  return row?.secuenciaActual ?? -1n;
 }
 
 async function crearBorrador(ctx: TenantCtx, productoId: number, cantidad = "5"): Promise<number> {
@@ -93,7 +93,7 @@ describe("cancelarVenta confirmada (real DB, RLS on)", () => {
     const { ventaId, productoId } = await confirmarVentaLista(ctx);
     const db = getHarnessDb();
     expect(await cantidadStock(ctx, productoId)).toBe("5.000"); // 10 - 5 debited at confirm
-    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(522); // burned
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(522n); // burned
     const secuenciaAntes = await leerSecuenciaActual(ctx.empresaId, "B02");
 
     const r = await withTenantTransaction(ctx, (tx) => cancelarVenta(tx, ctx, { id: ventaId, motivo: "Devolución cliente" }));
@@ -153,7 +153,7 @@ describe("cancelarVenta confirmada (real DB, RLS on)", () => {
     expect(await db.factura.count({ where: { ventaId } })).toBe(0);
     expect(await db.movimientoInventario.count({ where: { ventaId } })).toBe(0);
     expect(await cantidadStock(ctx, prod.id)).toBe("10.000"); // unchanged
-    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521); // no NCF burn
+    expect(await leerSecuenciaActual(ctx.empresaId, "B02")).toBe(521n); // no NCF burn
   });
 
   it("3.10 — cancel of a paid CONTADO sale reverts the APLICADO COBRO to REVERTIDO in the same transaction (v2r-09)", async () => {

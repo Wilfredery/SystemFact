@@ -68,9 +68,9 @@ async function sembrarRango(
     data: {
       empresaId,
       tipoNcf: tipo,
-      rangoInicio: s.rangoInicio,
-      rangoFin: s.rangoFin,
-      secuenciaActual: s.secuenciaActual,
+      rangoInicio: BigInt(s.rangoInicio),
+      rangoFin: BigInt(s.rangoFin),
+      secuenciaActual: BigInt(s.secuenciaActual),
       vigenciaInicio: new Date("2000-01-01T00:00:00.000Z"),
       vigenciaFin: VIG_FIN,
       activa: true,
@@ -78,11 +78,11 @@ async function sembrarRango(
   });
 }
 
-async function leerSecuenciaB04(empresaAId: number): Promise<number> {
+async function leerSecuenciaB04(empresaAId: number): Promise<bigint> {
   const row = await getHarnessDb().ncfSecuencia.findUnique({
     where: { empresaId_tipoNcf: { empresaId: empresaAId, tipoNcf: "B04" } },
   });
-  return row?.secuenciaActual ?? -1;
+  return row?.secuenciaActual ?? -1n;
 }
 
 /** Priced product with branch-A1 stock; returns its id. */
@@ -232,7 +232,7 @@ describe("F5 sale-date band: RETROACTIVO_FECHA_VENTA_DIAS (real DB, RLS on)", ()
     const r = await devolver(ventaId, productoActual, "1", new Date(fechaVenta.getTime() + PLAZO_DEVOLUCION_DIAS * UN_DIA_MS));
 
     expect(r.ok).toBe(true);
-    expect(await leerSecuenciaB04(ctx.empresaId)).toBe(201);
+    expect(await leerSecuenciaB04(ctx.empresaId)).toBe(201n);
   });
 
   it("B04 REGRESSION: one day past that, the backdate buys NO extra window", async () => {
