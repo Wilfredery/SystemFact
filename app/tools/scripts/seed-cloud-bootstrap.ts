@@ -108,11 +108,25 @@ export const EMPRESA_DEMO = {
   facturaAutomatica: true,
 } as const;
 
-/** Main demo branch the admin operates from. */
+/**
+ * Demo branch the admin operates from.
+ */
 export const SUCURSAL_DEMO = {
   nombre: "Matriz Central",
   direccion: "Av. Winston Churchill #000, Santo Domingo, RD",
   telefono: "809-000-0000",
+} as const;
+
+/** MOD-11 VALID demo RNC, different from the demo EMPRESA's own. */
+export const CLIENTE_CREDITO_DEMO = {
+  nombre: "Comercios Clara, SRL (demo)",
+  telefono: "809-000-0001",
+  direccion: "Calle El Sol #111, Los Prados, Santo Domingo, RD",
+  identificacionFiscal: "131000010", // validarRnc -> ok
+  tipoCliente: "CREDITO" as const,
+  creditoHabilitado: true,
+  limiteCredito: new Prisma.Decimal("10000.00"),
+  plazoCreditoDias: 15,
 } as const;
 
 /**
@@ -183,6 +197,7 @@ export interface BootstrapConteo {
   authUserCreado: boolean;
   productoId: number;
   inventarioCreado: boolean;
+  clienteCreditoId: number;
 }
 
 // ============================================================================
@@ -360,6 +375,44 @@ async function rolAdministradorId(db: PrismaTx): Promise<{ id: number }> {
   if (objetivo === undefined) throw new Error("seed-cloud-bootstrap: Administrador missing from catalog (unreachable)");
   const creado = await db.rol.create({ data: objetivo });
   return { id: creado.id };
+}
+
+/**
+ * Find-or-create the demo CREDITO client (unique empresaId + identificacionFiscal).
+ * Makes the cobros board / estado-de-cuenta flows and their E2E preconditions
+ * exercisable (a credit sale needs a credit-enabled client; the POS quick-add
+ * intentionally excludes CREDITO, and no /clientes screen exists yet). An
+ * existing row is only WARNS + kept if it drifted (operator-owned after all).
+ */
+async function asegurarClienteCreditoDemo(
+  db: PrismaTx,
+  empresaId: number,
+): Promise<number> {
+  const existente = await db.cliente.findUnique({
+    where: {
+      empresaId_identificacionFiscal: {
+        empresaId,
+        identificacionFiscal: CLIENTE_CREDITO_DEMO.identificacionFiscal,
+      },
+    },
+    select: { id: true, tipoCliente: true, creditoHabilitado: true },
+  });
+  if (existente !== null) {
+    if (existente.tipoCliente !== "CREDITO" || !existente.creditoHabilitado) {
+      console.warn(
+        `WARN: demo credit client exists (id=${existente.id}) with tipoCliente=${existente.tipoCliente} creditoHabilitado=${existente.creditoHabilitado} - left untouched (operator-owned).`,
+      );
+    }
+    return existente.id;
+  }
+  const created = await db.cliente.create({
+    data: {
+      empresaId,
+      ...CLIENTE_CREDITO_DEMO,
+      esConsumidorFinal: false,
+    },
+  });
+  return created.id;
 }
 
 /**
@@ -600,7 +653,8 @@ export async function bootstrapCloudStructural(
       // 4. Supabase Auth row (synthetic email; password bcrypt-hashed in DB).
       const authCreado = await asegurarAuthUserAdmin(tx, contrasenaPlano, esquemaPgcrypto);
 
-      // 5. Demo business data: CATEGORIA → PRODUCTO → INVENTARIO (+ AJUSTE).
+      // 5. Demo business data: CATEGORIA → PRODUCTO → INVENTARIO (+ AJUSTE),
+      //    plus the demo CREDITO client (cobros flows + E2E preconditions).
       const categoriaId = await asegurarCategoriaDemo(tx, empresa.id);
       const productoId = await asegurarProductoArrozDemo(tx, empresa.id, categoriaId);
       const inventario = await asegurarInventarioInicial(
@@ -610,6 +664,7 @@ export async function bootstrapCloudStructural(
         productoId,
         usuario.id,
       );
+      const clienteCreditoId = await asegurarClienteCreditoDemo(tx, empresa.id);
 
       return {
         rolesCreados: roles.size,
@@ -621,6 +676,7 @@ export async function bootstrapCloudStructural(
         authUserCreado: authCreado,
         productoId,
         inventarioCreado: inventario.creado,
+        clienteCreditoId,
       };
     },
     // Review finding R3-1: an interactive transaction against the remote
@@ -668,6 +724,7 @@ async function main(): Promise<void> {
         `  CATEGORIA     ("${CATEGORIA_DEMO.nombre}")`,
         `  PRODUCTO      id=${String(conteo.productoId)} ("${PRODUCTO_ARROZ.nombre}" ${PRODUCTO_ARROZ.codigo}, ITBIS ${PRODUCTO_ARROZ.tasaItbis})`,
         `  INVENTARIO    ${conteo.inventarioCreado ? "created" : "already existed â€” quantity untouched"} (${STOCK_INICIAL_LIBRAS_ARROZ} Libra @ "${SUCURSAL_DEMO.nombre}")`,
+        `  CLIENTE       id=${String(conteo.clienteCreditoId)} ("${CLIENTE_CREDITO_DEMO.nombre}" ${CLIENTE_CREDITO_DEMO.tipoCliente}, limite ${CLIENTE_CREDITO_DEMO.limiteCredito}/plazo ${CLIENTE_CREDITO_DEMO.plazoCreditoDias}d)`,
         "",
         "Follow-up seeds (operator, same privileged connection):",
         "  pnpm seed:ncf && pnpm seed:retencion && pnpm seed:venta && pnpm seed:cliente && pnpm config:verify",
