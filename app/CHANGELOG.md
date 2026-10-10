@@ -1,3 +1,9 @@
+## [0.14.1](https://github.com/Wilfredery/SystemFact/compare/v0.14.0...v0.14.1) (2026-10-10)
+
+### Bug Fixes
+
+* **db:** migration function_search_path_lockdown - pins search_path='' on both lint-0011-flagged trigger functions (systemfact_audit_readonly, systemfact_usuario_auth_user_id_no_null). Rollback via RESET search_path documented.
+
 ## [0.14.0](https://github.com/Wilfredery/SystemFact/compare/v0.13.0...v0.14.0) (2026-10-10)
 
 ### Features
