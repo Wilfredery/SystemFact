@@ -21,7 +21,10 @@ param(
 $ErrorActionPreference = "Stop"
 if ($ProjectRef -notmatch '^[a-z0-9]{20}$') { throw "ProjectRef no parece un ref de Supabase (20 alfanumerico): '$ProjectRef'" }
 
+# Walk UP to the repo's app/ dir (tsx + prisma resolve paths relative to it).
 $appDir = $PSScriptRoot
+while ((Split-Path $appDir -Leaf) -ne "app") { $appDir = Split-Path $appDir }
+if ((Split-Path $appDir -Leaf) -ne "app") { throw "Could not locate the app/ directory from $PSScriptRoot" }
 Push-Location (Resolve-Path $appDir)
 try {
   Write-Host "== Supabase prod connection diagnostic ==" -ForegroundColor Cyan
