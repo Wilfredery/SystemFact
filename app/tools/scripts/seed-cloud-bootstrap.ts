@@ -5,31 +5,31 @@
  *   Creates the MINIMUM structural skeleton so the app can boot on the Supabase
  *   production project and the E2E specs find their preconditions:
  *     - ROL catalog rows for the four role names the app recognizes everywhere
- *       (Administrador / Operador / Cobrador / Despachador — the "seeded
+ *       (Administrador / Operador / Cobrador / Despachador â€” the "seeded
  *       catalog" named at src/modules/reportes/domain/roles.ts; the role gates
- *       in venta/cobros/cliente/producto/… match these exact strings).
- *     - DEMO EMPRESA (facturaAutomatica=true — R-F1 confirm gate, asserted by
+ *       in venta/cobros/cliente/producto/â€¦ match these exact strings).
+ *     - DEMO EMPRESA (facturaAutomatica=true â€” R-F1 confirm gate, asserted by
  *       e2e/confirm-venta.spec.ts and e2e/devolucion.spec.ts preconditions).
  *     - DEMO main SUCURSAL for that empresa.
  *     - ADMIN USUARIO (nombreUsuario = ADMIN_USUARIO) + USUARIO_ROL
  *       (Administrador). `authUserId` stays NULL: the app binds it on the first
  *       successful login (ADR-014).
  *     - Matching auth.users row: synthetic email `buildSyntheticEmail(admin)`
- *       (ADR-014 — email is never a credential), bcrypt password hash computed
+ *       (ADR-014 â€” email is never a credential), bcrypt password hash computed
  *       IN THE DATABASE with pgcrypto `crypt(..., gen_salt('bf', 10))` (cost 10
  *       = GoTrue's default), confirmed/created/updated timestamps set sane.
  *       auth.users rows are outside the app role's reach, so the script MUST
  *       connect via a PRIVILEGED connection (see below).
- *     - Demo CATEGORIA + PRODUCTO "Arroz" (codigo ARROZ-001, ITBIS 18% — the
+ *     - Demo CATEGORIA + PRODUCTO "Arroz" (codigo ARROZ-001, ITBIS 18% â€” the
  *       per-product DB-sourced rate and validity window required by
  *       preparar-lineas-venta.ts `TASA_ITBIS_VIGENCIA_FALTA`; V1 POS E2E_PRODUCT
  *       default) and its initial INVENTARIO stock at the main branch (with the
  *       AJUSTE MOVIMIENTO_INVENTARIO trail AGENTS.md mandates for EVERY stock
  *       change).
  *
- * WHAT IT DOES NOT DO — follow-up seeds the operator runs AFTERWARD (same
+ * WHAT IT DOES NOT DO â€” follow-up seeds the operator runs AFTERWARD (same
  *   privileged connection style), in this order:
- *     pnpm seed:ncf        (B01/B02/B04 ranges — e2e needs B01/B02 AND B04)
+ *     pnpm seed:ncf        (B01/B02/B04 ranges â€” e2e needs B01/B02 AND B04)
  *     pnpm seed:retencion  (ISR/ITBIS retention keys)
  *     pnpm seed:venta      (DESC_MAX, PLAZO_DEVOLUCION, RETROACTIVO_FECHA_VENTA_DIAS)
  *     pnpm seed:cliente    (per-empresa Consumidor Final)
@@ -39,7 +39,7 @@
  * CONNECTION (privileged, hidden-input)
  *   The bootstrap reads PROD_PRIVILEGED_URL first (operator `postgres` clone of
  *   DIRECT_URL), then DIRECT_URL, then DATABASE_URL (local/dev parity with the
- *   other seeds). Never pass secrets on a command line — use the launcher,
+ *   other seeds). Never pass secrets on a command line â€” use the launcher,
  *   which mirrors supabase-prod-migrate.ps1's hidden-input handling:
  *     powershell -ExecutionPolicy Bypass -File app/tools/scripts/seed-cloud-bootstrap-prod.ps1
  *   It probes the known pooler hosts with the repo's prod-connection-diag.ts,
@@ -51,11 +51,11 @@
  * IDEMPOTENCY (re-running CHANGES NOTHING)
  *   Every step is find-or-create or a no-op-update upsert
  *   (the Prisma equivalent of ON CONFLICT DO NOTHING/UPDATE-only):
- *   ROLES by nombre (no unique in schema — findFirst, fixtures precedent),
+ *   ROLES by nombre (no unique in schema â€” findFirst, fixtures precedent),
  *   EMPRESA by unique rnc, SUCURSAL by empresaId+nombre, USUARIO by unique
  *   nombreUsuario, USUARIO_ROL by its compound PK (update: {}), CATEGORIA by
  *   (empresaId, nombre), PRODUCTO by (empresaId, codigo), INVENTARIO by
- *   (sucursalId, productoId) — and an EXISTING auth.users row is neither
+ *   (sucursalId, productoId) â€” and an EXISTING auth.users row is neither
  *   modified nor deleted (existence check on lower(email), partially-unique
  *   index users_email_partial_key). If the DB already had an inventory row
  *   with consumed stock, the seed only WARNS: it never silently tops the
@@ -64,9 +64,13 @@
  * SECURITY / SECRETS
  *   The plaintext password exists ONLY as a bound query parameter inside the
  *   bcrypt computation; it is never logged (and no password CONTAINING output
- *   is printed). USUARIO.passwordHash receives the SAME bcrypt hash purely as
- *   an informational column — the app no longer authenticates against it;
- *   Supabase Auth owns the password (ADR-014).
+ *   is printed). auth.users.encrypted_password receives the REAL hash (GoTrue
+ *   owns the login; ADR-014). USUARIO.passwordHash NEVER receives it: the app
+ *   no longer authenticates against that column, so it stores the bcrypt of a
+ *   RANDOM in-database value instead - a dead-format placeholder that cannot be
+ *   replayed anywhere if the USUARIO table ever leaks. If an existing row still
+ *   carries a hash that crypt-verifies against the live password, the seed
+ *   replaces it with the random placeholder (one-way remediation).
  *
  * CLI-only wiring (parity with seed-ncf.ts): the async work runs under main()
  * invoked from the argv gate, so unit opportunities here stay import-safe; no
@@ -74,6 +78,7 @@
  */
 
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
@@ -90,7 +95,7 @@ export const ADMIN_NOMBRE = "Administrador demo";
 /** Minimum length mirrored from GoTrue's default password policy. */
 export const ADMIN_PASSWORD_MIN_LONGITUD = 8;
 
-/** Demo tenant — R-F1 emit-on-confirm ON so the POS/E2E gate passes. */
+/** Demo tenant â€” R-F1 emit-on-confirm ON so the POS/E2E gate passes. */
 export const EMPRESA_DEMO = {
   nombreComercial: "SistemaFact Demo",
   rnc: "131000002", // mod-11 VALID 9-digit demo RNC (shared/domain/fiscal-id.ts)
@@ -111,7 +116,7 @@ export const SUCURSAL_DEMO = {
 } as const;
 
 /**
- * Role catalog — the four `ROL.nombre` values the app code matches against
+ * Role catalog â€” the four `ROL.nombre` values the app code matches against
  * (reportes/domain/roles.ts `ROL` map; subsystem shared.ts ROLES_* arrays).
  * Descriptions mirror docs/04-rolesPermisosFact.md.
  */
@@ -125,11 +130,11 @@ export const ROLES_CATALOGO: readonly {
   },
   {
     nombre: "Operador",
-    descripcion: "Operación completa en su sucursal asignada (venta, clientes, productos, inventario, cobros)",
+    descripcion: "OperaciÃ³n completa en su sucursal asignada (venta, clientes, productos, inventario, cobros)",
   },
   {
     nombre: "Cobrador",
-    descripcion: "Módulo Cobros y reportes CxC en su sucursal asignada",
+    descripcion: "MÃ³dulo Cobros y reportes CxC en su sucursal asignada",
   },
   {
     nombre: "Despachador",
@@ -151,7 +156,7 @@ export const PRODUCTO_ARROZ = {
   precioCompra: "25.00",
   precioVenta: "40.00",
   costoPromedio: "25.00",
-  /** ITBIS 18% — Ley 224-06 general rate (domain enum allows 0/16/18). */
+  /** ITBIS 18% â€” Ley 224-06 general rate (domain enum allows 0/16/18). */
   tasaItbis: "18.00",
 } as const;
 
@@ -170,6 +175,8 @@ export const PRODUCTO_ITBIS_VIGENTE_DESDE = new Date("2000-01-01T00:00:00.000Z")
 export interface BootstrapConteo {
   rolesCreados: number;
   empresaId: number;
+  /** The stored flag of the resolved empresa — log reports it verbatim (R3-2). */
+  facturaAutomatica: boolean;
   sucursalId: number;
   usuarioId: number;
   usuarioCreado: boolean;
@@ -179,7 +186,7 @@ export interface BootstrapConteo {
 }
 
 // ============================================================================
-// pgcrypto helpers (bcrypt INSIDE the database — no Node dependency needed)
+// pgcrypto helpers (bcrypt INSIDE the database â€” no Node dependency needed)
 // ============================================================================
 
 const PATRON_IDENT = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -200,7 +207,7 @@ async function obtenerEsquemaPgcryptoEnTx(db: PrismaTx): Promise<string> {
   const esquema = filas[0]?.esquema;
   if (esquema === undefined) {
     throw new Error(
-      "seed-cloud-bootstrap: pgcrypto is not installed — enable it on the Supabase project (Dashboard → Database → Extensions) and retry",
+      "seed-cloud-bootstrap: pgcrypto is not installed â€” enable it on the Supabase project (Dashboard â†’ Database â†’ Extensions) and retry",
     );
   }
   if (!PATRON_IDENT.test(esquema)) {
@@ -214,8 +221,9 @@ async function obtenerEsquemaPgcryptoEnTx(db: PrismaTx): Promise<string> {
 /**
  * Computes the GoTrue-compatible bcrypt hash of the plaintext INSIDE the
  * database (pgcrypto crypt, cost 10): the plaintext rides a bound parameter
- * and only the hash comes back, never the reverse. The hash string feeds BOTH
- * auth.users.encrypted_password and USUARIO.passwordHash.
+ * and only the hash comes back, never the reverse. The hash feeds ONLY
+ * auth.users.encrypted_password - USUARIO.passwordHash takes the dead random
+ * placeholder (hashMuertoAleatorioEnTx).
  */
 async function generarHashBcryptAdminEnTx(
   db: PrismaTx,
@@ -226,7 +234,26 @@ async function generarHashBcryptAdminEnTx(
     select ${Prisma.raw(`"${esquema}".`)}crypt(${sencilla}, ${Prisma.raw(`"${esquema}".`)}gen_salt('bf', 10)) as hash`;
   const hash = filas[0]?.hash;
   if (hash === undefined) {
-    throw new Error("seed-cloud-bootstrap: pgcrypto crypt() returned no row — extension broken?");
+    throw new Error("seed-cloud-bootstrap: pgcrypto crypt() returned no row â€” extension broken?");
+  }
+  return hash;
+}
+
+/**
+ * Dead placeholder for USUARIO.passwordHash: the bcrypt of RANDOM in-database
+ * bytes (pgcrypto gen_random_bytes). Keeps the column's historical format
+ * (bcrypt) while guaranteeing it is NOT a replayable credential -$2b$10$ salt
+ * prefix of a value that exists nowhere else. Reuses the same pgcrypto schema
+ * resolved by resolverEsquemaPgcrypto.
+ */
+async function hashMuertoAleatorioEnTx(db: PrismaTx, esquema: string): Promise<string> {
+  const filas = await db.$queryRaw<Array<{ hash: string }>>`
+    select ${Prisma.raw(`"${esquema}".`)}crypt(
+             encode(${Prisma.raw(`"${esquema}".`)}gen_random_bytes(24), 'hex'),
+             ${Prisma.raw(`"${esquema}".`)}gen_salt('bf', 10)) as hash`;
+  const hash = filas[0]?.hash;
+  if (hash === undefined) {
+    throw new Error("seed-cloud-bootstrap: pgcrypto crypt() returned no row - extension broken?");
   }
   return hash;
 }
@@ -235,7 +262,7 @@ async function generarHashBcryptAdminEnTx(
 // Structural steps (each one find-or-create; ordered for referential integrity)
 // ============================================================================
 
-/** Seed the ROL catalog. ROL.nombre is NOT unique — find-or-create (fixtures precedent). */
+/** Seed the ROL catalog. ROL.nombre is NOT unique â€” find-or-create (fixtures precedent). */
 async function asegurarRolesBase(db: PrismaTx): Promise<Map<string, number>> {
   const map = new Map<string, number>();
   for (const rol of ROLES_CATALOGO) {
@@ -262,7 +289,7 @@ async function asegurarEmpresaDemo(
   return { id: creada.id, facturaAutomatica: creada.facturaAutomatica };
 }
 
-/** Find-or-create the demo SUCURSAL (no unique key — empresaId + nombre probe). */
+/** Find-or-create the demo SUCURSAL (no unique key â€” empresaId + nombre probe). */
 async function asegurarSucursalDemo(db: PrismaTx, empresaId: number): Promise<number> {
   const existente = await db.sucursal.findFirst({
     where: { empresaId, nombre: SUCURSAL_DEMO.nombre },
@@ -274,23 +301,41 @@ async function asegurarSucursalDemo(db: PrismaTx, empresaId: number): Promise<nu
 
 /**
  * Find-or-create the ADMIN USUARIO (unique nombreUsuario). Never updates an
- * existing user (password, empresa or binding are operator-owned after all).
+ * existing user's password/empresa/binding (operator-owned). EXCEPTION: if an
+ * EXISTING row's passwordHash crypt-verifies against the live password, it is
+ * replaced with the random non-reusable placeholder (security hygiene: a
+ * copied live credential must never sit in an app-side table; see header).
  */
 async function asegurarUsuarioAdmin(
   db: PrismaTx,
   empresaId: number,
   sucursalId: number,
-  hashBcrypt: string,
+  contrasenaViva: string,
+  esquema: string,
 ): Promise<{ id: number; creado: boolean; empresaId: number }> {
   const existente = await db.usuario.findFirst({
     where: { nombreUsuario: ADMIN_USUARIO },
-    select: { id: true, empresaId: true },
+    select: { id: true, empresaId: true, passwordHash: true },
   });
   if (existente !== null) {
     if (existente.empresaId !== empresaId) {
       console.warn(
-        `WARN: USUARIO "${ADMIN_USUARIO}" exists in empresa ${existente.empresaId} (demo empresa is ${empresaId}) — reused untouched.`,
+        `WARN: USUARIO "${ADMIN_USUARIO}" exists in empresa ${existente.empresaId} (demo empresa is ${empresaId}) - reused untouched.`,
       );
+    }
+    const guardado = existente.passwordHash;
+    if (guardado !== null && guardado !== "") {
+      const filas = await db.$queryRaw<Array<{ coincide: boolean }>>`
+        select ${guardado} = crypt(${contrasenaViva}, ${guardado}) as coincide`;
+      if (filas[0]?.coincide === true) {
+        await db.usuario.update({
+          where: { id: existente.id },
+          data: { passwordHash: await hashMuertoAleatorioEnTx(db, esquema) },
+        });
+        console.warn(
+          `WARN: USUARIO.passwordHash held the LIVE credential hash - replaced with the random non-reusable placeholder.`,
+        );
+      }
     }
     return { id: existente.id, creado: false, empresaId: existente.empresaId };
   }
@@ -300,7 +345,7 @@ async function asegurarUsuarioAdmin(
       sucursalId,
       nombre: ADMIN_NOMBRE,
       nombreUsuario: ADMIN_USUARIO,
-      passwordHash: hashBcrypt,
+      passwordHash: await hashMuertoAleatorioEnTx(db, esquema),
       roles: { create: { rolId: (await rolAdministradorId(db)).id } },
     },
   });
@@ -319,7 +364,7 @@ async function rolAdministradorId(db: PrismaTx): Promise<{ id: number }> {
 
 /**
  * Guarantees the ADMIN USUARIO is bound to the Administrador role through the
- * USUARIO_ROL compound PK — no-op-update upsert, safe on re-run.
+ * USUARIO_ROL compound PK â€” no-op-update upsert, safe on re-run.
  */
 async function asegurarRolAdmin(db: PrismaTx, usuarioId: number): Promise<void> {
   const rol = await rolAdministradorId(db);
@@ -353,26 +398,75 @@ async function asegurarAuthUserAdmin(
      limit 1`;
   if (existentes.length > 0) {
     console.warn(
-      `WARN: auth.users already holds "${correo}" — left untouched (no modification, no update).`,
+      `WARN: auth.users already holds "${correo}" â€” left untouched (no modification, no update).`,
     );
     return false;
   }
 
   const hash = await generarHashBcryptAdminEnTx(db, sencillaPlano, esquemaPgcrypto);
   const instante = new Date();
+  // GoTrue's current schema gives `id` NO default (Supabase Admin API
+  // generates the UUID server-side), so this seed supplies its own v4 UUID.
+  const authUserId = randomUUID();
   await db.$executeRaw`
     insert into auth.users
-      (aud, role, email, encrypted_password,
-       email_confirmed_at, confirmed_at,
+      (id, aud, role, email, encrypted_password,
+       email_confirmed_at,
        raw_app_meta_data, raw_user_meta_data,
        is_super_admin, is_sso_user, is_anonymous,
        created_at, updated_at)
     values
-      ('authenticated', 'authenticated', ${correo}, ${hash},
-       ${instante}, ${instante},
+      (${authUserId}::uuid,
+       'authenticated', 'authenticated', ${correo}, ${hash},
+       ${instante},
        '{"provider":"email"}'::jsonb, '{}'::jsonb,
        false, false, false,
        ${instante}, ${instante})`;
+
+  // Sanity invariants on the inserted row (log-only; read AFTER the insert so
+  // any drift between the GoTrue columns and this seed surfaces immediately).
+  const verificados = await db.$queryRaw<Array<{ confirmada: boolean }>>`
+    select confirmed_at is not null as confirmada
+      from auth.users
+     where lower(email) = ${correo}
+     limit 1`;
+  if (verificados[0]?.confirmada !== true) {
+    throw new Error(
+      "seed-cloud-bootstrap: auth.users row inserted but confirmed_at is not derived — check the GoTrue generated-column schema",
+    );
+  }
+
+  // GoTrue resolves the sign-in provider THROUGH auth.identities: a users row
+  // without the matching email identity fails password grant with "invalid
+  // credentials" (documented GoTrue behavior; observed 2026-10-10 on prod).
+  await db.$executeRaw`
+    insert into auth.identities
+      (user_id, provider_id, provider, identity_data, last_sign_in_at, created_at, updated_at)
+    select u.id, 'email', 'email',
+           jsonb_build_object('sub', u.id::text, 'email', u.email),
+           u.created_at, u.created_at, u.created_at
+      from auth.users u
+     where lower(u.email) = ${correo}
+       and not exists (
+         select 1 from auth.identities i
+          where i.user_id = u.id and i.provider_id = 'email')`;
+
+  // GoTrue's Go-side row scan maps all token STRING columns with
+  // "convert NULL to string is unsupported" semantics (observed prod log:
+  // "error finding user: Scan error on column index 3, name 
+  // \"confirmation_token\""): a users row with NULL tokens is unreadable and
+  // the password grant 500s. The working rows carry '' for all of them.
+  await db.$executeRaw`
+    update auth.users
+       set confirmation_token = '',
+           recovery_token = '',
+           email_change_token_new = '',
+           email_change_token_current = '',
+           reauthentication_token = '',
+           phone_change_token = '',
+           email_change = '',
+           instance_id = '00000000-0000-0000-0000-000000000000'
+     where lower(email) = ${correo}`;
   return true;
 }
 
@@ -419,7 +513,7 @@ async function asegurarProductoArrozDemo(
 /**
  * Find-or-create the initial INVENTARIO row for the demo product at the main
  * branch. The create branch leaves the AJUSTE MOVIMIENTO_INVENTARIO trace
- * AGENTS.md requires for EVERY stock change (delta 0 → initial quantity); the
+ * AGENTS.md requires for EVERY stock change (delta 0 â†’ initial quantity); the
  * existing-row branch NEVER touches `cantidad` (only warns when below usable).
  */
 async function asegurarInventarioInicial(
@@ -436,7 +530,7 @@ async function asegurarInventarioInicial(
   if (existente !== null) {
     if (existente.cantidad.lessThan(new Prisma.Decimal("1.000"))) {
       console.warn(
-        `WARN: INVENTARIO exists with cantidad=${existente.cantidad.toString()} (empresa ${empresaId}) — e2e needs >= 1; topped up NOT applied (never masks a real sale).`,
+        `WARN: INVENTARIO exists with cantidad=${existente.cantidad.toString()} (empresa ${empresaId}) â€” e2e needs >= 1; topped up NOT applied (never masks a real sale).`,
       );
     }
     return { creado: false, cantidadActual: existente.cantidad.toString() };
@@ -477,47 +571,64 @@ export async function bootstrapCloudStructural(
       `seed-cloud-bootstrap: ADMIN_PASSWORD must be at least ${ADMIN_PASSWORD_MIN_LONGITUD} chars (nothing was sent to the DB)`,
     );
   }
-  return db.$transaction(async (tx) => {
-    // Guards first, before any business write (fail-fast, zero writes).
-    const esquemaPgcrypto = await obtenerEsquemaPgcryptoEnTx(tx);
+  // Rollback-on-failure needs the FULL interactive transaction to survive a
+  // remote session pooler: defaults (5s) were rated a real abort risk against
+  // the Supabase prod pooler latency (review R3-1), so override with 60s.
+  const conteo: BootstrapConteo = await db.$transaction(
+    async (tx: PrismaTx): Promise<BootstrapConteo> => {
+      // Guards first, before any business write (fail-fast, zero writes).
+      const esquemaPgcrypto = await obtenerEsquemaPgcryptoEnTx(tx);
 
-    // 1. ROL catalog.
-    const roles = await asegurarRolesBase(tx);
+      // 1. ROL catalog.
+      const roles = await asegurarRolesBase(tx);
 
-    // 2. Tenant skeleton: EMPRESA → SUCURSAL.
-    const empresa = await asegurarEmpresaDemo(tx);
-    const sucursalId = await asegurarSucursalDemo(tx, empresa.id);
+      // 2. Tenant skeleton: EMPRESA → SUCURSAL.
+      const empresa = await asegurarEmpresaDemo(tx);
+      const sucursalId = await asegurarSucursalDemo(tx, empresa.id);
 
-    // 3. Admin USUARIO + USUARIO_ROL (Administrador).
-    const hashBcrypt = await generarHashBcryptAdminEnTx(tx, contrasenaPlano, esquemaPgcrypto);
-    const usuario = await asegurarUsuarioAdmin(tx, empresa.id, sucursalId, hashBcrypt);
-    await asegurarRolAdmin(tx, usuario.id);
+      // 3. Admin USUARIO + USUARIO_ROL (Administrador). auth.users keeps the
+      //    real hash; USUARIO.passwordHash stores the dead random placeholder.
+      const usuario = await asegurarUsuarioAdmin(
+        tx,
+        empresa.id,
+        sucursalId,
+        contrasenaPlano,
+        esquemaPgcrypto,
+      );
+      await asegurarRolAdmin(tx, usuario.id);
 
-    // 4. Supabase Auth row (synthetic email; password bcrypt-hashed in DB).
-    const authCreado = await asegurarAuthUserAdmin(tx, contrasenaPlano, esquemaPgcrypto);
+      // 4. Supabase Auth row (synthetic email; password bcrypt-hashed in DB).
+      const authCreado = await asegurarAuthUserAdmin(tx, contrasenaPlano, esquemaPgcrypto);
 
-    // 5. Demo business data: CATEGORIA → PRODUCTO → INVENTARIO (+ AJUSTE).
-    const categoriaId = await asegurarCategoriaDemo(tx, empresa.id);
-    const productoId = await asegurarProductoArrozDemo(tx, empresa.id, categoriaId);
-    const inventario = await asegurarInventarioInicial(
-      tx,
-      empresa.id,
-      sucursalId,
-      productoId,
-      usuario.id,
-    );
+      // 5. Demo business data: CATEGORIA → PRODUCTO → INVENTARIO (+ AJUSTE).
+      const categoriaId = await asegurarCategoriaDemo(tx, empresa.id);
+      const productoId = await asegurarProductoArrozDemo(tx, empresa.id, categoriaId);
+      const inventario = await asegurarInventarioInicial(
+        tx,
+        empresa.id,
+        sucursalId,
+        productoId,
+        usuario.id,
+      );
 
-    return {
-      rolesCreados: roles.size,
-      empresaId: empresa.id,
-      sucursalId,
-      usuarioId: usuario.id,
-      usuarioCreado: usuario.creado,
-      authUserCreado: authCreado,
-      productoId,
-      inventarioCreado: inventario.creado,
-    };
-  });
+      return {
+        rolesCreados: roles.size,
+        empresaId: empresa.id,
+        facturaAutomatica: empresa.facturaAutomatica,
+        sucursalId,
+        usuarioId: usuario.id,
+        usuarioCreado: usuario.creado,
+        authUserCreado: authCreado,
+        productoId,
+        inventarioCreado: inventario.creado,
+      };
+    },
+    // Review finding R3-1: an interactive transaction against the remote
+    // session pooler (bcrypt cost-10 crypt + ~20 sequential round-trips)
+    // plausibly exceeds Prisma's 5s default; 60s keeps aborts meaningful.
+    { maxWait: 10_000, timeout: 60_000 },
+  );
+  return conteo;
 }
 
 /** Parses/validates the operator envs (fail loud BEFORE any connection). */
@@ -528,13 +639,13 @@ function leerConfigOperador(): { url: string; contrasenaPlano: string } {
     process.env["DATABASE_URL"];
   if (url === undefined || !/^postgresql?:\/\//.test(url)) {
     throw new Error(
-      "seed-cloud-bootstrap: set PROD_PRIVILEGED_URL (preferred, operator postgres) or DIRECT_URL/DATABASE_URL in the env — run via seed-cloud-bootstrap-prod.ps1 (hidden input)",
+      "seed-cloud-bootstrap: set PROD_PRIVILEGED_URL (preferred, operator postgres) or DIRECT_URL/DATABASE_URL in the env â€” run via seed-cloud-bootstrap-prod.ps1 (hidden input)",
     );
   }
   const contrasenaPlano = process.env["ADMIN_PASSWORD"];
   if (contrasenaPlano === undefined || contrasenaPlano.length === 0) {
     throw new Error(
-      "seed-cloud-bootstrap: ADMIN_PASSWORD is not set — the launcher exports it from hidden input; never pass it on a command line",
+      "seed-cloud-bootstrap: ADMIN_PASSWORD is not set â€” the launcher exports it from hidden input; never pass it on a command line",
     );
   }
   return { url, contrasenaPlano };
@@ -548,15 +659,15 @@ async function main(): Promise<void> {
     const conteo = await bootstrapCloudStructural(db, contrasenaPlano);
     console.log(
       [
-        "OK: bootstrap structural completed (idempotent — re-running changes nothing):",
+        "OK: bootstrap structural completed (idempotent â€” re-running changes nothing):",
         `  ROL           ${String(conteo.rolesCreados)} created / ${String(ROLES_CATALOGO.length)} total`,
-        `  EMPRESA       id=${String(conteo.empresaId)} (facturaAutomatica=true, demo "SistemaFact Demo")`,
+        `  EMPRESA       id=${String(conteo.empresaId)} (facturaAutomatica=${String(conteo.facturaAutomatica)}, demo "SistemaFact Demo")`,
         `  SUCURSAL      id=${String(conteo.sucursalId)} ("${SUCURSAL_DEMO.nombre}")`,
         `  USUARIO       id=${String(conteo.usuarioId)} ("${ADMIN_USUARIO}", ${conteo.usuarioCreado ? "created" : "already existed"})`,
-        `  auth.users    ${conteo.authUserCreado ? "created" : "already existed — untouched"} (${buildSyntheticEmail(ADMIN_USUARIO)})`,
+        `  auth.users    ${conteo.authUserCreado ? "created" : "already existed â€” untouched"} (${buildSyntheticEmail(ADMIN_USUARIO)})`,
         `  CATEGORIA     ("${CATEGORIA_DEMO.nombre}")`,
         `  PRODUCTO      id=${String(conteo.productoId)} ("${PRODUCTO_ARROZ.nombre}" ${PRODUCTO_ARROZ.codigo}, ITBIS ${PRODUCTO_ARROZ.tasaItbis})`,
-        `  INVENTARIO    ${conteo.inventarioCreado ? "created" : "already existed — quantity untouched"} (${STOCK_INICIAL_LIBRAS_ARROZ} Libra @ "${SUCURSAL_DEMO.nombre}")`,
+        `  INVENTARIO    ${conteo.inventarioCreado ? "created" : "already existed â€” quantity untouched"} (${STOCK_INICIAL_LIBRAS_ARROZ} Libra @ "${SUCURSAL_DEMO.nombre}")`,
         "",
         "Follow-up seeds (operator, same privileged connection):",
         "  pnpm seed:ncf && pnpm seed:retencion && pnpm seed:venta && pnpm seed:cliente && pnpm config:verify",
