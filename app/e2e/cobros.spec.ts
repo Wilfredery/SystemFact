@@ -48,7 +48,7 @@ async function checkPreconditions(): Promise<void> {
     [E2E_USER],
   );
   if (user.rowCount === 0) {
-    throw new Error(`E2E_USER "${E2E_USER}" not found in the LOCAL dev DB.`);
+    throw new Error(`E2E_USER "${E2E_USER}" not found in the precondition DB (DIRECT_URL/DATABASE_URL).`);
   }
   const row = user.rows[0];
   if (row.rol !== "Administrador" && row.rol !== "Operador") {

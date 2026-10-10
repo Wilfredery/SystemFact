@@ -58,8 +58,8 @@ async function checkPreconditions(): Promise<void> {
   );
   if (user.rowCount === 0) {
     throw new Error(
-      `E2E_USER "${E2E_USER}" not found in the LOCAL dev DB (postgres @ :5433). ` +
-        `Create the user row, then run pnpm seed:venta && pnpm seed:ncf && pnpm seed:cliente.`,
+      `E2E_USER "${E2E_USER}" not found in the precondition DB (DIRECT_URL/DATABASE_URL). ` +
+        `Create the user row there, then run pnpm seed:venta && pnpm seed:ncf && pnpm seed:cliente.`,
     );
   }
   const row = user.rows[0];
@@ -172,7 +172,10 @@ test.describe("devolucion smoke (fase-5d task 2.3)", () => {
     await page.getByLabel(new RegExp(`Qty to return for ${E2E_PRODUCT}`)).fill("1");
     await page.getByRole("button", { name: "Emit credit note" }).click();
 
-    const status = page.getByRole("status");
+    // The page may hold TWO status banners at this moment (the persisting
+    // "Sale #N confirmed" poster and the fresh NC poster). getByRole("status")
+    // alone is a strict-mode violation, so anchor to the NC text itself.
+    const status = page.getByText(/Credit note NC #\d+ issued/);
     await expect(status).toContainText(/Credit note NC #\d+ issued — NCF B0400000\d+/);
     const statusText = (await status.textContent())!;
     const ncNcf = statusText.match(/NCF (B0400000\d+)/)![1];

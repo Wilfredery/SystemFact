@@ -52,8 +52,8 @@ async function checkPreconditions(): Promise<void> {
   );
   if (user.rowCount === 0) {
     throw new Error(
-      `E2E_USER "${E2E_USER}" not found in the LOCAL dev DB (postgres @ :5433). ` +
-        `Create the user row, then run pnpm seed:venta && pnpm seed:ncf && pnpm seed:cliente.`,
+      `E2E_USER "${E2E_USER}" not found in the precondition DB (DIRECT_URL/DATABASE_URL). ` +
+        `Create the user row there, then run pnpm seed:venta && pnpm seed:ncf && pnpm seed:cliente.`,
     );
   }
   const row = user.rows[0];

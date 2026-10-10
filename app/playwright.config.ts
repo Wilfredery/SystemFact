@@ -32,6 +32,11 @@ export default defineConfig({
     baseURL,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    // Vercel Authentication (SSO) blocks headless browsers on the protected
+    // deployment; an automation-bypass secret is accepted via this header.
+    ...(process.env.E2E_PROTECTION_BYPASS
+      ? { extraHTTPHeaders: { "x-vercel-protection-bypass": process.env.E2E_PROTECTION_BYPASS } }
+      : {}),
   },
   projects: [
     {
