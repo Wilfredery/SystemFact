@@ -1,3 +1,9 @@
+## [0.12.2](https://github.com/Wilfredery/SystemFact/compare/v0.12.1...v0.12.2) (2026-10-10)
+
+### Chores
+
+* **deploy:** add .vercelignore excluding the local .env (localhost dev values) from Vercel CLI deploys, so the private preview project (wilfrederys-projects/systemfact, SSO-protected, no git connection) never carries local service credentials; cloud DB/auth values live as encrypted Vercel env vars. Closes the deferred-Vercel private-preview checklist (OpenSpec deploy-vercel-pending-frontend).
+
 # Changelog
 
 ## [0.12.1](https://github.com/Wilfredery/SystemFact/compare/v0.12.0...v0.12.1) (2026-10-10)
