@@ -1,6 +1,47 @@
 # Proposal: Deploy to Vercel (deferred until frontend advances)
 
-## Status: DEFERRED (user decision, 2026-10-10)
+## Status: RESUMED — private preview setup COMPLETE (2026-10-10, PM session)
+
+The user re-opened this and completed a **private, SSO-protected next half** of the plan:
+project `wilfrederys-projects/systemfact` created and validated end-to-end.
+The original decision remains in force for the **public final deployment** (stays deferred
+until frontend is more advanced; see engram `deployment/vercel-deferred-update-2026-10-10`,
+completed on page 7).
+
+What landed (this session, verified):
+- Vercel CLI 63.1.0 installed with **pnpm** (global; user policy: never npm).
+- `.vercel/project.json` link under `app/`; **git connection disconnected immediately**
+  (`vercel git disconnect --yes`) — divergence from the original checklist: the user chose
+  CLI/agent local deploys so GitHub shows zero Vercel deployment traces.
+- `.vercelignore` = `.env` landed via PR #101 (branch `chore/vercelignore-env`) so local
+  `.env` (localhost values) never rides an upload again. NOTE: `.env.local` gets rewritten
+  with only `VERCEL_OIDC_TOKEN` by `vercel link` — local real secrets live in `app/.env`.
+- 4 env vars wired on **Production + Preview**: the two Supabase public vars (Config type —
+  Vercel refuses `NEXT_PUBLIC_*` as Secret) and the two DB URLs (Secret type) re-pointed
+  from local `localhost:5433` to the **cloud session/transaction pooler** with tenant
+  username form `systemfact_app.tcyxwkcrmontkrtbyxfm` on `aws-1-us-east-2.pooler.supabase.com`
+  (runtime `:6543`, `DIRECT_URL` `:5432`, `sslmode=require`).
+- `systemfact_app` role password on Supabase production synced (same value as local config)
+  so one connection string works for dev + cloud. Connection verified from the build machine
+  side: `pg` connect OK on both `:6543` and `:5432`.
+- Production deploy `8xb1xkwnh` aliased to `https://systemfact.vercel.app` with Vercel
+  Authentication ON; smoke: `/login` 200, `/dashboard` 307 to login.
+- Deployment-protection bypass tokens: generated automatically on `vercel curl` (log noise).
+- Non-interactive env recipe: `vercel env add KEY <env> --value X --type secret --force --yes`.
+- MCP Vercel OAuth cache cleared (`~\.local\share\opencode\mcp-auth.json`), vercel-entry only:
+  the grant pre-dated the auto-created team so it lacked scope; next opencode session
+  re-authenticates in browser on first Vercel tool call.
+
+Divergences from the original checklist (documented honestly):
+- Item 2 replaced: no GitHub import — CLI-only deploys, no PR checks.
+- `DIRECT_URL` uses `systemfact_app` (not the privileged `postgres` role) because the
+  privileged password stays human-owned; migrations keep running from the operator's
+  machine via the `tools/scripts/*` launcher, not from cloud builds.
+- Pooler strings use `sslmode=require` without `pgbouncer=true`; if runtime Prisma ever
+  reports prepared-statement conflicts against the transaction pooler, append
+  `&pgbouncer=true` and redeploy (open follow-up).
+
+## Original DEFERRED block (historical, user decision 2026-10-10 morning)
 
 The user explicitly decided to **pause the Vercel deployment** and resume it when
 frontend work is further along. Motivation: "when the frontend is more advanced,
