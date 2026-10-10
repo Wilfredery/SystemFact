@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/Wilfredery/SystemFact/compare/v0.12.0...v0.12.1) (2026-10-10)
+
+### Chores
+
+* **db:** add the production-migration operator tooling — `tools/scripts/supabase-prod-migrate.ps1` (hidden-input password launcher with session-pooler host auto-discovery) + `tools/scripts/set-prod-app-role.ts` (runtime role password via charset-whitelisted `ALTER ROLE`, never persisted), `tools/scripts/prod-connection-diag.{ts,ps1}` (verbose connection probe with AUTH/NET/DBS/OTHER failure classes), and the tsx-CJS `main()`/path fixes that made them run. Tooling only; no runtime code changes.
+* **deployment:** record the deferred-Vercel resume checklist in OpenSpec (`openspec/changes/deploy-vercel-pending-frontend/proposal.md`): confirmed Supabase production state (15 migrations incl. NCF BigInt, FORCE RLS 25/25, registry-only recoveries documented in `_prisma_migrations.logs`), the exact 4 Vercel env vars, working session-pooler host and post-deploy validation sequence.
+
 ## [0.12.0](https://github.com/Wilfredery/SystemFact/compare/v0.11.38...v0.12.0) (2026-10-09)
 
 ### Features
