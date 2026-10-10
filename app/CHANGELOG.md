@@ -1,3 +1,9 @@
+## [0.14.2](https://github.com/Wilfredery/SystemFact/compare/v0.14.1...v0.14.2) (2026-10-10)
+
+### Bug Fixes
+
+* **db:** verify-full TLS to the Supabase pooler: embed the official `prod-ca-2021.crt` (SHA-256 pinned) and pass explicit `ssl {ca, rejectUnauthorized: true, minVersion TLSv1.2}` through `@prisma/adapter-pg`, replacing the sslmode=require + uselibpqcompat (encrypted but UNVERIFIED) posture. Requires the operator launcher `tools/scripts/harden-cloud-tls.ps1` to scrub the TLS query params from the Vercel DATABASE_URL/DIRECT_URL (pg 8.23 DSN parse overrides the explicit ssl object).
+
 ## [0.14.1](https://github.com/Wilfredery/SystemFact/compare/v0.14.0...v0.14.1) (2026-10-10)
 
 ### Bug Fixes
