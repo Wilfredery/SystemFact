@@ -76,13 +76,14 @@ try {
     $candidates = @("postgresql://postgres`:$pwEnc@db.$ProjectRef.supabase.co:5432/postgres") + $candidates
   }
 
-  # Dry discovery: prisma migrate status is READ-ONLY (SELECT on _prisma_migrations).
+  # Dry discovery: reuses the verbose connection probe (SELECT 1, exit 0 only
+  # on a working connection) so every candidate's result is VISIBLE on screen.
   $chosen = $null
   foreach ($c in $candidates) {
     $masked = $c -replace ":[^:@]+@", ":***@"
     Write-Host "Testing: $masked" -ForegroundColor DarkGray
     $env:DIRECT_URL = $c
-    pnpm exec prisma migrate status *> $null
+    pnpm exec tsx tools/scripts/prod-connection-diag.ts
     if ($LASTEXITCODE -eq 0) { $chosen = $c; break }
   }
   if (-not $chosen) {
