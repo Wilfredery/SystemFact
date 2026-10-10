@@ -1,3 +1,14 @@
+## [0.14.0](https://github.com/Wilfredery/SystemFact/compare/v0.13.0...v0.14.0) (2026-10-10)
+
+### Features
+
+* **e2e:** the cobros suite self-seeds its own credit sales through the validated POS UI (deterministic: no operator-curated prod state), proving revision with DB-ledger idempotency and a settled-own-invoice hygiene step; new READ-ONLY diag-cxc-prod tool reconciles the ADR-017 derived balances against raw rows.
+* **seed-bootstrap:** provisions the demo CREDITO client (Comercios Clara, limite 10000/plazo 15d) as part of the minimum flows skeleton.
+
+### Validation
+
+* Full E2E suite on the private Vercel preview: **4/4 PASS** (cobros x2, confirm-venta NCF chain, devolucion B04 cycle) - 50.4s serial.
+
 ## [0.13.0](https://github.com/Wilfredery/SystemFact/compare/v0.12.2...v0.13.0) (2026-10-10)
 
 ### Features
