@@ -1,3 +1,14 @@
+## [0.13.0](https://github.com/Wilfredery/SystemFact/compare/v0.12.2...v0.13.0) (2026-10-10)
+
+### Features
+
+* **e2e:** cloud validation tooling for the private Vercel preview (prod seed launchers, E2E cloud launcher with hidden-input secrets, TLS-parse fix helper); confirmed-venta + devolucion smokes PASS on prod, cobros explicit design-skips until a credit sale exists.
+
+### Bug Fixes
+
+* **devolucion:** drop the use-server directive from the shared helpers module (prod-only 'found object' hard-fail at first server-action invocation).
+* **seed-bootstrap:** USUARIO.passwordHash now stores a dead random bcrypt placeholder instead of a replayable copy of the live GoTrue credential; idempotent remediation for existing rows.
+
 ## [0.12.2](https://github.com/Wilfredery/SystemFact/compare/v0.12.1...v0.12.2) (2026-10-10)
 
 ### Chores
