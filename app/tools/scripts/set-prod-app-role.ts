@@ -44,13 +44,23 @@ if (!/^[A-Za-z0-9!_.~^-]{12,120}$/.test(pw)) {
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: operatorUrl }) });
 
-try {
-  // The password has already been whitelisted to a no-injection charset
-  // (see above): quotes, backslashes and semicolons are impossible, so the
-  // string-literal interpolation cannot carry a second statement or a
-  // quote-escape. ALTER ROLE has no parameterized form.
-  await prisma.$executeRawUnsafe(`ALTER ROLE systemfact_app WITH PASSWORD '${pw}'`);
-  process.stdout.write("ALTER ROLE systemfact_app: password set.\n");
-} finally {
-  await prisma.$disconnect();
+// Top-level await is NOT supported under tsx's CJS output format, so the async
+// work runs as a promise chain on a named entry function (no top-level await).
+async function main(): Promise<void> {
+  try {
+    // The password has already been whitelisted to a no-injection charset
+    // (see above): quotes, backslashes and semicolons are impossible, so the
+    // string-literal interpolation cannot carry a second statement or a
+    // quote-escape. ALTER ROLE has no parameterized form.
+    await prisma.$executeRawUnsafe(`ALTER ROLE systemfact_app WITH PASSWORD '${pw}'`);
+    process.stdout.write("ALTER ROLE systemfact_app: password set.\n");
+  } finally {
+    await prisma.$disconnect();
+  }
 }
+
+main().catch((unhandled) => {
+  process.stderr.write(`FAIL: ${unhandled instanceof Error ? unhandled.message : String(unhandled)}\n`);
+  process.exit(1);
+});
+
