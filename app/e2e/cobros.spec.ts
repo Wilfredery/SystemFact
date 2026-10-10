@@ -176,8 +176,21 @@ test.describe("cobros board + collection idempotency (fase-6 R-C7)", () => {
     // The idempotency PROOF is in the DB, not in a stale post-resolution
     // disabled flag: exactly ONE inserted row (antes+1) despite TWO click
     // events (first-click disable + single-flight guard + row lock).
-    const status = page.getByRole("status");
-    await expect(status).toContainText("Cobro registrado");
+    //
+    // NOTE (regression 2026-10-10): an earlier revision also asserted the
+    // PaymentForm's "Cobro registrado" success toast. That toast lives inside
+    // the row's PaymentForm, and the parent reload triggered by `onCobrado()`
+    // legitimately drops the fully-paid row from its bucket, unmounting the
+    // form (and the toast) whenever the canonical refetch resolves before the
+    // assertion looks. The spec (R-C7) requires disable-on-first-click plus
+    // "at most one collection persists" — NOT a long-lived toast — so the
+    // assertion is the DB commit itself, plus the visible canonical refresh.
+    await expect
+      .poll(() => contarCobros(facturaId), { timeout: 30_000 })
+      .toBe(antes + 1);
+    // The canonical derived view re-rendered: the fully-paid row left the
+    // board's active buckets, so its testid row is gone.
+    await fila.waitFor({ state: "detached", timeout: 15_000 });
 
     const despues = await contarCobros(facturaId);
     // Server revalidation + row lock: the second event can never double-collect.
@@ -209,9 +222,9 @@ test.describe("cobros board + collection idempotency (fase-6 R-C7)", () => {
     const confirmar = page.getByRole("button", { name: `Confirmar cobro factura ${facturaId}` });
     await confirmar.waitFor();
     await confirmar.click();
-    const status = page.getByRole("status");
-    await expect(status).toContainText("Cobro registrado");
-    const despues = await contarCobros(facturaId);
-    expect(despues).toBe(1);
+    // Same spec-true assertion as the double-click test: the canonical view's
+    // reload may unmount the form (and its toast) once the row is fully paid,
+    // so the proof is the DB commit — one APLICADO COBRO for this invoice.
+    await expect.poll(() => contarCobros(facturaId), { timeout: 30_000 }).toBe(1);
   });
 });

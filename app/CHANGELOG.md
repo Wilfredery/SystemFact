@@ -1,3 +1,9 @@
+## [0.14.3](https://github.com/Wilfredery/SystemFact/compare/v0.14.2...v0.14.3) (2026-10-10)
+
+### Bug Fixes
+
+* **e2e:** the cobros assertions no longer depend on the PaymentForm success toast surviving the canonical refetch — the parent reload legitimately unmounts the fully-paid row's form, and the R-C7 spec requires disable-on-first-click + at most one persisted collection (DB proof), not a long-lived toast. Trace-verified: one aborted action call + one `ok:true` + exactly one `PAGO` row (pagoId 22).
+
 ## [0.14.2](https://github.com/Wilfredery/SystemFact/compare/v0.14.1...v0.14.2) (2026-10-10)
 
 ### Bug Fixes
