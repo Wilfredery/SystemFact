@@ -111,19 +111,26 @@ export function aDecimalMonto(valor: string): Decimal {
 }
 
 /**
- * Refund bound (audit v2r-02). A refund must never exceed what the client
- * actually paid on the invoice: `cobrado = total − saldoPendiente` derived
- * from the SAME row-locked facts the canonical recompute just produced (the
- * `SaldoFacturaBloqueado` pair the locked-balance query returns). It mirrors
- * the sibling `COBRO_EXCEDE_SALDO` guard on the collection path
- * (`registrar-cobro.ts`) — but for refunds, whose balance the canonical sum
- * never sees. Pure decimal arithmetic, domain-only, no DB.
+ * Refund bound (audit run-3; supersedes the v2r-02 `total − saldoPendiente`
+ * derivation). A refund must never exceed the NET CASH the tenant actually
+ * collected on the invoice and has not yet handed back: `cobradoNeto =
+ * Σ COBRO/APLICADO − Σ committed REEMBOLSO`, computed on the SAME row-locked
+ * recompute (`bloquearYCalcularSaldoFacturaEnTx`, its `cobradoNeto` column).
+ *
+ * WHY the old bound failed: `cobrado = total − saldoPendiente` (a) excluded
+ * committed `REEMBOLSO` rows — the ADR-017 canonical balance treats refunds as
+ * non-reductions of the receivable, so `saldoPendiente` stays refund-blind — and
+ * (b) was INFLATED by VIGENTE nota-de-crédito sums (an NC shrinks
+ * `saldoPendiente`, so `total − saldoPendiente` grows past real cash). With a
+ * fresh idempotency key each time, sequential refunds each passed the identical
+ * bound: cumulative, unbounded cash-out. The new bound is the net cash actually
+ * available to return; it mirrors the sibling `COBRO_EXCEDE_SALDO` guard on the
+ * collection path (`registrar-cobro.ts`), which measures over the receivable —
+ * intentionally different. Pure decimal arithmetic, domain-only, no DB.
  */
 export function reembolsoExcedeMontoCobrado(
   monto: Decimal,
-  total: string,
-  saldoPendiente: string,
+  cobradoNeto: string,
 ): boolean {
-  const cobrado = new Decimal(total).minus(new Decimal(saldoPendiente));
-  return monto.greaterThan(cobrado);
+  return monto.greaterThan(new Decimal(cobradoNeto));
 }

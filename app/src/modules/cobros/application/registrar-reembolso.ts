@@ -11,10 +11,11 @@
  *      the receipt number is allocated (a replay burns nothing — R-C3).
  *   2. The referenced invoice must be a VIGENTE tenant invoice, else
  *      `FACTURA_COBRO_NO_VIGENTE`.
- *   2b. The refund must never exceed what the client actually paid on that
- *      invoice: `cobrado = total − saldoPendiente` derived from the SAME
- *      row-locked facts, rejected with `REEMBOLSO_EXCEDE_SALDO` BEFORE the
- *      receipt allocation (v2r-02 refund bound, mirror of `COBRO_EXCEDE_SALDO`).
+ *   2b. The refund must never exceed the NET CASH collected on that invoice
+ *      minus the refunds already committed (`cobradoNeto`, computed by the
+ *      SAME row-locked recompute), rejected with `REEMBOLSO_EXCEDE_SALDO`
+ *      BEFORE the receipt allocation (audit run-3 net-cash refund bound; the
+ *      mirror of `COBRO_EXCEDE_SALDO` on the collection path).
  *   3. Only after the key is proven fresh is a receipt allocated (empresa lock)
  *      and the `REEMBOLSO/APLICADO` row inserted, recording `autorizadoPor`.
  *   4. A concurrent first-submit that races past the pre-check is caught at the
@@ -177,16 +178,19 @@ export async function registrarReembolso(
     return buildError(FACTURA_COBRO_NO_VIGENTE);
   }
 
-  // (2b) REFUND BOUND (audit v2r-02): a refund must never exceed what the client
-  //      actually paid on this invoice. `cobrado = total − saldoPendiente` is
-  //      derived from the SAME row-locked facts the canonical recompute just
-  //      produced above; an oversized refund is rejected with the stable code
+  // (2b) REFUND BOUND (audit run-3): a refund must never exceed the NET CASH
+  //      collected on this invoice minus the refunds already committed. The
+  //      bound is `cobradoNeto` — computed by the SAME row-locked recompute
+  //      above (one extra signed sum term under the same FOR UPDATE lock) —
+  //      NOT `total − saldoPendiente`, which excluded committed refunds (the
+  //      ADR-017 balance is refund-blind) and was inflated by VIGENTE credit
+  //      notes, letting sequential fresh-key refunds drain cash unboundedly
+  //      (audit run-3). An oversized refund is rejected with the stable code
   //      BEFORE the receipt allocation, so a rejected refund burns no receipt
   //      number and writes no `PAGO` row (regression: cobros-reembolso suite).
   //      This mirrors the sibling collection guard `COBRO_EXCEDE_SALDO`
-  //      (registrar-cobro.ts) — the refund's counterpart, which the canonical
-  //      balance never sees because REEMBOLSO rows are excluded from the sums.
-  if (reembolsoExcedeMontoCobrado(monto, factura.total, factura.saldoPendiente)) {
+  //      (registrar-cobro.ts), which measures the receivable instead.
+  if (reembolsoExcedeMontoCobrado(monto, factura.cobradoNeto)) {
     return buildError(REEMBOLSO_EXCEDE_SALDO);
   }
 
