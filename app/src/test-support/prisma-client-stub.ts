@@ -11,7 +11,11 @@
  * from the Prisma schema — and nothing else.
  */
 import { Decimal } from "decimal.js";
-import { AccionAuditoria } from "@/generated/prisma/enums";
+import {
+  AccionAuditoria,
+  TipoMovimiento,
+  TipoReposicion,
+} from "@/generated/prisma/enums";
 
 export const Prisma = {
   /** Mirrors `Prisma.PrismaClientKnownRequestError` enough for `instanceof`. */
@@ -37,4 +41,6 @@ export const Prisma = {
 
 // Re-exported from the generated enums rather than hand-duplicated, so schema
 // additions surface here instead of silently drifting (see prisma/AccionAuditoria).
-export { AccionAuditoria };
+// `TipoReposicion`/`TipoMovimiento` are needed because repositories consumed at
+// unit level module-scope-maps them (inventario `MOVIMIENTO_POR_REPOSICION`).
+export { AccionAuditoria, TipoMovimiento, TipoReposicion };

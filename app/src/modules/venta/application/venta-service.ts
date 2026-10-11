@@ -22,6 +22,8 @@
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { registrarReposicionCancelacion } from "@/modules/inventario/application/registrar-salidas-venta";
+import { leerPriorNCsPorFacturaEnTx } from "@/modules/devolucion/infrastructure/devolucion-repository";
+import { calcularReposicionNeta } from "../domain/reposicion-neta";
 import { revertirPagosAplicadosDeVentaEnTx } from "@/modules/cobros/infrastructure/pago-repository";
 import { ESTADO_PAGO } from "@/modules/cobros/domain/pago";
 import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
@@ -423,15 +425,43 @@ async function cancelarVentaConfirmada(
   // 3. Restore branch stock: one REPOSICION_CANCELACION movement per persisted
   //    line, positive deltas, under the SAME ascending-product-id locks as the
   //    exit. Throws on a foreign product (post-flip → whole cancel rolls back).
+  //
+  //    Audit run-3 `venta:cancelar-venta-confirmada:reposicion-ignora-devoluciones-vigentes`
+  //    ("solo reposición neta", probe app/scripts/stock-shape.probe.ts): the raw
+  //    persisted lines were restored in FULL (+10 on a sale of 10), ignoring
+  //    units already returned through VIGENTE NOTA_CREDITO documents against this
+  //    factura — VENDIBLE stock ended phantom-credited (90→94→104 vs fixed 100)
+  //    and DANADO merma'd units came back as sellable (90→86→96 vs fixed 92).
+  //    Inside THIS SAME transaction the cancel sums every VIGENTE NC line
+  //    (ALL TipoReposicion kinds: a VENDIBLE return restocked the unit; a DANADO
+  //    return physically disposed it — both are already gone from the sellable
+  //    delta), nets each persisted line and repositions only the strictly
+  //    positive remainder. NCs are NEVER touched by the cancel (no annulment
+  //    feature exists): they stay VIGENTE against the ANULADA factura. A product
+  //    fully returned drops out (net ≤ 0, no negative reposition); if EVERYTHING
+  //    was returned the reposition step is skipped entirely — the ledger gets no
+  //    movement and the cancel still completes. Concurrency safety: a devolucion
+  //    cannot interleave post-flip because its creation requires the factura
+  //    VIGENTE and this transaction already holds the FACTURA row lock.
   const lineas = await leerVentaParaConfirmarEnTx(tx, ctx, ventaId);
-  await registrarReposicionCancelacion(tx, ctx, {
-    ventaId,
-    motivo: trimmed && trimmed.length > 0 ? trimmed : REPOSICION_MOTIVO_DEFECTO,
-    lineas: (lineas?.lineas ?? []).map((l) => ({
-      productoId: l.productoId,
-      cantidad: l.cantidad,
-    })),
-  });
+  const lineasBrutas = (lineas?.lineas ?? []).map((l) => ({
+    productoId: l.productoId,
+    cantidad: l.cantidad,
+  }));
+  const devueltoPorProducto = await leerPriorNCsPorFacturaEnTx(
+    tx,
+    ctx,
+    factura.id,
+    lineasBrutas.map((l) => l.productoId),
+  );
+  const lineasNetas = calcularReposicionNeta(lineasBrutas, devueltoPorProducto);
+  if (lineasNetas.length > 0) {
+    await registrarReposicionCancelacion(tx, ctx, {
+      ventaId,
+      motivo: trimmed && trimmed.length > 0 ? trimmed : REPOSICION_MOTIVO_DEFECTO,
+      lineas: lineasNetas,
+    });
+  }
 
   // 4. Audit BOTH reversals (sale flip + invoice annul), append-only, same tx.
   await registrarAuditVentaEnTx(
