@@ -1,3 +1,9 @@
+## [0.14.5](https://github.com/Wilfredery/SystemFact/compare/v0.14.4...v0.14.5) (2026-10-10)
+
+### Bug Fixes
+
+* **venta:** confirmed-cancel reposition nets against VIGENTE devoluciones — closes audit run-3 phantom-stock finding ([#109](https://github.com/Wilfredery/SystemFact/pull/109))
+
 ## [0.14.4](https://github.com/Wilfredery/SystemFact/compare/v0.14.3...v0.14.4) (2026-10-10)
 
 ### Bug Fixes
