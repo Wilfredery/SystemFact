@@ -1,3 +1,10 @@
+## [0.14.4](https://github.com/Wilfredery/SystemFact/compare/v0.14.3...v0.14.4) (2026-10-10)
+
+### Bug Fixes
+
+* **cobros:** refund bound counts committed refunds as net cash — audit run-3 cumulative over-refund drain ([#108](https://github.com/Wilfredery/SystemFact/pull/108))
+* **reportes:** csv-writer neutralizes spreadsheet-formula metacharacter cells — audit run-3 formula injection ([#108](https://github.com/Wilfredery/SystemFact/pull/108))
+
 ## [0.14.3](https://github.com/Wilfredery/SystemFact/compare/v0.14.2...v0.14.3) (2026-10-10)
 
 ### Bug Fixes
