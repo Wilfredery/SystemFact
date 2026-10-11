@@ -6,19 +6,28 @@
  * inside `withTenantTransaction`; seeding uses the trusted superuser harness.
  *
  * Proves the two spec-critical scenarios plus the legitimate-repeat control and
- * the v2r-02 bound:
+ * the refund bound (audit run-3):
  *   1. Replaying key K returns `PAGO_IDEMPOTENCIA_CONFLICTO`, writes NO second
  *      row, and burns NO receipt number (the key is checked before the
  *      allocation). A fresh-key refund of the SAME amount is then accepted, so
- *      the gate is the key, not amount identity.
+ *      the gate is the key, not amount identity (as long as the cumulative
+ *      cash-out stays within the remaining NET cash — see scenario 5).
  *   2. Two simultaneous first submits sharing a key: exactly one row commits and
  *      the loser receives the SAME stable code (the unique violation is
  *      translated, the loser's transaction rolls back — no duplicate receipt).
- *   3. (v2r-02) A refund against an invoice with ZERO payments is rejected with
- *      `REEMBOLSO_EXCEDE_SALDO` (`cobrado = total − saldoPendiente = 0`): no
- *      `PAGO` row is written and no receipt is burned.
- *   4. (v2r-02) A refund EXACTLY equal to the amount collected is accepted (the
- *      bound is `<=`, not `<`).
+ *   3. (bound) A refund against an invoice with ZERO net cash (zero cobros) is
+ *      rejected with `REEMBOLSO_EXCEDE_SALDO`: no `PAGO` row is written and no
+ *      receipt is burned.
+ *   4. (bound) A refund EXACTLY equal to the net cash collected is accepted (the
+ *      bound is `<=`, not `<`); one cent above is rejected on a fresh invoice.
+ *   5. (audit run-3) The bound counts COMMITTED refunds (net cash): after a
+ *      committed refund, a fresh-key refund that would push the cumulative
+ *      payout past the collected cash is REJECTED with nothing persisted — then
+ *      a refund exactly equal to the remaining net commits (boundary).
+ *   6. (audit run-3 NC inflation) A VIGENTE nota de crédito does NOT soak into
+ *      the bound: zero cobros + an NC against the invoice still rejects a
+ *      refund of the NC amount (the old `total − saldoPendiente` bound would
+ *      have allowed it because the NC shrinks `saldoPendiente`).
  *
  * Every refund scenario now runs against a PAYMENT-BACKED invoice (a full
  * COBRO of the 10,000.00 total is seeded first), so the refund amounts are
@@ -89,8 +98,8 @@ async function sembrarFactura(ncf = "B01000000020", correlativo = "FAC-20"): Pro
 
 /**
  * A payment-backed invoice: the VIGENTE 10,000.00 invoice above with a COBRO of
- * the FULL total already applied (cobrado = 10,000.00), so subsequent refunds
- * up to that amount are legitimate business states (v2r-02).
+ * the FULL total already applied (net cash = 10,000.00), so subsequent refunds
+ * up to that amount are legitimate business states.
  */
 async function sembrarFacturaCobrada(ncf?: string, correlativo?: string): Promise<number> {
   const facturaId = await sembrarFactura(ncf, correlativo);
@@ -146,12 +155,84 @@ describe("cobros refund idempotency + bound (real DB, RLS on; R-C3, v2r-02)", ()
 
     // Negative control: a DIFFERENT key for the SAME amount is a legitimate
     // second refund — keys gate de-duplication, not amount identity (R-C3).
+    // It stays within the remaining net cash (10,000.00 COBRO − 500.00 refund
+    // #1 = 9,500.00), so the net-cash bound permits it (audit run-3).
     const nuevo = await reembolsar(facturaId, "500.00", "K-FRESH");
     expect(nuevo.ok).toBe(true);
     if (!nuevo.ok) throw new Error("un key fresco debería aceptar el reembolso");
     expect(nuevo.data.correlativoRecibo).toBe(3);
     // COBRO + two refunds.
     expect(await db.pago.count({ where: { empresaId: ctx.empresaId } })).toBe(3);
+  });
+
+  it("the net-cash bound counts COMMITTED refunds: sequential fresh-key refunds cannot drain past the collected cash (audit run-3)", async () => {
+    const facturaId = await sembrarFacturaCobrada(); // net cash 10,000.00
+    const db = getHarnessDb();
+
+    // Refund #1 commits: 500.00 paid back → remaining net cash 9,500.00.
+    const primero = await reembolsar(facturaId, "500.00", "K-NET-1");
+    expect(primero.ok).toBe(true);
+    const correlativoAntes = (await db.pago.aggregate({
+      where: { empresaId: ctx.empresaId },
+      _max: { correlativoRecibo: true },
+    }))!._max.correlativoRecibo;
+    expect(correlativoAntes).toBe(2);
+
+    // The old bound (total − saldoPendiente, refund-blind) would ACCEPT a
+    // fresh-key refund of 9,500.01 (it never shrank after refund #1): a
+    // second 9,500+ payout on top of the 10,000 collected. The net-cash
+    // bound rejects it BEFORE allocation — no PAGO row, no receipt burned.
+    const excedido = await reembolsar(facturaId, "9500.01", "K-NET-2");
+    expect(!excedido.ok && excedido.code).toBe(REEMBOLSO_EXCEDE_SALDO);
+    if (!excedido.ok) expect(excedido.message).toBe(messageFor(REEMBOLSO_EXCEDE_SALDO));
+    expect(await db.pago.count({ where: { facturaId, estado: "APLICADO" } })).toBe(2); // COBRO + refund #1
+    expect(
+      (await db.pago.aggregate({
+        where: { empresaId: ctx.empresaId },
+        _max: { correlativoRecibo: true },
+      }))!._max.correlativoRecibo,
+    ).toBe(correlativoAntes);
+
+    // Boundary: a refund EXACTLY equal to the remaining net cash (9,500.00)
+    // commits (the bound is <=, not <). COBRO + refund #1 + refund #2.
+    const justo = await reembolsar(facturaId, "9500.00", "K-NET-3");
+    expect(justo.ok).toBe(true);
+    if (!justo.ok) throw new Error("el reembolso igual al neto debería aceptarse");
+    expect(await db.pago.count({ where: { empresaId: ctx.empresaId } })).toBe(3);
+  });
+
+  it("a VIGENTE nota de crédito does NOT inflate the bound: zero cobros still rejects a refund of the NC amount (audit run-3)", async () => {
+    // Zero cobros, plus an NC of 4,000.00 against the 10,000.00 invoice. The
+    // OLD bound derived cobrado = total − saldoPendiente = 10,000 − 6,000 =
+    // 4,000.00 (the NC shrank saldoPendiente) and would have ACCEPTED a
+    // refund of the full NC amount — 4,000 of real cash out with ZERO cash in.
+    // The net-cash bound is refound-blind to NCs: cobradoNeto = 0.00.
+    const facturaId = await sembrarFactura("B01000000022", "FAC-22");
+    const db = getHarnessDb();
+    const factura = await db.factura.findUnique({ where: { id: facturaId } });
+    expect(factura).not.toBeNull();
+    await db.notaCredito.create({
+      data: {
+        empresaId: ctx.empresaId,
+        sucursalId: ctx.sucursalId,
+        clienteId: factura!.clienteId,
+        usuarioId: ctx.usuarioId,
+        facturaOriginalId: facturaId,
+        ncf: "B04000000030",
+        estado: "VIGENTE",
+        motivo: "Devolución parcial",
+        monto: new Prisma.Decimal("4000.00"),
+        itbis: new Prisma.Decimal("0.00"),
+        fechaEmision: new Date("2026-09-02T12:00:00.000Z"),
+      },
+    });
+
+    const rechazo = await reembolsar(facturaId, "4000.00", "K-NC");
+    expect(!rechazo.ok && rechazo.code).toBe(REEMBOLSO_EXCEDE_SALDO);
+    if (!rechazo.ok) expect(rechazo.message).toBe(messageFor(REEMBOLSO_EXCEDE_SALDO));
+
+    // Zero cash collected → nothing persisted at all (and no receipt burned).
+    expect(await db.pago.count({ where: { empresaId: ctx.empresaId } })).toBe(0);
   });
 
   it("two simultaneous first submits on one key: exactly one row, loser stable code", async () => {

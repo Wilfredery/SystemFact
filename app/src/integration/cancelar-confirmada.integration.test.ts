@@ -170,10 +170,16 @@ describe("cancelarVenta confirmada (real DB, RLS on)", () => {
     expect(pagos[0].monto.toFixed(2)).toBe(factura.total.toFixed(2));
     const pagoId = pagos[0].id;
 
-    // The invoice is fully collected on the canonical CxC surface (ADR-017).
+    // The invoice is fully collected on the canonical CxC surface (ADR-017),
+    // and the audit run-3 net-cash fact rides the same locked row: full COBRO,
+    // zero refunds → cobradoNeto equals the total.
     expect(
       await withTenantTransaction(ctx, (tx) => bloquearYCalcularSaldoFacturaEnTx(tx, ctx, factura.id)),
-    ).toEqual({ total: factura.total.toFixed(2), saldoPendiente: "0.00" });
+    ).toEqual({
+      total: factura.total.toFixed(2),
+      saldoPendiente: "0.00",
+      cobradoNeto: factura.total.toFixed(2),
+    });
 
     const r = await withTenantTransaction(ctx, (tx) => cancelarVenta(tx, ctx, { id: ventaId, motivo: "Devolución cliente" }));
     expect(r.ok).toBe(true);

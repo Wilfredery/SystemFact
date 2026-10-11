@@ -93,12 +93,21 @@ export async function consultarSaldoCxcEnTx(
 }
 
 /**
- * One VIGENTE invoice's frozen total and its recomputed pending balance, both as
- * `Decimal(12,2)` strings. Produced by {@link bloquearYCalcularSaldoFacturaEnTx}.
+ * One VIGENTE invoice's frozen total, its recomputed pending balance, and the net
+ * cash actually collected on it, all as `Decimal(12,2)` strings. Produced by
+ * {@link bloquearYCalcularSaldoFacturaEnTx}.
  */
 export interface SaldoFacturaBloqueado {
   readonly total: string;
   readonly saldoPendiente: string;
+  /**
+   * Net cash collected = Σ COBRO/APLICADO − Σ committed refund (REEMBOLSO in
+   * REGISTRADO or APLICADO). A refund-bound-only fact (audit run-3): the
+   * ADR-017 canonical payable state (`saldoPendiente`) intentionally does NOT
+   * count refunds, so the refund guard gets its own signed term on the SAME
+   * locked recompute.
+   */
+  readonly cobradoNeto: string;
 }
 
 /**
@@ -149,10 +158,28 @@ export async function bloquearYCalcularSaldoFacturaEnTx(
   // Statement 2: under READ COMMITTED every statement takes a fresh snapshot,
   // so this recomputation sees the cobros the winner committed while we were
   // waiting (the old single-statement version evaluated its SUM() subqueries
-  // against the pre-lock snapshot and let both payments through — R-C2).
+  // against the pre-lock snapshot and let both payments through — R-C2). The
+  // audit run-3 `cobradoNeto` column rides the same snapshot: Σ COBRO/APLICADO
+  // − Σ committed REEMBOLSO, signed under the SAME row lock.
   const rows = await tx.$queryRaw<SaldoFacturaBloqueado[]>`
     SELECT
       f."total"::numeric(12, 2)::text AS "total",
+      (
+        COALESCE((
+          SELECT SUM("monto") FROM "PAGO"
+          WHERE "facturaId" = f."id"
+            AND "empresaId" = ${ctx.empresaId}
+            AND "tipo" = 'COBRO'
+            AND "estado" = 'APLICADO'
+        ), 0)
+        - COALESCE((
+            SELECT SUM("monto") FROM "PAGO"
+            WHERE "facturaId" = f."id"
+              AND "empresaId" = ${ctx.empresaId}
+              AND "tipo" = 'REEMBOLSO'
+              AND "estado" IN ('REGISTRADO', 'APLICADO')
+          ), 0)
+      )::numeric(12, 2)::text AS "cobradoNeto",
       (
         f."total"
         - COALESCE((

@@ -56,6 +56,47 @@ describe("escribirCsv — RFC 4180 quoting + precision (EXP-1)", () => {
   });
 });
 
+describe("escribirCsv — formula-metacharacter neutralization (audit run-3)", () => {
+  it("prefixes a `=` formula lead with a single apostrophe", () => {
+    const csv = escribirCsv(["producto"], [["=cmd|'/c calc'!A1"]]);
+    expect(csv).toBe("producto\r\n'=cmd|'/c calc'!A1\r\n");
+  });
+
+  it("prefixes an `@` macro lead with a single apostrophe", () => {
+    expect(escribirCsv(["x"], [["@SUM(1)"]])).toBe("x\r\n'@SUM(1)\r\n");
+  });
+
+  it("prefixes a `+` formula lead with a single apostrophe", () => {
+    expect(escribirCsv(["x"], [["+4"]])).toBe("x\r\n'+4\r\n");
+  });
+
+  it("prefixes a leading Tab with a single apostrophe", () => {
+    expect(escribirCsv(["x"], [["\tprefixed\tcell"]])).toBe("x\r\n'\tprefixed\tcell\r\n");
+  });
+
+  it("prefixes a `-` lead that is NOT a plain decimal number, keeps numeric negatives", () => {
+    // A plain whole-lead negative decimal stays a numeric cell.
+    expect(escribirCsv(["x"], [["-12.50"]])).toBe("x\r\n-12.50\r\n");
+    // A dash lead that does not begin a decimal number IS neutralized.
+    expect(escribirCsv(["x"], [["-cmd"]])).toBe("x\r\n'-cmd\r\n");
+    expect(escribirCsv(["x"], [["-abc123"]])).toBe("x\r\n'-abc123\r\n");
+    // A 12.2-range plain negative (money) is never touched either.
+    expect(escribirCsv(["x"], [["-10000.00"]])).toBe("x\r\n-10000.00\r\n");
+  });
+
+  it("a numeric-filled grid stays byte-identical to the pre-guard output", () => {
+    expect(
+      escribirCsv(["producto", "unidades", "monto"], [
+        ["Arroz", "5", "10.18"],
+        ["Silla", "-3", "-12.50"],
+        ["", "0", "0.00"],
+      ]),
+    ).toBe(
+      "producto,unidades,monto\r\nArroz,5,10.18\r\nSilla,-3,-12.50\r\n,0,0.00\r\n",
+    );
+  });
+});
+
 describe("csvBuffer — UTF-8 without BOM + determinism (EXP-1)", () => {
   it("emits UTF-8 bytes with NO byte-order-mark (first byte is the header, not 0xEF)", () => {
     const buf = csvBuffer(escribirCsv(["nombre"], [["Ana"]]));

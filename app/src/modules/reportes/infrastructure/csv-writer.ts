@@ -9,6 +9,10 @@
  *   - CRLF (`\r\n`) line terminators (RFC 4180 §2.1);
  *   - a field is wrapped in double-quotes iff it contains a comma, a double-quote, CR or
  *     LF, and any embedded double-quote is DOUBLED (the only escape RFC 4180 defines);
+ *   - a cell whose text starts with a spreadsheet formula metacharacter (`=`, `+`, `@`,
+ *     a leading Tab, or a `-` NOT followed by a decimal number) is neutralized with a
+ *     single leading apostrophe (audit run-3 CSV formula injection) — see
+ *     {@link neutralizarFormula};
  *   - money arrives already as a `Decimal` STRING (or a `decimal.js` Decimal, serialized
  *     via `toString` to FULL precision) so a `10.18` never becomes `10.179999…` — the
  *     writer never touches a JS float for money (AGENTS.md "Money = Decimal").
@@ -59,9 +63,41 @@ function cotizar(campo: string): string {
   return campo;
 }
 
+/**
+ * A whole-lead negative decimal (`-12.50`, `123`, `4.5`) stays a plain number cell —
+ * spreadsheet clients parse it as a value, not a formula. Anything else that only
+ * LOOKS like a signed lead (`-abc`, `-abc123`) is NOT a number and must be neutralized.
+ */
+const NUMERO_DECIMAL_ESTRICTO = /^-?\d+(\.\d+)?$/;
+
+/**
+ * Neutralize a spreadsheet-formula cell (audit run-3 CSV formula injection). The
+ * export route serves `text/csv` straight to spreadsheet clients, so a data value
+ * whose serialized text begins with `=`, `+`, `@`, Tab, or a `-` that does NOT start
+ * a plain decimal number would be EXECUTED as a formula/code by MS Excel, LibreOffice
+ * or Google Sheets. The single-apostrophe escape is the convention every major
+ * client honours: the cell renders as the literal text with the marker hidden.
+ *
+ * Whole-lead NEGATIVE decimals (`-12.50`) stay untouched — the client parses them as
+ * numeric values, never formulas. The clamp lives ONLY at this writer seam, so data
+ * rows and header rows are treated identically; every literal header emitted by the
+ * exporter applications starts with a letter, so none is affected.
+ */
+function neutralizarFormula(campo: string): string {
+  if (campo.length === 0) return campo;
+  const primero = campo[0]!;
+  if (primero === "=" || primero === "+" || primero === "@" || primero === "\t") {
+    return `'${campo}`;
+  }
+  if (primero === "-" && !NUMERO_DECIMAL_ESTRICTO.test(campo)) {
+    return `'${campo}`;
+  }
+  return campo;
+}
+
 /** Render one record (header or data row) as a CRLF-terminated CSV line. */
 function registro(columnas: readonly ValorCsv[]): string {
-  return columnas.map((c) => cotizar(aTexto(c))).join(",");
+  return columnas.map((c) => cotizar(neutralizarFormula(aTexto(c)))).join(",");
 }
 
 /**
