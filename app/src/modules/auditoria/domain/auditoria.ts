@@ -16,7 +16,6 @@ import {
 } from "./errors";
 import { rangoFechasAUTC } from "./zona-horaria";
 import {
-  calcularOffset,
   calcularTotalPages,
   normalizarPagina,
   normalizarTamanoPagina,
