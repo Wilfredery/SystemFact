@@ -141,44 +141,44 @@ export async function obtenerInventarioPorProductoEnTx(
 }
 
 /**
- * Product ownership guard: a PRODUCTO row must belong to the caller's company
- * before an adjustment may create or touch its inventory. This blocks a
- * cross-tenant `productoId` from producing an inventory row under a foreign
- * product (which would otherwise satisfy only the FK, not the tenant).
- */
-async function productoExisteEnEmpresa(
-  tx: PrismaTx,
-  empresaId: number,
-  productoId: number,
-): Promise<boolean> {
-  const row = await tx.producto.findFirst({
-    where: { id: productoId, empresaId },
-    select: { id: true },
-  });
-  return row !== null;
-}
-
-/**
  * Shared Phase-A ownership guard for every batch path: each product id must
- * belong to `ctx.empresaId` before any lock or write. The FIRST foreign product
- * throws `INVENTARIO_NO_ENCONTRADO`, so a cross-tenant batch persists zero
- * changes. Read-only with respect to the ledger — it never mutates stock, so a
- * batch may call it freely before its own lock/write phases. Only this shared
- * read is deduplicated: each batch (entrada / salida / reposición / devolución)
- * keeps its OWN skeleton and ordering; entrances vs exits are never merged
- * (R-QC-05). The single-product adjustment reuses it with a one-element list so
- * the throw context (`{ productoId }`) stays byte-identical.
+ * belong to `ctx.empresaId` before any lock or write. ONE batched tenant-safe
+ * query (R-INV-B1) returns the requested ids actually owned by the company and
+ * a pure set-difference names every id missing from the ownership set — the
+ * per-product `findFirst` loop (N+1) no longer exists on this path. Deny-first
+ * rule unchanged: any id not provably owned throws `INVENTARIO_NO_ENCONTRADO`
+ * naming it (the one-element list keeps the single-product throw context
+ * `{ productoId }` byte-identical), and nothing is disclosed about the foreign
+ * rows — the query only ever reads `{ id }` filtered by the caller's `empresaId`.
+ * It never touches the branch GUC; the batch persists zero changes when denied.
+ * Read-only with respect to the ledger — it never mutates stock, so a batch may
+ * call it freely before its own lock/write phases. Only this shared read is
+ * deduplicated: each batch (entrada / salida / reposición / devolución) keeps
+ * its OWN skeleton and ordering; entrances vs exits are never merged (R-QC-05).
  */
 async function guardarPertenenciaProductosEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
   productoIds: readonly number[],
 ): Promise<void> {
-  for (const productoId of productoIds) {
-    const existe = await productoExisteEnEmpresa(tx, ctx.empresaId, productoId);
-    if (!existe) {
-      throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, { productoId });
+  const idsOrdenados = [...new Set(productoIds)].sort((a, b) => a - b);
+  if (idsOrdenados.length === 0) return;
+
+  const owned = await tx.producto.findMany({
+    where: { id: { in: idsOrdenados }, empresaId: ctx.empresaId },
+    select: { id: true },
+  });
+  const idsPropios = new Set(owned.map((row) => row.id));
+  const idsFaltantes = idsOrdenados.filter((id) => !idsPropios.has(id));
+  if (idsFaltantes.length > 0) {
+    if (idsFaltantes.length === 1) {
+      throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, {
+        productoId: idsFaltantes[0],
+      });
     }
+    throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, {
+      productoIds: idsFaltantes,
+    });
   }
 }
 
