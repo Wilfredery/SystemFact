@@ -79,10 +79,6 @@ function normalizarId(
   return valor;
 }
 
-/** Clamp the requested page to an integer ≥ 1 and the requested page size into
- *  `[1, TAMANO_PAGINA_MAXIMO]` (default 25) — both via the shared pagination
- *  contract (R-QC-07; the local copies were absorbed into the shared module). */
-
 /** A bare SD calendar date `YYYY-MM-DD` (validated downstream by the seam). */
 const RE_DX_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -241,7 +237,8 @@ export function resolverRangoSD(
 
 /**
  * Normalise a raw consultation request into a DB-ready {@link ReporteFiltro}: page ≥ 1,
- * pageSize clamped to `[1,100]` (500 → 100, DB-5), `sucursalId` validated, and the SD date
+ * pageSize clamped to `[1,100]` (500 → 100, DB-5) through the SHARED pagination contract
+ * (`@/shared/domain/pagination`; the local copies were absorbed there, R-QC-07), `sucursalId` validated, and the SD date
  * window resolved via the pure {@link resolverRangoSD} (explicit `desde`/`hasta`, or a
  * preset when both are absent). Throws {@link ReporteDomainError}`(REPORTE_VALIDACION)` on
  * any transport violation so the use case can fail BEFORE running a query.
