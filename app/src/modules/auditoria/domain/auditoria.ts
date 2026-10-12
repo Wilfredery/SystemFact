@@ -15,6 +15,12 @@ import {
   AuditoriaDomainError,
 } from "./errors";
 import { rangoFechasAUTC } from "./zona-horaria";
+import {
+  calcularOffset,
+  calcularTotalPages,
+  normalizarPagina,
+  normalizarTamanoPagina,
+} from "@/shared/domain/pagination";
 
 /**
  * Audit actions as persisted by the (frozen) `AccionAuditoria` enum. Kept in sync with
@@ -63,12 +69,14 @@ export function accionAuditoriaDesdeDb(valor: string): AccionAuditoria {
   throw new AccionAuditoriaNoRepresentableError(valor);
 }
 
-// --- Pagination constants (AC-2) ---
-
-/** Default page size (AGENTS.md "lists always paginated — default 25/page"). */
-export const TAMANO_PAGINA_POR_DEFECTO = 25;
-/** Hard ceiling; a larger request is clamped to it, never accepted (AC-2). */
-export const TAMANO_PAGINA_MAXIMO = 100;
+// --- Pagination contract (AC-2 / AU-4, D3) ---
+//
+// The page-cap constants and the page/pageSize math are the SHARED pagination
+// contract (`@/shared/domain/pagination`, R-QC-07): this module absorbed its
+// former local copies (`TAMANO_PAGINA_POR_DEFECTO`/`TAMANO_PAGINA_MAXIMO`,
+// `normalizarPage`/`normalizarPageSize`, the object-shape `calcularOffset` and
+// the numeric `calcularTotalPages`) with ZERO behavior change — the audited
+// "0 for an empty set" `totalPages` semantics IS the shared function's.
 
 /**
  * Free-text search targets: ONLY the structured identity/reason fields. The JSON payload
@@ -126,26 +134,6 @@ function normalizarId(
   return valor;
 }
 
-/** Clamp the requested page to an integer ≥ 1 (defaults to the first page). */
-function normalizarPage(page: number | null | undefined): number {
-  if (page === undefined || page === null || !Number.isFinite(page)) return 1;
-  const truncada = Math.trunc(page);
-  return truncada < 1 ? 1 : truncada;
-}
-
-/** Clamp the requested page size into `[1, TAMANO_PAGINA_MAXIMO]` (default 25). */
-function normalizarPageSize(pageSize: number | null | undefined): number {
-  if (
-    pageSize === undefined ||
-    pageSize === null ||
-    !Number.isFinite(pageSize)
-  ) {
-    return TAMANO_PAGINA_POR_DEFECTO;
-  }
-  const truncada = Math.trunc(pageSize);
-  return Math.max(1, Math.min(truncada, TAMANO_PAGINA_MAXIMO));
-}
-
 /**
  * Trim a transport string to a non-empty value, or `undefined` when absent, null, or
  * whitespace-only. A blank value means "not provided", NOT an invalid one — the caller
@@ -192,8 +180,8 @@ export function normalizarFiltro(entrada: AuditoriaFiltroEntrada): AuditoriaFilt
     page: number;
     pageSize: number;
   } = {
-    page: normalizarPage(entrada.page),
-    pageSize: normalizarPageSize(entrada.pageSize),
+    page: normalizarPagina(entrada.page),
+    pageSize: normalizarTamanoPagina(entrada.pageSize),
   };
 
   const accion = normalizarAccion(entrada.accion);
@@ -217,21 +205,6 @@ export function normalizarFiltro(entrada: AuditoriaFiltroEntrada): AuditoriaFilt
   if (rango.hasta !== undefined) filtro.hasta = rango.hasta;
 
   return filtro;
-}
-
-/** Zero-based row offset for the ordered query (`fechaHora DESC, id DESC`). */
-export function calcularOffset(filtro: Pick<AuditoriaFiltro, "page" | "pageSize">): number {
-  return (filtro.page - 1) * filtro.pageSize;
-}
-
-/**
- * Number of pages for `total` at `pageSize` (0 when there are no rows). Intentionally NOT
- * forced to a minimum of 1: an empty result set legitimately has `totalPages = 0`, and a
- * requested page beyond the last simply returns an empty page rather than an error (AC-2).
- */
-export function calcularTotalPages(total: number, pageSize: number): number {
-  if (total <= 0) return 0;
-  return Math.ceil(total / Math.max(1, pageSize));
 }
 
 /** A single audit row as surfaced to the consultation DTO (all columns the log carries). */

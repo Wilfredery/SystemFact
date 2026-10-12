@@ -7,17 +7,19 @@
 import {
   ACCION_AUDITORIA,
   CAMPOS_TEXTO_LIBRE,
-  TAMANO_PAGINA_MAXIMO,
-  TAMANO_PAGINA_POR_DEFECTO,
   accionAuditoriaDesdeDb,
-  calcularOffset,
-  calcularTotalPages,
   esAccionAuditoria,
   mapearAPagina,
   normalizarFiltro,
   AccionAuditoriaNoRepresentableError,
   type AuditoriaRegistro,
 } from "./auditoria";
+import {
+  TAMANO_PAGINA_MAXIMO,
+  TAMANO_PAGINA_POR_DEFECTO,
+  calcularOffset,
+  calcularTotalPages,
+} from "@/shared/domain/pagination";
 import { AUDITORIA_VALIDACION, AuditoriaDomainError } from "./errors";
 
 describe("AccionAuditoria domain enum (mirrors the persisted Prisma enum)", () => {
@@ -86,9 +88,13 @@ describe("normalizarFiltro (AC-2 / AC-3)", () => {
     expect(normalizarFiltro({ page: 2.9 }).page).toBe(2);
   });
 
-  it("clamps a zero/negative page size up to 1", () => {
-    expect(normalizarFiltro({ pageSize: 0 }).pageSize).toBe(1);
-    expect(normalizarFiltro({ pageSize: -5 }).pageSize).toBe(1);
+  it("normalizes a zero/negative page size to the shared DEFAULT 25 (uniform clamp)", () => {
+    // The shared contract folds a non-positive size to the 25 default (R-QC-07
+    // matrix: 0 → 25, 250 → 100); the local copy's old fold-to-1 is gone. The
+    // transport layer already rejects sizes < 1 (validations min(1)), so the
+    // difference is domain-guard-only, exactly as PR1's changelog documented.
+    expect(normalizarFiltro({ pageSize: 0 }).pageSize).toBe(TAMANO_PAGINA_POR_DEFECTO);
+    expect(normalizarFiltro({ pageSize: -5 }).pageSize).toBe(TAMANO_PAGINA_POR_DEFECTO);
   });
 
   it("trims free text and drops a blank term", () => {
@@ -124,11 +130,11 @@ describe("normalizarFiltro (AC-2 / AC-3)", () => {
   });
 });
 
-describe("pagination math (AC-2)", () => {
+describe("pagination math (AC-2, shared contract numeric signatures)", () => {
   it("computes the zero-based offset from page and size", () => {
-    expect(calcularOffset({ page: 1, pageSize: 25 })).toBe(0);
-    expect(calcularOffset({ page: 2, pageSize: 25 })).toBe(25);
-    expect(calcularOffset({ page: 5, pageSize: 100 })).toBe(400);
+    expect(calcularOffset(1, 25)).toBe(0);
+    expect(calcularOffset(2, 25)).toBe(25);
+    expect(calcularOffset(5, 100)).toBe(400);
   });
 
   it("derives total pages, and zero for an empty result set", () => {
