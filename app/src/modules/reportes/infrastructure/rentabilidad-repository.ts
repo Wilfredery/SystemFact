@@ -21,16 +21,24 @@
  * PRODUCT UNIVERSE: a row exists per product with sales OR purchases in the window (a stock-only
  * product is NOT a profitability row; a purchase-only product shows Entrada/Inversión with Salida 0).
  *
- * FULL DATASET, UN-PAGED: like the bounded estado-facturas grid (slice B), this returns every
- * grouped per-product row and the application pages them in-app. Output is bounded by the number of
- * DISTINCT ACTIVE PRODUCTS (a GROUP BY, not raw transactions), so a screen page and the CSV footer
- * both consume the identical grouped result — the summary is page-independent by construction (EXP-2).
+ * REN-4 (data-layer page cut): the screen's page is `LIMIT`/`OFFSET`-cut in SQL — the pinned
+ * `ORDER BY p."id" ASC` plus the shared `limitePaginaSql` tail — and the filtered total is
+ * computed server-side by `contarRentabilidadFilasEnTx`, a COUNT over the SAME CTE-filtered
+ * join (ONE `WITH` definition shared by both statements, so page and total can never
+ * disagree). The summary/CSV path keeps the un-paged full grouped read (the same statement
+ * with `pag` omitted); the grouped dataset is bounded by DISTINCT ACTIVE PRODUCTS, never raw
+ * transactions.
  */
 
+import { Prisma } from "@/generated/prisma/client";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import type { VentanaFiltro } from "./dashboard-repository";
 import type { RentabilidadInsumo } from "../domain/margen";
+import {
+  limitePaginaSql,
+  type Paginacion,
+} from "./operacional-repository";
 
 /**
  * The purchase states that count as a product's ENTRADA / Inversión (REN-1): goods actually
@@ -41,22 +49,18 @@ import type { RentabilidadInsumo } from "../domain/margen";
 export const ESTADOS_COMPRA_ENTRADA = ["RECIBIDA", "PAGADA"] as const;
 
 /**
- * The full, un-paged per-product profitability inputs for the window (REN-1). `desde`/`hasta` are
- * the UTC-bracketed SD window (the caller ran `normalizarFiltro`); `sucursalId` an optional branch
- * narrowing. Every money/quantity figure arrives as Decimal text (already `::text`-cast).
+ * The three per-product CTE groups over ONE window (sales / received purchases / stock) —
+ * the WITH body shared verbatim by the page read, its COUNT and (via `pag` omission) the
+ * full dataset read, so every consumer of this aggregate filters identically (EXP-2).
  */
-export async function rentabilidadFilasEnTx(
-  tx: PrismaTx,
-  ctx: TenantCtx,
-  ventana: VentanaFiltro,
-): Promise<RentabilidadInsumo[]> {
+function cteRentabilidad(ctx: TenantCtx, ventana: VentanaFiltro): Prisma.Sql {
   const sucursal = ventana.sucursalId ?? null;
   const desde = ventana.desde ?? null;
   const hasta = ventana.hasta ?? null;
   const [estadoA, estadoB] = ESTADOS_COMPRA_ENTRADA;
 
-  return tx.$queryRaw<RentabilidadInsumo[]>`
-    WITH ventas AS (
+  return Prisma.sql`
+    ventas AS (
       SELECT
         d."productoId"                              AS "pid",
         COALESCE(SUM(d."cantidad"), 0)              AS "q_sold",
@@ -93,7 +97,38 @@ export async function rentabilidadFilasEnTx(
       WHERE s."empresaId" = ${ctx.empresaId}
         AND (${sucursal}::int IS NULL OR i."sucursalId" = ${sucursal})
       GROUP BY i."productoId"
-    )
+    )`;
+}
+
+/**
+ * The per-product projection's FROM + WHERE — the PRODUCTO universe (`a row per
+ * product with sales OR purchases in the window`), shared by page and count so
+ * the filtered set is ONE definition ("COUNT over the same CTE-filtered join").
+ */
+function universoRentabilidad(ctx: TenantCtx): Prisma.Sql {
+  return Prisma.sql`
+    FROM "PRODUCTO" p
+    LEFT JOIN ventas v ON v."pid" = p."id"
+    LEFT JOIN compras c ON c."pid" = p."id"
+    LEFT JOIN stock s ON s."pid" = p."id"
+    WHERE p."empresaId" = ${ctx.empresaId}
+      AND (v."pid" IS NOT NULL OR c."pid" IS NOT NULL)`;
+}
+
+/**
+ * One product row's grouped profitability inputs, paged (`pag?`) or full — the
+ * screen page (`pag` present, `ORDER BY p."id" ASC` pinned D2 + `LIMIT`/`OFFSET`
+ * cut) and the summary/CSV full read (`pag` omitted) are the IDENTICAL filtered
+ * set under one WITH definition (REN-4; EXP-2 parity by construction).
+ */
+export async function rentabilidadFilasEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  ventana: VentanaFiltro,
+  pag?: Paginacion,
+): Promise<RentabilidadInsumo[]> {
+  return tx.$queryRaw<RentabilidadInsumo[]>`
+    WITH ${cteRentabilidad(ctx, ventana)}
     SELECT
       p."id"::int                                                          AS "productoId",
       p."nombre"                                                           AS "nombre",
@@ -103,11 +138,24 @@ export async function rentabilidadFilasEnTx(
       COALESCE(c."q_purch", 0)::numeric(12, 3)::text                       AS "unidadesCompradas",
       COALESCE(c."inversion", 0)::numeric(12, 2)::text                     AS "inversion",
       COALESCE(s."q_stock", 0)::numeric(12, 3)::text                       AS "stockActual"
-    FROM "PRODUCTO" p
-    LEFT JOIN ventas v ON v."pid" = p."id"
-    LEFT JOIN compras c ON c."pid" = p."id"
-    LEFT JOIN stock s ON s."pid" = p."id"
-    WHERE p."empresaId" = ${ctx.empresaId}
-      AND (v."pid" IS NOT NULL OR c."pid" IS NOT NULL)
-    ORDER BY p."id" ASC`;
+    ${universoRentabilidad(ctx)}
+    ORDER BY p."id" ASC
+    ${limitePaginaSql(pag)}`;
+}
+
+/**
+ * The REN-4 server-side filtered total (`contarRentabilidadFilasEnTx`): ONE
+ * `COUNT(*)` over the SAME `WITH` + PRODUCTO universe the page reads, so the
+ * `total` metadata can never disagree with the paged set's membership.
+ */
+export async function contarRentabilidadFilasEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  ventana: VentanaFiltro,
+): Promise<number> {
+  const rows = await tx.$queryRaw<{ total: number }[]>`
+    WITH ${cteRentabilidad(ctx, ventana)}
+    SELECT COUNT(*)::int AS "total"
+    ${universoRentabilidad(ctx)}`;
+  return rows[0]?.total ?? 0;
 }

@@ -287,14 +287,19 @@ export async function contarInventarioValorizadoEnTx(
  * `cobros/infrastructure/saldo-cxc.repository.ts` EXACTLY — `total − ΣPAGO(COBRO/APLICADO)
  * − ΣNOTA_CREDITO(VIGENTE) + ΣNOTA_DEBITO(VIGENTE)` — so the grid's Pendiente/Parcial/Pagada
  * classification is the same derived balance, not a stored column. The grid is bounded by the
- * small estado × tipoNcf domain (≤ 6 cells), so it is returned whole and paged in the app.
- * Payment-state counts apply to VIGENTE documents only (a cancelled/annulled invoice is not
- * outstanding). An empty window yields no cells.
+ * small estado × tipoNcf domain (≤ 6 cells). OP-6 (page mechanics + D2 order): `pag?` pages it
+ * in SQL via `limitePaginaSql`, and the explicit deterministic `ORDER BY "estado", "tipo"`
+ * (alphabetical estado ASC, tipoNcf ASC — one designed added-order pin) makes that cut stable;
+ * page 1 at the default 25 always holds the whole grid. `pag` omitted → the FULL bound set
+ * (the export path reads this shape unchanged). Payment-state counts apply to VIGENTE
+ * documents only (a cancelled/annulled invoice is not outstanding). An empty window yields no
+ * cells.
  */
 export async function estadoFacturasGridEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
   ventana: VentanaFiltro,
+  pag?: Paginacion,
 ): Promise<EstadoFacturaCelda[]> {
   const { sucursal, desde, hasta } = paramVentana(ventana);
   return tx.$queryRaw<EstadoFacturaCelda[]>`
@@ -347,5 +352,6 @@ export async function estadoFacturasGridEnTx(
       COUNT(*) FILTER (WHERE "estado" = 'VIGENTE' AND "saldo" <= 0)::int AS "pagadas"
     FROM base
     GROUP BY "estado", "tipo"
-    ORDER BY "estado", "tipo"`;
+    ORDER BY "estado", "tipo"
+    ${limitePaginaSql(pag)}`;
 }

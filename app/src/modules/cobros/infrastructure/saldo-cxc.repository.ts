@@ -33,6 +33,11 @@ import {
   limitePaginaSql,
   type Paginacion,
 } from "@/modules/reportes/infrastructure/operacional-repository";
+import { calcularOffset } from "@/shared/domain/pagination";
+import type {
+  FilaCxcAbierta,
+  ResumenAging,
+} from "@/modules/reportes/domain/aging";
 
 /**
  * The quoted SQL aliases below (`AS "facturaId"` …) make Postgres preserve the
@@ -202,6 +207,185 @@ export async function contarSaldoCxcEnTx(
       )::int                                                             AS "pendientes"
     FROM (${saldoCxcFragmentoCanonico(ctx)}) s`;
   return rows[0] ?? { total: 0, pendientes: 0 };
+}
+
+/**
+ * One OPEN receivable with the SQL-computed SD past-due day count that orders
+ * the aging page (design D2's computed-field case). The aging MATH itself stays
+ * pure — `construirFilaAging` recomputes day/date/bucket on the page rows — so
+ * the only aging rule encoded here is the DAY COUNT expression the ORDER BY
+ * needs, pinned equal to `diasVencidoEnSD` by the aging-sql-pin unit suite and
+ * by the aging-paginado integration suite over 500+ boundary fixtures.
+ */
+export interface FilaCxcAgingSql extends FilaCxcAbierta {
+  /** SQL SD-calendar days past due — the value the pinned `ORDER BY` uses (D2). */
+  readonly diasVencido: number;
+}
+
+/**
+ * The RESOLVED credit term expression (D2): the client's term wins when > 0,
+ * else the DB `PLAZO_CREDITO` parameter bind (`dbPlazo`, 0 when absent). This
+ * IS the paralización resolution `leerTerminosCreditoEnTx` + `leerPlazoCreditoEnTx`
+ * produce in the pure mapping — never a hardcoded term (FIN-2).
+ */
+function plazoResueltoSql(dbPlazo: number | null): Prisma.Sql {
+  return Prisma.sql`(CASE WHEN c."plazoCreditoDias" > 0 THEN c."plazoCreditoDias" ELSE COALESCE(${dbPlazo}::int, 0) END)::int`;
+}
+
+/**
+ * The SD past-due day-count expression (D2, computed-field case): the client's
+ * SOUTH-DOMINGO calendar due date is `fechaEmision + plazo days` resolved with
+ * the same `AT TIME ZONE 'America/Santo_Domingo'::date` idiom the codebase
+ * already ratifies for SD calendar days (no manual hour arithmetic); `date -
+ * date` subtracts whole SD days and `GREATEST(..., 0)` clamps the not-yet-due
+ * flank — exactly `diasVencidoEnSD`'s rule. Run inside the aging fragment so
+ * `s."fechaEmision"` and the CLIENTE alias exist.
+ */
+function diasVencidoSql(now: Date, plazo: Prisma.Sql): Prisma.Sql {
+  return Prisma.sql`GREATEST(
+        ((${now} AT TIME ZONE 'America/Santo_Domingo')::date
+         - ((s."fechaEmision" + (${plazo}::text || ' days')::interval)
+            AT TIME ZONE 'America/Santo_Domingo')::date)::int,
+        0)`;
+}
+
+/**
+ * The OPEN (`saldoPendiente > 0`) receivable set of the CANONICAL fragment,
+ * enriched with the CLIENTE plazo join + `dbPlazo` bind and the SQL
+ * `diasVencido`. This is the aging data layer (FIN-6): it shares the canonical
+ * balance fragment verbatim (ADR-017 — the balances can never drift from the
+ * canonical digest) and narrows it to the open receivables the aging set owns,
+ * mirroring the old in-app `saldoPendiente > 0` filter.
+ */
+function fragmentoAgingAbiertas(
+  ctx: TenantCtx,
+  now: Date,
+  dbPlazo: number | null,
+): Prisma.Sql {
+  const plazo = plazoResueltoSql(dbPlazo);
+  return Prisma.sql`
+    SELECT
+      s."facturaId"                                       AS "facturaId",
+      s."clienteId"                                       AS "clienteId",
+      s."saldoPendiente"                                  AS "saldoPendiente",
+      s."fechaEmision"                                    AS "fechaEmision",
+      ${plazo}                                            AS "plazoCreditoDias",
+      ${diasVencidoSql(now, plazo)}                       AS "diasVencido"
+    FROM (${saldoCxcFragmentoCanonico(ctx)}) s
+    LEFT JOIN "CLIENTE" c
+      ON c."id" = s."clienteId"
+      AND c."empresaId" = ${ctx.empresaId}
+    WHERE s."saldoPendiente"::numeric > 0`;
+}
+
+/**
+ * ONE page of the CxC aging set, cut with `LIMIT`/`OFFSET` in SQL (FIN-6):
+ * the pinned D2 order `diasVencido DESC, saldoPendiente::numeric DESC,
+ * facturaId ASC` — identical to the pre-slice sort `cxc-aging.ts` applied —
+ * plus the page tail via the shared `limitePaginaSql` contract (D1 OFFSET;
+ * the offset is derived from the shared `calcularOffset`). The aging set is
+ * smaller than the board's, so an OFFSET plan stays far below any interactive
+ * budget; keyset was rejected by D1.
+ */
+export async function consultarSaldoCxcAgingEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  opts: {
+    readonly page: number;
+    readonly pageSize: number;
+    readonly now: Date;
+    readonly dbPlazo: number | null;
+  },
+): Promise<FilaCxcAgingSql[]> {
+  return tx.$queryRaw<FilaCxcAgingSql[]>`
+    SELECT
+      a."facturaId"                                       AS "facturaId",
+      a."clienteId"                                       AS "clienteId",
+      a."saldoPendiente"                                  AS "saldoPendiente",
+      a."fechaEmision"                                    AS "fechaEmision",
+      a."plazoCreditoDias"                                AS "plazoCreditoDias",
+      a."diasVencido"                                     AS "diasVencido"
+    FROM (${fragmentoAgingAbiertas(ctx, opts.now, opts.dbPlazo)}) a
+    ORDER BY a."diasVencido" DESC, a."saldoPendiente"::numeric DESC, a."facturaId" ASC
+    ${limitePaginaSql({
+      offset: calcularOffset(opts.page, opts.pageSize),
+      limit: opts.pageSize,
+    })}`;
+}
+
+/**
+ * The page-independent bucket summary as a SQL aggregate (FIN-6 "the server
+ * computes pages and total"): Σ open balance + open-invoice count + the four
+ * bucket Σ/count pairs, with the bucket boundaries re-encoded ONLY as the
+ * frozen `CASE` D2 sanctions (mirroring `clasificarBucketAging`; the
+ * equivalence is pinned by aging-sql-pin over 0..400 and by the
+ * aging-paginado SQL-vs-domain parity over 500+ fixtures). `saldoPendiente`
+ * is summed NUMERICALLY — the canonical column is `::text`, and money
+ * ordering/summing must never lean on lexicographic text.
+ */
+export async function resumirAgingSqlEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  opts: { readonly now: Date; readonly dbPlazo: number | null },
+): Promise<ResumenAging> {
+  const bucket = Prisma.sql`(CASE
+        WHEN a."diasVencido" = 0 THEN 'AL_DIA'
+        WHEN a."diasVencido" <= 30 THEN 'VENCIDO_1_30'
+        WHEN a."diasVencido" <= 60 THEN 'VENCIDO_31_60'
+        ELSE 'MAYOR_60'
+      END)`;
+  const rows = await tx.$queryRaw<{
+    saldoTotal: string;
+    facturasAbiertas: number;
+    al_dia: string;
+    vencido_1_30: string;
+    vencido_31_60: string;
+    mayor_60: string;
+    al_dia_cnt: number;
+    vencido_1_30_cnt: number;
+    vencido_31_60_cnt: number;
+    mayor_60_cnt: number;
+  }[]>`
+    SELECT
+      COALESCE(SUM(a."saldoPendiente"::numeric), 0)::numeric(12, 2)::text   AS "saldoTotal",
+      COUNT(*)::int                                                       AS "facturasAbiertas",
+      COALESCE(SUM(a."saldoPendiente"::numeric) FILTER (WHERE ${bucket} = 'AL_DIA'), 0)::numeric(12, 2)::text AS "al_dia",
+      COALESCE(SUM(a."saldoPendiente"::numeric) FILTER (WHERE ${bucket} = 'VENCIDO_1_30'), 0)::numeric(12, 2)::text AS "vencido_1_30",
+      COALESCE(SUM(a."saldoPendiente"::numeric) FILTER (WHERE ${bucket} = 'VENCIDO_31_60'), 0)::numeric(12, 2)::text AS "vencido_31_60",
+      COALESCE(SUM(a."saldoPendiente"::numeric) FILTER (WHERE ${bucket} = 'MAYOR_60'), 0)::numeric(12, 2)::text AS "mayor_60",
+      COUNT(*) FILTER (WHERE ${bucket} = 'AL_DIA')::int                   AS "al_dia_cnt",
+      COUNT(*) FILTER (WHERE ${bucket} = 'VENCIDO_1_30')::int             AS "vencido_1_30_cnt",
+      COUNT(*) FILTER (WHERE ${bucket} = 'VENCIDO_31_60')::int            AS "vencido_31_60_cnt",
+      COUNT(*) FILTER (WHERE ${bucket} = 'MAYOR_60')::int                 AS "mayor_60_cnt"
+    FROM (${fragmentoAgingAbiertas(ctx, opts.now, opts.dbPlazo)}) a`;
+  const fila = rows[0] ?? {
+    saldoTotal: "0.00",
+    facturasAbiertas: 0,
+    al_dia: "0.00",
+    vencido_1_30: "0.00",
+    vencido_31_60: "0.00",
+    mayor_60: "0.00",
+    al_dia_cnt: 0,
+    vencido_1_30_cnt: 0,
+    vencido_31_60_cnt: 0,
+    mayor_60_cnt: 0,
+  };
+  return {
+    saldoTotal: fila.saldoTotal,
+    facturasAbiertas: fila.facturasAbiertas,
+    porBucket: {
+      AL_DIA: fila.al_dia,
+      VENCIDO_1_30: fila.vencido_1_30,
+      VENCIDO_31_60: fila.vencido_31_60,
+      MAYOR_60: fila.mayor_60,
+    },
+    conteoPorBucket: {
+      AL_DIA: fila.al_dia_cnt,
+      VENCIDO_1_30: fila.vencido_1_30_cnt,
+      VENCIDO_31_60: fila.vencido_31_60_cnt,
+      MAYOR_60: fila.mayor_60_cnt,
+    },
+  };
 }
 
 /**

@@ -33,12 +33,15 @@ import {
 } from "../domain/margen";
 import {
   type Pagina,
+  pagina,
   type ReportResult,
 } from "../domain/reporte-resultado";
 import type { ReporteFiltro } from "../domain/reporte-filtro";
-import { calcularOffset, calcularTotalPages } from "@/shared/domain/pagination";
-import { rentabilidadFilasEnTx } from "../infrastructure/rentabilidad-repository";
-import { conPermisoOperativo, ventanaDe } from "./operacional";
+import {
+  contarRentabilidadFilasEnTx,
+  rentabilidadFilasEnTx,
+} from "../infrastructure/rentabilidad-repository";
+import { conPermisoOperativo, paginacionDe, ventanaDe } from "./operacional";
 
 /** The full computed rentabilidad dataset: every row + the page-independent Decimal summary. */
 export interface RentabilidadCompleta {
@@ -78,29 +81,38 @@ function resumenComoMap(r: RentabilidadResumen): Record<string, string> {
 }
 
 /**
- * REN-1 / REN-2 — the rentabilidad page. The screen renders one page of rows (25 default / 100 clamp,
- * DB-5); the `resumen` is computed over the WHOLE filtered set so a summary never tracks the page.
+ * REN-1 / REN-2 / REN-4 — the rentabilidad page. The page is cut IN SQL
+ * (`rentabilidadFilasEnTx`'s pinned `ORDER BY p."id" ASC` + `LIMIT`/`OFFSET` via
+ * `paginacionDe`), the filtered `total` is the server-side COUNT over the same
+ * CTE-filtered join, and every served row is pure `calcularFilaRentabilidad`
+ * (REN-1 formula math — identical across page sizes since it depends only on the
+ * row's own insumos). The `resumen` is the page-independent FULL-SET reduction:
+ * it keeps `resumirRentabilidad` over the SAME un-paged grouped read the CSV
+ * path reuses (`leerRentabilidadCompleta`), a bounded distinct-product aggregate
+ * documented like the estado-facturas risk #7 — never re-encoded in SQL, so the
+ * screen summary and the CSV footer stay byte-equal (EXP-2).
  */
 export async function consultarRentabilidad(
   tx: PrismaTx,
   ctx: TenantCtx,
   filtro: ReporteFiltro,
 ): Promise<ReportResult<Pagina<RentabilidadFila>>> {
-  const resultado = await leerRentabilidadCompleta(tx, ctx, filtro);
-  if (!resultado.ok) return resultado;
+  return conPermisoOperativo(tx, ctx, REPORTE_ID.RENTABILIDAD, async (txw) => {
+    const ventana = ventanaDe(filtro);
+    const [insumosPagina, insumosFull, total] = await Promise.all([
+      rentabilidadFilasEnTx(txw, ctx, ventana, paginacionDe(filtro)),
+      // Page-independent summary over the full grouped set (bounded by DISTINCT
+      // products; REN-4's LIMIT/OFFSET governs the screen page only).
+      rentabilidadFilasEnTx(txw, ctx, ventana),
+      contarRentabilidadFilasEnTx(txw, ctx, ventana),
+    ]);
+    const resumen = resumirRentabilidad(insumosFull.map((i) => calcularFilaRentabilidad(i)));
 
-  const { filas, resumen } = resultado.data;
-  const total = filas.length;
-  const offset = calcularOffset(filtro.page, filtro.pageSize);
-  const paginaFilas = filas.slice(offset, offset + filtro.pageSize);
-
-  const pagina: Pagina<RentabilidadFila> = {
-    filas: paginaFilas,
-    total,
-    page: filtro.page,
-    pageSize: filtro.pageSize,
-    totalPages: calcularTotalPages(total, filtro.pageSize),
-    resumen: resumenComoMap(resumen),
-  };
-  return { ok: true, data: pagina };
+    return pagina<RentabilidadFila>(
+      filtro,
+      insumosPagina.map((i) => calcularFilaRentabilidad(i)),
+      total,
+      resumenComoMap(resumen),
+    );
+  });
 }

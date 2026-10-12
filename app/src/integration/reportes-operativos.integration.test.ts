@@ -606,6 +606,88 @@ describe("reportes slice B — operational reports + CSV (real DB, RLS on)", () 
   });
 });
 
+/**
+ * OP-6 — the estadoFacturas data-layer page cut (designed-order change per D2).
+ * The grid's `ORDER BY estado, tipoNcf` is the explicit deterministic sort; the
+ * page cut (`limitePaginaSql`) is applied in the paged call, while the summary
+ * keeps its own bounded full-grid read (risk #7, documented). Page 1 at the
+ * default 25 always holds the whole grid (≤ estado × tipoNcf cells ≤ 6), and a
+ * pageSize-2 walk concatenates to the SAME deterministic order.
+ */
+describe("OP-6 — estadoFacturas data-layer page cut (real DB, RLS on)", () => {
+  beforeEach(async () => {
+    fixture = await seedTenantFixture();
+  });
+
+  it("explicit deterministic ORDER BY estado, tipoNcf; pageSize-2 page walk == the full-grid order; summary page-independent", async () => {
+    const f = fixture!;
+    const clienteId = await crearCliente(f, f.empresaA.id);
+    const ctx = adminCtx(f, f.sucursalA1.id);
+
+    // Cells across estados × tipos: VIGENTE B01 (a pendiente and a parcial
+    // invoice in ONE cell), VIGENTE B02, CANCELADA B01, CANCELADA B02.
+    const p1 = await crearFactura(f, { empresaId: f.empresaA.id, sucursalId: f.sucursalA1.id, clienteId, total: "100.00", estado: "VIGENTE", tipoNcf: "B01" });
+    const p2 = await crearFactura(f, { empresaId: f.empresaA.id, sucursalId: f.sucursalA1.id, clienteId, total: "100.00", estado: "VIGENTE", tipoNcf: "B01" });
+    await crearCobro(f, { empresaId: f.empresaA.id, sucursalId: f.sucursalA1.id, facturaId: p2, monto: "30.00" });
+    await crearFactura(f, { empresaId: f.empresaA.id, sucursalId: f.sucursalA1.id, clienteId, total: "80.00", estado: "VIGENTE", tipoNcf: "B02" });
+    await crearFactura(f, { empresaId: f.empresaA.id, sucursalId: f.sucursalA1.id, clienteId, total: "70.00", estado: "CANCELADA", tipoNcf: "B01" });
+    await crearFactura(f, { empresaId: f.empresaA.id, sucursalId: f.sucursalA1.id, clienteId, total: "60.00", estado: "CANCELADA", tipoNcf: "B02" });
+    void p1;
+
+    // Full window in one paged read (the clamp page holds the whole grid).
+    const amplia = await withTenantTransaction(ctx, (tx) =>
+      consultarEstadoFacturas(tx, ctx, normalizarFiltro({ pageSize: 100 })),
+    );
+    expect(amplia.ok).toBe(true);
+    if (!amplia.ok) return;
+    const celdas = amplia.data.filas;
+    // 4 (estado × tipo) cells of our own seeds (pendiente/parcial share the
+    // VIGENTE|B01 cell) — plus any fixture-seeded invoices; the bounded grid
+    // identity keeps the total ≤ 6 estado × tipoNcf cells.
+    expect(celdas.length).toBeGreaterThanOrEqual(4);
+    expect(celdas.length).toBeLessThanOrEqual(6);
+    expect(amplia.data.total).toBe(celdas.length);
+    expect(amplia.data.totalPages).toBe(1);
+
+    // Explicit deterministic order (per D2): `estado` then `tipoNcf`. Both
+    // columns are frozen Postgres ENUMs, so the order is the DECLARATION order
+    // (VIGENTE → CANCELADA → ANULADA; B01 → B02) — an even stronger pin than
+    // alphabetical text ordering: it cannot change without a migration, and it
+    // is the SAME order the pre-slice grid produced.
+    const ordenEstado = (e: string): number =>
+      { const i = ["VIGENTE", "CANCELADA", "ANULADA"].indexOf(e); return i === -1 ? 99 : i; };
+    const ordenTipo = (t: string): number =>
+      { const i = ["B01", "B02"].indexOf(t); return i === -1 ? 99 : i; };
+    const ordenadaEsperada = [...celdas].sort(
+      (a, b) => ordenEstado(a.estado) - ordenEstado(b.estado) || ordenTipo(a.tipoNcf) - ordenTipo(b.tipoNcf),
+    );
+    expect(celdas).toEqual(ordenadaEsperada);
+
+    // Page-walk mechanics: pageSize 2 walks ceil(total/2) pages to the SAME order.
+    const paginasNecesarias = Math.ceil(celdas.length / 2);
+    const caminado: string[] = [];
+    let resumenPrevia: Record<string, string> | null = null;
+    for (let page = 1; page <= paginasNecesarias; page += 1) {
+      const r = await withTenantTransaction(ctx, (tx) =>
+        consultarEstadoFacturas(tx, ctx, normalizarFiltro({ page, pageSize: 2 })),
+      );
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      // 2-cell pages (the last page may hold the odd tail).
+      expect(r.data.filas.length).toBeLessThanOrEqual(2);
+      expect(r.data.total).toBe(celdas.length);
+      expect(r.data.totalPages).toBe(paginasNecesarias);
+      // The summary is page-independent (OP-6/OP-5: never trims to the page rows).
+      if (resumenPrevia === null) resumenPrevia = r.data.resumen;
+      else expect(r.data.resumen).toEqual(resumenPrevia);
+      caminado.push(...r.data.filas.map((c) => `${c.estado}|${c.tipoNcf}`));
+    }
+    expect(caminado).toEqual(celdas.map((c) => `${c.estado}|${c.tipoNcf}`));
+    // And the walked resumen equals the wide-page resumen byte-for-byte.
+    expect(resumenPrevia).toEqual(amplia.data.resumen);
+  });
+});
+
 // --- test-only name resolver (products were created with a deterministic `codigo === nombre`) ---
 /**
  * Product `nombre` equals its `codigo` at creation (see `crearProducto`); the fixture exposes

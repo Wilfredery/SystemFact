@@ -25,12 +25,11 @@ import { Prisma } from "@/generated/prisma/client";
 import { Decimal } from "decimal.js";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
-import {
-  consultarRentabilidad,
-  leerRentabilidadCompleta,
-} from "@/modules/reportes/application/rentabilidad";
+import { consultarRentabilidad, leerRentabilidadCompleta } from "@/modules/reportes/application/rentabilidad";
+import { ventanaDe } from "@/modules/reportes/application/operacional";
 import { generarCsvRentabilidad } from "@/modules/reportes/application/exportar-rentabilidad";
 import { generarCsvReporte } from "@/modules/reportes/application/exportar";
+import { contarRentabilidadFilasEnTx } from "@/modules/reportes/infrastructure/rentabilidad-repository";
 import { normalizarFiltro } from "@/modules/reportes/domain/reporte-filtro";
 import { NOTA_LIMITACION_RENTABILIDAD } from "@/modules/reportes/domain/margen";
 import { REPORTE_NO_AUTORIZADO } from "@/modules/reportes/domain/errors";
@@ -637,3 +636,145 @@ describe("reportes slice D — rentabilidad por producto (real DB, RLS on)", () 
     expect(despues).toBe(antes);
   });
 });
+
+/**
+ * REN-4 — the rentabilidad data-layer page cut (real DB, RLS on). The screen page
+ * is `LIMIT`/`OFFSET`-cut in SQL (`ORDER BY p."id" ASC` + `limitePaginaSql`) and
+ * the filtered total is computed server-side (`contarRentabilidadFilasEnTx`);
+ * the REN-1 metric math stays pure and identical across page sizes, and the
+ * summary/CSV (`leerRentabilidadCompleta`) stay untouched full reads.
+ */
+describe("REN-4 — rentabilidad data-layer page cut (real DB, RLS on)", () => {
+  beforeEach(async () => {
+    fixture = await seedTenantFixture();
+  });
+
+  it("page walk pages 1..5 at 25 == the full read order (p.id ASC); every row's REN-1 metrics identical across page sizes; total == server count", async () => {
+    const f = fixture!;
+    const cliente = await crearCliente(f, f.empresaA.id);
+
+    // 110 distinct products, each with BOTH purchase (Entrada/Inversión) and
+    // sale (Salida/Ventas) activity in the window — deterministic per-index values.
+    const productos: number[] = [];
+    for (let i = 0; i < 110; i += 1) {
+      const P = await crearProducto(f.empresaA.id, `${10 + i}.00`);
+      await fijarStock(f.sucursalA1.id, P.id, "2.000");
+      productos.push(P.id);
+    }
+    await crearVenta(f, {
+      empresaId: f.empresaA.id,
+      sucursalId: f.sucursalA1.id,
+      clienteId: cliente,
+      fecha: AHORA,
+      lineas: productos.map((id, i) => ({
+        productoId: id,
+        cantidad: "3.000",
+        precioUnitario: `${20 + i}.00`,
+      })),
+    });
+    await crearCompra(f, {
+      empresaId: f.empresaA.id,
+      sucursalId: f.sucursalA1.id,
+      proveedorId: f.proveedores.formalJuridica.id,
+      estado: "RECIBIDA",
+      lineas: productos.map((id, i) => ({
+        productoId: id,
+        cantidad: "4.000",
+        costoUnitario: `${10 + i}.00`,
+      })),
+    });
+
+    const ctx = adminCtx(f, f.sucursalA1.id);
+
+    // Server-side filtered total: the COUNT over the same CTE-filtered join.
+    const totalContado = await withTenantTransaction(ctx, (tx) =>
+      contarRentabilidadFilasEnTx(tx, ctx, ventanaDe(normalizarFiltro(ENERO))),
+    );
+    expect(totalContado).toBe(110);
+
+    // FULL reference (unchanged read that the CSV path reuses).
+    const referencia = await withTenantTransaction(ctx, (tx) =>
+      leerRentabilidadCompleta(tx, ctx, normalizarFiltro(ENERO)),
+    );
+    expect(referencia.ok).toBe(true);
+    if (!referencia.ok) return;
+    const ordenEsperado = referencia.data.filas.map((x) => x.productoId);
+    expect(ordenEsperado.length).toBe(110);
+
+    // Page walk pageSize 25 over pages 1..5 — the concatenation equals the whole
+    // sorted set in EXACT order (order pin), with no overlap or gap.
+    const walk: number[] = [];
+    const filasPorId = new Map<number, (typeof referencia.data.filas)[number]>(
+      referencia.data.filas.map((x) => [x.productoId, x]),
+    );
+    let resumenPagina: Record<string, string> | null = null;
+    for (let page = 1; page <= 5; page += 1) {
+      const r = await withTenantTransaction(ctx, (tx) =>
+        consultarRentabilidad(tx, ctx, normalizarFiltro({ ...ENERO, page, pageSize: 25 })),
+      );
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.data.page).toBe(page);
+      expect(r.data.pageSize).toBe(25);
+      expect(r.data.total).toBe(110);
+      expect(r.data.totalPages).toBe(5);
+      // REN-1 metrics identical across page sizes: every served row is
+      // byte-equal to the same product's full-set row (pure formula).
+      for (const fila of r.data.filas) {
+        expect(fila).toEqual(filasPorId.get(fila.productoId));
+      }
+      // EXP-2 parity: any page's resumen == the full-set summary.
+      if (resumenPagina === null) resumenPagina = { ...r.data.resumen };
+      else expect(r.data.resumen).toEqual(resumenPagina);
+      walk.push(...r.data.filas.map((x) => x.productoId));
+    }
+    expect(walk).toEqual(ordenEsperado);
+    // Summary equals the reference full-set summary byte-for-byte (the same keys).
+    expect(resumenPagina).toEqual({
+      productos: referencia.data.resumen.productos,
+      unidadesVendidas: referencia.data.resumen.unidadesVendidas,
+      unidadesCompradas: referencia.data.resumen.unidadesCompradas,
+      ventas: referencia.data.resumen.ventas,
+      inversion: referencia.data.resumen.inversion,
+      capital: referencia.data.resumen.capital,
+      margen: referencia.data.resumen.margen,
+      margenPorciento: referencia.data.resumen.margenPorciento,
+    });
+
+    // NO slice in memory: page 2 must not need pages 1's rows anywhere in the app —
+    // proven by the fixed metadata above and the exact concatenation parity.
+  });
+
+  it("page-size clamp: a 250 request clamps to 100 rows in SQL (110-fixture window raises the cap)", async () => {
+    const f = fixture!;
+    const cliente = await crearCliente(f, f.empresaA.id);
+    const productos: number[] = [];
+    for (let i = 0; i < 110; i += 1) {
+      const P = await crearProducto(f.empresaA.id, `${10 + i}.00`);
+      productos.push(P.id);
+    }
+    await crearVenta(f, {
+      empresaId: f.empresaA.id,
+      sucursalId: f.sucursalA1.id,
+      clienteId: cliente,
+      fecha: AHORA,
+      lineas: productos.map((id, i) => ({
+        productoId: id,
+        cantidad: "1.000",
+        precioUnitario: `${20 + i}.00`,
+      })),
+    });
+    const ctx = adminCtx(f, f.sucursalA1.id);
+
+    const r = await withTenantTransaction(ctx, (tx) =>
+      consultarRentabilidad(tx, ctx, normalizarFiltro({ ...ENERO, pageSize: 250 })),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.pageSize).toBe(100);
+    expect(r.data.filas).toHaveLength(100);
+    expect(r.data.total).toBe(110);
+    expect(r.data.totalPages).toBe(2);
+  });
+});
+
