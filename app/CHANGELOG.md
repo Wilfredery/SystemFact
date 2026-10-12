@@ -1,3 +1,12 @@
+## [0.14.10](https://github.com/Wilfredery/SystemFact/compare/v0.14.9...v0.14.10) (2026-10-12)
+
+### Features
+
+* **reportes:** data-layer page cuts for the three remaining interactive report screens (PR3, tasks 3.1-3.9) —
+  * **aging (FIN-6):** `consultarCxcAging` stops fetching the full set and slicing; the screen page is one LIMIT/OFFSET cut inside `cobros/infrastructure/saldo-cxc.repository.ts` over the canonical ADR-017 fragment (CLIENTE plazo join + `dbPlazo` bind + the SD `AT TIME ZONE` day expression) with the pinned order `diasVencido DESC, saldoPendiente::numeric DESC, facturaId ASC`, plus `resumirAgingSqlEnTx` — a SQL bucket-summary whose frozen CASE mirrors `clasificarBucketAging`; the pure `construirFilaAging` recomputes day/date/bucket on the PAGE rows only. The CSV export path (`leerCxcAgingCompleto`) stays a deliberately unbounded full read (runtime guard: a pageSize-1 filter still exports the full dataset)
+  * **rentabilidad (REN-4):** the screen page is LIMIT/OFFSET-cut inside `rentabilidadFilasEnTx` (pinned `ORDER BY p."id" ASC`), the filtered total is the new `contarRentabilidadFilasEnTx` (COUNT over the ONE shared WITH + PRODUCTO universe), and REN-1 metric math stays pure per row (byte-identical across page sizes — 110-fixture page walk 1..5 + 250→100 clamp). The summary keeps `resumirRentabilidad` over the same un-paged grouped read the CSV reuses (bounded distinct-product aggregate, risk-#7 sibling), so screen-vs-CSV parity holds by construction
+  * **estadoFacturas (OP-6):** the grid gains the `limitePaginaSql` tail behind the explicit deterministic `ORDER BY estado, tipoNcf`; both columns are frozen Postgres ENUMs, so the observable pin is the ENUM declaration order (VIGENTE/CANCELADA/ANULADA; B01/B02) — stronger than the design's alphabetical wording and identical to the pre-slice implicit order; page 1 at the default 25 always holds the whole ≤6-cell grid. The page-independent summary keeps its own full-grid read per documented design risk #7
+  * Pins shipped with the diff: `aging-sql-pin` unit suite (boundary fixtures + CASE mirror 0..400), the aging integration suite (516-fixture order-pin page walk, SQL-vs-domain `diasVencidoEnSD` parity, ADR-017 balance probe, export guard), the rentabilidad REN-4 integration describe, and the OP-6 estadoFacturas describe; canonical ADR-017 block byte-identical (grep-verified), export paths and audit inventory untouched (diff empty)
 ## [0.14.9](https://github.com/Wilfredery/SystemFact/compare/v0.14.8...v0.14.9) (2026-10-12)
 
 ### Features
