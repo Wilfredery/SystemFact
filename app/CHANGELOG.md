@@ -1,3 +1,12 @@
+## [0.14.7](https://github.com/Wilfredery/SystemFact/compare/v0.14.6...v0.14.7) (2026-10-12)
+* **ncf:** compute seed vigencia year on the Santo Domingo business calendar ([85f86b2](https://github.com/Wilfredery/SystemFact/commit/85f86b202b00ef8635ed04d9ffc66eeb785981e1))
+
+## [0.14.7](https://github.com/Wilfredery/SystemFact/compare/v0.14.6...v0.14.7) (2026-10-12)
+
+### Bug Fixes
+
+* **db:** explicit RESTRICTIVE deny-all RLS policy on `_prisma_migrations` silences the Supabase `rls_enabled_no_policy` lint while keeping the implicit deny semantics (app roles never read the migration ledger)
+
 ## [0.14.6](https://github.com/Wilfredery/SystemFact/compare/v0.14.5...v0.14.6) (2026-10-12)
 
 ### Bug Fixes
