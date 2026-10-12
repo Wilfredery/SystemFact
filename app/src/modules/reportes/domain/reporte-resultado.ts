@@ -21,6 +21,8 @@
  */
 
 import type { ReporteErrorCode } from "./errors";
+import type { ReporteFiltro } from "./reporte-filtro";
+import { calcularTotalPages } from "@/shared/domain/pagination";
 
 /**
  * One page of a report plus the active-filter total and a Decimal-string summary of the
@@ -65,6 +67,30 @@ export type ReportResult<T> =
 /** A successful {@link ReportResult}. */
 export function ok<T>(data: T): ReportResult<T> {
   return { ok: true, data };
+}
+
+/**
+ * The ONE `pagina<T>` assembler (D3/D7): the duplicated local copies in
+ * `application/operacional.ts` and `application/financiero.ts` were merged here —
+ * beside the {@link Pagina} shape it builds — and every consumer now imports it,
+ * so a report page can never drift between fields. The echo of
+ * `page`/`pageSize` and the shared `calcularTotalPages` semantics (0 when there
+ * are no rows) are the same values the shipped copies produced.
+ */
+export function pagina<T>(
+  filtro: ReporteFiltro,
+  filas: readonly T[],
+  total: number,
+  resumen: Readonly<Record<string, string>>,
+): Pagina<T> {
+  return {
+    filas,
+    total,
+    page: filtro.page,
+    pageSize: filtro.pageSize,
+    totalPages: calcularTotalPages(total, filtro.pageSize),
+    resumen,
+  };
 }
 
 /**
