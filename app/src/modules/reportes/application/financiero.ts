@@ -25,7 +25,7 @@ import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { REPORTE_ID } from "../domain/catalogo";
 import { REPORTE_VALIDACION, messageFor } from "../domain/errors";
 import { type Pagina, type ReportResult } from "../domain/reporte-resultado";
-import { calcularOffset } from "@/shared/domain/pagination";
+import { calcularOffset, calcularTotalPages } from "@/shared/domain/pagination";
 import type { ReporteFiltro } from "../domain/reporte-filtro";
 import type { CxpFila, ComparativaFila } from "../domain/financiero";
 import type { VentasPeriodoFila } from "../domain/operacional";
