@@ -24,8 +24,8 @@ import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransac
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { REPORTE_ID } from "../domain/catalogo";
 import { REPORTE_VALIDACION, messageFor } from "../domain/errors";
-import { type Pagina, type ReportResult } from "../domain/reporte-resultado";
-import { calcularOffset, calcularTotalPages } from "@/shared/domain/pagination";
+import { type Pagina, type ReportResult, pagina } from "../domain/reporte-resultado";
+import { calcularOffset } from "@/shared/domain/pagination";
 import type { ReporteFiltro } from "../domain/reporte-filtro";
 import type { CxpFila, ComparativaFila } from "../domain/financiero";
 import type { VentasPeriodoFila } from "../domain/operacional";
@@ -142,21 +142,4 @@ export async function consultarComparativa(
       variacionPorciento: variacion.variacionPorciento,
     });
   });
-}
-
-/** Assemble a {@link Pagina} from a page of rows, the filtered total and a Decimal summary. */
-function pagina<T>(
-  filtro: ReporteFiltro,
-  filas: readonly T[],
-  total: number,
-  resumen: Readonly<Record<string, string>>,
-): Pagina<T> {
-  return {
-    filas,
-    total,
-    page: filtro.page,
-    pageSize: filtro.pageSize,
-    totalPages: calcularTotalPages(total, filtro.pageSize),
-    resumen,
-  };
 }

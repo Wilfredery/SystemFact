@@ -37,10 +37,10 @@ import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransac
 import {
   CAMPOS_TEXTO_LIBRE,
   accionAuditoriaDesdeDb,
-  calcularOffset,
   type AuditoriaFiltro,
   type AuditoriaRegistro,
 } from "../domain/auditoria";
+import { calcularOffset } from "@/shared/domain/pagination";
 import { accionAuditoriaADb } from "./prisma-accion";
 
 /**
@@ -119,7 +119,7 @@ export async function consultarAuditoriaEnTx(
         where,
         select: SELECCION,
         orderBy: [{ fechaHora: "desc" }, { id: "desc" }],
-        skip: calcularOffset(filtro),
+        skip: calcularOffset(filtro.page, filtro.pageSize),
         take: filtro.pageSize,
       }),
       tx.movimientoAuditoria.count({ where }),

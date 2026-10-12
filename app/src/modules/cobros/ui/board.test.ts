@@ -47,31 +47,29 @@ describe("clasificarTableroCxc (R-C7 board buckets)", () => {
   });
 });
 
-describe("paginar (25/page default)", () => {
+describe("paginar (composition over server pages, R-C9)", () => {
   const items = Array.from({ length: 60 }, (_, i) => i + 1);
 
-  it("defaults to 25 per page (AGENTS.md list rule)", () => {
-    const p1 = paginar(items, 1);
-    expect(p1.page).toBe(1);
-    expect(p1.items).toHaveLength(25);
-    expect(p1.totalPages).toBe(3);
-    expect(p1.total).toBe(60);
+  it("passes the page-scoped bucket through — NO in-memory slicing happens here", () => {
+    const p = paginar(items, { page: 1, totalPages: 3 });
+    expect(p.items).toBe(items); // the bucket IS the server page's slice
+    expect(p.total).toBe(60);
+    expect(p.page).toBe(1);
+    expect(p.totalPages).toBe(3);
   });
 
-  it("clamps an out-of-range page to the last page (stale deep link never crashes)", () => {
-    expect(paginar(items, 999).page).toBe(3);
-    expect(paginar(items, 0).page).toBe(1);
-    expect(paginar(items, -5).page).toBe(1);
+  it("page display comes from the SERVER metadata, clamped into [1, totalPages]", () => {
+    expect(paginar([], { page: 2, totalPages: 3 }).page).toBe(2);
+    // A stale snapshot never crashes the board.
+    expect(paginar([], { page: 999, totalPages: 3 }).page).toBe(3);
+    expect(paginar([], { page: 0, totalPages: 3 }).page).toBe(1);
+    expect(paginar([], { page: -5, totalPages: 3 }).page).toBe(1);
   });
 
-  it("an empty list yields a single empty page", () => {
-    const p = paginar<number>([], 1);
+  it("an empty board still yields a single empty page (min-1 board semantics)", () => {
+    const p = paginar<number>([], { page: 1, totalPages: 0 });
     expect(p.items).toHaveLength(0);
     expect(p.totalPages).toBe(1);
     expect(p.total).toBe(0);
-  });
-
-  it("the last page returns the remainder", () => {
-    expect(paginar(items, 3).items).toHaveLength(10);
   });
 });

@@ -24,8 +24,8 @@ import { Decimal } from "decimal.js";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import type { ReporteFiltro } from "../domain/reporte-filtro";
-import { calcularOffset, calcularTotalPages } from "@/shared/domain/pagination";
-import { ok, error, type Pagina, type ReportResult } from "../domain/reporte-resultado";
+import { calcularOffset } from "@/shared/domain/pagination";
+import { ok, error, type Pagina, type ReportResult, pagina } from "../domain/reporte-resultado";
 import { REPORTE_NO_AUTORIZADO, messageFor } from "../domain/errors";
 import { rolPermitidoParaReporte } from "../domain/roles";
 import type { ReporteId } from "../domain/catalogo";
@@ -196,21 +196,4 @@ export async function consultarEstadoFacturas(
       pagadas: String(pagadas),
     });
   });
-}
-
-/** Assemble a {@link Pagina} from a page of rows, the filtered total and a Decimal summary. */
-function pagina<T>(
-  filtro: ReporteFiltro,
-  filas: readonly T[],
-  total: number,
-  resumen: Readonly<Record<string, string>>,
-): Pagina<T> {
-  return {
-    filas,
-    total,
-    page: filtro.page,
-    pageSize: filtro.pageSize,
-    totalPages: calcularTotalPages(total, filtro.pageSize),
-    resumen,
-  };
 }

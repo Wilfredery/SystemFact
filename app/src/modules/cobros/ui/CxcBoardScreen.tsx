@@ -1,18 +1,27 @@
 "use client";
 
 /**
- * CxC board screen (fase-6 PR-4, spec R-C7 / R-B1).
+ * CxC board screen (fase-6 PR-4, spec R-C7 / R-B1; R-C9 server paging).
  *
  * The collections board: three outstanding-receivable buckets — Pendiente,
- * Parcial and En Mora — each paginated at 25 per page (AGENTS.md "Lists ALWAYS
- * paginated"). It loads the SINGLE canonical derived-balance view via
- * `consultarSaldoCxcAction` and NOTHING else: the balance, the derived
+ * Parcial and En Mora — served from the SINGLE canonical derived-balance view
+ * via `consultarSaldoCxcAction` and NOTHING else: the balance, the derived
  * PENDIENTE/PARCIAL/PAGADA state and the Santo-Domingo mora flag all come from
- * that one query (ADR-017 — no per-screen balance query, nothing cached), and the
- * three-way partition + the 25-page window are pure UI-side transformations of
- * those derived facts (`./board`). A row can open the inline `PaymentForm`; after a
- * committed collection the board RELOADS the canonical query, so the row's new
- * state and any bucket move reflect the latest committed payment immediately.
+ * that one server page (ADR-017 — no per-screen balance query, nothing cached).
+ * THE PAGE CUT IS SERVER-SIDE (R-C9): one outstanding-filtered SQL page +
+ * typed metadata per request; the screen navigates server pages by page number
+ * and classifies the PAGE's rows client-side with the pure `clasificarTableroCxc`.
+ *
+ * Accepted behavior change (design risk #3, stated in the PR description): the
+ * per-bucket counts (and rows) are PAGE-SCOPED — the three sections render the
+ * current server page's classification, so a bucket's total is how many of THAT
+ * page's rows fall in it. Per-bucket totals across the whole tenant would need
+ * the derived mora/estado rules re-encoded in SQL — rejected. The PR
+ * description documents this consequence.
+ *
+ * A row can open the inline `PaymentForm`; after a committed collection the
+ * board RELOADS the same server page, so the row's new state and any bucket
+ * move reflect the latest committed payment immediately.
  *
  * Server components by default; this is a client island purely for the interactivity
  * (fetch on mount, pagination, inline payment). The board NEVER computes money.
@@ -22,7 +31,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { consultarSaldoCxcAction } from "@/modules/cobros/http/actions";
-import type { SaldoCxCVista } from "@/modules/cobros/application/consultar-saldo-cxc";
+import type {
+  SaldoCxCVista,
+  SaldoCxCVistaPagina,
+} from "@/modules/cobros/application/consultar-saldo-cxc";
 import type { EstadoPagoDerivado } from "@/modules/cobros/domain/pago";
 import { clasificarTableroCxc, paginar } from "./board";
 import { formatearFechaDO, formatearMontoDO } from "./format";
@@ -31,15 +43,6 @@ import { PaymentForm } from "./PaymentForm";
 /** Which bucket is open for payment (a single invoice at a time). */
 type Abierto = number | null;
 
-/** Per-bucket page cursors (each list paginates independently at 25/page). */
-interface Paginas {
-  readonly pendiente: number;
-  readonly parcial: number;
-  readonly enMora: number;
-}
-
-const PAGINAS_INICIALES: Paginas = { pendiente: 1, parcial: 1, enMora: 1 };
-
 const ETIQUETA_ESTADO: Record<EstadoPagoDerivado, string> = {
   PENDIENTE: "Pendiente",
   PARCIAL: "Parcial",
@@ -47,17 +50,17 @@ const ETIQUETA_ESTADO: Record<EstadoPagoDerivado, string> = {
 };
 
 export function CxcBoardScreen() {
-  const [filas, setFilas] = useState<readonly SaldoCxCVista[]>([]);
+  const [servida, setServida] = useState<SaldoCxCVistaPagina | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [paginas, setPaginas] = useState<Paginas>(PAGINAS_INICIALES);
   const [abierto, setAbierto] = useState<Abierto>(null);
 
-  // Apply the canonical read's result to state. `salir` reads a fresh snapshot and
-  // pushes it in — the single source stays `consultarSaldoCxcAction` (R-B1).
+  // Apply the canonical read's result to state. `recargar` reads a fresh
+  // snapshot and pushes it in — the single source stays `consultarSaldoCxcAction`
+  // (R-C9: one SQL page + typed metadata per request).
   function aplicar(r: Awaited<ReturnType<typeof consultarSaldoCxcAction>>): void {
     if (r.ok) {
-      setFilas(r.data);
+      setServida(r.data);
       setError(null);
     } else {
       setError(`[${r.error.code}] ${r.error.message}`);
@@ -65,44 +68,81 @@ export function CxcBoardScreen() {
     setCargando(false);
   }
 
-  // Reload for handlers (after a committed collection) — a normal call, not in an
-  // effect, so the compiler's effect rule never applies.
+  // Reload for handlers (after a committed collection) — the SAME server page,
+  // a normal call, not in an effect, so the compiler's effect rule never applies.
   async function recargar(): Promise<void> {
-    aplicar(await consultarSaldoCxcAction({}));
+    aplicar(await consultarSaldoCxcAction({ page: servida?.page ?? 1 }));
   }
 
   // The mount fetch settles state from the action's resolution callback (an
   // external-system boundary), never synchronously in the effect body — the same
   // convention as `PosScreen`/`ReturnForm`.
   useEffect(() => {
-    void consultarSaldoCxcAction({}).then(aplicar);
+    void consultarSaldoCxcAction({ page: 1 }).then(aplicar);
   }, []);
+
+  async function navegarA(page: number): Promise<void> {
+    setCargando(true);
+    aplicar(await consultarSaldoCxcAction({ page }));
+  }
 
   if (cargando) {
     return <p className="text-sm text-zinc-500">Cargando cuentas por cobrar…</p>;
   }
-  if (error !== null) {
+  if (error !== null || servida === null) {
     // No stack traces / Prisma internals — only the stable catalog surface.
     return (
       <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
-        {error}
+        {error ?? "No hay datos del tablero."}
       </p>
     );
   }
 
-  const tablero = clasificarTableroCxc(filas);
-  const pendiente = paginar(tablero.pendiente, paginas.pendiente);
-  const parcial = paginar(tablero.parcial, paginas.parcial);
-  const enMora = paginar(tablero.enMora, paginas.enMora);
+  const tablero = clasificarTableroCxc(servida.filas);
+  const pendiente = paginar(tablero.pendiente, servida);
+  const parcial = paginar(tablero.parcial, servida);
+  const enMora = paginar(tablero.enMora, servida);
 
   return (
     <div className="flex flex-col gap-6">
       <ReimpresorRecibo />
+
+      {/* One board-level page navigation: the CUT is server-side, so the
+          sections share the page cursor (R-C9) instead of paginating their
+          buckets independently in memory. */}
+      {servida.totalPages > 1 && (
+        <nav
+          aria-label="Paginación tablero"
+          className="flex items-center justify-between gap-2 text-xs"
+        >
+          <button
+            type="button"
+            onClick={() => navegarA(servida.page - 1)}
+            disabled={servida.page <= 1}
+            aria-label="Página anterior"
+            className="rounded border border-zinc-300 px-2 py-1 text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300"
+          >
+            Anterior
+          </button>
+          <span className="text-zinc-500">
+            Página {servida.page} de {servida.totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => navegarA(servida.page + 1)}
+            disabled={servida.page >= servida.totalPages}
+            aria-label="Página siguiente"
+            className="rounded border border-zinc-300 px-2 py-1 text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300"
+          >
+            Siguiente
+          </button>
+        </nav>
+      )}
+
       <SeccionCobros
         titulo="En mora"
         tono="mora"
         pagina={enMora}
-        onPage={(p) => setPaginas((prev) => ({ ...prev, enMora: p }))}
         abierto={abierto}
         onAbrir={setAbierto}
         onCobrado={recargar}
@@ -111,7 +151,6 @@ export function CxcBoardScreen() {
         titulo="Parciales"
         tono="parcial"
         pagina={parcial}
-        onPage={(p) => setPaginas((prev) => ({ ...prev, parcial: p }))}
         abierto={abierto}
         onAbrir={setAbierto}
         onCobrado={recargar}
@@ -120,7 +159,6 @@ export function CxcBoardScreen() {
         titulo="Pendientes"
         tono="pendiente"
         pagina={pendiente}
-        onPage={(p) => setPaginas((prev) => ({ ...prev, pendiente: p }))}
         abierto={abierto}
         onAbrir={setAbierto}
         onCobrado={recargar}
@@ -133,7 +171,6 @@ function SeccionCobros({
   titulo,
   tono,
   pagina,
-  onPage,
   abierto,
   onAbrir,
   onCobrado,
@@ -141,7 +178,6 @@ function SeccionCobros({
   readonly titulo: string;
   readonly tono: "pendiente" | "parcial" | "mora";
   readonly pagina: ReturnType<typeof paginar<SaldoCxCVista>>;
-  readonly onPage: (page: number) => void;
   readonly abierto: Abierto;
   readonly onAbrir: (id: Abierto) => void;
   readonly onCobrado: () => Promise<void> | void;
@@ -154,6 +190,8 @@ function SeccionCobros({
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
           {titulo}{" "}
+          {/* Page-scoped bucket count (design risk #3 — accepted behavior
+              change; documented in the PR description). */}
           <span className="text-xs font-normal text-zinc-500">({pagina.total})</span>
         </h2>
       </div>
@@ -175,35 +213,6 @@ function SeccionCobros({
             />
           ))}
         </ul>
-      )}
-
-      {pagina.totalPages > 1 && (
-        <nav
-          aria-label={`Paginación ${titulo}`}
-          className="mt-3 flex items-center justify-between gap-2 text-xs"
-        >
-          <button
-            type="button"
-            onClick={() => onPage(pagina.page - 1)}
-            disabled={pagina.page <= 1}
-            aria-label={`Página anterior ${titulo}`}
-            className="rounded border border-zinc-300 px-2 py-1 text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300"
-          >
-            Anterior
-          </button>
-          <span className="text-zinc-500">
-            Página {pagina.page} de {pagina.totalPages}
-          </span>
-          <button
-            type="button"
-            onClick={() => onPage(pagina.page + 1)}
-            disabled={pagina.page >= pagina.totalPages}
-            aria-label={`Página siguiente ${titulo}`}
-            className="rounded border border-zinc-300 px-2 py-1 text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300"
-          >
-            Siguiente
-          </button>
-        </nav>
       )}
     </section>
   );

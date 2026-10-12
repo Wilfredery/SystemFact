@@ -25,9 +25,14 @@
  * boundary without a JS float (AGENTS.md "Money = Decimal").
  */
 
+import { Prisma } from "@/generated/prisma/client";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import type { SaldoCxcFila } from "../domain/pago";
+import {
+  limitePaginaSql,
+  type Paginacion,
+} from "@/modules/reportes/infrastructure/operacional-repository";
 
 /**
  * The quoted SQL aliases below (`AS "facturaId"` …) make Postgres preserve the
@@ -90,6 +95,113 @@ export async function consultarSaldoCxcEnTx(
     ORDER BY f."fechaEmision" DESC, f."id" DESC`;
 
   return rows;
+}
+
+/**
+ * COUPLING FRAGMENT (R-C9): the canonical ADR-017 statement THIS FILE EMBEDS
+ * above (`consultarSaldoCxcEnTx`), SELECT + JOINs + WHERE, as a composable
+ * fragment — WITHOUT its `ORDER BY` (D2: an outer wrapper cannot rely on inner
+ * order; the wrapper re-applies the pinned order itself). This is a deliberate
+ * in-file coupling copy — the SAME discipline `bloquearYCalcularSaldoFacturaEnTx`
+ * documents ("if the canonical formula ever changes, BOTH statements must change
+ * together"): here the count and the board page must never disagree with the
+ * canonical aggregate, so ALL THREE move together. The canonical function itself
+ * stays byte-identical — the page cut lives ONLY in the outward queries.
+ */
+function saldoCxcFragmentoCanonico(ctx: TenantCtx): Prisma.Sql {
+  return Prisma.sql`
+    SELECT
+      f."id"::int                                                        AS "facturaId",
+      f."clienteId"::int                                                 AS "clienteId",
+      f."total"::numeric(12, 2)::text                                    AS "total",
+      COALESCE(p."cobros", 0)::numeric(12, 2)::text                       AS "cobrosAplicados",
+      COALESCE(nc."monto", 0)::numeric(12, 2)::text                       AS "ajustesCredito",
+      COALESCE(nd."monto", 0)::numeric(12, 2)::text                       AS "ajustesDebito",
+      (
+        f."total"
+        - COALESCE(p."cobros", 0)
+        - COALESCE(nc."monto", 0)
+        + COALESCE(nd."monto", 0)
+      )::numeric(12, 2)::text                                             AS "saldoPendiente",
+      f."fechaEmision"                                                    AS "fechaEmision"
+    FROM "FACTURA" f
+    LEFT JOIN (
+      SELECT "facturaId", SUM("monto") AS "cobros"
+      FROM "PAGO"
+      WHERE "empresaId" = ${ctx.empresaId}
+        AND "tipo" = 'COBRO'
+        AND "estado" = 'APLICADO'
+      GROUP BY "facturaId"
+    ) p ON p."facturaId" = f."id"
+    LEFT JOIN (
+      SELECT "facturaOriginalId" AS "facturaId", SUM("monto") AS "monto"
+      FROM "NOTA_CREDITO"
+      WHERE "empresaId" = ${ctx.empresaId}
+        AND "estado" = 'VIGENTE'
+      GROUP BY "facturaOriginalId"
+    ) nc ON nc."facturaId" = f."id"
+    LEFT JOIN (
+      SELECT "facturaOriginalId" AS "facturaId", SUM("monto") AS "monto"
+      FROM "NOTA_DEBITO"
+      WHERE "empresaId" = ${ctx.empresaId}
+        AND "estado" = 'VIGENTE'
+      GROUP BY "facturaOriginalId"
+    ) nd ON nd."facturaId" = f."id"
+    WHERE f."empresaId" = ${ctx.empresaId}
+      AND f."estado" = 'VIGENTE'`;
+}
+
+/**
+ * The board's SERVED set: the canonical fragment narrowed to the OUTSTANDING
+ * receivables (`cobrosAplicados < total`), the pinned `fechaEmision DESC,
+ * "facturaId" DESC` order re-applied by the WRAPPER (identical to the canonical
+ * order — the inner alias IS the canonical `f."id"`), and the page cut executed
+ * in SQL via the shared `limitePaginaSql` tail (D1 OFFSET, D2 pin). The filter
+ * re-encodes ONLY the `clasificarEstadoPago` PAGADA threshold: rows the pure
+ * classifier would call PAGADA (applied ≥ total, raw or via nota-de-débito
+ * re-inflation) can never appear, and every remaining row derives PENDIENTE or
+ * PARCIAL — whose parity is pinned by the tablero integration suite (R-C9).
+ */
+export async function consultarSaldoCxcTableroEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  pag?: Paginacion,
+): Promise<SaldoCxcFila[]> {
+  return tx.$queryRaw<SaldoCxcFila[]>`
+    SELECT s.*
+    FROM (${saldoCxcFragmentoCanonico(ctx)}) s
+    WHERE s."cobrosAplicados"::numeric < s."total"::numeric
+    ORDER BY s."fechaEmision" DESC, s."facturaId" DESC
+    ${limitePaginaSql(pag)}`;
+}
+
+/** The two counts the board page needs, computed over the SAME fragment. */
+export interface SaldoCxcConteo {
+  /** VIGENTE invoices of every derived payment state. */
+  readonly total: number;
+  /** The board's filtered set: VIGENTE with `cobrosAplicados < total`. */
+  readonly pendientes: number;
+}
+
+/**
+ * Server-side filtered total (R-C9 "the server MUST compute … the filtered total
+ * count"): ONE COUNT over the same canonical fragment with the SAME filtering
+ * threshold — never a page-limited subset, never a different predicate than the
+ * page query. One statement returns both counts (`FILTER` clause), so page and
+ * total are a single round-trip over identical row predicates.
+ */
+export async function contarSaldoCxcEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+): Promise<SaldoCxcConteo> {
+  const rows = await tx.$queryRaw<{ total: number; pendientes: number }[]>`
+    SELECT
+      COUNT(*)::int                                                      AS "total",
+      COUNT(*) FILTER (
+        WHERE s."cobrosAplicados"::numeric < s."total"::numeric
+      )::int                                                             AS "pendientes"
+    FROM (${saldoCxcFragmentoCanonico(ctx)}) s`;
+  return rows[0] ?? { total: 0, pendientes: 0 };
 }
 
 /**

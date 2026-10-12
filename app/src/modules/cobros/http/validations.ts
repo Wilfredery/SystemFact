@@ -55,9 +55,20 @@ export const zRegistrarReembolsoInput = z.object({
 });
 export type RegistrarReembolsoDto = z.infer<typeof zRegistrarReembolsoInput>;
 
-// The CxC read takes no filter in V1 (the board is the whole branch receivable);
-// an empty object is accepted so the caller can pass nothing.
-export const zConsultarSaldoCxcInput = z.object({}).optional();
+// The board read carries the OPTIONAL paging intent only — the shared
+// normalization playbook (`normalizarPagina`/`normalizarTamanoPagina`) owns the
+// caps: any raw number is NORMALIZED before data access (R-C9 "outside the clamp
+// MUST be normalized") — 0/absent → 25, 250 → 100, page floor ≥ 1.
+export const zConsultarSaldoCxcInput = z
+  .object({
+    page: z.number().optional(),
+    pageSize: z.number().optional(),
+  })
+  .optional();
+
+// The customer statement keeps NO paging surface: it serves the FULL canonical
+// account every read (whole view incl. settled rows — R-C7 statement semantics).
+export const zConsultarEstadoCuentaInput = z.object({}).optional();
 
 // A receipt reprint is addressed by its company-serialized correlativoRecibo (R-C4).
 // A positive integer only — the domain/catalog owns the not-found case; Zod owns the
