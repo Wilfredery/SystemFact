@@ -48,6 +48,23 @@ describe("calcularReposicionNeta", () => {
     ).toEqual([{ productoId: 1, cantidad: "8.500" }]);
   });
 
+  it("multi-line same product: the devuelto total nets ONCE against the aggregated sold total, not per line", () => {
+    // The per-product devuelto is a TOTAL shared by every sale line of the
+    // product; nets-per-line would under-credit (4+4=8) instead of 14.
+    const lineas = [l(1, "10.000"), l(1, "10.000")];
+    expect(calcularReposicionNeta(lineas, devuelto([[1, "6.000"]]))).toEqual([
+      { productoId: 1, cantidad: "14.000" },
+    ]);
+  });
+
+  it("multi-line output order follows FIRST APPEARANCE of each product", () => {
+    const lineas = [l(3, "2.000"), l(1, "10.000"), l(3, "4.000")];
+    expect(calcularReposicionNeta(lineas, new Map())).toEqual([
+      { productoId: 3, cantidad: "6.000" },
+      { productoId: 1, cantidad: "10.000" },
+    ]);
+  });
+
   it("both reposicion types count: a DANADO disposal reduces the net like a VENDIBLE return", () => {
     // The devuelto map is tipo-agnostic BY CALLER CONTRACT: the infrastructure
     // aggregates EVERY Linea of TipoReposicion of the factura's VIGENTE NCs, so

@@ -313,4 +313,43 @@ describe("cancelarVenta vs VIGENTE devoluciones — reposición neta (real DB, R
       "REPOSICION_CANCELACION 10.000",
     ]);
   });
+
+  it("case E (sequential devoluciones): two distinct returns 3+2 against one sale, cancel → reposition the remaining 5 with the NC aggregate proved", async () => {
+    const prod = await productoConStock("cancel-net-e", 100);
+    const { ventaId, facturaId } = await crearVentaConfirmada(prod.id, "10");
+    expect(await leerStock(prod.id)).toBe("90.000");
+
+    // TWO distinct crearDevolucion calls (two separate B04 NCs). The remediation
+    // read (`leerPriorNCsPorFacturaEnTx`) aggregates BOTH into one cumulative
+    // total per product — this is the trusted-but-not-proved seam R3-005 pins.
+    const dev1 = await devolver(ventaId, prod.id, "3", "VENDIBLE");
+    expect(dev1.ok).toBe(true);
+    expect(await leerStock(prod.id)).toBe("93.000");
+    const dev2 = await devolver(ventaId, prod.id, "2", "VENDIBLE");
+    expect(dev2.ok).toBe(true);
+    expect(await leerStock(prod.id)).toBe("95.000"); // 93 + 2 restocked
+
+    const cancel = await withTenantTransaction(ctx, (tx) => cancelarVenta(tx, ctx, { id: ventaId }));
+    expect(cancel.ok).toBe(true);
+
+    // 100 − 10 + 3 + 2 + 5 = 100 → the seed exactly (the cancel net is 10−5=5,
+    // NOT 10−3=7 nor the full 10).
+    expect(await leerStock(prod.id)).toBe("100.000");
+    const movs = await movimientos(await openerId(prod.id));
+    expect(movs.map((m) => `${m.tipoMovimiento} ${m.cantidadMovida}`)).toEqual([
+      "SALIDA_VENTA -10.000",
+      "ENTRADA_DEVOLUCION 3.000",
+      "ENTRADA_DEVOLUCION 2.000",
+      "REPOSICION_CANCELACION 5.000",
+    ]);
+
+    // Both NCs stay VIGENTE against the ANULADA factura (never touched).
+    const ncs = await getHarnessDb().notaCredito.findMany({
+      where: { facturaOriginalId: facturaId },
+      orderBy: { id: "asc" },
+    });
+    expect(ncs).toHaveLength(2);
+    for (const nc of ncs) expect(nc.estado).toBe("VIGENTE");
+    expect((await getHarnessDb().venta.findUnique({ where: { id: ventaId } }))?.estado).toBe("CANCELADA");
+  });
 });

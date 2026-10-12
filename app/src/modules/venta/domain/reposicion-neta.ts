@@ -15,10 +15,20 @@
  *         and a DANADO return disposed the unit as merma (physically lost, so it
  *         must never come back either).
  *
- * A line whose net is ≤ 0 is dropped: the stock ledger never receives a negative
+ * A product whose net is ≤ 0 is dropped: the stock ledger never receives a negative
  * "reposition" (and there is no inventory to take back). Zero devoluciones leaves
  * every line unchanged (net = cantidad), so the helper is a no-op on the plain
- * cancel path. This is PURE arithmetic — the aggregation query itself lives in
+ * cancel path.
+ *
+ * Per-PRODUCT netting (R3-001): the sale may repeat a product across multiple
+ * `DETALLE_VENTA` lines, so the lines are aggregated by `productoId` FIRST and the
+ * product's cumulative returned total is netted ONCE against the sum — netting
+ * each line by the product's full return would multiply-credit the return and
+ * under-reposition (e.g. two lines of 10 with 6 returned would yield 4+4=8 instead
+ * of the correct 14). Output preserves the FIRST-APPEARANCE order of productos in
+ * the sale lines, deterministically.
+ *
+ * This is PURE arithmetic — the aggregation query itself lives in
  * the devolucion infrastructure (`leerPriorNCsPorFacturaEnTx`), called INSIDE the
  * cancel transaction; the FACTURA row lock the cancel already holds serializes it
  * against a concurrent return.
@@ -36,20 +46,25 @@ export interface LineaReposicion {
 export type DevueltoPorProducto = ReadonlyMap<number, Decimal>;
 
 /**
- * Net the sale lines against the credit-note returns: per distinct product,
- * `cantidad − devuelto` (absent → 0), keeping only strictly-positive nets.
- * Order of the input sale lines is preserved.
+ * Net the sale lines against the credit-note returns: sale lines are summed per
+ * distinct product first, then per product `Σ cantidad − devuelto` (absent → 0),
+ * keeping only strictly-positive nets. Output order = first appearance of each
+ * product in the input lines.
  */
 export function calcularReposicionNeta(
   lineasVenta: readonly LineaReposicion[],
   devueltoPorProducto: DevueltoPorProducto,
 ): LineaReposicion[] {
-  const netas: LineaReposicion[] = [];
+  const sumadoPorProducto = new Map<number, Decimal>();
   for (const linea of lineasVenta) {
-    const devuelto = devueltoPorProducto.get(linea.productoId) ?? new Decimal(0);
-    const neto = new Decimal(linea.cantidad).minus(devuelto);
+    const anterior = sumadoPorProducto.get(linea.productoId) ?? new Decimal(0);
+    sumadoPorProducto.set(linea.productoId, anterior.plus(linea.cantidad));
+  }
+  const netas: LineaReposicion[] = [];
+  for (const [productoId, vendido] of sumadoPorProducto) {
+    const neto = vendido.minus(devueltoPorProducto.get(productoId) ?? new Decimal(0));
     if (neto.greaterThan(0)) {
-      netas.push({ productoId: linea.productoId, cantidad: neto.toFixed(3) });
+      netas.push({ productoId, cantidad: neto.toFixed(3) });
     }
   }
   return netas;
