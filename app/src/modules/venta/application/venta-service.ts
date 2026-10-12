@@ -435,8 +435,11 @@ async function cancelarVentaConfirmada(
   //    Inside THIS SAME transaction the cancel sums every VIGENTE NC line
   //    (ALL TipoReposicion kinds: a VENDIBLE return restocked the unit; a DANADO
   //    return physically disposed it — both are already gone from the sellable
-  //    delta), nets each persisted line and repositions only the strictly
-  //    positive remainder. NCs are NEVER touched by the cancel (no annulment
+   //    delta), aggregates the persisted lines per product, nets each product's
+   //    sold total once against its devuelto and repositions only the strictly
+   //    positive per-product remainder (R3-001: netting each line separately by
+   //    the product's full return would multiply-credit the return). NCs are
+   //    NEVER touched by the cancel (no annulment
   //    feature exists): they stay VIGENTE against the ANULADA factura. A product
   //    fully returned drops out (net ≤ 0, no negative reposition); if EVERYTHING
   //    was returned the reposition step is skipped entirely — the ledger gets no
