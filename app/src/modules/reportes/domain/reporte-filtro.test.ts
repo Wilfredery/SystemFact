@@ -9,13 +9,15 @@
 
 import { REPORTE_VALIDACION, ReporteDomainError } from "./errors";
 import {
+  normalizarFiltro,
+  presetARango,
+} from "./reporte-filtro";
+import {
   TAMANO_PAGINA_MAXIMO,
   TAMANO_PAGINA_POR_DEFECTO,
   calcularOffset,
   calcularTotalPages,
-  normalizarFiltro,
-  presetARango,
-} from "./reporte-filtro";
+} from "@/shared/domain/pagination";
 
 describe("normalizarFiltro — pagination clamp (DB-5)", () => {
   it("defaults page to 1 and pageSize to 25", () => {
@@ -36,8 +38,8 @@ describe("normalizarFiltro — pagination clamp (DB-5)", () => {
     expect(normalizarFiltro({ page: 2.9 }).page).toBe(2);
   });
 
-  it("clamps a zero/negative pageSize into [1, 100]", () => {
-    expect(normalizarFiltro({ pageSize: 0 }).pageSize).toBe(1);
+  it("paths a zero pageSize to the shared default 25 (R-QC-07 uniform clamp)", () => {
+    expect(normalizarFiltro({ pageSize: 0 }).pageSize).toBe(25);
     expect(normalizarFiltro({ pageSize: 37 }).pageSize).toBe(37);
   });
 
@@ -117,10 +119,10 @@ describe("presetARango + preset resolution (DB-5 period presets)", () => {
   });
 });
 
-describe("pagination helpers", () => {
+describe("pagination helpers (shared contract, numeric signatures)", () => {
   it("offset = (page-1)*pageSize", () => {
-    expect(calcularOffset({ page: 3, pageSize: 25 })).toBe(50);
-    expect(calcularOffset({ page: 1, pageSize: 100 })).toBe(0);
+    expect(calcularOffset(3, 25)).toBe(50);
+    expect(calcularOffset(1, 100)).toBe(0);
   });
 
   it("totalPages is 0 for an empty set and ceil otherwise", () => {

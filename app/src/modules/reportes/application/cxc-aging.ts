@@ -36,7 +36,7 @@ import {
 import type { CxcAgingFila, ResumenAging } from "../domain/aging";
 import { construirFilaAging, ORDEN_BUCKETS, resumirAging } from "../domain/aging";
 import type { ReporteFiltro } from "../domain/reporte-filtro";
-import { calcularOffset, calcularTotalPages } from "../domain/reporte-filtro";
+import { calcularOffset, calcularTotalPages } from "@/shared/domain/pagination";
 import { ok, error, type Pagina, type ReportResult } from "../domain/reporte-resultado";
 import { REPORTE_NO_AUTORIZADO, messageFor } from "../domain/errors";
 import { ROL, rolPermitidoParaReporte } from "../domain/roles";
@@ -149,7 +149,7 @@ export async function consultarCxcAging(
   if (!resultado.ok) return resultado;
 
   const { filas, resumen } = resultado.data;
-  const offset = calcularOffset(filtro);
+  const offset = calcularOffset(filtro.page, filtro.pageSize);
   const page = filas.slice(offset, offset + filtro.pageSize);
   return ok<Pagina<CxcAgingFila>>({
     filas: page,

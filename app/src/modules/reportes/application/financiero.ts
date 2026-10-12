@@ -25,7 +25,8 @@ import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { REPORTE_ID } from "../domain/catalogo";
 import { REPORTE_VALIDACION, messageFor } from "../domain/errors";
 import { type Pagina, type ReportResult } from "../domain/reporte-resultado";
-import { calcularOffset, calcularTotalPages, type ReporteFiltro } from "../domain/reporte-filtro";
+import { calcularOffset } from "@/shared/domain/pagination";
+import type { ReporteFiltro } from "../domain/reporte-filtro";
 import type { CxpFila, ComparativaFila } from "../domain/financiero";
 import type { VentasPeriodoFila } from "../domain/operacional";
 import { fechaEnSD, fechaSDaUTC } from "../domain/zona-horaria";
@@ -48,7 +49,10 @@ import {
 
 /** The `[offset, pageSize)` page window for the aggregate reads. */
 function paginacionDe(filtro: ReporteFiltro): Paginacion {
-  return { offset: calcularOffset(filtro), limit: filtro.pageSize };
+  return {
+    offset: calcularOffset(filtro.page, filtro.pageSize),
+    limit: filtro.pageSize,
+  };
 }
 
 /** Both comparison windows as DB-ready `VentanaFiltro`s (the current + equal-length preceding). */

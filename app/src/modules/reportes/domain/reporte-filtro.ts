@@ -18,13 +18,12 @@
 
 import { REPORTE_VALIDACION, ReporteDomainError } from "./errors";
 import { rangoFechasAUTC } from "./zona-horaria";
-
-// --- Pagination constants (DB-5) ---
-
-/** Default page size (AGENTS.md "lists always paginated — default 25/page"). */
-export const TAMANO_PAGINA_POR_DEFECTO = 25;
-/** Hard ceiling; a larger request is CLAMPED to it, never accepted (DB-5). */
-export const TAMANO_PAGINA_MAXIMO = 100;
+import {
+  TAMANO_PAGINA_POR_DEFECTO,
+  TAMANO_PAGINA_MAXIMO,
+  normalizarPagina,
+  normalizarTamanoPagina,
+} from "@/shared/domain/pagination";
 
 /**
  * A full-calendar-period preset (DB-5 "date filters MUST support both full calendar
@@ -80,25 +79,9 @@ function normalizarId(
   return valor;
 }
 
-/** Clamp the requested page to an integer ≥ 1 (defaults to the first page). */
-function normalizarPage(page: number | null | undefined): number {
-  if (page === undefined || page === null || !Number.isFinite(page)) return 1;
-  const truncada = Math.trunc(page);
-  return truncada < 1 ? 1 : truncada;
-}
-
-/** Clamp the requested page size into `[1, TAMANO_PAGINA_MAXIMO]` (default 25). */
-function normalizarPageSize(pageSize: number | null | undefined): number {
-  if (
-    pageSize === undefined ||
-    pageSize === null ||
-    !Number.isFinite(pageSize)
-  ) {
-    return TAMANO_PAGINA_POR_DEFECTO;
-  }
-  const truncada = Math.trunc(pageSize);
-  return Math.max(1, Math.min(truncada, TAMANO_PAGINA_MAXIMO));
-}
+/** Clamp the requested page to an integer ≥ 1 and the requested page size into
+ *  `[1, TAMANO_PAGINA_MAXIMO]` (default 25) — both via the shared pagination
+ *  contract (R-QC-07; the local copies were absorbed into the shared module). */
 
 /** A bare SD calendar date `YYYY-MM-DD` (validated downstream by the seam). */
 const RE_DX_FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -274,8 +257,8 @@ export function normalizarFiltro(
     page: number;
     pageSize: number;
   } = {
-    page: normalizarPage(entrada.page),
-    pageSize: normalizarPageSize(entrada.pageSize),
+    page: normalizarPagina(entrada.page),
+    pageSize: normalizarTamanoPagina(entrada.pageSize),
   };
 
   const sucursalId = normalizarId(entrada.sucursalId, "sucursalId");
@@ -286,17 +269,4 @@ export function normalizarFiltro(
   if (rango.hasta !== undefined) filtro.hasta = rango.hasta;
 
   return filtro;
-}
-
-/** Zero-based row offset for the ordered aggregate query. */
-export function calcularOffset(
-  filtro: Pick<ReporteFiltro, "page" | "pageSize">,
-): number {
-  return (filtro.page - 1) * filtro.pageSize;
-}
-
-/** Page count for `total` at `pageSize` (0 when there are no rows). */
-export function calcularTotalPages(total: number, pageSize: number): number {
-  if (total <= 0) return 0;
-  return Math.ceil(total / Math.max(1, pageSize));
 }
