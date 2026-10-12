@@ -1,21 +1,16 @@
 /**
- * Standalone OBSERVATION probe — audit run-3 "phantom credit" hypothesis.
+ * Standalone OBSERVATION probe — a run-3 "phantom credit" regression guard.
  *
- * Question (observation only, NO remediation): after the chain
- *   crearVenta → confirmarVenta (authoritative SALIDA_VENTA −10) →
- *   crearDevolucion (B04 credit note) → cancelarVenta,
- * does the confirmed-cancellation reposition credit back the FULL sold
- * quantity (+10) while ignoring the 4 units already returned through the
- * credit note — leaving stock over-credited ("phantom" credit)?
- *
- * Scenario (two independent cycles, one dedicated product each):
- *   P (VENDIBLE): sale 10 → return 4 VENDIBLE → cancel.
- *   Q (DANADO):   sale 10 → return 4 DANADO (SALIDA_MERMA disposal) → cancel.
- *   Rationale for the second-product DANADO path: cleaner than splitting one
- *   product's return into VENDIBLE/DANADO lines inside one NC, which would
- *   mix the exact-triple idempotency gate (existeDevolucionIdenticaEnTx) into
- *   the observation. Hypothesis for Q: the merma'd units (goods destroyed)
- *   come back as sellable stock via the cancel's +10 reposition.
+ * Relevance shift (R3-003): the shipped `cancelarVenta` now nets the
+ * cancellation reposition ("solo reposición neta"), so this probe asserts the
+ * FIXED semantics — the cancel credits ONLY the units not already returned:
+ *   P (VENDIBLE): sale 10 → return 4 → cancel repositions +6 → stock back to
+ *                 the seed exactly (no phantom +4 over-credit).
+ *   Q (DANADO):   sale 10 → return 4 DANADO (SALIDA_MERMA disposal) →
+ *                 cancel repositions +6 → stock stays 4 units UNDER the seed
+ *                 (the disposed units stay a real loss; they do NOT come back).
+ * The probe INSPECTS the two final states and verdict-print REFUTED means the
+ * pre-fix phantom-credit behavior is gone.
  *
  * Everything runs through the REAL production APIs (crearVenta, confirmarVenta,
  * crearDevolucion, cancelarVenta, withTenantTransaction). ONLY seeding and
@@ -201,6 +196,22 @@ async function sembrar(): Promise<Seeds> {
 }
 
 /**
+ * Is the append-only trigger actually enabled right now? `pg_trigger.tgenabled`
+ * encodes it: 'O' (originally on, full), 'R'/'A' (replica/always variants) and
+ * 'D' (disabled). Tooling check only — superuser visibility.
+ */
+async function triggerAppendOnlyActivo(): Promise<boolean> {
+  const filas = await sdb.$queryRawUnsafe<Array<{ readonly tgenabled: string }>>(
+    "SELECT tgenabled FROM pg_trigger WHERE tgrelid = '\"MOVIMIENTO_AUDITORIA\"'::regclass " +
+      "AND tgname = 'movimientoauditoria_appendonly'",
+  );
+  if (filas.length !== 1) {
+    throw new Error("trigger movimientoauditoria_appendonly no encontrado en pg_trigger");
+  }
+  return filas[0]!.tgenabled !== "D";
+}
+
+/**
  * Targeted deletes in FK order, scoped to the probe's own empresa — NEVER a
  * truncate (the local DB is shared). MOVIMIENTO_AUDITORIA is append-only at
  * the DATABASE level (trigger `movimientoauditoria_appendonly` raises
@@ -208,13 +219,34 @@ async function sembrar(): Promise<Seeds> {
  * rows the flows appended can only be removed by a superuser temporarily
  * disabling that trigger for the duration of THIS probe's cleanup and
  * immediately re-enabling it — a tooling-only bypass, never product code.
+ *
+ * Hardening (R3-004): the current trigger state is captured BEFORE disabling,
+ * and after the re-enable the finally VERIFIES the trigger is actually enabled
+ * again — a process kill between DISABLE and ENABLE (or a failed enable) must
+ * not silently leave the shared DB's audit table unprotected. On verification
+ * failure a loud warning is printed (exitCode stays 0; the probe succeeded at
+ * observing) with the exact manual SQL to run.
  */
 async function limpiar(s: Seeds): Promise<void> {
+  const protegidoPre = await triggerAppendOnlyActivo();
+  if (!protegidoPre) {
+    console.error("ADVERTENCIA: el trigger append-only ya estaba DESHABILITADO al iniciar la limpieza — estado inesperado del shared DB.");
+  }
   await sdb.$executeRawUnsafe('ALTER TABLE "MOVIMIENTO_AUDITORIA" DISABLE TRIGGER movimientoauditoria_appendonly');
   try {
     await sdb.movimientoAuditoria.deleteMany({ where: { empresaId: s.empresaId } });
   } finally {
     await sdb.$executeRawUnsafe('ALTER TABLE "MOVIMIENTO_AUDITORIA" ENABLE TRIGGER movimientoauditoria_appendonly');
+    try {
+      const activo = await triggerAppendOnlyActivo();
+      if (!activo) {
+        throw new Error("sigue reportándose deshabilitado (tgenabled='D')");
+      }
+    } catch (e) {
+      console.error(
+        `ADVERTENCIA CRÍTICA: VERIFICACIÓN del trigger append-only FALLÓ tras re-habilitar — MOVIMIENTO_AUDITORIA puede quedar desprotegido en el shared DB. Ejecuta manualmente: ALTER TABLE "MOVIMIENTO_AUDITORIA" ENABLE TRIGGER movimientoauditoria_appendonly — detalle: ${e}`,
+      );
+    }
   }
   await sdb.anulacion.deleteMany({ where: { empresaId: s.empresaId } });
   await sdb.pago.deleteMany({ where: { empresaId: s.empresaId } });
@@ -416,14 +448,17 @@ async function main(): Promise<void> {
     const sobreCreditoP = stockPPost.minus(semilla).toFixed(3);
     const sobreCreditoQ = stockQPost.minus(semilla).toFixed(3);
 
-    assert.strictEqual(deltaP, "10.000", `P: reposition tras cancel debe ser +10.000, observado ${deltaP}`);
-    assert.strictEqual(deltaQ, "10.000", `Q: reposition tras cancel debe ser +10.000, observado ${deltaQ}`);
+    assert.strictEqual(deltaP, "6.000", `P: reposición de cancelación esperada +6.000 (10 vendidas − 4 ya devueltas), observada ${deltaP}`);
+    assert.strictEqual(deltaQ, "6.000", `Q: reposición de cancelación esperada +6.000 (10 vendidas − 4 ya dispuestas en DANADO), observada ${deltaQ}`);
 
-    const confirmado = sobreCreditoP === "4.000" && sobreCreditoQ === "-4.000";
+    // REFUTED = the POST-FIX semantics hold: no phantom credit on P (stock back
+    // to the seed exactly) and the DANADO disposal stays a real loss on Q (−4
+    // under the seed). Any other combination re-gresses to the pre-fix bug.
+    const refutado = sobreCreditoP === "0.000" && sobreCreditoQ === "-4.000";
     console.log("\n--- VEREDICTO ---");
-    console.log(`  phantom hypothesis: ${confirmado ? "CONFIRMED" : "REFUTED"}`);
-    console.log(`  P: stock post-confirm=${obsP.stockPostConfirm}, post-devolución=${obsP.stockPostDevolucion}, post-cancel=${stockPostCancel.get("P")}; neto vs semilla=${sobreCreditoP} (VENDIBLE over-credit)`);
-    console.log(`  Q: stock post-confirm=${obsQ.stockPostConfirm}, post-devolución=${obsQ.stockPostDevolucion}, post-cancel=${stockPostCancel.get("Q")}; neto vs semilla=${sobreCreditoQ} (merma DANADO re-creditada como vendible)`);
+    console.log(`  pre-fix phantom credit: ${refutado ? "REFUTED" : "OBSERVED"}`);
+    console.log(`  P: stock post-confirm=${obsP.stockPostConfirm}, post-devolución=${obsP.stockPostDevolucion}, post-cancel=${stockPostCancel.get("P")}; reposición=+${deltaP}, neto vs semilla=${sobreCreditoP} (0.000 esperado: lo ya devuelto NO se recrédita)`);
+    console.log(`  Q: stock post-confirm=${obsQ.stockPostConfirm}, post-devolución=${obsQ.stockPostDevolucion}, post-cancel=${stockPostCancel.get("Q")}; reposición=+${deltaQ}, neto vs semilla=${sobreCreditoQ} (-4.000 esperado: la merma DANADO se pierde físicamente)`);
     console.log(`  NC estados post-cancel: ${ncPost.map((n) => `${n.ncf}=${n.estado}`).join(", ")}`);
   } finally {
     await limpiar(seeds);
