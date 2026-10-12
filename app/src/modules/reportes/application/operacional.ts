@@ -165,11 +165,14 @@ export async function consultarInventarioValorizado(
 
 /**
  * OP-4 — the estado × tipoNcf grid with the ADR-017 payment state DERIVED live (never
- * materialized). The grid is bounded (≤ estado × tipoNcf cells); it is returned whole and
- * paged in-app for contract uniformity. The summary totals (invoice count, grand monto, and
- * the Pendiente/Parcial/Pagada split) are a Decimal reduction over the SQL-derived cells
- * (reducing an already-aggregated ≤6-row result — NOT a fetch-then-sum over raw invoices,
- * so OP-5 still holds).
+ * materialized). OP-6 (data-layer cut): the PAGE is read with a `LIMIT`/`OFFSET` tail
+ * (`paginacionDe`) inside `estadoFacturasGridEnTx`'s explicit deterministic
+ * `ORDER BY estado, tipoNcf`; the page-independent summary keeps its OWN full-grid read —
+ * a ≤6-cell bounded aggregate documented in design risk #7 (doubling it is the accepted
+ * cost; never re-engineer unless the grid's identity grows). The summary totals (invoice
+ * count, grand monto, and the Pendiente/Parcial/Pagada split) are a Decimal reduction over
+ * the SQL-derived cells (reducing an already-aggregated ≤6-row result — NOT a
+ * fetch-then-sum over raw invoices, so OP-5 still holds).
  */
 export async function consultarEstadoFacturas(
   tx: PrismaTx,
@@ -177,10 +180,14 @@ export async function consultarEstadoFacturas(
   filtro: ReporteFiltro,
 ): Promise<ReportResult<Pagina<EstadoFacturaCelda>>> {
   return conPermisoOperativo(tx, ctx, REPORTE_ID.FACTURAS, async (txw) => {
-    const celdas = await estadoFacturasGridEnTx(txw, ctx, ventanaDe(filtro));
+    const ventana = ventanaDe(filtro);
+    const [celdasPagina, celdas] = await Promise.all([
+      estadoFacturasGridEnTx(txw, ctx, ventana, paginacionDe(filtro)),
+      // Summary's own full-grid read (risk #7: ≤6 cells, documented, not engineered).
+      estadoFacturasGridEnTx(txw, ctx, ventana),
+    ]);
     const total = celdas.length;
-    const offset = calcularOffset(filtro.page, filtro.pageSize);
-    const filas = celdas.slice(offset, offset + filtro.pageSize);
+    const filas = celdasPagina;
     let monto = new Decimal(0);
     let facturas = 0;
     let pendientes = 0;
