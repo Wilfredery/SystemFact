@@ -9,6 +9,7 @@
  * audit row. The integration suites cover the real Prisma/RLS behavior.
  */
 
+import { Decimal } from "decimal.js";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import {
@@ -42,6 +43,7 @@ import { getOrCreateConsumidorFinalEnTx } from "@/modules/cliente/application/co
 import { registrarReposicionCancelacion } from "@/modules/inventario/application/registrar-salidas-venta";
 import { revertirPagosAplicadosDeVentaEnTx } from "@/modules/cobros/infrastructure/pago-repository";
 import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
+import { leerPriorNCsPorFacturaEnTx } from "@/modules/devolucion/infrastructure/devolucion-repository";
 import { DESCUENTO_TIPO, type Descuento } from "../domain/venta";
 import {
   crearVenta,
@@ -92,6 +94,12 @@ jest.mock("@/modules/cobros/infrastructure/pago-repository", () => ({
 
 jest.mock("@/modules/auditoria/application/auditoria-write-port", () => ({
   registrarEventoAuditoriaEnTx: jest.fn(),
+}));
+
+// The run-3 net-reposition aggregate (called with the cancel's own tx); the real
+// DB behavior is covered in `src/integration/cancelar-vs-devolucion.integration.test.ts`.
+jest.mock("@/modules/devolucion/infrastructure/devolucion-repository", () => ({
+  leerPriorNCsPorFacturaEnTx: jest.fn(),
 }));
 
 // Keep the REAL VentaConfigError / code (so `instanceof` in preparar works);
@@ -168,6 +176,9 @@ beforeEach(() => {
     lineas: [{ productoId: 10, cantidad: "5.000" }],
   });
   (registrarReposicionCancelacion as jest.Mock).mockResolvedValue([]);
+  // Net-reposition default: no prior VIGENTE NC lines → every raw line keeps its
+  // net (= the pre-run-3 plain-cancel behavior).
+  (leerPriorNCsPorFacturaEnTx as jest.Mock).mockResolvedValue(new Map());
   // v2r-09: no live payments by default (the CONFIRMADA-cancel fixtures are a
   // never-collected CREDIT sale); the reversal then is a zero-row no-op.
   (revertirPagosAplicadosDeVentaEnTx as jest.Mock).mockResolvedValue([]);
@@ -453,6 +464,14 @@ describe("cancelarVenta", () => {
     expect(cancelarVentaConfirmadaEnTx).toHaveBeenCalledTimes(1);
     expect(anularFacturaDeVentaEnTx).toHaveBeenCalledTimes(1);
     expect(registrarReposicionCancelacion).toHaveBeenCalledTimes(1);
+    // Audit run-3: the devuelto aggregate is read inside the SAME tx for the
+    // factura (empty by default here → net == raw line).
+    expect(leerPriorNCsPorFacturaEnTx).toHaveBeenCalledWith(tx, ctx, 80, [10]);
+    expect(registrarReposicionCancelacion).toHaveBeenCalledWith(tx, ctx, {
+      ventaId: 7,
+      motivo: "Devolución cliente",
+      lineas: [{ productoId: 10, cantidad: "5.000" }],
+    });
     // v2r-09: the payment reversal runs (zero-row no-op here, a CREDIT sale never
     // collected) BEFORE the annul — ordering inside the same transaction chain.
     expect(revertirPagosAplicadosDeVentaEnTx).toHaveBeenCalledWith(tx, ctx, 7);
@@ -461,6 +480,33 @@ describe("cancelarVenta", () => {
     );
     expect(registrarEventoAuditoriaEnTx).not.toHaveBeenCalled();
     // Both reversals are audited (Venta CANCELAR + Factura ANULAR).
+    expect(registrarAuditVentaEnTx).toHaveBeenCalledTimes(1);
+    expect(registrarAuditFacturaEnTx).toHaveBeenCalledTimes(1);
+  });
+
+  it("CONFIRMADA: repositions the NET remainder after VIGENTE NC returns (audit run-3)", async () => {
+    (leerVentaEnTx as jest.Mock).mockResolvedValue({ id: 7, estado: "CONFIRMADA", sucursalId: 2, clienteId: 99, updatedAt: new Date() });
+    // 5 sold, 2 already returned on VIGENTE NCs → +3 only.
+    (leerPriorNCsPorFacturaEnTx as jest.Mock).mockResolvedValue(
+      new Map([[10, new Decimal("2.000")]]),
+    );
+    const r = await cancelarVenta(tx, ctx, { id: 7 });
+    expect(r.ok).toBe(true);
+    expect(registrarReposicionCancelacion).toHaveBeenCalledWith(tx, ctx, {
+      ventaId: 7,
+      motivo: "Cancelación de venta confirmada",
+      lineas: [{ productoId: 10, cantidad: "3.000" }],
+    });
+  });
+
+  it("CONFIRMADA fully returned → ZERO reposition call, cancel still completes (audit run-3)", async () => {
+    (leerVentaEnTx as jest.Mock).mockResolvedValue({ id: 7, estado: "CONFIRMADA", sucursalId: 2, clienteId: 99, updatedAt: new Date() });
+    (leerPriorNCsPorFacturaEnTx as jest.Mock).mockResolvedValue(
+      new Map([[10, new Decimal("5.000")]]),
+    );
+    const r = await cancelarVenta(tx, ctx, { id: 7 });
+    expect(r.ok).toBe(true);
+    expect(registrarReposicionCancelacion).not.toHaveBeenCalled();
     expect(registrarAuditVentaEnTx).toHaveBeenCalledTimes(1);
     expect(registrarAuditFacturaEnTx).toHaveBeenCalledTimes(1);
   });
