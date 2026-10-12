@@ -1,3 +1,9 @@
+## [0.14.8](https://github.com/Wilfredery/SystemFact/compare/v0.14.7...v0.14.8) (2026-10-12)
+
+### Refactors
+
+* **inventario:** batch the product-ownership guard into ONE tenant-safe query — the per-product `findFirst` ownership loop is replaced by a single `findMany` (`{id: in ids, empresaId}`) + pure set-difference; deny-by-default unchanged (single missing id keeps the `{productoId}` throw context, multi-missing names every id); the `FOR UPDATE` per-row lock loops are untouched (R-INV-B1)
+* **shared:** new pure pagination contract `src/shared/domain/pagination.ts` (caps 25/100 + `normalizarTamanoPagina`/`normalizarPagina`/`calcularOffset`/`calcularTotalPages`, numeric signatures, function-only per design D3/D7) — the reportes filter (`reporte-filtro.ts`) and the cobros board `paginar<T>` now compose it; no module-local 25/100 literals remain in the absorbed sites (R-QC-07). Uniform clamp: pageSize 0 now yields the default 25 (previously 1; the HTTP zod layer already rejected 0, so no transport-visible change)
 ## [0.14.7](https://github.com/Wilfredery/SystemFact/compare/v0.14.6...v0.14.7) (2026-10-12)
 * **ncf:** compute seed vigencia year on the Santo Domingo business calendar ([85f86b2](https://github.com/Wilfredery/SystemFact/commit/85f86b202b00ef8635ed04d9ffc66eeb785981e1))
 

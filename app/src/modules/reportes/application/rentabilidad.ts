@@ -35,11 +35,8 @@ import {
   type Pagina,
   type ReportResult,
 } from "../domain/reporte-resultado";
-import {
-  calcularOffset,
-  calcularTotalPages,
-  type ReporteFiltro,
-} from "../domain/reporte-filtro";
+import type { ReporteFiltro } from "../domain/reporte-filtro";
+import { calcularOffset, calcularTotalPages } from "@/shared/domain/pagination";
 import { rentabilidadFilasEnTx } from "../infrastructure/rentabilidad-repository";
 import { conPermisoOperativo, ventanaDe } from "./operacional";
 
@@ -94,7 +91,7 @@ export async function consultarRentabilidad(
 
   const { filas, resumen } = resultado.data;
   const total = filas.length;
-  const offset = calcularOffset(filtro);
+  const offset = calcularOffset(filtro.page, filtro.pageSize);
   const paginaFilas = filas.slice(offset, offset + filtro.pageSize);
 
   const pagina: Pagina<RentabilidadFila> = {

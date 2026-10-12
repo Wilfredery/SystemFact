@@ -17,9 +17,20 @@
 
 import type { SaldoCxCVista } from "../application/consultar-saldo-cxc";
 import { ESTADO_PAGO_DERIVADO } from "../domain/pago";
+import {
+  TAMANO_PAGINA_POR_DEFECTO,
+  calcularOffset,
+  calcularTotalPages,
+  normalizarPagina,
+  normalizarTamanoPagina,
+} from "@/shared/domain/pagination";
 
-/** Default page size (AGENTS.md "Lists ALWAYS paginated — default 25/page"). */
-export const TAMANO_PAGINA_CXC = 25;
+/**
+ * Default page size (AGENTS.md "Lists ALWAYS paginated — default 25/page"):
+ * the module-facing name that composes the shared pagination contract —
+ * board copies of the caps used to duplicate the 25/100 literals (R-QC-07).
+ */
+export const TAMANO_PAGINA_CXC = TAMANO_PAGINA_POR_DEFECTO;
 
 /** The three outstanding-receivable buckets the board renders (spec R-C7). */
 export interface TableroCxc {
@@ -69,9 +80,10 @@ export interface Pagina<T> {
 }
 
 /**
- * Slice `[items]` into `pageSize`-sized pages (default 25, capped at 100 per the
- * repo pagination rule) and clamp `page` to `[1, totalPages]`. An empty list
- * yields a single empty page (`totalPages: 1`) so the view keeps a stable shape.
+ * Slice `[items]` into `pageSize`-sized pages composed FROM the shared
+ * pagination contract (R-QC-07 — the board keeps its own min-1 `totalPages`
+ * and stale-deep-link page-fallback UI semantics per design D3; the shared
+ * module supplies the caps, offset and the audited 0-for-empty base).
  * Pure and total — no throw for out-of-range pages, so a stale deep link never
  * crashes the board.
  */
@@ -80,11 +92,13 @@ export function paginar<T>(
   page: number,
   pageSize: number = TAMANO_PAGINA_CXC,
 ): Pagina<T> {
-  const limit = Math.max(1, Math.min(pageSize, 100));
+  const limit = normalizarTamanoPagina(pageSize);
   const total = items.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const safePage = Math.min(Math.max(1, Math.trunc(page) || 1), totalPages);
-  const inicio = (safePage - 1) * limit;
+  // Board shape: an empty list still yields ONE stable empty page (min-1),
+  // where the shared audited base returns 0 — composed here, not re-encoded.
+  const totalPages = Math.max(1, calcularTotalPages(total, limit));
+  const safePage = Math.min(normalizarPagina(page), totalPages);
+  const inicio = calcularOffset(safePage, limit);
   return {
     items: items.slice(inicio, inicio + limit),
     page: safePage,

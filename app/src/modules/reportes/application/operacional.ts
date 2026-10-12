@@ -24,7 +24,7 @@ import { Decimal } from "decimal.js";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import type { ReporteFiltro } from "../domain/reporte-filtro";
-import { calcularOffset, calcularTotalPages } from "../domain/reporte-filtro";
+import { calcularOffset, calcularTotalPages } from "@/shared/domain/pagination";
 import { ok, error, type Pagina, type ReportResult } from "../domain/reporte-resultado";
 import { REPORTE_NO_AUTORIZADO, messageFor } from "../domain/errors";
 import { rolPermitidoParaReporte } from "../domain/roles";
@@ -61,7 +61,7 @@ export function ventanaDe(filtro: ReporteFiltro): VentanaFiltro {
 
 /** The `[offset, pageSize)` page window for the aggregate reads. */
 function paginacionDe(filtro: ReporteFiltro): Paginacion {
-  return { offset: calcularOffset(filtro), limit: filtro.pageSize };
+  return { offset: calcularOffset(filtro.page, filtro.pageSize), limit: filtro.pageSize };
 }
 
 /**
@@ -174,7 +174,7 @@ export async function consultarEstadoFacturas(
   return conPermisoOperativo(tx, ctx, REPORTE_ID.FACTURAS, async (txw) => {
     const celdas = await estadoFacturasGridEnTx(txw, ctx, ventanaDe(filtro));
     const total = celdas.length;
-    const offset = calcularOffset(filtro);
+    const offset = calcularOffset(filtro.page, filtro.pageSize);
     const filas = celdas.slice(offset, offset + filtro.pageSize);
     let monto = new Decimal(0);
     let facturas = 0;
