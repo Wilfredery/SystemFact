@@ -1,3 +1,11 @@
+## [0.14.6](https://github.com/Wilfredery/SystemFact/compare/v0.14.5...v0.14.6) (2026-10-12)
+
+### Bug Fixes
+
+* **venta:** reposicion-neta aggregates sale lines by product before netting — multi-line same-product sales no longer under-credit ([#110](https://github.com/Wilfredery/SystemFact/pull/110))
+* **reportes:** csv formula neutralization checks the trimmed lead (whitespace-then-metacharacter cells covered) ([#110](https://github.com/Wilfredery/SystemFact/pull/110))
+* **scripts:** stock-shape probe asserts the post-fix net reposition and hardens the audit-trigger bypass ([#110](https://github.com/Wilfredery/SystemFact/pull/110))
+
 ## [0.14.5](https://github.com/Wilfredery/SystemFact/compare/v0.14.4...v0.14.5) (2026-10-10)
 
 ### Bug Fixes
