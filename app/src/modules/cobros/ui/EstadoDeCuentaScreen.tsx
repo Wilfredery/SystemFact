@@ -4,12 +4,15 @@
  * Customer estado de cuenta (fase-6 PR-4, spec R-C7 / R-B1).
  *
  * One customer's statement: their VIGENTE receivables with total, applied cobros,
- * pending balance and the DERIVED payment state. Every number is read from the SAME
- * single canonical `consultarSaldoCxcAction` the board uses and then narrowed to the
- * given customer client-side — there is no per-customer balance query and nothing is
- * cached (ADR-017: a re-open always shows the latest committed payment). The only
- * thing this view adds over the board is the inclusion of fully settled (`PAGADA`)
- * invoices, because a statement lists the whole account, not just what is collectable.
+ * pending balance and the DERIVED payment state. Every number is read from the
+ * SAME canonical view — via `consultarEstadoDeCuentaAction` (R-C9: the board
+ * page is the OUTSTANDING-filtered slice; the statement needs the WHOLE account,
+ * settled rows included, so it rides the dedicated full read) — and narrowed to
+ * the given customer client-side: there is no per-customer balance query and
+ * nothing is cached (ADR-017: a re-open always shows the latest committed
+ * payment). The only thing this view adds over the board is the inclusion of
+ * fully settled (`PAGADA`) invoices, because a statement lists the whole
+ * account, not just what is collectable.
  *
  * Client island for the fetch + inline collection only; it computes NO money.
  */
@@ -17,7 +20,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Decimal } from "decimal.js";
-import { consultarSaldoCxcAction } from "@/modules/cobros/http/actions";
+import { consultarEstadoDeCuentaAction } from "@/modules/cobros/http/actions";
 import type { SaldoCxCVista } from "@/modules/cobros/application/consultar-saldo-cxc";
 import type { EstadoPagoDerivado } from "@/modules/cobros/domain/pago";
 import { formatearFechaDO, formatearMontoDO } from "./format";
@@ -41,7 +44,7 @@ export function EstadoDeCuentaScreen({ clienteId }: { readonly clienteId: number
   const [error, setError] = useState<string | null>(null);
   const [abierto, setAbierto] = useState<number | null>(null);
 
-  function aplicar(r: Awaited<ReturnType<typeof consultarSaldoCxcAction>>): void {
+  function aplicar(r: Awaited<ReturnType<typeof consultarEstadoDeCuentaAction>>): void {
     if (r.ok) {
       setFilas(r.data);
       setError(null);
@@ -53,13 +56,13 @@ export function EstadoDeCuentaScreen({ clienteId }: { readonly clienteId: number
 
   // Reload after a committed collection (a normal handler call, not in an effect).
   async function recargar(): Promise<void> {
-    aplicar(await consultarSaldoCxcAction({}));
+    aplicar(await consultarEstadoDeCuentaAction({}));
   }
 
   // The mount fetch settles state from the action's resolution callback (an
   // external-system boundary), never synchronously in the effect body.
   useEffect(() => {
-    void consultarSaldoCxcAction({}).then(aplicar);
+    void consultarEstadoDeCuentaAction({}).then(aplicar);
   }, []);
 
   // Narrow the canonical set to this customer; the aggregate is the only data

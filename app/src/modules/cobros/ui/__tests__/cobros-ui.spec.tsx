@@ -1,19 +1,23 @@
 /**
  * @jest-environment jsdom
  *
- * Cobros UI (fase-6 PR-4, R-C7 / R-C4 / R-C1-C2 boundary). Same boundary-mock
- * convention as `devolucion/ui/__tests__/return-ui.spec.tsx` and venta's
- * `confirm-ui.spec.tsx`: the `"use server"` actions are replaced with jest.fn() so
- * the screens render against the HTTP DTO contract only — never a database.
+ * Cobros UI (fase-6 PR-4, R-C7 / R-C4 / R-C1-C2 boundary; R-C9 server page).
+ * Same boundary-mock convention as `devolucion/ui/__tests__/return-ui.spec.tsx`
+ * and venta's `confirm-ui.spec.tsx`: the `"use server"` actions are replaced
+ * with jest.fn() so the screens render against the HTTP DTO contract only —
+ * never a database.
  *
  * Pins:
- *   • the board partitions Pendiente / Parcial / En Mora and hides settled rows,
- *     consuming ONLY `consultarSaldoCxcAction` (R-B1/R-C7);
+ *   • the board renders the SERVER page's classified buckets (R-C9: paged
+ *     metadata `{filas, total, page, pageSize, totalPages}`), navigates by
+ *     page number honoring `totalPages`, and hides a settled row via the pure
+ *     client classifier — consuming ONLY `consultarSaldoCxcAction` (R-B1/R-C9);
+ *   • the statement reads the WHOLE account through the dedicated
+ *     `consultarEstadoDeCuentaAction` (R-C7, the board's outstanding-filtered
+ *     page would lose the settled rows);
  *   • the payment form's submit is DISABLED ON THE FIRST CLICK (R-C7 non-droppable
  *     line): a rapid double-click fires `registrarCobroAction` exactly once;
  *   • a stable catalog error code surfaces verbatim, no stack traces;
- *   • the estado de cuenta renders each VIGENTE invoice's derived totals/state for
- *     the customer and excludes other customers (R-C7);
  *   • the reprint shows a NON-FISCAL receipt (R-C4) and maps a missing number to
  *     `PAGO_NO_ENCONTRADO`.
  */
@@ -25,11 +29,15 @@ import { CxcBoardScreen } from "@/modules/cobros/ui/CxcBoardScreen";
 import { EstadoDeCuentaScreen } from "@/modules/cobros/ui/EstadoDeCuentaScreen";
 import { ReciboReprintScreen } from "@/modules/cobros/ui/ReciboReprintScreen";
 import {
+  consultarEstadoDeCuentaAction,
   consultarSaldoCxcAction,
   registrarCobroAction,
   consultarReciboAction,
 } from "@/modules/cobros/http/actions";
-import type { SaldoCxCVista } from "@/modules/cobros/application/consultar-saldo-cxc";
+import type {
+  SaldoCxCVista,
+  SaldoCxCVistaPagina,
+} from "@/modules/cobros/application/consultar-saldo-cxc";
 
 // next/link renders a plain anchor in the test host (no App Router context).
 jest.mock("next/link", () => ({
@@ -55,11 +63,13 @@ jest.mock("next/navigation", () => ({
 
 jest.mock("@/modules/cobros/http/actions", () => ({
   consultarSaldoCxcAction: jest.fn(),
+  consultarEstadoDeCuentaAction: jest.fn(),
   registrarCobroAction: jest.fn(),
   consultarReciboAction: jest.fn(),
 }));
 
 const mockSaldo = jest.mocked(consultarSaldoCxcAction);
+const mockEstado = jest.mocked(consultarEstadoDeCuentaAction);
 const mockCobro = jest.mocked(registrarCobroAction);
 const mockRecibo = jest.mocked(consultarReciboAction);
 
@@ -78,6 +88,21 @@ function fila(over: Partial<SaldoCxCVista> & { facturaId: number }): SaldoCxCVis
   };
 }
 
+/** Wrap one page's rows into the typed server metadata payload (R-C9/D4). */
+function servida(
+  filas: readonly SaldoCxCVista[],
+  over: Partial<Omit<SaldoCxCVistaPagina, "filas">> = {},
+): SaldoCxCVistaPagina {
+  return {
+    filas,
+    total: filas.length,
+    page: 1,
+    pageSize: 25,
+    totalPages: 1,
+    ...over,
+  };
+}
+
 async function settle(): Promise<void> {
   await act(async () => {
     await Promise.resolve();
@@ -87,27 +112,30 @@ async function settle(): Promise<void> {
 
 beforeEach(() => {
   mockSaldo.mockReset();
+  mockEstado.mockReset();
   mockCobro.mockReset();
   mockRecibo.mockReset();
 });
 afterEach(cleanup);
 
-describe("CxC board (R-C7 buckets, canonical query only)", () => {
-  it("partitions Pendiente / Parcial / En Mora and hides a settled invoice", async () => {
+describe("CxC board (R-C9 server page, buckets classified per page)", () => {
+  it("renders the server page's buckets and hides a settled row via the pure classifier", async () => {
     mockSaldo.mockResolvedValue({
       ok: true,
-      data: [
+      data: servida([
         fila({ facturaId: 1 }),
         fila({ facturaId: 2, estadoPago: "PARCIAL", cobrosAplicados: "400.00", saldoPendiente: "600.00" }),
         fila({ facturaId: 3, enMora: true }),
+        // The SQL wrapper already excludes settled rows (R-C9); the client-side
+        // classifier stays the pure-parity defense — this row never lists.
         fila({ facturaId: 4, estadoPago: "PAGADA", cobrosAplicados: "1000.00", saldoPendiente: "0.00" }),
-      ],
+      ]),
     });
     render(<CxcBoardScreen />);
     await settle();
 
     expect(mockSaldo).toHaveBeenCalledTimes(1);
-    expect(mockSaldo).toHaveBeenCalledWith({});
+    expect(mockSaldo).toHaveBeenCalledWith({ page: 1 });
     expect(screen.getByTestId("cxc-fila-1")).toBeInTheDocument();
     expect(screen.getByTestId("cxc-fila-2")).toBeInTheDocument();
     expect(screen.getByTestId("cxc-fila-3")).toBeInTheDocument();
@@ -116,11 +144,40 @@ describe("CxC board (R-C7 buckets, canonical query only)", () => {
     // The mora row is labelled En Mora.
     expect(screen.getByTestId("cxc-fila-3").textContent).toContain("En mora");
   });
+
+  it("navigates server pages honoring totalPages (Anterior disabled on page 1)", async () => {
+    mockSaldo.mockResolvedValue({
+      ok: true,
+      data: servida([fila({ facturaId: 1 })], { total: 70, page: 1, totalPages: 3 }),
+    });
+    render(<CxcBoardScreen />);
+    await settle();
+
+    expect(mockSaldo).toHaveBeenCalledWith({ page: 1 });
+    expect(screen.getByText("Página 1 de 3")).toBeInTheDocument();
+    const anterior = screen.getByRole("button", { name: "Página anterior" });
+    expect(anterior).toBeDisabled();
+    const siguiente = screen.getByRole("button", { name: "Página siguiente" });
+    expect(siguiente).toBeEnabled();
+
+    mockSaldo.mockResolvedValue({
+      ok: true,
+      data: servida([fila({ facturaId: 46 })], { total: 70, page: 2, totalPages: 3 }),
+    });
+    fireEvent.click(siguiente);
+    await settle();
+
+    expect(mockSaldo).toHaveBeenCalledWith({ page: 2 });
+    expect(screen.getByText("Página 2 de 3")).toBeInTheDocument();
+    expect(screen.getByTestId("cxc-fila-46")).toBeInTheDocument();
+    expect(screen.queryByTestId("cxc-fila-1")).toBeNull();
+    expect(screen.getByRole("button", { name: "Página anterior" })).toBeEnabled();
+  });
 });
 
 describe("Payment form first-click disable (R-C7 non-droppable line)", () => {
   it("disables submit on the FIRST click and a rapid double-click calls the action once", async () => {
-    mockSaldo.mockResolvedValue({ ok: true, data: [fila({ facturaId: 1 })] });
+    mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
     render(<CxcBoardScreen />);
     await settle();
 
@@ -160,7 +217,7 @@ describe("Payment form first-click disable (R-C7 non-droppable line)", () => {
   });
 
   it("surfaces the stable over-payment code without stack traces and re-enables", async () => {
-    mockSaldo.mockResolvedValue({ ok: true, data: [fila({ facturaId: 1 })] });
+    mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
     render(<CxcBoardScreen />);
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Cobrar factura 1" }));
@@ -185,7 +242,7 @@ describe("Payment form first-click disable (R-C7 non-droppable line)", () => {
 
 describe("Estado de cuenta (R-C7 derived facts, mixed-state customer)", () => {
   it("renders each VIGENTE invoice's derived totals and excludes other customers", async () => {
-    mockSaldo.mockResolvedValue({
+    mockEstado.mockResolvedValue({
       ok: true,
       data: [
         fila({ facturaId: 1 }),
@@ -197,7 +254,10 @@ describe("Estado de cuenta (R-C7 derived facts, mixed-state customer)", () => {
     render(<EstadoDeCuentaScreen clienteId={10} />);
     await settle();
 
-    // Statement shows the whole account: pending, partial AND the settled invoice.
+    // The statement rides the DEDICATED full read (whole account: pending,
+    // partial AND the settled invoice).
+    expect(mockEstado).toHaveBeenCalledTimes(1);
+    expect(mockEstado).toHaveBeenCalledWith({});
     expect(screen.getByTestId("estado-cuenta-fila-1")).toBeInTheDocument();
     expect(screen.getByTestId("estado-cuenta-fila-2")).toBeInTheDocument();
     expect(screen.getByTestId("estado-cuenta-fila-3")).toBeInTheDocument();

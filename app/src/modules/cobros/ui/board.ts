@@ -1,36 +1,26 @@
 /**
- * Cobros UI — pure board model (fase-6 PR-4, R-C7).
+ * Cobros UI — pure board model (fase-6 PR-4, R-C7 / R-C9).
  *
  * No React, no DOM, no network: just the deterministic transformations the CxC
- * board performs over the canonical `consultarSaldoCxC` rows — the three-way
- * bucket (Pendiente / Parcial / En Mora) and the 25-per-page window. Keeping them
- * pure mirrors `venta/ui/carro.ts` and lets a plain unit test pin the bucketing
- * and paging without a DB or a browser (AGENTS.md "Domain tests run with no
+ * board performs over the canonical `consultarSaldoCxcPaginado` page — the
+ * three-way bucket (Pendiente / Parcial / En Mora) and the composition of a
+ * section's `Pagina` from the SERVER pagination metadata. Keeping them pure
+ * mirrors `venta/ui/carro.ts` and lets a plain unit test pin the bucketing and
+ * the composition without a DB or a browser (AGENTS.md "Domain tests run with no
  * database"; board classification is the same class of logic).
  *
  * Every input row is a DERIVED fact from the single canonical aggregate — the
  * board NEVER re-queries a balance and never recomputes money here: it only
  * partitions the already-derived `estadoPago`/`enMora` flags the use case returns
  * (ADR-017 — nothing is materialized or cached; the flags ride in from the sole
- * entry point).
+ * entry point). The page cut itself lives in SQL (R-C9) — nothing here slices a
+ * full set in memory (the old in-memory `paginar` page cut is gone; the
+ * pagination caps live in the shared `@/shared/domain/pagination` playbook the
+ * application normalizes through).
  */
 
-import type { SaldoCxCVista } from "../application/consultar-saldo-cxc";
+import type { SaldoCxCVista, SaldoCxCVistaPagina } from "../application/consultar-saldo-cxc";
 import { ESTADO_PAGO_DERIVADO } from "../domain/pago";
-import {
-  TAMANO_PAGINA_POR_DEFECTO,
-  calcularOffset,
-  calcularTotalPages,
-  normalizarPagina,
-  normalizarTamanoPagina,
-} from "@/shared/domain/pagination";
-
-/**
- * Default page size (AGENTS.md "Lists ALWAYS paginated — default 25/page"):
- * the module-facing name that composes the shared pagination contract —
- * board copies of the caps used to duplicate the 25/100 literals (R-QC-07).
- */
-export const TAMANO_PAGINA_CXC = TAMANO_PAGINA_POR_DEFECTO;
 
 /** The three outstanding-receivable buckets the board renders (spec R-C7). */
 export interface TableroCxc {
@@ -42,7 +32,10 @@ export interface TableroCxc {
 /**
  * Partition the canonical rows into the board's three buckets. The buckets are
  * mutually exclusive and the settled (`PAGADA`) receivables are dropped entirely:
- * the board shows what is still collectable.
+ * the board shows what is still collectable. Settled rows can never reach this
+ * classification from the paged serving mode either — the SQL wrapper already
+ * applies the classifier's threshold — so the drop is the same pure-parity
+ * defense, never a second derivation.
  *   • En Mora     — overdue AND not yet settled (an unpaid balance past its due
  *                   date, resolved in `America/Santo_Domingo` upstream in R-B3);
  *   • Pendiente   — not in mora, zero applied cobros;
@@ -71,7 +64,7 @@ export function clasificarTableroCxc(
   return { pendiente, parcial, enMora };
 }
 
-/** One paginated window over a list, computed at the UI boundary. */
+/** One board section's render window, composed from the served server page. */
 export interface Pagina<T> {
   readonly items: readonly T[];
   readonly page: number;
@@ -80,29 +73,30 @@ export interface Pagina<T> {
 }
 
 /**
- * Slice `[items]` into `pageSize`-sized pages composed FROM the shared
- * pagination contract (R-QC-07 — the board keeps its own min-1 `totalPages`
- * and stale-deep-link page-fallback UI semantics per design D3; the shared
- * module supplies the caps, offset and the audited 0-for-empty base).
- * Pure and total — no throw for out-of-range pages, so a stale deep link never
- * crashes the board.
+ * Compose ONE section's `Pagina` FROM the served server page (R-C9, design D4 —
+ * `paginar` is now a composition over server pages, not an in-memory slice):
+ * the page cursor and page count ARE the server metadata (the cut already
+ * executed in SQL; the caps ride the shared playbook upstream — R-QC-07), and
+ * `items` is the page-scoped bucket slice for the section.
+ *
+ * `total` is therefore the PAGE-SCOPED bucket count — the accepted behavior
+ * change of H1 (design risk #3): per-bucket totals across the WHOLE tenant are
+ * impossible without re-encoding the derived mora/estado rules in SQL, which is
+ * the forbidden second encoding (D2's pin absolves ordering, not the
+ * pages-per-bucket derived state). Pure and total — a stale snapshot never
+ * crashes the board (page display clamps into `[1, max(1, totalPages)]`, the
+ * board's min-1 semantics composed HERE, not re-encoded from the shared base).
  */
 export function paginar<T>(
   items: readonly T[],
-  page: number,
-  pageSize: number = TAMANO_PAGINA_CXC,
+  servida: Pick<SaldoCxCVistaPagina, "page" | "totalPages">,
 ): Pagina<T> {
-  const limit = normalizarTamanoPagina(pageSize);
-  const total = items.length;
-  // Board shape: an empty list still yields ONE stable empty page (min-1),
-  // where the shared audited base returns 0 — composed here, not re-encoded.
-  const totalPages = Math.max(1, calcularTotalPages(total, limit));
-  const safePage = Math.min(normalizarPagina(page), totalPages);
-  const inicio = calcularOffset(safePage, limit);
+  const totalPages = Math.max(1, servida.totalPages);
+  const page = Math.min(Math.max(1, servida.page), totalPages);
   return {
-    items: items.slice(inicio, inicio + limit),
-    page: safePage,
+    items,
+    page,
     totalPages,
-    total,
+    total: items.length,
   };
 }
