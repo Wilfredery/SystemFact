@@ -19,8 +19,6 @@
 import { REPORTE_VALIDACION, ReporteDomainError } from "./errors";
 import { rangoFechasAUTC } from "./zona-horaria";
 import {
-  TAMANO_PAGINA_POR_DEFECTO,
-  TAMANO_PAGINA_MAXIMO,
   normalizarPagina,
   normalizarTamanoPagina,
 } from "@/shared/domain/pagination";
