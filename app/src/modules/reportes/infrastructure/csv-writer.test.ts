@@ -84,6 +84,20 @@ describe("escribirCsv — formula-metacharacter neutralization (audit run-3)", (
     expect(escribirCsv(["x"], [["-10000.00"]])).toBe("x\r\n-10000.00\r\n");
   });
 
+  it("neutralizes a formula lead detected AFTER leading whitespace (R3-002), preserving the original spacing", () => {
+    // The apostrophe is prefixed to the ORIGINAL field (interior spacing verbatim).
+    expect(escribirCsv(["x"], [[" =cmd|'/c calc'!A1"]])).toBe("x\r\n' =cmd|'/c calc'!A1\r\n");
+    expect(escribirCsv(["x"], [["\t=SUM(1)"]])).toBe("x\r\n'\t=SUM(1)\r\n");
+    expect(escribirCsv(["x"], [["  +2"]])).toBe("x\r\n'  +2\r\n");
+    expect(escribirCsv(["x"], [[" @macro"]])).toBe("x\r\n' @macro\r\n");
+  });
+
+  it("a whitespace-hidden NON-decimal dash lead is neutralized too (trimmed number check)", () => {
+    expect(escribirCsv(["x"], [[" -cmd"]])).toBe("x\r\n' -cmd\r\n");
+    // A whitespace-padded whole-lead decimal resolves as an ordinary value: untouched.
+    expect(escribirCsv(["x"], [[" -12.50"]])).toBe("x\r\n -12.50\r\n");
+  });
+
   it("a numeric-filled grid stays byte-identical to the pre-guard output", () => {
     expect(
       escribirCsv(["producto", "unidades", "monto"], [

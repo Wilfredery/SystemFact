@@ -78,6 +78,13 @@ const NUMERO_DECIMAL_ESTRICTO = /^-?\d+(\.\d+)?$/;
  * or Google Sheets. The single-apostrophe escape is the convention every major
  * client honours: the cell renders as the literal text with the marker hidden.
  *
+ * The lead is detected on the TRIMMED text (R3-002): `" =cmd"` (a formula needle
+ * hidden behind leading whitespace) is neutralized exactly like a bare `=cmd` —
+ * the apostrophe is prefixed to the ORIGINAL field so interior spacing is
+ * preserved verbatim. Numbers are also evaluated on the trimmed text, so a
+ * whitespace-padded whole-lead decimal (`" -12.50"`) still resolves as an
+ * ordinary numeric/text value, never a neutralized formula.
+ *
  * Whole-lead NEGATIVE decimals (`-12.50`) stay untouched — the client parses them as
  * numeric values, never formulas. The clamp lives ONLY at this writer seam, so data
  * rows and header rows are treated identically; every literal header emitted by the
@@ -85,11 +92,17 @@ const NUMERO_DECIMAL_ESTRICTO = /^-?\d+(\.\d+)?$/;
  */
 function neutralizarFormula(campo: string): string {
   if (campo.length === 0) return campo;
-  const primero = campo[0]!;
-  if (primero === "=" || primero === "+" || primero === "@" || primero === "\t") {
-    return `'${campo}`;
+  const recortado = campo.trimStart();
+  if (recortado.length > 0) {
+    const primero = recortado[0]!;
+    if (primero === "=" || primero === "+" || primero === "@") {
+      return `'${campo}`;
+    }
+    if (primero === "-" && !NUMERO_DECIMAL_ESTRICTO.test(recortado)) {
+      return `'${campo}`;
+    }
   }
-  if (primero === "-" && !NUMERO_DECIMAL_ESTRICTO.test(campo)) {
+  if (campo[0] === "\t") {
     return `'${campo}`;
   }
   return campo;
