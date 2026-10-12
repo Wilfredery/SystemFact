@@ -59,8 +59,13 @@ export function ventanaDe(filtro: ReporteFiltro): VentanaFiltro {
   return { desde: filtro.desde, hasta: filtro.hasta, sucursalId: filtro.sucursalId };
 }
 
-/** The `[offset, pageSize)` page window for the aggregate reads. */
-function paginacionDe(filtro: ReporteFiltro): Paginacion {
+/**
+ * The `[offset, pageSize)` page window for the aggregate reads. EXPORTED so the
+ * rentabilidad use case (slice H2) derives its page window from the SAME
+ * definition — the shared `calcularOffset` over the already-normalised filter —
+ * never a second offset formula (R-QC-07; D3's `Paginacion` bind bundle).
+ */
+export function paginacionDe(filtro: ReporteFiltro): Paginacion {
   return { offset: calcularOffset(filtro.page, filtro.pageSize), limit: filtro.pageSize };
 }
 
