@@ -111,12 +111,18 @@ describe("getCurrentTenantContext — resolution by sub, NOT by email", () => {
       supabaseWithUser({ id: SUB_A, email: null }) as never,
     );
 
-    // The exact where/select shape: keyed on sub only. Reintroducing an
-    // email-keyed lookup, an extra column, or a wildcard select fails here —
-    // the same guards `auth-identity.test.ts` pins for the other two callers.
-    expect(usuario.findFirst).toHaveBeenCalledTimes(1);
+    // Two-phase resolution (e2e walkthrough 2026-10-14): call #1 = anchor pin
+    // ({id, empresaId, authUserId}); call #2 = caller's select (keyed on sub
+    // only, enumerated, no wildcard). Reintroducing an email-keyed lookup, an
+    // extra column, or a wildcard select fails here — the same guards
+    // `auth-identity.test.ts` pins for the other two callers.
+    expect(usuario.findFirst).toHaveBeenCalledTimes(2);
     expect(usuario.findFirst.mock.calls[0]?.[0]).toStrictEqual({
       where: { authUserId: SUB_A },
+      select: { id: true, empresaId: true, authUserId: true },
+    });
+    expect(usuario.findFirst.mock.calls[1]?.[0]).toStrictEqual({
+      where: { authUserId: SUB_A, empresaId: 7 },
       select: {
         id: true,
         empresaId: true,

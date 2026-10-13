@@ -228,6 +228,8 @@ describe("getCurrentUser — resolution by sub, NOT by email", () => {
       email: "otrousuario@users.systemfact.internal",
     });
     usuario.findFirst.mockResolvedValue({
+      id: 42,
+      empresaId: 7,
       nombre: "Ana",
       nombreUsuario: "ana",
       activo: true,
@@ -243,15 +245,23 @@ describe("getCurrentUser — resolution by sub, NOT by email", () => {
       empresa,
       sucursal,
     });
-    // Asserted explicitly: the query is keyed on authUserId only. A regression
-    // that re-derives nombreUsuario from the email fails HERE.
-    expect(usuario.findFirst).toHaveBeenCalledTimes(1);
-    // The select is ENUMERATED, not wildcarded, because this is the call that
-    // carries the no-over-fetch claim (`buscarUsuarioPorAuthSub` promises no path
-    // over-fetches `passwordHash`). `toStrictEqual` is exact deep equality, so
-    // adding `passwordHash: true` — or any other column — fails here.
+    // Two-phase resolution (e2e walkthrough 2026-10-14): the anchored row is
+    // read first (pin {id, empresaId, authUserId}), the tenant GUC is pinned
+    // INSIDE the same tx, then the caller's select runs — Relations under
+    // EMPRESA/SUCURSAL RLS need the empresa GUC (empresa_select has no
+    // login-flow exception). 2 findFirst calls is the new normal.
+    expect(usuario.findFirst).toHaveBeenCalledTimes(2);
+    // Call #1: the anchor read, minimal attributes.
     expect(usuario.findFirst.mock.calls[0]?.[0]).toStrictEqual({
       where: { authUserId: SUB_A },
+      select: { id: true, empresaId: true, authUserId: true },
+    });
+    // Call #2: the caller's select (the no-over-fetch claim). `toStrictEqual`
+    // is exact deep equality, so adding `passwordHash: true` — or any other
+    // column — fails here. The second phase also carries the explicit
+    // empresaId filter (defense-in-depth same-value-as-the-pin check).
+    expect(usuario.findFirst.mock.calls[1]?.[0]).toStrictEqual({
+      where: { authUserId: SUB_A, empresaId: 7 },
       select: {
         nombre: true,
         nombreUsuario: true,
@@ -279,6 +289,8 @@ describe("getCurrentUser — resolution by sub, NOT by email", () => {
   it("returns null for an inactive user even when the sub matches", async () => {
     const supabase = supabaseWithUser({ id: SUB_A, email: null });
     usuario.findFirst.mockResolvedValue({
+      id: 42,
+      empresaId: 7,
       nombre: "Ana",
       nombreUsuario: "ana",
       activo: false,
@@ -629,10 +641,15 @@ describe("logout — attribution by sub", () => {
     await logout(asSupabase(supabase));
 
     expect(supabase.auth.signOut).toHaveBeenCalled();
-    // Enumerated for the same reason as in `getCurrentUser`: `passwordHash` must
-    // not appear, so the select is asserted exactly rather than wildcarded.
+    // Two-phase resolution (e2e walkthrough 2026-10-14): call #1 is the anchor
+    // read ({id, empresaId, authUserId}); call #2 is the caller's select —
+    // enumerated exactly so `passwordHash` cannot sneak in.
     expect(usuario.findFirst.mock.calls[0]?.[0]).toStrictEqual({
       where: { authUserId: SUB_A },
+      select: { id: true, empresaId: true, authUserId: true },
+    });
+    expect(usuario.findFirst.mock.calls[1]?.[0]).toStrictEqual({
+      where: { authUserId: SUB_A, empresaId: 7 },
       select: { id: true, empresaId: true, activo: true },
     });
     // `resolverUsuarioDeSesion` pins the login-flow flag for its pre-tenant SELECT.
@@ -643,9 +660,11 @@ describe("logout — attribution by sub", () => {
     // "some row was written" check.
     expect(tx.movimientoAuditoria.create).toHaveBeenCalledTimes(1);
     expect(auditRows()).toEqual([expectedAuditRow("LOGOUT", 7, 42)]);
-    // The standalone audit transaction pins the empresa GUC to the resolved
-    // company and nothing else — never widened to a second value.
-    expect(empresaGucPins(tx.$executeRaw)).toEqual(["7"]);
+    // The audit transaction plus the 2-phase search pin the empresa GUC to the
+    // resolved company — the same value twice, never widened: the GUC never
+    // leaves the user's OWN empresa (walkthrough 2026-10-14: the relation
+    // select needs the pin INSIDE the resolving tx).
+    expect(empresaGucPins(tx.$executeRaw)).toEqual(["7", "7"]);
   });
 
   it("ignores an inactive user and still signs out", async () => {
