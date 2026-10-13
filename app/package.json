@@ -1,6 +1,6 @@
 {
   "name": "systemfact",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -22,6 +22,7 @@
     "seed:venta": "tsx tools/scripts/seed-venta-config.ts",
     "seed:ncf": "tsx tools/scripts/seed-ncf.ts",
     "seed:bootstrap": "tsx tools/scripts/seed-cloud-bootstrap.ts",
+    "seed:e2e-automation": "tsx tools/scripts/seed-e2e-automation.ts",
     "e2e": "playwright test",
     "rls:diagnose": "tsx scripts/diagnose-rls.ts",
     "rls:deep-check": "tsx scripts/deep-check-rls.ts",

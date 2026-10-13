@@ -24,13 +24,17 @@ Approved working order (2026-10-13 owner decision): item 1 first, items 2–3 de
    the owner declined an upstream report this cycle).
    Origin: archive-report 2026-10-13 (follow-up 4).
 
-4. **App-shell credential walkthrough (admin vs non-admin)** — DEFERRED: verify in a real
-   browser session that "Cambiar sucursal" renders server-side only for Administrador and
-   `/login` stays chromeless. Blocked on live E2E credentials (E2E_USER unset in this
-   environment, `.env` intentionally unreadable); logic is statically verified in
-   `app/src/shared/ui/app-shell/shell.tsx` (server branch, never CSS-hidden). Real security
-   role is server-side (existing role checks + restrictive RLS); walkthrough is UX
-   confirmation only. Trigger: E2E credentials available in the Playwright MCP environment.
+4. **App-shell credential walkthrough (admin vs non-admin)** — DONE 2026-10-14 via the dedicated
+   `e2e-automation` robot principal (`pnpm seed:e2e-automation`, credential in gitignored
+   `app/.env.e2e.local`; password never printed/committed). Playwright `e2e/selector-sucursal.spec.ts`
+   3/3 GREEN live (SEL-SLOT-05-A admin-only trigger navigates, SEL-RENDER-02-A empresa
+   static/unique, SEL-NAV-06-B idempotent no-op → /dashboard with a live header).
+   **Bonus the walkthrough was built to find:** it surfaced a REAL defect — the session
+   resolver's relation selects (`empresa`/`sucursal`) returned NULL under `empresa_select`
+   RLS (no login-flow exception) and crashed `(app)` header rendering; fixed in
+   `buscarUsuarioPorAuthSub` (2-phase resolution pinning `app.current_empresa_id` inside
+   the resolving tx; auth+tenant suites updated for the documented 2-call contract).
+   Trigger: E2E credentials available in the Playwright MCP environment.
    Origin: ui-foundation apply-progress (slice E verification gap, 2026-10-13).
 
 ## Historical

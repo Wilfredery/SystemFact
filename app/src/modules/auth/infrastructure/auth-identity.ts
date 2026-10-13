@@ -86,7 +86,29 @@ export async function buscarUsuarioPorAuthSub<TSelect extends Prisma.UsuarioSele
     // ADR-019 / R1.B: the caller has no TenantCtx yet (that is what it is about
     // to resolve), so `usuario_select` is unlocked with the login-flow flag.
     await setLoginFlow(tx);
-    return tx.usuario.findFirst({ where: { authUserId: authSub }, select });
+    const base = await tx.usuario.findFirst({
+      where: { authUserId: authSub },
+      select: { id: true, empresaId: true, authUserId: true },
+    });
+    if (base === null) return null;
+    // FOUND VIA E2E WALKTHROUGH (PENDING item 4, 2026-10-14): relations that
+    // reach EMPRESA/SUCURSAL in the SAME tx resolve to NULL — `empresa_select`
+    // (policy RLS migration 20260902120000) admits only `current_empresa_id`
+    // or `is_bootstrap`, NOT the login-flow flag; relation selects share the
+    // tx's session GUCs. Two-phase resolution inside THIS tx: read the anchor
+    // row first, pin `app.current_empresa_id` from it, then serve the caller's
+    // select so embedded `empresa`/`sucursal` joins come back resolved.
+    await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${String(
+      base.empresaId,
+    )}, true)`;
+    await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', '', true)`;
+    // Defense-in-depth: the tenant GUC is now pinned; mirror `enlazarAuthSub`'s
+    // own convention and ALSO filter `empresaId` explicitly (AGENTS.md
+    // multi-tenancy rule — the day RLS is disabled, the app layer still holds).
+    return tx.usuario.findFirst({
+      where: { authUserId: authSub, empresaId: base.empresaId },
+      select,
+    });
   });
 }
 
