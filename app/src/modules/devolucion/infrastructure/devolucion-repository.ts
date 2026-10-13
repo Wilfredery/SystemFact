@@ -33,6 +33,7 @@ import {
 import { Decimal } from "decimal.js";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
+import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import { bloquearInventarioSucursalEnTx } from "@/modules/inventario/infrastructure/inventario-repository";
 
 /**
@@ -265,18 +266,12 @@ export async function registrarAuditNotaCreditoEnTx(
   },
   motivo: string,
 ): Promise<void> {
-  await tx.movimientoAuditoria.create({
-    data: {
-      empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
-      usuarioId: ctx.usuarioId,
-      fechaHora: new Date(),
-      accion: AccionAuditoria.CREAR,
-      entidad: "NotaCredito",
-      idEntidad: String(notaCreditoId),
-      valorAnterior: null,
-      valorNuevo: JSON.stringify(nuevo),
-      motivo,
-    },
+  await registrarEventoAuditoriaEnTx(tx, ctx, {
+    accion: AccionAuditoria.CREAR,
+    entidad: "NotaCredito",
+    idEntidad: String(notaCreditoId),
+    valorAnterior: null,
+    valorNuevo: JSON.stringify(nuevo),
+    motivo,
   });
 }
