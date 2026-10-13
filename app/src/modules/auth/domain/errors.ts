@@ -41,8 +41,11 @@ export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 
 const AUTH_ERROR_MESSAGES: Readonly<Record<AuthErrorCode, string>> = {
   [AUTH_CAMPOS_REQUERIDOS]: "Debes indicar tu usuario y contraseña.",
-  [AUTH_CREDENCIALES_INVALIDAS]:
-    "Credenciales inválidas o usuario bloqueado.",
+  // Board 01 binding copy (auth-login-restyle, LOG-02-A): EXACTLY this string,
+  // single error surface, no per-cause variants. Silence-about-cause semantics
+  // unchanged: it neither confirms a user exists nor leaks the inactive/
+  // enlace distinction (LOG-02-B).
+  [AUTH_CREDENCIALES_INVALIDAS]: "Credenciales inválidas",
   [AUTH_USUARIO_INACTIVO]: "Tu usuario está inactivo. Contacta al administrador.",
   // The Auth user was deleted and recreated with the same synthetic email, so
   // the row already points at a `sub` that no longer exists. Refused, never

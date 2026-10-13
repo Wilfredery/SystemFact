@@ -45,7 +45,22 @@ import {
 } from "@/modules/auth/infrastructure/auth-identity";
 
 export type AuthResult =
-  | { ok: true }
+  | {
+      ok: true;
+      /**
+       * Ratified by design D2 (auth-tenant-selector): role of the authenticated
+       * account, derived from the REAL `USUARIO` roles (same verdict
+       * `buildTenantContext` uses). Non-admin fast path stays `/dashboard`
+       * regardless of the count.
+       */
+      esAdmin: boolean;
+      /**
+       * Active SUCURSAL count of the account's empresa under RLS-safe GUCs
+       * (same transaction as the session audit row). Branching input:
+       * `esAdmin && activeBranchCount > 1` → `/selector-empresa-sucursal`.
+       */
+      activeBranchCount: number;
+    }
   | { ok: false; code: AuthErrorCode; message: string };
 
 /**
@@ -61,6 +76,13 @@ export type AuthResult =
  * not exploited to reach other tenants (the `audit_insert` policy's
  * `WITH CHECK empresa GUC = empresaId` is the DB-level backstop).
  *
+ * PIGGYBACK (design D2, auth-tenant-selector): `sucursalesActivasDeEmpresa`
+ * makes this SAME transaction return the caller-empresa's active SUCURSAL
+ * count — one cheap `sucursal.count` executed inside the login bootstrap
+ * window (post-enlace), WITHOUT a second transaction and WITHOUT widening any
+ * GUC (the count filters `empresaId` explicitly AND rides the pinned GUC).
+ * Nothing else about the row changes: the count is read-only.
+ *
  * A failure propagates (design.md: "failure propagates rather than silently
  * losing security evidence") — the caller surfaces it; we never swallow it.
  *
@@ -71,18 +93,26 @@ export type AuthResult =
 export async function registrarAuditoriaSesion(
   accion: "LOGIN" | "LOGOUT",
   anchor: { readonly empresaId: number; readonly usuarioId: number },
-): Promise<void> {
-  await prisma.$transaction(async (tx) => {
+  options: { readonly sucursalesActivasDeEmpresa?: boolean } = {},
+): Promise<number | null> {
+  return prisma.$transaction(async (tx) => {
     await setLoginFlow(tx);
     await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${String(
       anchor.empresaId,
     )}, true)`;
+    const sucursalesActivas =
+      options.sucursalesActivasDeEmpresa === true
+        ? await tx.sucursal.count({
+            where: { empresaId: anchor.empresaId, activa: true },
+          })
+        : null;
     await registrarEventoAuditoriaEnTx(tx, anchor, {
       accion,
       entidad: "Sesion",
       idEntidad: String(anchor.usuarioId),
       sucursalId: null,
     });
+    return sucursalesActivas;
   });
 }
 
@@ -179,6 +209,9 @@ export async function loginWithCredenciales(
     id: true,
     activo: true,
     empresaId: true,
+    // Design D2: the role verdict for the landing decision comes from the REAL
+    // roles fetched in the SAME bootstrap lookup — no second auth API.
+    roles: { select: { rol: { select: { nombre: true } } } },
   });
 
   if (usuario === null || !usuario.activo) {
@@ -210,8 +243,9 @@ export async function loginWithCredenciales(
     // user-actionable condition, and it means the caller would learn something
     // about the server's state that no action of theirs could change. Fail closed
     // to the generic credential error: the session is destroyed and nothing is
-    // bound. The message text is deliberately loose ("credenciales inválidas o
-    // usuario bloqueado") for exactly this reason.
+    // bound. The message is the board 01 binding copy (exactly "Credenciales
+    // inválidas", LOG-02-A) precisely because it says NOTHING about the cause —
+    // the loose wording WAS the silence-about-cause contract, and it still is.
     return {
       ok: false,
       code: AUTH_CREDENCIALES_INVALIDAS,
@@ -234,12 +268,26 @@ export async function loginWithCredenciales(
   // audit row. The failed-credentials, inactive-user and link-conflict rejections
   // returned above, so a rejected login writes nothing (no unauthenticated noise, no
   // enumeration side-channel in the log).
-  await registrarAuditoriaSesion("LOGIN", {
-    empresaId: usuario.empresaId,
-    usuarioId: usuario.id,
-  });
+  //
+  // Design D2 (auth-tenant-selector): the SAME bootstrap window piggybacks the
+  // empresa's active-branch count for the post-login landing decision — the
+  // count runs only AFTER credentials verified + sub bound + enlace ok, so it
+  // is reached by the account holder only.
+  const activeBranchCount = await registrarAuditoriaSesion(
+    "LOGIN",
+    { empresaId: usuario.empresaId, usuarioId: usuario.id },
+    { sucursalesActivasDeEmpresa: true },
+  );
+  if (activeBranchCount === null) {
+    // Cannot happen with `sucursalesActivasDeEmpresa: true`; the guard keeps
+    // the payload construction explicit instead of relying on the non-null
+    // assertion and the TS narrowing.
+    return { ok: false, code: AUTH_CREDENCIALES_INVALIDAS, message: messageFor(AUTH_CREDENCIALES_INVALIDAS) };
+  }
 
-  return { ok: true };
+  const esAdmin = usuario.roles.some((r) => r.rol.nombre === "Administrador");
+
+  return { ok: true, esAdmin, activeBranchCount };
 }
 
 /**

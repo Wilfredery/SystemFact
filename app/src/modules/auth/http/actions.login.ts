@@ -31,7 +31,11 @@ const loginInputSchema = z.object({
 
 /**
  * Logs a user in using `nombreUsuario` + password (ADR-014).
- * On success redirects to the dashboard; on failure returns a generic error.
+ * On success the landing is decided HERE per design D2 — the middleware stays
+ * byte-identical: a multi-branch ADMIN (`esAdmin && activeBranchCount > 1`)
+ * goes to `/selector-empresa-sucursal`; everyone else (non-admin fast path
+ * 17 §5, single-branch admin) goes to `/dashboard`, unchanged.
+ * On failure returns a generic error.
  *
  * Signature follows `useActionState` (previous state, then the form data),
  * which drives the client-side pending/error state on the login form.
@@ -57,7 +61,11 @@ export async function login(
     return { error: result.message };
   }
 
-  redirect("/dashboard");
+  redirect(
+    result.esAdmin && result.activeBranchCount > 1
+      ? "/selector-empresa-sucursal"
+      : "/dashboard",
+  );
 }
 
 /**

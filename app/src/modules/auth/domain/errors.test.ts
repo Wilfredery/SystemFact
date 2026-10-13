@@ -84,6 +84,12 @@ describe("auth error catalog", () => {
     expect(AUTH_ERROR_CODES).toContain(AUTH_USUARIO_INACTIVO);
   });
 
+  it("pins the board 01 binding copy (LOG-02-A) to the EXACT string", () => {
+    // adapter-level copy-pin (auth-login-restyle): the shipped surface shows
+    // EXACTLY this alert text — no suffix, no per-cause variants.
+    expect(messageFor(AUTH_CREDENCIALES_INVALIDAS)).toBe("Credenciales inválidas");
+  });
+
   it("distinguishes the inactive account from the credential failure", () => {
     // The enumeration posture in `loginWithCredenciales` depends on this pair
     // staying two codes: collapsing them would be a behaviour change, not a
