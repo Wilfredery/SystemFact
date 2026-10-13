@@ -27,6 +27,12 @@
  * instant; a missing/expired key throws `PLAZO_DEVOLUCION_FALTANTE` before the
  * enclosing devolucion writes anything.
  *
+ * The window predicate (`activa` + validity window + newest-`vigenciaInicio`
+ * tie-break) is NO LONGER re-encoded here: all three readers consume the
+ * shared seam `leerConfigActivaEnTx` (R-QC-08 / R-C4 — one canonical
+ * implementation). The instant-comparison rationale below explains why the
+ * seam's `timestamptz` evaluation is the correct reading for these readers.
+ *
  * Validity comparison mirrors the retention reader exactly: `VIGENCIA_INICIO` /
  * `VIGENCIA_FIN` are `timestamptz` instants, so "covers the sale date" is an
  * exact instant comparison against the draft `fecha`. Santo-Domingo
@@ -37,6 +43,7 @@
  */
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
+import { leerConfigActivaEnTx } from "@/shared/infrastructure/configuracion-empresa";
 
 /**
  * The stable config error codes (venta-config capability, R-C1 / returns R-D2).
@@ -97,22 +104,11 @@ export async function leerConfigVentaEnTx(
   empresaId: number,
   fecha: Date,
 ): Promise<string> {
-  const row = await tx.configuracionEmpresa.findFirst({
-    where: {
-      empresaId,
-      clave: CLAVE_DESC_MAX,
-      activa: true,
-      vigenciaInicio: { lte: fecha },
-      vigenciaFin: { gte: fecha },
-    },
-    // R-V17 (CodeRabbit F5): overlapping validity windows resolve
-    // DETERMINISTICALLY — the row with the NEWEST `vigenciaInicio` wins. Without
-    // the order, `findFirst` is an arbitrary-row pick (no `ORDER BY` ⇒ Postgres
-    // gives no row-order guarantee). The seed (`seed-venta-config`) asserts zero
-    // overlap per key+empresa so this tie-break never hides corrupted config.
-    orderBy: { vigenciaInicio: "desc" },
-    select: { valor: true },
-  });
+  const row = await leerConfigActivaEnTx(tx, empresaId, CLAVE_DESC_MAX, fecha);
+  // R-V17 (CodeRabbit F5): overlapping validity windows resolve
+  // DETERMINISTICALLY — the seam orders the pick by the NEWEST
+  // `vigenciaInicio` (the seed asserts zero overlap per key+empresa, so the
+  // tie-break never hides corrupted config).
 
   if (row === null) {
     throw new VentaConfigError(DESC_MAX_FALTANTE, { empresaId, clave: CLAVE_DESC_MAX });
@@ -159,20 +155,11 @@ export async function leerPlazoDevolucionEnTx(
   empresaId: number,
   fecha: Date,
 ): Promise<number> {
-  const row = await tx.configuracionEmpresa.findFirst({
-    where: {
-      empresaId,
-      clave: CLAVE_PLAZO_DEVOLUCION,
-      activa: true,
-      vigenciaInicio: { lte: fecha },
-      vigenciaFin: { gte: fecha },
-    },
-    // Same R-V17 deterministic tie-break as the DESC_MAX reader: overlapping
-    // windows resolve to the NEWEST `vigenciaInicio`; the seed asserts zero
-    // overlap so this never hides corrupted config.
-    orderBy: { vigenciaInicio: "desc" },
-    select: { valor: true },
-  });
+  const row = await leerConfigActivaEnTx(tx, empresaId, CLAVE_PLAZO_DEVOLUCION, fecha);
+  // Same R-V17 deterministic tie-break as the DESC_MAX reader, now carried by
+  // the seam's own query: overlapping windows resolve to the NEWEST
+  // `vigenciaInicio`; the seed asserts zero overlap so this never hides
+  // corrupted config.
 
   if (row === null) {
     throw new VentaConfigError(PLAZO_DEVOLUCION_FALTANTE, {
@@ -227,20 +214,16 @@ export async function leerRetroactivoFechaVentaEnTx(
   empresaId: number,
   fecha: Date,
 ): Promise<number> {
-  const row = await tx.configuracionEmpresa.findFirst({
-    where: {
-      empresaId,
-      clave: CLAVE_RETROACTIVO_FECHA_VENTA,
-      activa: true,
-      vigenciaInicio: { lte: fecha },
-      vigenciaFin: { gte: fecha },
-    },
-    // Same R-V17 deterministic tie-break as the DESC_MAX / PLAZO_DEVOLUCION
-    // readers: overlapping windows resolve to the NEWEST `vigenciaInicio`; the
-    // seed asserts zero overlap so this never hides corrupted config.
-    orderBy: { vigenciaInicio: "desc" },
-    select: { valor: true },
-  });
+  const row = await leerConfigActivaEnTx(
+    tx,
+    empresaId,
+    CLAVE_RETROACTIVO_FECHA_VENTA,
+    fecha,
+  );
+  // Same R-V17 deterministic tie-break as the DESC_MAX / PLAZO_DEVOLUCION
+  // readers, carried by the seam's own query: overlapping windows resolve to
+  // the NEWEST `vigenciaInicio`; the seed asserts zero overlap so this never
+  // hides corrupted config.
 
   if (row === null) {
     throw new VentaConfigError(RETROACTIVO_FECHA_VENTA_FALTANTE, {
