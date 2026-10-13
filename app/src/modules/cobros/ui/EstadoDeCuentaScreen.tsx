@@ -23,7 +23,7 @@ import { Decimal } from "decimal.js";
 import { consultarEstadoDeCuentaAction } from "@/modules/cobros/http/actions";
 import type { SaldoCxCVista } from "@/modules/cobros/application/consultar-saldo-cxc";
 import type { EstadoPagoDerivado } from "@/modules/cobros/domain/pago";
-import { formatearFechaDO, formatearMontoDO } from "./format";
+import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
 import { PaymentForm } from "./PaymentForm";
 
 const ETIQUETA_ESTADO: Record<EstadoPagoDerivado, string> = {
@@ -111,7 +111,7 @@ export function EstadoDeCuentaScreen({ clienteId }: { readonly clienteId: number
             className="text-sm text-zinc-700 dark:text-zinc-200"
           >
             Saldo total pendiente:{" "}
-            <span className="font-semibold">{formatearMontoDO(totalPend)}</span>
+            <span className="font-semibold">{formatearMonto(totalPend)}</span>
           </p>
           <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
             {cuentas.map((f) => {
@@ -125,16 +125,16 @@ export function EstadoDeCuentaScreen({ clienteId }: { readonly clienteId: number
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                        Factura #{f.facturaId} · Total {formatearMontoDO(f.total)}
+                        Factura #{f.facturaId} · Total {formatearMonto(f.total)}
                       </p>
                       <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                        Cobros aplicados {formatearMontoDO(f.cobrosAplicados)} · Pendiente{" "}
-                        {formatearMontoDO(f.saldoPendiente)} ·{" "}
+                        Cobros aplicados {formatearMonto(f.cobrosAplicados)} · Pendiente{" "}
+                        {formatearMonto(f.saldoPendiente)} ·{" "}
                         <span className={`rounded px-1.5 py-0.5 font-medium ${CLASE_ESTADO[f.estadoPago]}`}>
                           {f.enMora ? "En mora" : ETIQUETA_ESTADO[f.estadoPago]}
                         </span>
                         {" · Vence "}
-                        {formatearFechaDO(f.vencimiento)}
+                        {formatearFechaSD(f.vencimiento)}
                       </p>
                     </div>
                     {!pagada && (

@@ -14,8 +14,7 @@
 
 import { ESTADO_VENTA, type EstadoVenta } from "../domain/venta";
 import { DevolverButton } from "@/modules/devolucion/ui/DevolverButton";
-import { formatearMonto } from "./carro";
-import { formatearFechaSD } from "./fecha";
+import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
 
 /** `Decimal(12,2)` canonical zero-discount money (the persisted `descuento`). */
 const DESCUENTO_CERO_MONEY = "0.00";
@@ -72,7 +71,7 @@ export function DraftList({
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
                     {esBorrador ? (
-                      <>#{d.id} · {d.clienteNombre} · RD$ {formatearMonto(d.total)}</>
+                      <>#{d.id} · {d.clienteNombre} · {formatearMonto(d.total)}</>
                     ) : (
                       <>
                         #{d.id} · <span className="font-semibold text-emerald-700 dark:text-emerald-300">CONFIRMADA</span>
@@ -81,7 +80,7 @@ export function DraftList({
                             NCF {d.ncf}
                           </span>
                         )}
-                        {" · "}RD$ {formatearMonto(d.total)}
+                        {" · "}{formatearMonto(d.total)}
                       </>
                     )}
                   </p>

@@ -19,19 +19,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { consultarReciboAction } from "@/modules/cobros/http/actions";
 import type { ReciboVista } from "@/modules/cobros/application/consultar-recibo";
-import { formatearFechaDO, formatearMontoDO } from "./format";
-
-/** ISO/UTC instant → SD calendar date string, reusing the domain date discipline. */
-function fechaSDDesdeISO(iso: string): string {
-  // Presentation-only: resolve the stored instant to its Santo-Domingo calendar day
-  // (no manual hour arithmetic — the Intl formatter owns the conversion).
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Santo_Domingo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(iso));
-}
+import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
 
 export function ReciboReprintScreen({ correlativo }: { readonly correlativo: number }) {
   const [recibo, setRecibo] = useState<ReciboVista | null>(null);
@@ -113,7 +101,7 @@ export function ReciboReprintScreen({ correlativo }: { readonly correlativo: num
           </dd>
           <dt className="text-zinc-500">Fecha</dt>
           <dd className="text-zinc-900 dark:text-zinc-50">
-            {formatearFechaDO(fechaSDDesdeISO(recibo.fecha))}
+            {formatearFechaSD(recibo.fecha)}
           </dd>
           <dt className="text-zinc-500">Cliente</dt>
           <dd className="text-zinc-900 dark:text-zinc-50">{recibo.clienteNombre}</dd>
@@ -134,7 +122,7 @@ export function ReciboReprintScreen({ correlativo }: { readonly correlativo: num
             data-testid="recibo-monto"
             className="mt-2 text-right text-base font-bold text-zinc-900 dark:text-zinc-50"
           >
-            {formatearMontoDO(recibo.monto)}
+            {formatearMonto(recibo.monto)}
           </dd>
         </dl>
 

@@ -23,7 +23,8 @@ import type { RentabilidadFila } from "../domain/margen";
 import { NOTA_LIMITACION_RENTABILIDAD } from "../domain/margen";
 import type { SeleccionReporte } from "./url";
 import { construirHref, construirHrefExportar } from "./url";
-import { formatearCantidad, formatearEntero, formatearMontoDO } from "./format";
+import { formatearCantidad, formatearEntero } from "./format";
+import { formatearMonto } from "@/shared/ui/format";
 
 const TH = "py-1 font-medium text-zinc-500 dark:text-zinc-400";
 const TH_R = `${TH} text-right`;
@@ -66,9 +67,9 @@ export function PanelRentabilidad({
             Rentabilidad por producto
           </h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Ventas {formatearMontoDO(r.ventas ?? "0.00")} · Margen {formatearMontoDO(r.margen ?? "0.00")} (
-            {r.margenPorciento ?? "0.00"}%) · Inversión {formatearMontoDO(r.inversion ?? "0.00")} · Capital{" "}
-            {formatearMontoDO(r.capital ?? "0.00")}
+            Ventas {formatearMonto(r.ventas ?? "0.00")} · Margen {formatearMonto(r.margen ?? "0.00")} (
+            {r.margenPorciento ?? "0.00"}%) · Inversión {formatearMonto(r.inversion ?? "0.00")} · Capital{" "}
+            {formatearMonto(r.capital ?? "0.00")}
           </p>
         </div>
         <Link href={construirHrefExportar(seleccion)} className={BOTON}>
@@ -103,13 +104,13 @@ export function PanelRentabilidad({
               {pagina.filas.map((f) => (
                 <tr key={f.productoId} className="border-t border-zinc-100 dark:border-zinc-800">
                   <td className={TD}>{f.nombre}</td>
-                  <td className={TD_R}>{formatearMontoDO(f.precioCosto)}</td>
-                  <td className={TD_R}>{formatearMontoDO(f.precioSalida)}</td>
+                  <td className={TD_R}>{formatearMonto(f.precioCosto)}</td>
+                  <td className={TD_R}>{formatearMonto(f.precioSalida)}</td>
                   <td className={TD_R}>{formatearCantidad(f.unidadesVendidas)}</td>
                   <td className={TD_R}>{formatearCantidad(f.unidadesCompradas)}</td>
-                  <td className={TD_R}>{formatearMontoDO(f.inversion)}</td>
-                  <td className={TD_R}>{formatearMontoDO(f.capital)}</td>
-                  <td className={TD_R}>{formatearMontoDO(f.margen)}</td>
+                  <td className={TD_R}>{formatearMonto(f.inversion)}</td>
+                  <td className={TD_R}>{formatearMonto(f.capital)}</td>
+                  <td className={TD_R}>{formatearMonto(f.margen)}</td>
                   <td className={TD_R}>{f.margenPorciento}%</td>
                 </tr>
               ))}

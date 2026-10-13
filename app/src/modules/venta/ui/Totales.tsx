@@ -8,13 +8,13 @@
  */
 
 import type { TotalesVenta } from "../domain/venta";
-import { formatearMonto } from "./carro";
+import { formatearMonto } from "@/shared/ui/format";
 
 function Fila({ etiqueta, valor, fuerte = false }: { readonly etiqueta: string; readonly valor: string; readonly fuerte?: boolean }) {
   return (
     <div className={`flex items-center justify-between gap-6 py-0.5 ${fuerte ? "text-base font-semibold text-zinc-900 dark:text-zinc-50" : "text-sm text-zinc-700 dark:text-zinc-300"}`}>
       <span>{etiqueta}</span>
-      <span className="tabular-nums">RD$ {formatearMonto(valor)}</span>
+      <span className="tabular-nums">{formatearMonto(valor)}</span>
     </div>
   );
 }

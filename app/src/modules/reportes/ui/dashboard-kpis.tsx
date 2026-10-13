@@ -11,11 +11,8 @@
 
 import Link from "next/link";
 import type { DashboardVista } from "../domain/dashboard";
-import {
-  formatearCantidad,
-  formatearEntero,
-  formatearMontoDO,
-} from "./format";
+import { formatearCantidad, formatearEntero } from "./format";
+import { formatearMonto } from "@/shared/ui/format";
 
 const CLASE_TILE =
   "rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900";
@@ -29,7 +26,7 @@ export function DashboardKpis({ vista }: { readonly vista: DashboardVista }) {
       {vista.ventasDia !== null && (
         <section className={CLASE_TILE} aria-label="Ventas del día">
           <p className={CLASE_TITULO}>Ventas del día</p>
-          <p className={CLASE_VALOR}>{formatearMontoDO(vista.ventasDia.neto)}</p>
+          <p className={CLASE_VALOR}>{formatearMonto(vista.ventasDia.neto)}</p>
           <p className={CLASE_SUB}>
             {formatearEntero(vista.ventasDia.operaciones)} operaciones confirmadas
           </p>
@@ -39,7 +36,7 @@ export function DashboardKpis({ vista }: { readonly vista: DashboardVista }) {
       {vista.ventasMes !== null && (
         <section className={CLASE_TILE} aria-label="Ventas del mes">
           <p className={CLASE_TITULO}>Ventas del mes</p>
-          <p className={CLASE_VALOR}>{formatearMontoDO(vista.ventasMes.neto)}</p>
+          <p className={CLASE_VALOR}>{formatearMonto(vista.ventasMes.neto)}</p>
           <p className={CLASE_SUB}>
             {formatearEntero(vista.ventasMes.operaciones)} operaciones confirmadas
           </p>
@@ -49,7 +46,7 @@ export function DashboardKpis({ vista }: { readonly vista: DashboardVista }) {
       {vista.cxC !== null && (
         <section className={CLASE_TILE} aria-label="Cuentas por cobrar">
           <p className={CLASE_TITULO}>CxC — saldo pendiente</p>
-          <p className={CLASE_VALOR}>{formatearMontoDO(vista.cxC.saldoTotal)}</p>
+          <p className={CLASE_VALOR}>{formatearMonto(vista.cxC.saldoTotal)}</p>
           <p className={CLASE_SUB}>
             {formatearEntero(vista.cxC.facturasPendientes)} facturas pendientes
           </p>
@@ -59,7 +56,7 @@ export function DashboardKpis({ vista }: { readonly vista: DashboardVista }) {
       {vista.inventario !== null && (
         <section className={CLASE_TILE} aria-label="Inventario">
           <p className={CLASE_TITULO}>Inventario valorizado</p>
-          <p className={CLASE_VALOR}>{formatearMontoDO(vista.inventario.valor)}</p>
+          <p className={CLASE_VALOR}>{formatearMonto(vista.inventario.valor)}</p>
           <p className={CLASE_SUB}>
             {formatearCantidad(vista.inventario.unidades)} unidades ·{" "}
             {formatearEntero(vista.inventario.bajoStock)} bajo stock ·{" "}
@@ -93,7 +90,7 @@ export function DashboardKpis({ vista }: { readonly vista: DashboardVista }) {
                       {formatearCantidad(p.unidades)}
                     </td>
                     <td className="py-1 text-right text-zinc-700 dark:text-zinc-300">
-                      {formatearMontoDO(p.monto)}
+                      {formatearMonto(p.monto)}
                     </td>
                   </tr>
                 ))}

@@ -29,8 +29,8 @@ import { construirHref, construirHrefExportar } from "./url";
 import {
   formatearCantidad,
   formatearEntero,
-  formatearMontoDO,
 } from "./format";
+import { formatearMonto } from "@/shared/ui/format";
 
 export type PanelOperativoProps =
   | {
@@ -136,7 +136,7 @@ export function PanelOperativo(props: PanelOperativoProps) {
     return (
       <Marco
         titulo="Ventas por período"
-        resumen={`Total neto ${formatearMontoDO(totalNeto)} · ${formatearEntero(
+        resumen={`Total neto ${formatearMonto(totalNeto)} · ${formatearEntero(
           Number(ops),
         )} operaciones confirmadas`}
         pagina={pagina}
@@ -154,7 +154,7 @@ export function PanelOperativo(props: PanelOperativoProps) {
             <tr key={f.fechaSD} className="border-t border-zinc-100 dark:border-zinc-800">
               <td className={TD}>{f.fechaSD}</td>
               <td className={TD_R}>{formatearEntero(f.operaciones)}</td>
-              <td className={TD_R}>{formatearMontoDO(f.neto)}</td>
+              <td className={TD_R}>{formatearMonto(f.neto)}</td>
             </tr>
           ))}
         </tbody>
@@ -167,7 +167,7 @@ export function PanelOperativo(props: PanelOperativoProps) {
     return (
       <Marco
         titulo="Productos más / menos vendidos"
-        resumen={`Total ${formatearCantidad(pagina.resumen.totalUnidades ?? "0.000")} unidades · ${formatearMontoDO(
+        resumen={`Total ${formatearCantidad(pagina.resumen.totalUnidades ?? "0.000")} unidades · ${formatearMonto(
           pagina.resumen.totalMonto ?? "0.00",
         )}`}
         pagina={pagina}
@@ -185,7 +185,7 @@ export function PanelOperativo(props: PanelOperativoProps) {
             <tr key={f.productoId} className="border-t border-zinc-100 dark:border-zinc-800">
               <td className={TD}>{f.nombre}</td>
               <td className={TD_R}>{formatearCantidad(f.unidades)}</td>
-              <td className={TD_R}>{formatearMontoDO(f.monto)}</td>
+              <td className={TD_R}>{formatearMonto(f.monto)}</td>
             </tr>
           ))}
         </tbody>
@@ -198,7 +198,7 @@ export function PanelOperativo(props: PanelOperativoProps) {
     return (
       <Marco
         titulo="Inventario valorizado por sucursal"
-        resumen={`Valor ${formatearMontoDO(pagina.resumen.valor ?? "0.00")} · ${formatearCantidad(
+        resumen={`Valor ${formatearMonto(pagina.resumen.valor ?? "0.00")} · ${formatearCantidad(
           pagina.resumen.unidades ?? "0.000",
         )} unidades · ${pagina.resumen.bajoStock ?? "0"} bajo stock · ${
           pagina.resumen.agotados ?? "0"
@@ -222,8 +222,8 @@ export function PanelOperativo(props: PanelOperativoProps) {
               <td className={TD}>{f.sucursalNombre}</td>
               <td className={TD}>{f.productoNombre}</td>
               <td className={TD_R}>{formatearCantidad(f.cantidad)}</td>
-              <td className={TD_R}>{formatearMontoDO(f.costoPromedio)}</td>
-              <td className={TD_R}>{formatearMontoDO(f.valor)}</td>
+              <td className={TD_R}>{formatearMonto(f.costoPromedio)}</td>
+              <td className={TD_R}>{formatearMonto(f.valor)}</td>
               <td className={TD_R}>{f.estadoStock}</td>
             </tr>
           ))}
@@ -237,7 +237,7 @@ export function PanelOperativo(props: PanelOperativoProps) {
   return (
     <Marco
       titulo="Estado de facturas"
-      resumen={`${pagina.resumen.totalFacturas ?? "0"} facturas · ${formatearMontoDO(
+      resumen={`${pagina.resumen.totalFacturas ?? "0"} facturas · ${formatearMonto(
         pagina.resumen.totalMonto ?? "0.00",
       )} · Pendientes ${pagina.resumen.pendientes ?? "0"} · Parciales ${
         pagina.resumen.parciales ?? "0"
@@ -265,7 +265,7 @@ export function PanelOperativo(props: PanelOperativoProps) {
             <td className={TD}>{c.estado}</td>
             <td className={TD}>{c.tipoNcf}</td>
             <td className={TD_R}>{formatearEntero(c.facturas)}</td>
-            <td className={TD_R}>{formatearMontoDO(c.monto)}</td>
+            <td className={TD_R}>{formatearMonto(c.monto)}</td>
             <td className={TD_R}>{formatearEntero(c.pendientes)}</td>
             <td className={TD_R}>{formatearEntero(c.parciales)}</td>
             <td className={TD_R}>{formatearEntero(c.pagadas)}</td>
