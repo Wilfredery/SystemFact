@@ -17,7 +17,7 @@ import {
 } from "./producto-repository";
 
 jest.mock("@/modules/auditoria/application/auditoria-write-port", () => {
-  const real = jest.requireActual<Record<string, unknown>>(
+  const real = jest.requireActual(
     "@/modules/auditoria/application/auditoria-write-port",
   );
   return {

@@ -25,7 +25,6 @@ import {
   seedTenantFixture,
   type TenantFixture,
 } from "./setup/fixtures";
-import type { Prisma } from "@/generated/prisma/client";
 
 let fixture: TenantFixture | null = null;
 
@@ -47,7 +46,7 @@ function adminB(f: TenantFixture): TenantCtx {
   };
 }
 
-function listarRows(empresaId: number): Promise<Prisma.MovimientoAuditoria[]> {
+function listarRows(empresaId: number) {
   return getHarnessDb().movimientoAuditoria.findMany({
     where: { empresaId, accion: "LEER", entidad: "Producto" },
     orderBy: [{ fechaHora: "desc" }],
