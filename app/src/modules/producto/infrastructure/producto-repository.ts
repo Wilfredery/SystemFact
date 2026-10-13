@@ -422,27 +422,70 @@ export async function registrarProductoDesactivadoEnTx(
 }
 
 /**
- * Append-only audit row for a product listing read (REQ-PROD-010).
+ * Append-only audit row for a product listing read (REQ-PROD-010), throttled
+ * (M4, design D6): at most ONE `producto.listed` row per actor per rolling
+ * 60-second window.
+ *
+ * The window check is a bounded `findFirst` over the existing
+ * `MOVIMIENTO_AUDITORIA (empresaId, usuarioId, fechaHora, id)` composite index
+ * (equality empresa+usuario+accion+entidad, range on fechaHora), comparing UTC
+ * timestamptz instants — `fechaHora` is UTC per AGENTS.md, so the window is an
+ * absolute-instant pair with no SD conversion. It runs INSIDE the caller's
+ * listing transaction: a listing rollback aborts the audit row with it.
+ *
+ * When a row already exists inside the window NOTHING happens: no append, and
+ * NO retro-merge (the open row is never updated or deleted — every audit row
+ * is append-created only, REQ-PROD-010-C/D). The next row after a >=60s gap
+ * opens a NEW window and records only its own read, whose payload
+ * `{ count: total }` is the filtered total of THE read that opened the window.
+ *
+ * Accepted race (decided in design D6, do NOT add locking here): two parallel
+ * same-actor listings may both miss the window read and each append once —
+ * tolerated as one extra bounded row per race window; audit growth stays
+ * ~x60 lower than one-row-per-render.
  */
+
+/** The one-minute sliding window (ms) of REQ-PROD-010. */
+export const VENTANA_PRODUCTO_LISTADO_MS = 60_000;
+
+/**
+ * The window's opening cut: rows with `fechaHora >= cut` mean "still inside
+ * this listing's open window". Pure UTC-instant arithmetic (no SD calendar).
+ */
+export function corteVentanaProductoListado(
+  ahora: Date,
+  ventanaMs: number = VENTANA_PRODUCTO_LISTADO_MS,
+): Date {
+  return new Date(ahora.getTime() - ventanaMs);
+}
+
 export async function registrarProductoListadoEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
   page: number,
-  count: number,
   total: number,
+  ahora: Date = new Date(),
 ): Promise<void> {
-  await tx.movimientoAuditoria.create({
-    data: {
+  const ventanaAbierta = await tx.movimientoAuditoria.findFirst({
+    where: {
       empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
       usuarioId: ctx.usuarioId,
-      fechaHora: new Date(),
       accion: AccionAuditoria.LEER,
       entidad: "Producto",
-      idEntidad: String(page),
-      valorAnterior: null,
-      valorNuevo: JSON.stringify({ count, total }),
-      motivo: null,
+      fechaHora: { gte: corteVentanaProductoListado(ahora) },
     },
+    orderBy: [{ fechaHora: "desc" }, { id: "desc" }],
+    take: 1,
+  });
+  if (ventanaAbierta !== null) {
+    return;
+  }
+  await registrarEventoAuditoriaEnTx(tx, ctx, {
+    accion: AccionAuditoria.LEER,
+    entidad: "Producto",
+    idEntidad: String(page),
+    valorAnterior: null,
+    valorNuevo: JSON.stringify({ count: total }),
+    motivo: null,
   });
 }

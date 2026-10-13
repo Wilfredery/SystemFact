@@ -32,7 +32,31 @@ import {
   registrarProductoCreadoEnTx,
   registrarProductoActualizadoEnTx,
   registrarProductoDesactivadoEnTx,
+  registrarProductoListadoEnTx,
 } from "@/modules/producto/infrastructure/producto-repository";
+
+/** Site-12 fake: a listing-shaped tx whose window read returns `ventanaAbierta`. */
+function listaM4(
+  ventanaAbierta: Record<string, unknown> | null,
+  ahora: Date,
+): {
+  tx: PrismaTx;
+  filasCreadas: Record<string, unknown>[];
+} {
+  const filasCreadas: Record<string, unknown>[] = [];
+  const tx = {
+    movimientoAuditoria: {
+      findFirst: jest.fn().mockResolvedValue(ventanaAbierta),
+      create: jest
+        .fn()
+        .mockImplementation(async ({ data }: { data: unknown }) => {
+          filasCreadas.push(data as Record<string, unknown>);
+          return data;
+        }),
+    },
+  } as unknown as PrismaTx;
+  return { tx, filasCreadas };
+}
 
 jest.mock("@/modules/auditoria/application/auditoria-write-port", () => {
   const actual =
@@ -351,5 +375,36 @@ describe("M2 — audit append sites delegate to the canonical writer (D5)", () =
       valorNuevo: JSON.stringify({ activo: false }),
       motivo: "producto.desactivado",
     });
+  });
+
+  it("site 12 + M4 — producto listado (LEER/Producto; payload {count: total} FROM obs 1069; skip inside the window)", async () => {
+    const ahora = new Date("2026-10-12T14:30:00Z");
+    // Fresh window: the delegation fires and the appended row carries the
+    // corrected REQ-PROD-010 payload — count = the READ'S filtered total.
+    const { tx, filasCreadas } = listaM4(null, ahora);
+    await registrarProductoListadoEnTx(tx, ctx, 3, 95, ahora);
+    expect(escenarioSpy).toHaveBeenCalledTimes(1);
+    expect(filasCreadas).toHaveLength(1);
+    expect(filasCreadas[0]).toMatchObject({
+      empresaId: 7,
+      sucursalId: 3,
+      usuarioId: 11,
+      accion: AccionAuditoria.LEER,
+      entidad: "Producto",
+      idEntidad: "3",
+      valorAnterior: null,
+      valorNuevo: JSON.stringify({ count: 95 }),
+      motivo: null,
+    });
+    expect(filasCreadas[0]!.fechaHora).toBeInstanceOf(Date);
+
+    // An open window (row <60s): NOTHING appended — no retro-merge, the open
+    // row is structurally untouched (append-only).
+    const cerrado = listaM4(
+      { id: 10_001, fechaHora: new Date(ahora.getTime() - 1) },
+      ahora,
+    );
+    await registrarProductoListadoEnTx(cerrado.tx, ctx, 3, 95, ahora);
+    expect(cerrado.filasCreadas).toHaveLength(0);
   });
 });
