@@ -1,3 +1,9 @@
+## [0.15.0](https://github.com/Wilfredery/SystemFact/compare/v0.14.13...v0.15.0) (2026-10-13)
+
+### Features
+
+* **ui:** SDD ui-foundation (F0, PR #121) - presentation foundation: semantic Tailwind 4 token registry (light Penpot base + WCAG-AA dark via preferred-color-scheme + dormant .dark hook), Source Sans 3 as the sole font (Geist/Arial removed), shadcn base-nova/@base-ui registry vendored with exactly 8 touch-first primitives (44/48px hitboxes via CVA, no per-primitive dark: overrides), one shared home for DOP money (`formatearMonto`, RD$ en-US grouping) and SD dates (`formatearFechaSD`, dd/MM/yyyy America/Santo_Domingo from UTC via date-fns-tz) replacing duplicated helpers in venta/cobros/reportes (DGII fiscal formatter untouched), and the permanent App Shell over the new (app) route group: server-rendered header with always-visible empresa+sucursal, Cambiar sucursal gated server-side to Administrador (never CSS-hidden), sidebar with the 8 module entries (4 future-route placeholders) and one tiny usePathname island for active-path highlight plus a theme-hook placeholder. DraftList now renders the ratified dd/MM/yyyy contract (intentional, note #2 in the PR). SDD trail mirrored at openspec/changes/ui-foundation/; app-shell credential walkthrough deferred to openspec/PENDING.md (item 4).
+
 ## [0.14.13](https://github.com/Wilfredery/SystemFact/compare/v0.14.12...v0.14.13) (2026-10-13)
 
 ### Bug Fixes
