@@ -20,6 +20,7 @@
  */
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
+import { leerConfigActivaEnTx } from "@/shared/infrastructure/configuracion-empresa";
 import type { MapaTipoIngreso } from "../domain/dgii/tipo-ingreso";
 import { esCodigoTipoIngresoValido } from "../domain/dgii/tipo-ingreso";
 
@@ -45,17 +46,8 @@ export async function leerUmbralConsumo607EnTx(
   empresaId: number,
   now: Date,
 ): Promise<string> {
-  const row = await tx.configuracionEmpresa.findFirst({
-    where: {
-      empresaId,
-      clave: CLAVE_UMBRAL_CONSUMO_607,
-      activa: true,
-      vigenciaInicio: { lte: now },
-      vigenciaFin: { gte: now },
-    },
-    orderBy: { vigenciaInicio: "desc" },
-    select: { valor: true },
-  });
+  const row = await leerConfigActivaEnTx(tx, empresaId, CLAVE_UMBRAL_CONSUMO_607, now);
+  // Newest-`vigenciaInicio` tie-break (R-V17) carried by the seam's own query.
   if (row === null) return UMBRAL_CONSUMO_607_ESTATUTARIO;
   const trimmed = row.valor.trim();
   if (!/^\d{1,12}(\.\d{1,2})?$/.test(trimmed)) return UMBRAL_CONSUMO_607_ESTATUTARIO;
@@ -75,17 +67,8 @@ export async function leerMapaTipoIngreso607EnTx(
   empresaId: number,
   now: Date,
 ): Promise<MapaTipoIngreso> {
-  const row = await tx.configuracionEmpresa.findFirst({
-    where: {
-      empresaId,
-      clave: CLAVE_TIPO_INGRESO_607,
-      activa: true,
-      vigenciaInicio: { lte: now },
-      vigenciaFin: { gte: now },
-    },
-    orderBy: { vigenciaInicio: "desc" },
-    select: { valor: true },
-  });
+  const row = await leerConfigActivaEnTx(tx, empresaId, CLAVE_TIPO_INGRESO_607, now);
+  // Newest-`vigenciaInicio` tie-break (R-V17) carried by the seam's own query.
   if (row === null) return {};
   try {
     const parsed: unknown = JSON.parse(row.valor);
