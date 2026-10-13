@@ -19,6 +19,7 @@
  */
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
+import { leerConfigsActivasEnTx } from "@/shared/infrastructure/configuracion-empresa";
 import {
   CONFIG_RETENCION_FALTANTE,
   CompraDomainError,
@@ -52,16 +53,12 @@ export async function leerTasasRetencionEnTx(
   requiredClaves: readonly RetencionClave[],
 ): Promise<RetentionRates> {
   const now = new Date();
-  const rows = await tx.configuracionEmpresa.findMany({
-    where: {
-      empresaId,
-      activa: true,
-      vigenciaInicio: { lte: now },
-      vigenciaFin: { gte: now },
-      clave: { in: requiredClaves.map((c) => c) },
-    },
-    select: { clave: true, valor: true },
-  });
+  // The active-window predicate (`activa` + validity window over the current
+  // instant) is consumed from the ONE canonical seam (R-QC-08); this reader
+  // keeps the multi-key findMany SHAPE through the seam's batched read and
+  // owns ONLY its module semantics (key→field mapping, grammar, required-key
+  // hard-fail).
+  const rows = await leerConfigsActivasEnTx(tx, empresaId, requiredClaves, now);
 
   const byKey = new Map(rows.map((r) => [r.clave, r.valor]));
 
