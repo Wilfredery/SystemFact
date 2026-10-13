@@ -1,3 +1,12 @@
+## [0.14.12](https://github.com/Wilfredery/SystemFact/compare/v0.14.11...v0.14.12) (2026-10-13)
+
+### Code Refactoring
+
+* **shared:** ONE canonical ConfiguracionEmpresa active-window reader seam `src/shared/infrastructure/configuracion-empresa.ts` (R-QC-08, PR5, tasks 5.1-5.8) — design D8 contract verbatim: `leerConfigActivaEnTx` (findFirst + newest-`vigenciaInicio` tie-break, R-V17) and `leerConfigsActivasEnTx` (batched `clave in` findMany, compra's serving shape) carry the single `{empresaId, clave, activa, vigenciaInicio lte fecha, vigenciaFin gte fecha}` predicate; the seam compares absolute `timestamptz` instants by design (risk #8 — every existing caller already does instant comparison; SD-date resolution stays at the callers' ratified conversions) and knows no module semantics (per-key value grammars and hard-fail/default codes remain in the consumer modules)
+* **venta:** the three DESC_MAX-family readers (`DESC_MAX`, `PLAZO_DEVOLUCION`, `RETROACTIVO_FECHA_VENTA_DIAS`) consume the seam instead of re-encoding the predicate; `VentaConfigError` codes, message copy, details and grammars are byte-unchanged (R-C4; the existing arg-pin unit spec passes untouched)
+* **compra:** `leerTasasRetencionEnTx` serves its 4-key batch through `leerConfigsActivasEnTx`; `CONFIG_RETENCION_FALTANTE` discipline unchanged (R-V17)
+* **reportes:** `PLAZO_CREDITO` plus the DGII 607 readers (UMBRAL_CONSUMO_607 / DGII_TIPO_INGRESO_607) consume the seam; `null`-on-gap and statutory-default fallbacks unchanged. Grep guard: the window predicate is encoded only once (one seam), 4 consumer files import it
+
 ## [0.14.11](https://github.com/Wilfredery/SystemFact/compare/v0.14.10...v0.14.11) (2026-10-12)
 
 ### Bug Fixes
