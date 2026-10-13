@@ -7,10 +7,7 @@ Approved working order (2026-10-13 owner decision): item 1 first, items 2–3 de
 
 ## Pending
 
-1. **E2E board re-pin** — Playwright must re-pin the cobros board navigation to the server-page
-   walk (per-bucket nav replaced by page nav in PR #114). Noted in the PR #114 body and the
-   2026-10-13 archive-report. → IN PROGRESS 2026-10-13.
-   Origin: openspec/changes/archive/2026-10-13-optimizacion-baseline/archive-report.md (follow-up 2).
+(none — item 1 completed; see Historical)
 
 ## Deferred (explicit owner decision 2026-10-13: not worth doing now)
 
@@ -29,6 +26,8 @@ Approved working order (2026-10-13 owner decision): item 1 first, items 2–3 de
 
 ## Historical
 
+- E2E board re-pin — DONE 2026-10-13: squash-merged PR #119 (commit e1abe11), tag v0.14.13 +
+  GitHub Release published. Origin: 2026-10-13 archive-report (follow-up 2).
 - Release tags v0.14.8–v0.14.12 + GitHub Releases — DONE 2026-10-12 (manual protocol).
   Origin: archive-report 2026-10-13 (follow-up 1).
 - Prod redeploy dpl_FSaEs2CEbHcY7kb25vNaC9NcB1P7 (v0.14.12) — DONE, smoke verified.
