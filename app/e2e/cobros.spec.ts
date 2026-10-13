@@ -126,6 +126,37 @@ async function crearVentaCreditoPendiente(page: Page): Promise<number> {
   return Number(factura.rows[0].id);
 }
 
+/**
+ * RE-PIN (2026-10-13, archive-report follow-up of PR #114 / v0.14.9): the board
+ * lost its client-side bucket navigation — PR #114 re-anchored it to server-side
+ * paged navigation (page cut of 25, in-component "Página anterior"/"Página
+ * siguiente" buttons, page-scoped bucket counts). Return the row locator for
+ * the requested invoice by walking the pagination until the row renders.
+ * Fresh self-seeded invoices sort `fechaEmision DESC, id DESC`, so they land on
+ * page 1 while the tenant holds <= 25 outstanding receivables; on a shared prod
+ * that accumulated more pendings they live on later pages, so a naive
+ * `fila.waitFor` would time out on page 1. The walk is bounded (50 pages) and
+ * THROWS (never skips) if the row is not found — a confirmed self-seeded
+ * invoice must exist somewhere on the board; failing to render it is a
+ * regression, not missing seed data.
+ */
+async function filaCxcEnBoard(page: Page, facturaId: number) {
+  await page.goto("/cobros/cxc-board");
+  const fila = page.getByTestId(`cxc-fila-${facturaId}`);
+  for (let pag = 1; pag <= 50; pag++) {
+    if ((await fila.count()) > 0) return fila;
+    const siguiente = page.getByRole("button", { name: "Página siguiente" });
+    if ((await siguiente.count()) === 0 || !(await siguiente.isEnabled())) break;
+    await siguiente.click();
+    await expect
+      .poll(() => page.getByText(/Página \d+ de \d+/).textContent())
+      .toContain(`Página ${pag + 1} de`);
+  }
+  throw new Error(
+    `Invoice ${facturaId} not found on any board page (walked 50) - the server-paged board must list every VIGENTE pending invoice.`,
+  );
+}
+
 async function contarCobros(facturaId: number): Promise<number> {
   const res = await pool.query(
     `select count(*)::int as n from "PAGO"
@@ -157,9 +188,10 @@ test.describe("cobros board + collection idempotency (fase-6 R-C7)", () => {
     // Self-seeded fresh invoice: VIGENTE credit terms, positive derived pending.
     const facturaId = await crearVentaCreditoPendiente(page);
 
-    await page.goto("/cobros/cxc-board");
-    const fila = page.getByTestId(`cxc-fila-${facturaId}`);
-    await fila.waitFor({ timeout: 20_000 });
+    // Re-pin 2026-10-13: walk the server-paged board to the row (page cut of
+    // 25 after PR #114 - fresh invoices land on page 1 unless the tenant holds
+    // more than 25 outstanding receivables on the shared prod seed).
+    const fila = await filaCxcEnBoard(page, facturaId);
     await fila.getByRole("button", { name: `Cobrar factura ${facturaId}` }).click();
 
     const confirmar = page.getByRole("button", { name: `Confirmar cobro factura ${facturaId}` });
@@ -215,9 +247,8 @@ test.describe("cobros board + collection idempotency (fase-6 R-C7)", () => {
     // Ledger hygiene on a shared prod: settle the invoice this test created so
     // the demo credit wallet keeps ONLY the collections the suite actually
     // exercised. Full prefill mirrors the operator cobro path (single click).
-    await page.goto("/cobros/cxc-board");
-    const fila = page.getByTestId(`cxc-fila-${facturaId}`);
-    await fila.waitFor({ timeout: 20_000 });
+    // Same re-pin as test 1: reach the row through the server-paged board walk.
+    const fila = await filaCxcEnBoard(page, facturaId);
     await fila.getByRole("button", { name: `Cobrar factura ${facturaId}` }).click();
     const confirmar = page.getByRole("button", { name: `Confirmar cobro factura ${facturaId}` });
     await confirmar.waitFor();

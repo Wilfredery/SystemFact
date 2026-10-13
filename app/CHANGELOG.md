@@ -1,3 +1,15 @@
+## [0.14.13](https://github.com/Wilfredery/SystemFact/compare/v0.14.12...v0.14.13) (2026-10-13)
+
+### Bug Fixes
+
+* **cobros:** re-pin the fase-6 CxC E2E to the server-paged board (`app/e2e/cobros.spec.ts`) —
+  PR #114 (v0.14.9) replaced client-side bucket navigation with server-side paged navigation
+  (cut of 25, "Página anterior"/"Página siguiente" buttons), leaving the E2E naive
+  `fila.waitFor` paged on page 1 only; a shared prod holding more than 25 outstanding receivables
+  would strand the fresh self-seeded invoice on a later page. The spec now reaches the row by
+  walking the pagination (bounded, throws on a confirmed-but-missing row instead of timing out)
+  and documents the page-scoped bucket-count behavior change.
+
 ## [0.14.12](https://github.com/Wilfredery/SystemFact/compare/v0.14.11...v0.14.12) (2026-10-13)
 
 ### Code Refactoring
