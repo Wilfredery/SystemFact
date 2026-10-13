@@ -8,7 +8,8 @@ Write-side contract of the append-only audit log. Owns the shared audit-write he
 
 ### Requirement: Shared audit-write helper (AU-1)
 
-A single helper `registrarEventoAuditoriaEnTx(tx, ctx, event)` MUST exist and MUST append exactly one `MovimientoAuditoria` row carrying `empresaId`, `usuarioId`, `fechaHora` (UTC `timestamptz`, set in code), `accion` (a valid `AccionAuditoria` enum value — never a free string), `entidad`, `idEntidad`, and optional `sucursalId`/`valorAnterior`/`valorNuevo`/`motivo`. It MUST run inside the caller's `withTenantTransaction` (never opening its own) and MUST be used only by this change's new write points.
+A single helper `registrarEventoAuditoriaEnTx(tx, ctx, event)` MUST exist and MUST append exactly one `MovimientoAuditoria` row carrying `empresaId`, `usuarioId`, `fechaHora` (UTC `timestamptz`, set in code), `accion` (a valid `AccionAuditoria` enum value — never a free string), `entidad`, `idEntidad`, and optional `sucursalId`/`valorAnterior`/`valorNuevo`/`motivo`. It MUST run inside the caller's `withTenantTransaction` (never opening its own). It MUST be the ONLY audit-append writer in the codebase: every module that appends audit rows MUST call this canonical helper, and the duplicated per-module append implementations (12 call sites today) MUST converge on it with zero behavior change — each consolidated call site MUST produce rows byte-identical in fields and values (`accion`, `entidad`, `idEntidad`, `motivo`, `valorAnterior`/`valorNuevo`) to the rows the pre-consolidation site wrote. The consolidation MUST NOT introduce any UPDATE or DELETE path on audit rows.
+(Previously: the helper existed but was used only by this capability's write points, with 12 duplicated per-module append call sites intentionally left untouched.)
 
 #### Scenario: Helper appends one scoped row
 
@@ -17,6 +18,12 @@ A single helper `registrarEventoAuditoriaEnTx(tx, ctx, event)` MUST exist and MU
 - THEN exactly one audit row persists with `empresaId=E`, `usuarioId=U`, and a UTC `fechaHora`
 - TEST: integration
 
+#### Scenario: Consolidated call site is behavior-identical
+
+- GIVEN a module call site that previously built its own audit append
+- WHEN the site is rewritten to call `registrarEventoAuditoriaEnTx`
+- THEN the appended row's fields and values match exactly what the old site wrote and no UPDATE/DELETE path on audit rows is introduced
+- TEST: integration
 ### Requirement: Catalog events closed this phase (AU-2)
 
 The 13-event catalog gaps that sit in already-built modules MUST now produce audit rows:
@@ -65,3 +72,13 @@ Every new audit row MUST be written inside the same transaction as the audited e
 
 - **Retention:** "3 years, adjustable" is a decided business value with NO enforcement in V1. Any purge is a DELETE on the audit table and conflicts with ADR-016 append-only; an explicit carve-out ruling is required before purge code may exist. No config key, job, or UI ships in this change.
 - **LOGIN single-tenant nuance:** login happens before `TenantCtx` exists (the `app.is_login_flow` path); the audit write must use the user's own resolved `empresaId` without widening the login-flow policy exception beyond that single company. Mechanism is owned by design.md.
+### Requirement: Module pagination helpers absorbed into the shared contract (AU-4)
+
+The pagination helpers duplicated in module code — including `auditoria/domain/auditoria.ts` — MUST be absorbed into the single shared pagination contract owned by capability `backend-code-quality` (R-QC-07) with zero behavior change to the audit consultation list. No module SHOULD retain a private copy of the helper after absorption.
+
+#### Scenario: Single shared pagination module serves the consulta list
+
+- GIVEN the shared pagination contract exists
+- WHEN the auditoria consultation list is served paginated
+- THEN it consumes the shared contract and no auditoria-local pagination helper remains
+- TEST: integration + grep (duplicated helper count = 0)
