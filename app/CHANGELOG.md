@@ -1,3 +1,10 @@
+## [0.16.1](https://github.com/Wilfredery/SystemFact/compare/v0.16.0...v0.16.1) (2026-10-14)
+
+### Bug Fixes
+
+* **auth:** pin pp.current_empresa_id (two-phase) inside uscarUsuarioPorAuthSub's resolving transaction - the session resolver's relation selects (empresa/sucursal) resolved to NULL under empresa_select RLS (no login-flow exception) and crashed (app) header rendering for F1 landing; found by the ratificado E2E credential walkthrough (selector-sucursal 3/3 with the dedicated e2e-automation principal); second-phase read now also filters empresaId explicitly (defense-in-depth); suites updated to the documented 2-call contract (1262 jest green, e2e walkthrough green).
+* **tools:** dedicated e2e-automation robot principal (seed:e2e-automation + prod launcher; GoTrue-correct identity semantics provider_id=email; always-rotate credential policy in the gitignored app/.env.e2e.local).
+
 ## [0.16.0](https://github.com/Wilfredery/SystemFact/compare/v0.15.0...v0.16.0) (2026-10-14)
 
 ### Features
