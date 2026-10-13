@@ -61,21 +61,25 @@ jest.mock("@/lib/prisma", () => {
   };
   // Successful logins append one audit row through the auditoria write port.
   const movimientoAuditoria = { create: jest.fn() };
-  const tx = { usuario, movimientoAuditoria, $executeRaw: jest.fn() };
+  // Design D2: the same audit transaction piggybacks the active-branch count.
+  const sucursal = { count: jest.fn() };
+  const tx = { usuario, movimientoAuditoria, sucursal, $executeRaw: jest.fn() };
   const prisma = { $transaction: jest.fn() };
-  return { prisma, __usuario: usuario, __tx: tx };
+  return { prisma, __usuario: usuario, __tx: tx, __sucursal: sucursal };
 });
 
 interface TxStub {
   usuario: UsuarioStub;
   movimientoAuditoria: { create: jest.Mock };
+  sucursal: { count: jest.Mock };
   $executeRaw: jest.Mock;
 }
 
-const { prisma, __usuario: usuario, __tx: tx } = jest.requireMock("@/lib/prisma") as {
+const { prisma, __usuario: usuario, __tx: tx, __sucursal: sucursalModel } = jest.requireMock("@/lib/prisma") as {
   prisma: { $transaction: jest.Mock };
   __usuario: UsuarioStub;
   __tx: TxStub;
+  __sucursal: TxStub["sucursal"];
 };
 
 /** A session whose ONLY usable identity is `id` (the Auth sub). */
@@ -200,13 +204,19 @@ function expectedAuditRow(
 }
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  // resetAllMocks (not clearAllMocks): pending `mockResolvedValueOnce` impls
+  // from an earlier test must NOT leak into the next one — a queued-but-
+  // unconsumed once-value silently hijacked the first `findUnique` of a later
+  // test (observed as an AUTH_USUARIO_INACTIVO from a stale `{authUserId}`).
+  // The impl defaults below re-establish the base state after the reset.
+  jest.resetAllMocks();
   prisma.$transaction.mockImplementation(withTx);
   usuario.findFirst.mockResolvedValue(null);
   usuario.findUnique.mockResolvedValue(null);
   usuario.updateMany.mockResolvedValue({ count: 1 });
   tx.$executeRaw.mockResolvedValue(0);
   tx.movimientoAuditoria.create.mockResolvedValue({ id: 1 });
+  sucursalModel.count.mockResolvedValue(1);
 });
 
 describe("getCurrentUser — resolution by sub, NOT by email", () => {
@@ -310,7 +320,13 @@ describe("getCurrentUser — resolution by sub, NOT by email", () => {
 });
 
 describe("loginWithCredenciales — lazy binding of authUserId", () => {
-  const fila = { id: 42, activo: true, empresaId: 7 };
+  // Design D2: the login bootstrap now also fetches the roles (esAdmin verdict).
+  const fila = {
+    id: 42,
+    activo: true,
+    empresaId: 7,
+    roles: [{ rol: { nombre: "Administrador" } }],
+  };
 
   it("binds the sub on first login and resolves ok", async () => {
     const supabase = supabaseWithUser({
@@ -525,6 +541,66 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(supabase.auth.signOut).toHaveBeenCalled();
     // REQ-AUTH-AUD-001 #2 — no session was established, so no row.
     expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("loginWithCredenciales — landing payload (design D2)", () => {
+  // Same bootstrap row shape as the binding describe (roles now included).
+  const fila = {
+    id: 42,
+    activo: true,
+    empresaId: 7,
+    roles: [{ rol: { nombre: "Administrador" } }],
+  };
+
+  it("success carries esAdmin from REAL roles and activeBranchCount from the piggybacked count", async () => {
+    const supabase = supabaseWithUser({
+      id: SUB_A,
+      email: "ana@users.systemfact.internal",
+    });
+    usuario.findUnique
+      .mockResolvedValueOnce(fila) // bootstrap (Administrador)
+      .mockResolvedValueOnce({ authUserId: null });
+    usuario.updateMany.mockResolvedValue({ count: 1 });
+    sucursalModel.count.mockResolvedValue(2);
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "pw");
+
+    expect(res).toEqual({ ok: true, esAdmin: true, activeBranchCount: 2 });
+    // The count is scoped to the caller's empresa and ACTIVE rows only.
+    expect(sucursalModel.count).toHaveBeenCalledWith({
+      where: { empresaId: 7, activa: true },
+    });
+    // Piggyback invariant: ONE count cheque, ride inside the audit transaction —
+    // no new tx, no extra empresa pin vs the pre-D2 shape.
+    expect(sucursalModel.count).toHaveBeenCalledTimes(1);
+    expect(empresaGucPins(tx.$executeRaw)).toEqual(["7", "7"]);
+  });
+
+  it("a non-admin success carries esAdmin=false (fast path preserved)", async () => {
+    const supabase = supabaseWithUser({
+      id: SUB_A,
+      email: "ana@users.systemfact.internal",
+    });
+    usuario.findUnique
+      .mockResolvedValueOnce({ ...fila, roles: [{ rol: { nombre: "Cobrador" } }] })
+      .mockResolvedValueOnce({ authUserId: SUB_A });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "pw");
+
+    expect(res).toEqual({ ok: true, esAdmin: false, activeBranchCount: 1 });
+  });
+
+  it("rejected logins never run the branch count", async () => {
+    const supabase = supabaseWithUser({ id: SUB_A, email: "ana@users.systemfact.internal" });
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { message: "Invalid login credentials" },
+    });
+
+    await loginWithCredenciales(asSupabase(supabase), "ana", "wrong");
+
+    expect(sucursalModel.count).not.toHaveBeenCalled();
   });
 });
 

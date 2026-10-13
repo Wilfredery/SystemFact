@@ -119,7 +119,10 @@ async function login(page: Page): Promise<void> {
   await page.getByLabel("Usuario").fill(E2E_USER);
   await page.getByLabel("Contraseña").fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Ingresar" }).click();
-  await page.waitForURL("**/dashboard", { timeout: 20_000 });
+  // LANDING AUDIT (auth-tenant-selector, design D2): a multi-branch admin now
+  // lands on /selector-empresa-sucursal; a single-branch admin (current E2E seed,
+  // single branch) keeps /dashboard. Accept EITHER so the helper pins no wrong landing.
+  await page.waitForURL(/\/(dashboard|selector-empresa-sucursal)/, { timeout: 20_000 });
 }
 
 /** Draft + confirm a one-line sale (fase-5c harness) to obtain a RETURNABLE row. */
