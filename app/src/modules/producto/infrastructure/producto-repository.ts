@@ -8,6 +8,7 @@ import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransac
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import type { Producto, TasaItbis } from "../domain/producto";
 import { esTasaItbisValida } from "../domain/producto";
+import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import {
   CODIGO_PRODUCTO_DUPLICADO,
   ProductoDomainError,
@@ -359,22 +360,16 @@ export async function registrarProductoCreadoEnTx(
   ctx: TenantCtx,
   producto: Producto,
 ): Promise<void> {
-  await tx.movimientoAuditoria.create({
-    data: {
-      empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
-      usuarioId: ctx.usuarioId,
-      fechaHora: new Date(),
-      accion: AccionAuditoria.CREAR,
-      entidad: "Producto",
-      idEntidad: String(producto.id),
-      valorAnterior: null,
-      valorNuevo: JSON.stringify({
-        codigo: producto.codigo,
-        tasa: producto.itbis.tasa,
-      }),
-      motivo: null,
-    },
+  await registrarEventoAuditoriaEnTx(tx, ctx, {
+    accion: AccionAuditoria.CREAR,
+    entidad: "Producto",
+    idEntidad: String(producto.id),
+    valorAnterior: null,
+    valorNuevo: JSON.stringify({
+      codigo: producto.codigo,
+      tasa: producto.itbis.tasa,
+    }),
+    motivo: null,
   });
 }
 
@@ -391,19 +386,13 @@ export async function registrarProductoActualizadoEnTx(
   valoresAnteriores: Record<string, unknown>,
   valoresNuevos: Record<string, unknown>,
 ): Promise<void> {
-  await tx.movimientoAuditoria.create({
-    data: {
-      empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
-      usuarioId: ctx.usuarioId,
-      fechaHora: new Date(),
-      accion: AccionAuditoria.ACTUALIZAR,
-      entidad: "Producto",
-      idEntidad: String(productoId),
-      valorAnterior: JSON.stringify(valoresAnteriores),
-      valorNuevo: JSON.stringify(valoresNuevos),
-      motivo: null,
-    },
+  await registrarEventoAuditoriaEnTx(tx, ctx, {
+    accion: AccionAuditoria.ACTUALIZAR,
+    entidad: "Producto",
+    idEntidad: String(productoId),
+    valorAnterior: JSON.stringify(valoresAnteriores),
+    valorNuevo: JSON.stringify(valoresNuevos),
+    motivo: null,
   });
 }
 
@@ -422,19 +411,13 @@ export async function registrarProductoDesactivadoEnTx(
   ctx: TenantCtx,
   productoId: number,
 ): Promise<void> {
-  await tx.movimientoAuditoria.create({
-    data: {
-      empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
-      usuarioId: ctx.usuarioId,
-      fechaHora: new Date(),
-      accion: AccionAuditoria.CANCELAR,
-      entidad: "Producto",
-      idEntidad: String(productoId),
-      valorAnterior: JSON.stringify({ activo: true }),
-      valorNuevo: JSON.stringify({ activo: false }),
-      motivo: "producto.desactivado",
-    },
+  await registrarEventoAuditoriaEnTx(tx, ctx, {
+    accion: AccionAuditoria.CANCELAR,
+    entidad: "Producto",
+    idEntidad: String(productoId),
+    valorAnterior: JSON.stringify({ activo: true }),
+    valorNuevo: JSON.stringify({ activo: false }),
+    motivo: "producto.desactivado",
   });
 }
 
