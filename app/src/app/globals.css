@@ -1,26 +1,97 @@
+/**
+ * SystemFact F0.1 — semantic design token registry (Tailwind 4 CSS-first).
+ *
+ * The ONLY ratified palette lives here (Penpot F0 board, design D1.3).
+ * Tailwind v4 needs no tailwind.config.js: utilities (`bg-accent`,
+ * `text-ink`, `border-line`, …) are emitted from the `@theme inline` block,
+ * which references the runtime variables (`--ink`, `--surface`, …) so the
+ * light/dark registries below can swap them with zero JS.
+ *
+ * Dark mode: `prefers-color-scheme: dark` is the F0 default (decided at
+ * first paint by the browser, no script). The `.dark` class block is the
+ * dormant hook for a future server-set/manual toggle; values are byte-equal
+ * to the media block so the two triggers can never disagree.
+ *
+ * WCAG AA pairs are documented in openspec/changes/ui-foundation/design.md D1.3.
+ * YAGNI (D7): no third theme, no extra families, no tailwind.config.js.
+ */
 @import "tailwindcss";
 
+/* Runtime semantic variables — LIGHT registry (Penpot ratified values). */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #2b2b2b;
+  --ink-muted: #666666;
+  --surface: #ffffff;
+  --surface-muted: #f2f2f2;
+  --surface-raised: #e8e8e8;
+  --line: #e0e0e0;
+  --accent: #2e7d32;
+  --accent-fg: #ffffff;
+  --warn: #856404;
+  --warn-bg: #fff3cd;
+  --link: #0066cc;
+  --danger: #8b0000;
+  --success-bg: #e8f5e9;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
+/* Dark registry — authored ONCE, applied via two pure-CSS triggers. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --ink: #e8e8e8;
+    --ink-muted: #a3a3a3;
+    --surface: #1a1a1a;
+    --surface-muted: #242424;
+    --surface-raised: #2e2e2e;
+    --line: #3d3d3d;
+    --accent: #66bb6a;
+    --accent-fg: #1a1a1a;
+    --warn: #ffd54f;
+    --warn-bg: #3a3020;
+    --link: #7fb8ff;
+    --danger: #ff6e6e;
+    --success-bg: #17331d;
   }
 }
 
+/* Class hook (later block wins at equal specificity against :root). DORMANT
+   in F0 — no toggle sets `.dark` yet; future switch flips this one selector. */
+.dark {
+  --ink: #e8e8e8;
+  --ink-muted: #a3a3a3;
+  --surface: #1a1a1a;
+  --surface-muted: #242424;
+  --surface-raised: #2e2e2e;
+  --line: #3d3d3d;
+  --accent: #66bb6a;
+  --accent-fg: #1a1a1a;
+  --warn: #ffd54f;
+  --warn-bg: #3a3020;
+  --link: #7fb8ff;
+  --danger: #ff6e6e;
+  --success-bg: #17331d;
+}
+
+/* Tailwind 4 token mapping — `inline` so utilities emit var(--ink)-style
+   references and the registries above propagate at runtime. */
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-raised: var(--surface-raised);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-link: var(--link);
+  --color-danger: var(--danger);
+  --color-success-bg: var(--success-bg);
+  --font-sans: var(--font-source-sans);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-source-sans), sans-serif;
 }

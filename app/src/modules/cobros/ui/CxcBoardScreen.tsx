@@ -37,7 +37,7 @@ import type {
 } from "@/modules/cobros/application/consultar-saldo-cxc";
 import type { EstadoPagoDerivado } from "@/modules/cobros/domain/pago";
 import { clasificarTableroCxc, paginar } from "./board";
-import { formatearFechaDO, formatearMontoDO } from "./format";
+import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
 import { PaymentForm } from "./PaymentForm";
 
 /** Which bucket is open for payment (a single invoice at a time). */
@@ -246,16 +246,16 @@ function FilaCobro({
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
             Factura #{fila.facturaId} · Cliente #{fila.clienteId} ·{" "}
-            {formatearMontoDO(fila.saldoPendiente)} pendientes
+            {formatearMonto(fila.saldoPendiente)} pendientes
           </p>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Total {formatearMontoDO(fila.total)} · Cobrado {formatearMontoDO(fila.cobrosAplicados)} ·
+            Total {formatearMonto(fila.total)} · Cobrado {formatearMonto(fila.cobrosAplicados)} ·
             {" "}
             <span className={`rounded px-1.5 py-0.5 font-medium ${badge}`}>
               {fila.enMora ? "En mora" : ETIQUETA_ESTADO[fila.estadoPago]}
             </span>
             {" · Vence "}
-            {formatearFechaDO(fila.vencimiento)}
+            {formatearFechaSD(fila.vencimiento)}
           </p>
         </div>
         <div className="flex shrink-0 gap-2">

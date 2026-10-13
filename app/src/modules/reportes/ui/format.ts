@@ -2,19 +2,14 @@
  * Reportes UI — presentation formatters (dashboard tiles + selector labels).
  *
  * Boundary-only helpers turning the Decimal-STRING figures the use case returns into
- * Dominican display. They compute NOTHING business-wise: money is parsed through `decimal.js`
- * and converted to a JS number only INSIDE the `Intl` currency formatter (a display
- * boundary, not arithmetic — AGENTS.md "Money = Decimal"). {@link formatearMontoDO} and
- * {@link formatearCantidad} REUSE the ratified cobros formatters (the same `es-DO`/DOP and
- * 3-dp quantity dialect) rather than re-implementing them, so a dashboard total and a CxC
- * board total render identically (EXP-2 parity of DISPLAY).
+ * Dominican display. They compute NOTHING business-wise: money display (`RD$ ` prefix,
+ * comma grouping) is the SHARED `@/shared/ui/format` (F0.3) exporter — this file keeps
+ * ONLY quantities (`Decimal(12,3)` 3-dp) and integer counts, which are NOT in F0 scope
+ * (design D3.4). (One `formatearCantidad` / `formatearEntero` home; no duplicate money.)
  */
 
 import { Decimal } from "decimal.js";
 import type { FamiliaReporte, ReporteId } from "../domain/catalogo";
-
-// Re-exported so the dashboard/reportes UI has ONE money formatter to reach for.
-export { formatearMontoDO, formatearFechaDO } from "@/modules/cobros/ui/format";
 
 const NUMERO_DO = new Intl.NumberFormat("es-DO", {
   minimumFractionDigits: 3,

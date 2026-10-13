@@ -23,7 +23,8 @@ import type { CxcAgingFila } from "../domain/aging";
 import type { ComparativaFila, CxpFila } from "../domain/financiero";
 import type { SeleccionReporte } from "./url";
 import { construirHref, construirHrefExportar } from "./url";
-import { formatearEntero, formatearMontoDO } from "./format";
+import { formatearEntero } from "./format";
+import { formatearMonto } from "@/shared/ui/format";
 
 export type PanelFinancieroProps =
   | {
@@ -114,10 +115,10 @@ function ResumenCxC({ pagina }: { readonly pagina: Pagina<CxcAgingFila> }) {
   const saldoTotal = pagina.resumen.saldoTotal ?? "0.00";
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-      <span>Total CxC: {formatearMontoDO(saldoTotal)}</span>
+      <span>Total CxC: {formatearMonto(saldoTotal)}</span>
       {ORDEN_BUCKETS.map((b) => (
         <span key={b} className="text-xs">
-          {ETIQUETA_BUCKET_AGING[b]}: {formatearMontoDO(pagina.resumen[b] ?? "0.00")}
+          {ETIQUETA_BUCKET_AGING[b]}: {formatearMonto(pagina.resumen[b] ?? "0.00")}
         </span>
       ))}
     </div>
@@ -154,7 +155,7 @@ export function PanelFinanciero(props: PanelFinancieroProps) {
               <td className={TD}>{f.vencimiento}</td>
               <td className={TD_R}>{formatearEntero(f.diasVencido)}</td>
               <td className={TD}>{ETIQUETA_BUCKET_AGING[f.bucket]}</td>
-              <td className={TD_R}>{formatearMontoDO(f.saldoPendiente)}</td>
+              <td className={TD_R}>{formatearMonto(f.saldoPendiente)}</td>
             </tr>
           ))}
         </tbody>
@@ -167,7 +168,7 @@ export function PanelFinanciero(props: PanelFinancieroProps) {
     return (
       <Marco
         titulo="Cuentas por pagar"
-        resumen={`Saldo por pagar ${formatearMontoDO(
+        resumen={`Saldo por pagar ${formatearMonto(
           pagina.resumen.saldoTotal ?? "0.00",
         )} · ${pagina.resumen.comprasAbiertas ?? "0"} compras abiertas`}
         pagina={pagina}
@@ -193,9 +194,9 @@ export function PanelFinanciero(props: PanelFinancieroProps) {
               <td className={TD}>{f.sucursalNombre}</td>
               <td className={TD}>{f.fechaSD}</td>
               <td className={TD}>{f.estado}</td>
-              <td className={TD_R}>{formatearMontoDO(f.total)}</td>
-              <td className={TD_R}>{formatearMontoDO(f.pagado)}</td>
-              <td className={TD_R}>{formatearMontoDO(f.saldoPendiente)}</td>
+              <td className={TD_R}>{formatearMonto(f.total)}</td>
+              <td className={TD_R}>{formatearMonto(f.pagado)}</td>
+              <td className={TD_R}>{formatearMonto(f.saldoPendiente)}</td>
             </tr>
           ))}
         </tbody>
@@ -212,10 +213,10 @@ export function PanelFinanciero(props: PanelFinancieroProps) {
       titulo="Comparativa de períodos"
       resumen={
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span>Actual: {formatearMontoDO(pagina.resumen.montoActual ?? "0.00")}</span>
-          <span>Anterior: {formatearMontoDO(pagina.resumen.montoAnterior ?? "0.00")}</span>
+          <span>Actual: {formatearMonto(pagina.resumen.montoActual ?? "0.00")}</span>
+          <span>Anterior: {formatearMonto(pagina.resumen.montoAnterior ?? "0.00")}</span>
           <span>
-            Variación: {formatearMontoDO(pagina.resumen.variacionMonto ?? "0.00")} (
+            Variación: {formatearMonto(pagina.resumen.variacionMonto ?? "0.00")} (
             {signo}
             {pct}%)
           </span>
@@ -234,13 +235,13 @@ export function PanelFinanciero(props: PanelFinancieroProps) {
         {pagina.filas.map((f) => (
           <tr key={f.fechaSD} className={CELDA}>
             <td className={TD}>{f.fechaSD}</td>
-            <td className={TD_R}>{formatearMontoDO(f.monto)}</td>
+            <td className={TD_R}>{formatearMonto(f.monto)}</td>
           </tr>
         ))}
         <tr className={CELDA}>
           <td className={`${TD} font-semibold`}>TOTAL (período actual)</td>
           <td className={`${TD_R} font-semibold`}>
-            {formatearMontoDO(pagina.resumen.montoActual ?? "0.00")}
+            {formatearMonto(pagina.resumen.montoActual ?? "0.00")}
           </td>
         </tr>
       </tbody>

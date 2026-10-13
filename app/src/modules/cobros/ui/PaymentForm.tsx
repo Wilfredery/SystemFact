@@ -27,7 +27,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { registrarCobroAction } from "@/modules/cobros/http/actions";
 import { zRegistrarCobroInput, VALIDATION_ERROR } from "@/modules/cobros/http/validations";
-import { formatearMontoDO } from "./format";
+import { formatearMonto } from "@/shared/ui/format";
 
 type Mensaje =
   | { readonly kind: "ok"; readonly text: string }
@@ -79,7 +79,7 @@ export function PaymentForm({
       setReciboEmitido(r.data.correlativoRecibo);
       setMensaje({
         kind: "ok",
-        text: `Cobro registrado. Nuevo saldo: ${formatearMontoDO(r.data.saldoPendiente)}.`,
+        text: `Cobro registrado. Nuevo saldo: ${formatearMonto(r.data.saldoPendiente)}.`,
       });
       onCobrado();
     } else {

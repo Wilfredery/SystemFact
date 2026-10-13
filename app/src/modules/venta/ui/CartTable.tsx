@@ -7,7 +7,8 @@
  * money never round-trips through a float.
  */
 
-import { formatearMonto, type LineaPreview } from "./carro";
+import { formatearMonto } from "@/shared/ui/format";
+import type { LineaPreview } from "./carro";
 
 export function CartTable({
   lineas,

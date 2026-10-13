@@ -119,7 +119,8 @@ describe("PosScreen (R-V14)", () => {
     // gravado/exento breakdown rides the preview (returned-only, never stored).
     // "RD$ 10.00" appears as BOTH Subtotal and Gravado in the one-line 18% cart.
     expect((await screen.findAllByText("RD$ 10.00")).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText("RD$ 1.80")).toBeInTheDocument();
+    // The cart line's ITBIS cell and the Totales footer both render "RD$ 1.80".
+    expect((await screen.findAllByText("RD$ 1.80")).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("RD$ 11.80")).toBeInTheDocument();
     // Descuento and Exento are both zero for a single taxable line.
     expect(screen.getAllByText("RD$ 0.00").length).toBeGreaterThanOrEqual(2);
@@ -127,7 +128,8 @@ describe("PosScreen (R-V14)", () => {
     // bump quantity: 10.00 × 2 → base 20.00, ITBIS 3.60, total 23.60
     fireEvent.change(screen.getByLabelText("Quantity for Arroz"), { target: { value: "2" } });
     await waitFor(() => expect(screen.getByText("RD$ 23.60")).toBeInTheDocument());
-    expect(screen.getByText("RD$ 3.60")).toBeInTheDocument();
+    // Cart-line ITBIS cell AND Totales footer both render "RD$ 3.60".
+    expect((await screen.findAllByText("RD$ 3.60")).length).toBeGreaterThanOrEqual(2);
   });
 
   it("removes a line and falls back to zero totals", async () => {

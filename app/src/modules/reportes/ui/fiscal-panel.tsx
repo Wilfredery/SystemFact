@@ -28,7 +28,7 @@ import {
 } from "../domain/fiscal";
 import type { SeleccionReporte } from "./url";
 import { construirHrefExportar, construirHrefExportarTxt } from "./url";
-import { formatearMontoDO } from "./format";
+import { formatearMonto } from "@/shared/ui/format";
 
 const BOTON =
   "inline-flex items-center rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800";
@@ -54,7 +54,7 @@ function FilaMonto({ etiqueta, monto }: { readonly etiqueta: string; readonly mo
   return (
     <div className="flex items-center justify-between gap-4 border-t border-zinc-100 py-1.5 text-sm dark:border-zinc-800">
       <span className="text-zinc-600 dark:text-zinc-300">{etiqueta}</span>
-      <span className="font-mono text-zinc-900 dark:text-zinc-50">{formatearMontoDO(monto)}</span>
+      <span className="font-mono text-zinc-900 dark:text-zinc-50">{formatearMonto(monto)}</span>
     </div>
   );
 }
