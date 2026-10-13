@@ -6,10 +6,13 @@
  * viewport size or role) plus the role-gated "Cambiar sucursal" affordance.
  * The admin verdict reaches the component as a plain prop already evaluated
  * on the server; NON-admins get ZERO markup (no `hidden`, no CSS-on) — see
- * the `{ctx.esAdmin && …}` server branch. No sucursal-switch mutation exists
- * in F0: the control is a reserved placeholder into F1's selector flow (D4.4).
+ * the `{ctx.esAdmin && …}` server branch (F1: SEL-SLOT-05-B).
+ * F1 (“auth-tenant-selector”, D6): the reserved placeholder is now the REAL
+ * trigger into the selector flow — a plain `next/link` like the other nav
+ * destinations (hitbox ≥44px via h-11), not `aria-disabled`.
  */
 
+import Link from "next/link";
 import { SidebarNav, type SidebarItemDef } from "./sidebar";
 
 const NAV_ITEMS: readonly SidebarItemDef[] = [
@@ -45,16 +48,15 @@ export function AuthShell({
         <p className="text-sm font-medium text-ink">
           {empresaNombre} · Sucursal {sucursalNombre}
         </p>
-        {/* Server-only branch (D4.4): non-admins get NO node at all. */}
+        {/* Server-only branch (SEL-SLOT-05): non-admins get NO node at all. */}
         {esAdmin && (
-          <span
+          <Link
+            href="/selector-empresa-sucursal"
             data-testid="cambiar-sucursal"
-            aria-disabled="true"
-            title="Reservado — el selector de sucursal llega con F1"
-            className="text-xs text-ink-muted"
+            className="flex h-11 items-center rounded-lg px-3 text-sm font-medium text-ink transition-colors hover:bg-surface-muted"
           >
             Cambiar sucursal
-          </span>
+          </Link>
         )}
       </header>
       <div className="flex flex-1 flex-col md:flex-row">
