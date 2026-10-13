@@ -29,6 +29,21 @@ import {
 } from "@/modules/auth/infrastructure/auth-identity";
 
 /**
+ * F0.4 — what the application shell header displays about the session tenant.
+ * Deviates from `TenantCtx` ONLY by adding the display names: the physical
+ * columns are `Empresa.nombreComercial` and `Sucursal.nombre` (ERD v4.7,
+ * `app/prisma/schema.prisma`).
+ */
+export type TenantHeaderCtx = {
+  readonly empresaId: number;
+  readonly sucursalId: number;
+  readonly usuarioId: number;
+  readonly esAdmin: boolean;
+  readonly empresaNombre: string;
+  readonly sucursalNombre: string;
+};
+
+/**
  * Setea el contexto de tenant en la sesión Postgres de la transacción.
  *
  * Implementación: usa `set_config(name, value, is_local)` con `is_local = true`
@@ -107,7 +122,57 @@ export async function getCurrentTenantContext(
   );
 }
 
-// Re-exports para que el call site importe todo desde un solo módulo:
+/**
+ * F0.4 — the `(app)` layout's single read for the shell header.
+ *
+ * REUSE-read, not new authorization (D4.3): it replays the EXACT identity
+ * resolution of {@link getCurrentTenantContext} (`resolverAuthSubDeSesion` +
+ * `buscarUsuarioPorAuthSub` — the same login-flagged transaction) with a
+ * WIDER select that additionally pulls the Empresa/Sucursal display names and
+ * enriches the result with them. Returns the same null contract: no session /
+ * inactive user → `null` and the layout redirects to `/login`.
+ */
+export async function getCurrentTenantHeader(
+  supabase: SupabaseClient,
+): Promise<TenantHeaderCtx | null> {
+  // Same playbook as `getCurrentTenantContext` (ADR-019 / R1.B): the lookup has
+  // no tenant context yet, so auth-identity opens its own `app.is_login_flow`
+  // transaction. Reused VERBATIM per design D4.3 — zero new auth APIs.
+  const authSub = await resolverAuthSubDeSesion(supabase);
+  if (authSub === null) return null;
+
+  const usuario = await buscarUsuarioPorAuthSub(authSub, {
+    id: true,
+    empresaId: true,
+    sucursalId: true,
+    activo: true,
+    roles: {
+      select: { rol: { select: { nombre: true } } },
+    },
+    // Wider display select (only physical names differ from the base reader;
+    // `Empresa.nombreComercial` is the ratified display name, `Sucursal.nombre`).
+    empresa: { select: { nombreComercial: true } },
+    sucursal: { select: { nombre: true } },
+  });
+  if (usuario === null || !usuario.activo) return null;
+
+  const roles = usuario.roles.map((r) => r.rol.nombre);
+  const ctx = buildTenantContext(
+    {
+      id: usuario.id,
+      empresaId: usuario.empresaId,
+      sucursalId: usuario.sucursalId,
+    },
+    roles,
+  );
+  return {
+    ...ctx,
+    empresaNombre: usuario.empresa.nombreComercial,
+    sucursalNombre: usuario.sucursal.nombre,
+  };
+}
+
+// Re-exports for that the call site imports everything from a single module:
 //   import { setTenantContext, tenantFilter } from "@/modules/tenant";
 //   import type { TenantCtx } from "@/modules/tenant";
 export {
