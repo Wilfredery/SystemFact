@@ -33,6 +33,7 @@ import {
 } from "@/generated/prisma/client";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
+import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import {
   ESTADO_VENTA,
   estadoVentaDesdeDb,
@@ -874,21 +875,14 @@ export async function registrarAuditFacturaEnTx(
   valoresNuevos: Record<string, unknown> | null,
   motivo: string | null = null,
 ): Promise<void> {
-  await tx.movimientoAuditoria.create({
-    data: {
-      empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
-      usuarioId: ctx.usuarioId,
-      fechaHora: new Date(),
-      accion: AccionAuditoria.ANULAR,
-      entidad: "Factura",
-      idEntidad: String(facturaId),
-      valorAnterior:
-        valoresAnteriores === null ? null : JSON.stringify(valoresAnteriores),
-      valorNuevo:
-        valoresNuevos === null ? null : JSON.stringify(valoresNuevos),
-      motivo,
-    },
+  await registrarEventoAuditoriaEnTx(tx, ctx, {
+    accion: AccionAuditoria.ANULAR,
+    entidad: "Factura",
+    idEntidad: String(facturaId),
+    valorAnterior:
+      valoresAnteriores === null ? null : JSON.stringify(valoresAnteriores),
+    valorNuevo: valoresNuevos === null ? null : JSON.stringify(valoresNuevos),
+    motivo,
   });
 }
 
@@ -1078,20 +1072,13 @@ export async function registrarAuditVentaEnTx(
   valoresNuevos: Record<string, unknown> | null,
   motivo: string | null = null,
 ): Promise<void> {
-  await tx.movimientoAuditoria.create({
-    data: {
-      empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
-      usuarioId: ctx.usuarioId,
-      fechaHora: new Date(),
-      accion,
-      entidad: "Venta",
-      idEntidad: String(ventaId),
-      valorAnterior:
-        valoresAnteriores === null ? null : JSON.stringify(valoresAnteriores),
-      valorNuevo:
-        valoresNuevos === null ? null : JSON.stringify(valoresNuevos),
-      motivo,
-    },
+  await registrarEventoAuditoriaEnTx(tx, ctx, {
+    accion,
+    entidad: "Venta",
+    idEntidad: String(ventaId),
+    valorAnterior:
+      valoresAnteriores === null ? null : JSON.stringify(valoresAnteriores),
+    valorNuevo: valoresNuevos === null ? null : JSON.stringify(valoresNuevos),
+    motivo,
   });
 }

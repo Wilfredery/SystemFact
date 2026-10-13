@@ -25,6 +25,7 @@ import {
 import { Decimal } from "decimal.js";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
+import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import {
   CANTIDAD_INVALIDA,
   INVENTARIO_NO_ENCONTRADO,
@@ -189,8 +190,11 @@ async function guardarPertenenciaProductosEnTx(
  * inbound), and a sale-exit / reposition / devolución logs `ACTUALIZAR`. Runs
  * inside the same transaction as the mutation, so a rolled-back change rolls
  * this back too. `entidad`/`idEntidad` are fixed to the Inventario row.
+ *
+ * Exported only so the AU-1 consolidation pin (registrar-sites-consolidation
+ * test) can replay its payload; module call sites stay private to this file.
  */
-async function registrarAuditoriaStockEnTx(
+export async function registrarAuditoriaStockEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
   inventarioId: number,
@@ -199,19 +203,13 @@ async function registrarAuditoriaStockEnTx(
   motivo: string,
   accion: AccionAuditoria,
 ): Promise<void> {
-  await tx.movimientoAuditoria.create({
-    data: {
-      empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
-      usuarioId: ctx.usuarioId,
-      fechaHora: new Date(),
-      accion,
-      entidad: "Inventario",
-      idEntidad: String(inventarioId),
-      valorAnterior: anterior,
-      valorNuevo: nueva,
-      motivo,
-    },
+  await registrarEventoAuditoriaEnTx(tx, ctx, {
+    accion,
+    entidad: "Inventario",
+    idEntidad: String(inventarioId),
+    valorAnterior: anterior,
+    valorNuevo: nueva,
+    motivo,
   });
 }
 

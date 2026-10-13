@@ -1,3 +1,13 @@
+## [0.14.11](https://github.com/Wilfredery/SystemFact/compare/v0.14.10...v0.14.11) (2026-10-12)
+
+### Bug Fixes
+
+* **auditoria:** consolidate the 12 duplicated audit append sites on the canonical writer `registrarEventoAuditoriaEnTx` (AU-1, design D5) — the existing thin named builders keep their signatures and call sites, their bodies now delegate to the canonical repository; rows stay byte-identical (record/replay pin over a recording tx asserts every field minus the code-set `fechaHora`, delegation spied); M2 scope is net-negative LOC (site repositories −169/+142 total, canonical writer untouched); no new port/abstraction (YAGNI); `movimientoAuditoria.create` occurrences outside `registrar-evento.repository.ts` = 0 (grep guard)
+* **producto:** throttle `producto.listed` to at most ONE audit row per actor per rolling 60-second window (M4, REQ-PROD-010) — a bounded `findFirst` over the existing `(empresaId, usuarioId, fechaHora, id)` index (UTC-instant comparison, no schema change, no lock) runs inside the listing's own transaction; reads inside an open window append NOTHING and their items are never retro-merged (the log is append-only: the DB-side `AUDITORIA_INMUTABLE` trigger rejects UPDATE by construction, pinned in the integration suite); the accepted race (two parallel same-actor listings may each append once) is documented in the helper. Separately seeded per-actor windows and same-tx rollback semantics pinned on real Postgres
+
+### NOTES (payload contract change — risk #6)
+
+* **`registrarProductoListadoEnTx` signature change:** the `count` parameter is dropped (was `page, count, total`, now `page, total` — the sole call site `listar-productos.ts` updated); the row's `valorNuevo` payload changed from `{count: items.length, total}` to `{count: total}` — the filtered total of THE read that opened the window, per the corrected REQ-PROD-010 semantics (obs 1069). The auditoria UI is display-only and unaffected
 ## [0.14.10](https://github.com/Wilfredery/SystemFact/compare/v0.14.9...v0.14.10) (2026-10-12)
 
 ### Features

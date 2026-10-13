@@ -36,6 +36,7 @@ import {
 } from "@/generated/prisma/client";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
+import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import { NFC_DUPLICADO, CompraDomainError } from "../domain/errors";
 import type {
   ClaseProveedor,
@@ -706,21 +707,14 @@ export async function registrarAuditCompraEnTx(
   valoresNuevos: Record<string, unknown> | null,
   motivo: string | null = null,
 ): Promise<void> {
-  await tx.movimientoAuditoria.create({
-    data: {
-      empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
-      usuarioId: ctx.usuarioId,
-      fechaHora: new Date(),
-      accion,
-      entidad: "Compra",
-      idEntidad: String(compraId),
-      // VarChar(255) columns — keep the JSON projections small.
-      valorAnterior:
-        valoresAnteriores === null ? null : JSON.stringify(valoresAnteriores),
-      valorNuevo:
-        valoresNuevos === null ? null : JSON.stringify(valoresNuevos),
-      motivo,
-    },
+  await registrarEventoAuditoriaEnTx(tx, ctx, {
+    accion,
+    entidad: "Compra",
+    idEntidad: String(compraId),
+    // VarChar(255) columns — keep the JSON projections small.
+    valorAnterior:
+      valoresAnteriores === null ? null : JSON.stringify(valoresAnteriores),
+    valorNuevo: valoresNuevos === null ? null : JSON.stringify(valoresNuevos),
+    motivo,
   });
 }

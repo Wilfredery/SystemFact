@@ -47,7 +47,7 @@ export async function listarProductos(
     contarProductos(tx, ctx, query),
   ]);
 
-  await registrarProductoListadoEnTx(tx, ctx, query.page, items.length, total);
+  await registrarProductoListadoEnTx(tx, ctx, query.page, total);
 
   return {
     ok: true,
