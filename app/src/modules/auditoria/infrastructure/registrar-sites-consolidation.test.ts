@@ -38,7 +38,6 @@ import {
 /** Site-12 fake: a listing-shaped tx whose window read returns `ventanaAbierta`. */
 function listaM4(
   ventanaAbierta: Record<string, unknown> | null,
-  ahora: Date,
 ): {
   tx: PrismaTx;
   filasCreadas: Record<string, unknown>[];
@@ -59,10 +58,9 @@ function listaM4(
 }
 
 jest.mock("@/modules/auditoria/application/auditoria-write-port", () => {
-  const actual =
-    jest.requireActual<Record<string, unknown>>(
-      "@/modules/auditoria/application/auditoria-write-port",
-    );
+  const actual = jest.requireActual(
+    "@/modules/auditoria/application/auditoria-write-port",
+  ) as typeof import("@/modules/auditoria/application/auditoria-write-port");
   return {
     ...actual,
     registrarEventoAuditoriaEnTx: jest.fn(actual.registrarEventoAuditoriaEnTx),
@@ -381,7 +379,7 @@ describe("M2 — audit append sites delegate to the canonical writer (D5)", () =
     const ahora = new Date("2026-10-12T14:30:00Z");
     // Fresh window: the delegation fires and the appended row carries the
     // corrected REQ-PROD-010 payload — count = the READ'S filtered total.
-    const { tx, filasCreadas } = listaM4(null, ahora);
+    const { tx, filasCreadas } = listaM4(null);
     await registrarProductoListadoEnTx(tx, ctx, 3, 95, ahora);
     expect(escenarioSpy).toHaveBeenCalledTimes(1);
     expect(filasCreadas).toHaveLength(1);
@@ -400,10 +398,10 @@ describe("M2 — audit append sites delegate to the canonical writer (D5)", () =
 
     // An open window (row <60s): NOTHING appended — no retro-merge, the open
     // row is structurally untouched (append-only).
-    const cerrado = listaM4(
-      { id: 10_001, fechaHora: new Date(ahora.getTime() - 1) },
-      ahora,
-    );
+    const cerrado = listaM4({
+      id: 10_001,
+      fechaHora: new Date(ahora.getTime() - 1),
+    });
     await registrarProductoListadoEnTx(cerrado.tx, ctx, 3, 95, ahora);
     expect(cerrado.filasCreadas).toHaveLength(0);
   });
