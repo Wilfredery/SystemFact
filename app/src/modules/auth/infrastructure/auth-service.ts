@@ -243,8 +243,9 @@ export async function loginWithCredenciales(
     // user-actionable condition, and it means the caller would learn something
     // about the server's state that no action of theirs could change. Fail closed
     // to the generic credential error: the session is destroyed and nothing is
-    // bound. The message text is deliberately loose ("credenciales inválidas o
-    // usuario bloqueado") for exactly this reason.
+    // bound. The message is the board 01 binding copy (exactly "Credenciales
+    // inválidas", LOG-02-A) precisely because it says NOTHING about the cause —
+    // the loose wording WAS the silence-about-cause contract, and it still is.
     return {
       ok: false,
       code: AUTH_CREDENCIALES_INVALIDAS,
