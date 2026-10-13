@@ -1,3 +1,22 @@
+## [0.16.0](https://github.com/Wilfredery/SystemFact/compare/v0.15.0...v0.16.0) (2026-10-14)
+
+### Features
+
+* **tenant:** admin-only listing of active empresa sucursals (S1) — per-module error catalog (`TEN_OPS_NO_AUTORIZADO`, and the deliberately tenant-blind `TEN_SUCURSAL_NO_VALIDA`), Prisma port with the schema-pinned `activa` narrow select, and the no-scope-parameter use case `listarSucursalesDeEmpresa` (deny-before-read for non-admins; empty active set returns a valid success)
+* **tenant:** switch active sucursal for admins (S2) — `cambiarSucursalActiva` with the server-side role gate, the idempotent no-op short-circuit on the current branch, foreign-empresa/inactive targets sharing ONE stable code, and the D1 rewrite of `Usuario.sucursalId` (version++, ZERO audit rows, one `withTenantTransaction`); the RLS `usuario_modify` policy is honored inside the wrapper via blank → update → re-pin GUC sequence
+* **auth:** post-login landing for multi-branch admins (D2) — `AuthResult` gains `esAdmin` + `activeBranchCount`, the count piggybacking the session-audit transaction inside the same login bootstrap window; the login action routes multi-branch admins to `/selector-empresa-sucursal` while non-admins and single-branch admins keep `/dashboard`; middleware untouched
+* **tenant-ui:** `/selector-empresa-sucursal` board 02 (S3) — admin-only server loader with both-way guards (no session → `/login`; non-admin → `/dashboard`), F0-only composition (Card/Select/Button/Badge), the static "free" plan badge via the new `shared/version-plan.ts` seam, and an empty state with the confirm affordance unrendered; the shell "Cambiar sucursal" placeholder is now a real ≥44px `next/link` into the selector (S5), non-admin shell unchanged
+* **auth-ui:** login board-01 restyle (S4) — F0 tokens/light-only surface with exactly two credential fields (no email, no synthetic suffix on screen, ADR-014), touch-first submit, an inert but keyboard-reachable "Recuperar contraseña", and `AUTH_CREDENCIALES_INVALIDAS` pinned to the exact user-visible copy `"Credenciales inválidas"` (intentional adapter-level copy change; the silence-about-cause semantics are untouched)
+
+### NOTES
+
+* The branch switch is ACCOUNT-WIDE for the admin: every session of that
+  `USUARIO` resolves to the new branch (`Usuario.sucursalId` remains the single
+  resolution point, D1) and the path writes zero audit rows (a branch switch is
+  NOT re-authentication; REQ-AUTH-AUD-001 untouched).
+* Scenario traceability, design decisions (D1–D8) and per-slice verification
+  live in the SDD trail at `openspec/changes/auth-tenant-selector/`.
+
 ## [0.15.0](https://github.com/Wilfredery/SystemFact/compare/v0.14.13...v0.15.0) (2026-10-13)
 
 ### Features
