@@ -18,6 +18,7 @@
  */
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
+import { leerConfigActivaEnTx } from "@/shared/infrastructure/configuracion-empresa";
 
 /** The `ConfiguracionEmpresa.clave` identifier for the default credit term (days). */
 const CLAVE_PLAZO_CREDITO = "PLAZO_CREDITO";
@@ -33,18 +34,9 @@ export async function leerPlazoCreditoEnTx(
   empresaId: number,
   now: Date,
 ): Promise<number | null> {
-  const row = await tx.configuracionEmpresa.findFirst({
-    where: {
-      empresaId,
-      clave: CLAVE_PLAZO_CREDITO,
-      activa: true,
-      vigenciaInicio: { lte: now },
-      vigenciaFin: { gte: now },
-    },
-    // Deterministic tie-break on overlapping windows: newest `vigenciaInicio` wins (R-V17).
-    orderBy: { vigenciaInicio: "desc" },
-    select: { valor: true },
-  });
+  const row = await leerConfigActivaEnTx(tx, empresaId, CLAVE_PLAZO_CREDITO, now);
+  // Deterministic tie-break on overlapping windows (R-V17: newest
+  // `vigenciaInicio` wins) is carried by the seam's own query.
   if (row === null) return null;
 
   const trimmed = row.valor.trim();
