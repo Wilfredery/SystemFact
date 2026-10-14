@@ -15,6 +15,9 @@
 import { ESTADO_VENTA, type EstadoVenta } from "../domain/venta";
 import { DevolverButton } from "@/modules/devolucion/ui/DevolverButton";
 import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /** `Decimal(12,2)` canonical zero-discount money (the persisted `descuento`). */
 const DESCUENTO_CERO_MONEY = "0.00";
@@ -50,95 +53,104 @@ export function DraftList({
   readonly onConfirm: (id: number) => void;
 }) {
   return (
-    <section aria-label="My drafts" className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">My drafts</h2>
-      {cargando && <p className="text-sm text-zinc-500">Loading…</p>}
-      {!cargando && items.length === 0 && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">No saved drafts yet.</p>
-      )}
-      {!cargando && items.length > 0 && (
-        <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
-          {items.map((d) => {
-            // A discounted draft is view/cancel only (see `cargarBorrador`).
-            const editable = d.descuento === DESCUENTO_CERO_MONEY;
-            const esBorrador = d.estado === ESTADO_VENTA.BORRADOR;
-            return (
-              <li
-                key={d.id}
-                data-testid={`venta-fila-${d.id}`}
-                className="flex items-center justify-between gap-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
+    <Card aria-label="My drafts">
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold">My drafts</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {cargando && <p className="text-sm text-ink-muted">Loading…</p>}
+        {!cargando && items.length === 0 && (
+          <p className="text-sm text-ink-muted">No saved drafts yet.</p>
+        )}
+        {!cargando && items.length > 0 && (
+          <ul className="divide-y divide-line">
+            {items.map((d) => {
+              // A discounted draft is view/cancel only (see `cargarBorrador`).
+              const editable = d.descuento === DESCUENTO_CERO_MONEY;
+              const esBorrador = d.estado === ESTADO_VENTA.BORRADOR;
+              return (
+                <li
+                  key={d.id}
+                  data-testid={`venta-fila-${d.id}`}
+                  className="flex items-center justify-between gap-4 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink">
+                      {esBorrador ? (
+                        <>#{d.id} · {d.clienteNombre} · {formatearMonto(d.total)}</>
+                      ) : (
+                        <>
+                          #{d.id} · <Badge variant="default">CONFIRMADA</Badge>
+                          {d.ncf !== null && (
+                            <span className="ml-1 font-mono text-xs text-ink-muted">
+                              NCF {d.ncf}
+                            </span>
+                          )}
+                          {" · "}{formatearMonto(d.total)}
+                        </>
+                      )}
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      {formatearFechaSD(d.fecha)} · {d.usuarioNombre}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
                     {esBorrador ? (
-                      <>#{d.id} · {d.clienteNombre} · {formatearMonto(d.total)}</>
+                      <>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="pos"
+                          onClick={() => onLoad(d.id)}
+                          disabled={!editable || editandoId === d.id}
+                          aria-label={`Edit draft ${d.id}`}
+                          title={editable ? undefined : "Discounted drafts cannot be re-edited here"}
+                        >
+                          {editandoId === d.id ? "Editing" : "Edit"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="pos"
+                          className="text-danger"
+                          onClick={() => onCancel(d.id)}
+                          aria-label={`Cancel draft ${d.id}`}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          size="pos"
+                          onClick={() => onConfirm(d.id)}
+                          disabled={confirmandoId === d.id}
+                          aria-label={`Confirm draft ${d.id}`}
+                        >
+                          {confirmandoId === d.id ? "Confirming…" : "Confirm"}
+                        </Button>
+                      </>
                     ) : (
                       <>
-                        #{d.id} · <span className="font-semibold text-emerald-700 dark:text-emerald-300">CONFIRMADA</span>
-                        {d.ncf !== null && (
-                          <span className="ml-1 font-mono text-xs text-zinc-600 dark:text-zinc-300">
-                            NCF {d.ncf}
-                          </span>
-                        )}
-                        {" · "}{formatearMonto(d.total)}
+                        <DevolverButton ventaId={d.id} />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="pos"
+                          className="text-danger"
+                          onClick={() => onCancel(d.id)}
+                          aria-label={`Cancel sale ${d.id}`}
+                          title="Cancel the sale and void (anular) its fiscal invoice"
+                        >
+                          Cancel sale
+                        </Button>
                       </>
                     )}
-                  </p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {formatearFechaSD(d.fecha)} · {d.usuarioNombre}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  {esBorrador ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => onLoad(d.id)}
-                        disabled={!editable || editandoId === d.id}
-                        aria-label={`Edit draft ${d.id}`}
-                        title={editable ? undefined : "Discounted drafts cannot be re-edited here"}
-                        className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
-                      >
-                        {editandoId === d.id ? "Editing" : "Edit"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onCancel(d.id)}
-                        aria-label={`Cancel draft ${d.id}`}
-                        className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-zinc-800"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onConfirm(d.id)}
-                        disabled={confirmandoId === d.id}
-                        aria-label={`Confirm draft ${d.id}`}
-                        className="rounded border border-emerald-300 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-zinc-800"
-                      >
-                        {confirmandoId === d.id ? "Confirming…" : "Confirm"}
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <DevolverButton ventaId={d.id} />
-                      <button
-                        type="button"
-                        onClick={() => onCancel(d.id)}
-                        aria-label={`Cancel sale ${d.id}`}
-                        title="Cancel the sale and void (anular) its fiscal invoice"
-                        className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-zinc-800"
-                      >
-                        Cancel sale
-                      </button>
-                    </>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }

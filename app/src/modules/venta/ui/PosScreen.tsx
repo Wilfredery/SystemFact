@@ -12,6 +12,9 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   actualizarVentaAction,
   cancelarVentaAction,
@@ -230,64 +233,70 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 md:p-6">
-      <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+      <h1 className="text-2xl font-semibold text-ink">
         Point of sale
       </h1>
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-ink-muted">
         Build a cart and save it as a draft, then confirm it to emit its fiscal
         invoice (NCF). Payments arrive in a later phase.
       </p>
 
       {mensaje !== null && (
-        <p
+        <Card
           role="status"
           aria-live="polite"
-          className={
-            mensaje.kind === "ok"
-              ? "rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
-              : "rounded-lg bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
-          }
+          className={mensaje.kind === "ok" ? "bg-success-bg" : "bg-danger/10"}
         >
-          {mensaje.kind === "error" && (
-            <span className="mr-2 font-mono text-xs">[{mensaje.code}]</span>
-          )}
-          {mensaje.text}
-        </p>
+          <CardContent className="flex items-start gap-2 p-4">
+            {mensaje.kind === "error" ? (
+              <Badge variant="destructive" className="font-mono text-xs">
+                [{mensaje.code}]
+              </Badge>
+            ) : (
+              <Badge variant="outline">OK</Badge>
+            )}
+            <span className="text-sm">{mensaje.text}</span>
+          </CardContent>
+        </Card>
       )}
 
       {avisoNcf !== null && (
-        <div
+        <Card
           role="alert"
           aria-label="NCF range warning"
-          className="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950"
+          className="bg-warn-bg ring-warn"
         >
-          <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-            NCF range at 90% — {avisoNcf}
-          </p>
-          <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
-            The current sequence range is nearly exhausted; request a new range
-            before confirmation becomes blocked.
-          </p>
-        </div>
+          <CardContent className="p-4">
+            <Badge variant="outline">
+              NCF range at 90% — {avisoNcf}
+            </Badge>
+            <p className="mt-2 text-sm text-ink">
+              The current sequence range is nearly exhausted; request a new range
+              before confirmation becomes blocked.
+            </p>
+          </CardContent>
+        </Card>
       )}
 
       {warnings.length > 0 && (
-        <div
+        <Card
           role="alert"
           aria-live="assertive"
-          className="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950"
+          className="bg-warn-bg ring-warn"
         >
-          <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-            Insufficient stock (warning — the draft was still saved)
-          </p>
-          <ul className="mt-1 list-inside list-disc text-sm text-amber-800 dark:text-amber-200">
-            {warnings.map((w) => (
-              <li key={w.productoId} data-producto-id={w.productoId}>
-                {w.nombre}: requested {w.requested}, available {w.available}
-              </li>
-            ))}
-          </ul>
-        </div>
+          <CardContent className="p-4">
+            <Badge variant="destructive">
+              Insufficient stock (warning — the draft was still saved)
+            </Badge>
+            <ul className="mt-2 list-inside list-disc text-sm text-ink">
+              {warnings.map((w) => (
+                <li key={w.productoId} data-producto-id={w.productoId}>
+                  {w.nombre}: requested {w.requested}, available {w.available}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -308,18 +317,19 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
             onRemove={(id) => setLineas((prev) => quitarDelCarrito(prev, id))}
           />
           <Totales totales={vista.totales} />
-          <div className="flex items-center gap-3">
-            <button
+          <div className="flex items-center gap-4">
+            <Button
               type="button"
+              size="pos"
               onClick={guardar}
               disabled={lineas.length === 0 || guardando}
-              className="h-11 rounded-lg bg-indigo-600 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {etiquetaBotonGuardar}
-            </button>
+            </Button>
             {editandoId !== null && (
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => {
                   setEditandoId(null);
                   setLineas([]);
@@ -327,10 +337,9 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
                   setCliente({ id: null, nombre: CONSUMIDOR_FINAL_LABEL });
                   setMensaje(null);
                 }}
-                className="h-11 rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
               >
                 Discard edit
-              </button>
+              </Button>
             )}
           </div>
         </div>
