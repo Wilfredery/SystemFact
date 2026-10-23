@@ -9,12 +9,13 @@
  */
 
 import "@testing-library/jest-dom";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { PosScreen } from "../PosScreen";
 import { ESTADO_VENTA } from "../../domain/venta";
 import { CONSUMIDOR_FINAL_LABEL } from "../carro";
 import {
   cancelarVentaAction,
+  confirmarVentaAction,
   crearVentaAction,
   listarVentasAction,
 } from "@/modules/venta/http/actions";
@@ -47,6 +48,7 @@ jest.mock("@/modules/cliente/http/actions", () => ({
 }));
 
 const mockCrear = jest.mocked(crearVentaAction);
+const mockConfirmarVenta = jest.mocked(confirmarVentaAction);
 const mockCancelar = jest.mocked(cancelarVentaAction);
 const mockListar = jest.mocked(listarVentasAction);
 const mockProductos = jest.mocked(listarProductosAction);
@@ -146,7 +148,11 @@ describe("PosScreen (R-V14)", () => {
 
     // CF is the default option AND the empty select value (no magic id).
     expect(screen.getByLabelText("Client selection")).toHaveValue("");
-    expect(screen.getByText(/Consumidor Final/)).toBeInTheDocument();
+    // Anchor on the select itself: the indicator badge copy ("Cash (Consumidor
+    // Final)") legitimately shares the CF text now that the strip exists.
+    expect(
+      within(screen.getByLabelText("Client selection")).getByText(/Consumidor Final/),
+    ).toBeInTheDocument();
 
     await buscarYAgregar();
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
@@ -252,5 +258,119 @@ describe("PosScreen (R-V14)", () => {
     await waitFor(() => expect(mockCancelar).toHaveBeenCalledWith({ id: 3 }));
     // Flush the post-cancel list refresh so its state update stays inside act().
     await settle();
+  });
+});
+
+// F2 slice B task 2.10 (D6, R-V19 scenarios 1–3): the credit mode is DERIVED,
+// never toggled. Profile fixtures use tipoCliente "CREDITO" clients so the flag
+// and the derivation readings agree (design Verification note 4).
+describe("PosScreen credit-mode derivation (R-V19)", () => {
+  const CLIENTE_CREDITO: import("@/modules/cliente/http/shared").ClienteDto = {
+    id: 5,
+    nombre: "Comercios Clara, SRL",
+    telefono: "809-555-0101",
+    direccion: "Av. 27",
+    identificacionFiscal: "131045677",
+    tipoCliente: "CREDITO",
+    esConsumidorFinal: false,
+    creditoHabilitado: true,
+    limiteCredito: "20000.00",
+    plazoCreditoDias: 15,
+    activo: true,
+    version: 1,
+  };
+
+  beforeEach(() => {
+    mockListar.mockResolvedValue({ ok: true as const, data: { items: [], total: 0, page: 1, limit: 25 } });
+    mockProductos.mockResolvedValue({ ok: true as const, data: { items: [PRODUCTO_18], total: 1, page: 1 } });
+  });
+
+  afterEach(cleanup);
+
+  it("shows the three profile facts on selecting a derived-credit client", async () => {
+    mockClientes.mockResolvedValue({
+      ok: true as const,
+      data: { items: [CLIENTE_CREDITO], total: 1, page: 1 },
+    });
+    await renderPos(false);
+    fireEvent.change(screen.getByLabelText("Client selection"), { target: { value: "5" } });
+
+    expect(screen.getByText("CREDITO")).toBeInTheDocument();
+    expect(screen.getByText("Limite: RD$ 20,000.00")).toBeInTheDocument();
+    expect(screen.getByText("Plazo: 15 días")).toBeInTheDocument();
+  });
+
+  it("derives the indicator: CF default, crédito for a CREDITO client, cash for MINORISTA", async () => {
+    mockClientes.mockResolvedValue({
+      ok: true as const,
+      data: {
+        items: [
+          CLIENTE_CREDITO,
+          { ...CLIENTE_CREDITO, id: 6, nombre: "Bar Doña Tatica", tipoCliente: "MINORISTA", creditoHabilitado: false, limiteCredito: "0.00", plazoCreditoDias: 30 },
+        ],
+        total: 2,
+        page: 1,
+      },
+    });
+    await renderPos(false);
+    expect(screen.getByText("Cash (Consumidor Final)")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Client selection"), { target: { value: "5" } });
+    expect(screen.getByText("Crédito · 15 días")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Client selection"), { target: { value: "6" } });
+    expect(screen.getByText("Cash")).toBeInTheDocument();
+  });
+
+  it("renders NO contado/crédito toggle control anywhere", async () => {
+    mockClientes.mockResolvedValue({
+      ok: true as const,
+      data: { items: [CLIENTE_CREDITO], total: 1, page: 1 },
+    });
+    await renderPos(false);
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("button", { name: /forma|credit mode|toggle/i })).toBeNull();
+  });
+
+  it("shows the derived due date from the post-confirm CREDITO verdict (2026-03-01 + 15 → 2026-03-16)", async () => {
+    mockListar.mockResolvedValue({
+      ok: true as const,
+      data: {
+        items: [
+          {
+            id: 3,
+            fecha: new Date().toISOString(),
+            estado: ESTADO_VENTA.BORRADOR,
+            total: "118.00",
+            descuento: "0.00",
+            clienteNombre: "Comercios Clara, SRL",
+            usuarioNombre: "Ana",
+            ncf: null,
+          },
+        ],
+        total: 1,
+        page: 1,
+        limit: 25,
+      },
+    });
+    await renderPos(false);
+    mockConfirmarVenta.mockResolvedValue({
+      ok: true as const,
+      data: {
+        id: 3,
+        estado: ESTADO_VENTA.CONFIRMADA,
+        facturaId: 77,
+        ncf: "B0200000101",
+        tipoNcf: "B02",
+        correlativoInterno: "FAC-000001",
+        total: "118.00",
+        credito: { forma: "CREDITO", plazoCreditoDias: 15, fechaEmision: "2026-03-01T15:00:00.000Z" },
+        ncfWarning: null,
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm draft 3" }));
+
+    const strip = await screen.findByText(/Due date:/);
+    expect(strip.textContent).toContain("2026-03-16");
   });
 });

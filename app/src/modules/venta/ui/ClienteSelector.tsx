@@ -6,15 +6,24 @@
  * 5a seam (resolver-cliente-venta → getOrCreateConsumidorFinalEnTx); the UI
  * never calls the resolver directly. Inline registration goes through the
  * existing `crearClienteAction`.
+ *
+ * F2 (D6, R-V19/R-V27): options carry the credit profile already shipped by
+ * `listarClientesAction` (no extra fetch); the selected profile is reported up
+ * via `onPerfilSeleccionado` so PosScreen derives the credit indicator from
+ * owned state. The profile block renders ONLY for the derived-credit client
+ * (backend mirror rule via `derivarFormaVenta`) — never a toggle.
  */
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { crearClienteAction, listarClientesAction } from "@/modules/cliente/http/actions";
 import { TIPO_CLIENTE, type TipoCliente } from "@/modules/cliente/domain/cliente";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { formatearMonto } from "@/shared/ui/format";
 import { CONSUMIDOR_FINAL_LABEL, type SeleccionCliente } from "./carro";
+import { derivarFormaVenta } from "./credito";
 
 /**
  * Non-credit client classifications offered at inline registration. `CREDITO`
@@ -27,14 +36,25 @@ const TIPOS_ALTA_RAPIDA = [TIPO_CLIENTE.MINORISTA, TIPO_CLIENTE.MAYORISTA] as co
 interface ClienteOpcion {
   id: number;
   nombre: string;
+  tipoCliente: string;
+  esConsumidorFinal: boolean;
+  creditoHabilitado: boolean;
+  /** Decimal-string money (DTO contract) — never parsed to number/float. */
+  limiteCredito: string;
+  plazoCreditoDias: number;
 }
+
+/** The selected client's credit facts, without identity. */
+export type PerfilClienteSeleccion = Omit<ClienteOpcion, "id" | "nombre">;
 
 export function ClienteSelector({
   value,
   onChange,
+  onPerfilSeleccionado,
 }: {
   readonly value: SeleccionCliente;
   readonly onChange: (s: SeleccionCliente) => void;
+  readonly onPerfilSeleccionado?: (p: PerfilClienteSeleccion | null) => void;
 }) {
   const [clientes, setClientes] = useState<ClienteOpcion[]>([]);
   const [registroAbierto, setRegistroAbierto] = useState(false);
@@ -49,13 +69,46 @@ export function ClienteSelector({
     let cancelado = false;
     void listarClientesAction({ page: 1, limit: 100 }).then((r) => {
       if (!cancelado && r.ok) {
-        setClientes(r.data.items.map((c) => ({ id: c.id, nombre: c.nombre })));
+        setClientes(
+          r.data.items.map((c) => ({
+            id: c.id,
+            nombre: c.nombre,
+            tipoCliente: c.tipoCliente,
+            esConsumidorFinal: c.esConsumidorFinal,
+            creditoHabilitado: c.creditoHabilitado,
+            limiteCredito: c.limiteCredito,
+            plazoCreditoDias: c.plazoCreditoDias,
+          })),
+        );
       }
     });
     return () => {
       cancelado = true;
     };
   }, []);
+
+  // Report the selected profile upward (owned state in PosScreen) whenever the
+  // selection or the loaded list changes; `null` = no client (CF default).
+  // Deps anchor on the selection identity, NOT the derived object — a fresh
+  // object every render would re-fire the effect forever.
+  const seleccionado = useMemo(
+    () => (value.id === null ? null : clientes.find((c) => c.id === value.id) ?? null),
+    [value.id, clientes],
+  );
+  const perfilSeleccionado: PerfilClienteSeleccion | null =
+    seleccionado === null
+      ? null
+      : {
+          tipoCliente: seleccionado.tipoCliente,
+          esConsumidorFinal: seleccionado.esConsumidorFinal,
+          creditoHabilitado: seleccionado.creditoHabilitado,
+          limiteCredito: seleccionado.limiteCredito,
+          plazoCreditoDias: seleccionado.plazoCreditoDias,
+        };
+  useEffect(() => {
+    onPerfilSeleccionado?.(perfilSeleccionado);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seleccionado]);
 
   async function registrar(e: FormEvent) {
     e.preventDefault();
@@ -68,7 +121,20 @@ export function ClienteSelector({
       tipoCliente,
     });
     if (r.ok) {
-      setClientes((prev) => [...prev, { id: r.data.id, nombre: r.data.nombre }]);
+      // Quick-add only offers MINORISTA/MAYORISTA → definitionally contado:
+      // zero-credit literal defaults keep the option shape coherent.
+      setClientes((prev) => [
+        ...prev,
+        {
+          id: r.data.id,
+          nombre: r.data.nombre,
+          tipoCliente: r.data.tipoCliente,
+          esConsumidorFinal: r.data.esConsumidorFinal,
+          creditoHabilitado: false,
+          limiteCredito: "0.00",
+          plazoCreditoDias: 30,
+        },
+      ]);
       onChange({ id: r.data.id, nombre: r.data.nombre });
       setRegistroAbierto(false);
       setNombre("");
@@ -80,6 +146,8 @@ export function ClienteSelector({
     }
     setGuardando(false);
   }
+
+  const esCredito = derivarFormaVenta(perfilSeleccionado) === "CREDITO";
 
   return (
     <Card aria-label="Client">
@@ -118,6 +186,19 @@ export function ClienteSelector({
             {registroAbierto ? "Close" : "New client"}
           </Button>
         </div>
+        {/* Derived-credit profile facts (D6, R-V19) — display only, no toggle. */}
+        {perfilSeleccionado !== null && esCredito && (
+          <div className="mt-2 flex items-center gap-3 text-sm text-ink">
+            <Badge variant="secondary">CREDITO</Badge>
+            <span>Limite: {formatearMonto(perfilSeleccionado.limiteCredito)}</span>
+            <span>Plazo: {perfilSeleccionado.plazoCreditoDias} días</span>
+          </div>
+        )}
+        {perfilSeleccionado !== null && perfilSeleccionado.esConsumidorFinal && (
+          <p className="mt-2 text-sm text-muted">
+            Consumidor Final — cash sale (no credit facts apply)
+          </p>
+        )}
       </CardContent>
 
       {registroAbierto && (

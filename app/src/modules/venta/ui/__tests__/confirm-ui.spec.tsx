@@ -15,7 +15,7 @@
  */
 
 import "@testing-library/jest-dom";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { PosScreen } from "../PosScreen";
 import { ESTADO_VENTA } from "../../domain/venta";
 import {
@@ -97,6 +97,7 @@ function exitoConfirmar(ncfWarning?: "NCF_UMBRAL_90") {
       tipoNcf: "B02",
       correlativoInterno: "FAC-000001",
       total: "118.00",
+      credito: { forma: "CONTADO" } as const,
       ncfWarning: ncfWarning ?? null,
     },
   };
@@ -200,5 +201,39 @@ describe("POS confirm control (R-V14 5c slice)", () => {
   it("never renders payment controls (Fase 6 boundary holds)", async () => {
     await renderPos([BORRADOR_3, CONFIRMADA_4]);
     expect(screen.queryByRole("button", { name: /cobrar|pay|payment/i })).toBeNull();
+  });
+
+  // F2 slice B task 2.9 (D6, R-V20): each cataloged credit-gate code renders its
+  // DISTINCT Card+Badge surface (distinct heading + fixed copy + the server
+  // message in the muted slot — never raw-code-only copy).
+  it.each([
+    ["CLIENTE_EN_MORA", "Client has overdue invoices", "Sales on credit are blocked while the client keeps invoices past their due term."],
+    ["LIMITE_CREDITO_EXCEDIDO", "Credit limit exceeded", "This sale would exceed the client's authorized credit limit."],
+    ["CREDITO_NO_HABILITADO", "Credit not enabled for this client", "Sell cash instead: select a non-credit client or keep Consumidor Final, which stays un-gated."],
+  ])("renders the distinct rejection surface for %s", async (code, titulo, texto) => {
+    await renderPos([BORRADOR_3]);
+    mockConfirmar.mockResolvedValue({
+      ok: false,
+      error: { code: code as string, message: `server message for ${code}` },
+    } as never);
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm draft 3" }));
+    const status = await screen.findByRole("status");
+    expect(within(status).queryByText(`[${code as string}]`)).toBeNull(); // never raw-code-only copy
+    expect(within(status).getByText(titulo)).toBeInTheDocument();
+    expect(within(status).getByText(texto)).toBeInTheDocument();
+    expect(within(status).getByText(`server message for ${code}`)).toBeInTheDocument();
+    // The sale stays BORRADOR: the row is re-listed, no artifact emitted.
+    expect(mockListar).toHaveBeenCalled();
+  });
+
+  it("falls back to the generic [CODE] banner for a non-cataloged code", async () => {
+    await renderPos([BORRADOR_3]);
+    mockConfirmar.mockResolvedValue({
+      ok: false,
+      error: { code: "NCF_AGOTADA", message: "El rango de secuencias NCF está agotado" },
+    } as never);
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm draft 3" }));
+    const status = await screen.findByRole("status");
+    expect(within(status).getByText("[NCF_AGOTADA]")).toBeInTheDocument();
   });
 });

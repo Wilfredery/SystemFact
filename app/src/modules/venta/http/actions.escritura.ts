@@ -103,6 +103,10 @@ export async function confirmarVentaAction(
     tipoNcf: string;
     correlativoInterno: string;
     total: string;
+    /** Display-only credit verdict — verbatim relay from the use case (D7, R-V25). */
+    credito:
+      | { forma: "CONTADO" }
+      | { forma: "CREDITO"; plazoCreditoDias: number; fechaEmision: string };
     ncfWarning: string | null;
   }>
 > {
@@ -128,6 +132,7 @@ export async function confirmarVentaAction(
       tipoNcf: data.tipoNcf,
       correlativoInterno: data.correlativoInterno,
       total: data.total,
+      credito: data.credito,
       ncfWarning:
         result.warnings !== undefined && result.warnings.length > 0
           ? result.warnings[0].code

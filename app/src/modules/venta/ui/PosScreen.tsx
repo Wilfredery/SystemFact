@@ -40,15 +40,22 @@ import {
   type SeleccionCliente,
 } from "./carro";
 import { CartTable } from "./CartTable";
-import { ClienteSelector } from "./ClienteSelector";
+import { ClienteSelector, type PerfilClienteSeleccion } from "./ClienteSelector";
 import { DiscountPanel } from "./DiscountPanel";
 import { DraftList, type BorradorFila } from "./DraftList";
 import { ProductSearch } from "./ProductSearch";
 import { Totales } from "./Totales";
+import { derivarFormaVenta, derivarVencimiento, superficieRechazoCredito, type SuperficieRechazoCredito } from "./credito";
 
 type Mensaje =
   | { kind: "ok"; text: string }
-  | { kind: "error"; code: string; text: string }
+  | {
+      kind: "error";
+      code: string;
+      text: string;
+      /** Matched credit-gate surface (R-V20) — replaces the raw-code-only copy. */
+      superficie?: SuperficieRechazoCredito | null;
+    }
   | null;
 
 /** A stock warning enriched with the cart product name for display only. */
@@ -69,11 +76,21 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
   const [avisoNcf, setAvisoNcf] = useState<string | null>(null);
   const [borradores, setBorradores] = useState<readonly BorradorFila[]>([]);
   const [listaCargando, setListaCargando] = useState(true);
+  // F2 (D6/R-V19): the selected client's credit facts (selector-reported, owned
+  // state) and the display-only verdict of the last confirm (defensive read, D7).
+  const [perfil, setPerfil] = useState<PerfilClienteSeleccion | null>(null);
+  // Display-only credit verdict of the last confirm (D7); read defensively so a
+  // later slice-B revert cannot break the UI.
+  type VeredictoCredito =
+    | { forma: "CONTADO" }
+    | { forma: "CREDITO"; plazoCreditoDias: number; fechaEmision: string };
+  const [veredicto, setVeredicto] = useState<VeredictoCredito | null>(null);
 
   const vista = useMemo(
     () => calcularVistaPrevia(lineas, descuento),
     [lineas, descuento],
   );
+  const forma = derivarFormaVenta(perfil);
 
   function aplicarBorradores(
     r: Awaited<ReturnType<typeof listarVentasAction>>,
@@ -213,9 +230,28 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
         text: `Sale #${r.data.id} confirmed — invoice ${r.data.ncf}.`,
       });
       if (r.data.ncfWarning !== null) setAvisoNcf(r.data.ncfWarning);
+      // Display-only verdict (D7/R-V19): derive the due date for presentation,
+      // persist nothing, send nothing. Absent/CONTADO → no due-date block.
+      if (
+        "credito" in r.data &&
+        r.data.credito !== undefined &&
+        r.data.credito.forma === "CREDITO"
+      ) {
+        setVeredicto(r.data.credito);
+      } else {
+        setVeredicto(null);
+      }
       void recargarBorradores();
     } else {
-      setMensaje({ kind: "error", code: r.error.code, text: r.error.message });
+      // R-V20 (D6): the credit-gate surface check runs FIRST — a cataloged
+      // credit rejection renders its dedicated Card+Badge surface; nothing
+      // else changes (the sale stays BORRADOR, fixed backend semantics).
+      setMensaje({
+        kind: "error",
+        code: r.error.code,
+        text: r.error.message,
+        superficie: superficieRechazoCredito(r.error.code),
+      });
     }
     setConfirmandoId(null);
   }
@@ -241,7 +277,17 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
         invoice (NCF). Payments arrive in a later phase.
       </p>
 
-      {mensaje !== null && (
+      {mensaje !== null && mensaje.kind === "error" && mensaje.superficie ? (
+        <Card role="status" aria-live="polite" className="bg-danger/10" aria-label="Credit rejection">
+          <CardContent className="flex items-start gap-3 p-4">
+            <Badge variant="destructive">{mensaje.superficie.titulo}</Badge>
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium">{mensaje.superficie.texto}</span>
+              <span className="text-sm text-muted">{mensaje.text}</span>
+            </div>
+          </CardContent>
+        </Card>
+      ) : mensaje !== null && (
         <Card
           role="status"
           aria-live="polite"
@@ -301,7 +347,11 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="flex flex-col gap-4">
-          <ClienteSelector value={cliente} onChange={setCliente} />
+          <ClienteSelector
+            value={cliente}
+            onChange={setCliente}
+            onPerfilSeleccionado={setPerfil}
+          />
           <ProductSearch onAdd={(p) => setLineas((prev) => agregarAlCarrito(prev, p))} />
           {esAdmin && <DiscountPanel descuento={descuento} onChange={setDescuento} />}
         </div>
@@ -316,6 +366,31 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
             }
             onRemove={(id) => setLineas((prev) => quitarDelCarrito(prev, id))}
           />
+          {/* Credit context strip (D6/R-V19): derived indicator — NO toggle
+              control exists anywhere. "Cash (Consumidor Final)" when no client
+              is selected; "Crédito · N días" when credit is derived; "Cash"
+              otherwise. Post-confirm CREDITO verdicts add the derived due date
+              as presentation-only text (ADR-017: nothing is persisted). */}
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge
+              variant={forma === "CREDITO" ? "secondary" : "outline"}
+            >
+              {forma === "CREDITO"
+                ? `Crédito · ${perfil?.plazoCreditoDias ?? 0} días`
+                : cliente.id === null
+                  ? "Cash (Consumidor Final)"
+                  : "Cash"}
+            </Badge>
+            {veredicto !== null && veredicto.forma === "CREDITO" && (
+              <span className="text-sm text-muted">
+                Due date:{" "}
+                {derivarVencimiento(
+                  veredicto.fechaEmision,
+                  veredicto.plazoCreditoDias,
+                )}
+              </span>
+            )}
+          </div>
           <Totales totales={vista.totales} />
           <div className="flex items-center gap-4">
             <Button
