@@ -38,9 +38,12 @@ import {
   quitarDelCarrito,
   editarDescuentoLinea,
   limpiarDescuentoLinea,
+  componerValor,
   type CarroLinea,
   type SeleccionCliente,
 } from "./carro";
+import type { TeclaNumerica } from "@/components/ui/numeric-keypad";
+import { NumericKeypad } from "@/components/ui/numeric-keypad";
 import { CartTable } from "./CartTable";
 import { ClienteSelector, type PerfilClienteSeleccion } from "./ClienteSelector";
 import { DiscountPanel } from "./DiscountPanel";
@@ -87,6 +90,41 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
     | { forma: "CONTADO" }
     | { forma: "CREDITO"; plazoCreditoDias: number; fechaEmision: string };
   const [veredicto, setVeredicto] = useState<VeredictoCredito | null>(null);
+  // D3/R-V22: money received is CLIENT STATE ONLY — never a payload field.
+  const [dineroRecibido, setDineroRecibido] = useState("");
+  // D4/R-V23 (task 4.6): ONE keypad instance beside Totales; its edits map
+  // through `componerValor` onto the active target (a cart line's quantity or
+  // price, or the vuelto field). Default target: the first line's quantity.
+  type KeypadObjetivo =
+    | { campo: "vuelto" }
+    | { campo: "cantidad" | "precioUnitario"; productoId: number };
+  const [keypadObjetivo, setKeypadObjetivo] = useState<KeypadObjetivo | null>(null);
+  const targetKey = keypadObjetivo === null
+    ? (lineas[0] !== undefined
+        ? { campo: "cantidad" as const, productoId: lineas[0].productoId }
+        : null)
+    : keypadObjetivo;
+  function aplicarTecla(tecla: TeclaNumerica): void {
+    if (targetKey === null) return;
+    if (targetKey.campo === "vuelto") {
+      setDineroRecibido((prev) => componerValor(prev, tecla, 2));
+      return;
+    }
+    setLineas((prev) =>
+      editarLinea(
+        prev,
+        targetKey.productoId,
+        targetKey.campo,
+        componerValor(
+          prev.find((l) => l.productoId === targetKey.productoId)?.[
+            targetKey.campo === "cantidad" ? "cantidad" : "precioUnitario"
+          ] ?? "",
+          tecla,
+          targetKey.campo === "cantidad" ? 3 : 2,
+        ),
+      ),
+    );
+  }
 
   const vista = useMemo(
     () => calcularVistaPrevia(lineas, descuento),
@@ -363,6 +401,8 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
           <CartTable
             lineas={vista.porLinea}
             puedeDescontar={esAdmin}
+            keypadObjetivo={targetKey}
+            onSetKeypadTarget={setKeypadObjetivo}
             onCantidadChange={(id, v) =>
               setLineas((prev) => editarLinea(prev, id, "cantidad", v))
             }
@@ -402,7 +442,16 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
               </span>
             )}
           </div>
-          <Totales totales={vista.totales} />
+          <Totales
+            totales={vista.totales}
+            dineroRecibido={dineroRecibido}
+            onDineroRecibidoChange={setDineroRecibido}
+            onFocusDineroRecibido={() => setKeypadObjetivo({ campo: "vuelto" })}
+          />
+          {/* One keypad instance (D4): target picked by input focus or the
+              visible row affordance inside CartTable; edits recompose the value
+              with the same regexes the domain validates, re-running the preview. */}
+          <NumericKeypad onTecla={aplicarTecla} />
           <div className="flex items-center gap-4">
             <Button
               type="button"

@@ -21,9 +21,11 @@ import {
   calcularVistaPrevia,
   editarDescuentoLinea,
   limpiarDescuentoLinea,
+  componerValor,
   type CarroLinea,
   type ProductoOpcion,
 } from "../carro";
+import type { TeclaNumerica } from "@/components/ui/numeric-keypad";
 
 const ARROZ: ProductoOpcion = {
   id: 7,
@@ -136,5 +138,35 @@ describe("carro — per-line discount (F2 slice C, R-V21)", () => {
     const vista = calcularVistaPrevia(carro, DESCUENTO_CERO);
     expect(vista.porLinea[0].computable).toBe(true);
     expect(vista.porLinea[0].calculo).not.toBeNull();
+  });
+});
+
+// F2 slice D task 4.5 (D4/R-V23): pure keypad composition — append/drop
+// overdigits per the SAME line-validity regexes the domain validates
+// (quantity → 3 decimals, money → 2; single dot; BSP strips; CLR clears).
+describe("componerValor", () => {
+  it("appends digits within the 3-decimal quantity shape", () => {
+    expect(componerValor("", "1", 3)).toBe("1");
+    expect(componerValor("1", "2", 3)).toBe("12");
+    expect(componerValor("1.234", "5", 3)).toBe("1.234"); // overdigit dropped
+    expect(componerValor("123456789", "9", 3)).toBe("123456789"); // 9 int digits already — the 10th never lands
+  });
+
+  it("caps money fields at 2 decimals", () => {
+    expect(componerValor("1.2", "3", 2)).toBe("1.23");
+    expect(componerValor("1.23", "5", 2)).toBe("1.23"); // 3rd decimal dropped
+    expect(componerValor("", "3", 2)).toBe("3");
+  });
+
+  it("inserts the decimal point at most once", () => {
+    expect(componerValor("1", ".", 2)).toBe("1.");
+    expect(componerValor("1.", ".", 3)).toBe("1."); // second dot never lands
+    expect(componerValor("1.", "5", 3)).toBe("1.5");
+  });
+
+  it("BSP strips the last char and CLR clears", () => {
+    expect(componerValor("12.5", "BSP", 3)).toBe("12.");
+    expect(componerValor("12.5", "CLR", 3)).toBe("");
+    expect(componerValor("", "BSP", 2)).toBe("");
   });
 });

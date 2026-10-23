@@ -25,6 +25,8 @@ import type { LineaPreview } from "./carro";
 export function CartTable({
   lineas,
   puedeDescontar,
+  keypadObjetivo,
+  onSetKeypadTarget,
   onCantidadChange,
   onPrecioChange,
   onRemove,
@@ -35,6 +37,14 @@ export function CartTable({
   /** Admin gate (D2/R-V21): only admins get per-line discount inputs — the
    * server's role-gated (_, patch) path remains the real authorization. */
   readonly puedeDescontar: boolean;
+  /** F2 4.6 (D4/R-V23): keypad target display affordance — read-only here. */
+  readonly keypadObjetivo:
+    | { campo: "vuelto" }
+    | { campo: "cantidad" | "precioUnitario"; productoId: number }
+    | null;
+  readonly onSetKeypadTarget: (
+    t: { campo: "cantidad" | "precioUnitario"; productoId: number } | null,
+  ) => void;
   readonly onCantidadChange: (productoId: number, valor: string) => void;
   readonly onPrecioChange: (productoId: number, valor: string) => void;
   readonly onRemove: (productoId: number) => void;
@@ -82,9 +92,17 @@ export function CartTable({
                       inputMode="decimal"
                       value={linea.cantidad}
                       onChange={(e) => onCantidadChange(linea.productoId, e.target.value)}
+                      onFocus={() =>
+                        onSetKeypadTarget({ campo: "cantidad", productoId: linea.productoId })
+                      }
                       aria-label={`Quantity for ${linea.nombre}`}
                       className="h-12 w-16 px-2 text-right"
                     />
+                    {keypadObjetivo !== null &&
+                      keypadObjetivo.campo === "cantidad" &&
+                      keypadObjetivo.productoId === linea.productoId && (
+                        <span className="text-xs text-link">⌨</span>
+                      )}
                   </TableCell>
                   <TableCell className="py-2 pr-3">
                     <Input
@@ -92,6 +110,9 @@ export function CartTable({
                       inputMode="decimal"
                       value={linea.precioUnitario}
                       onChange={(e) => onPrecioChange(linea.productoId, e.target.value)}
+                      onFocus={() =>
+                        onSetKeypadTarget({ campo: "precioUnitario", productoId: linea.productoId })
+                      }
                       aria-label={`Unit price for ${linea.nombre}`}
                       className="h-12 w-24 px-2 text-right"
                     />

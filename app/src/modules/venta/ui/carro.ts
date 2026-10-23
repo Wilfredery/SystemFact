@@ -22,6 +22,7 @@ import {
   validarLineaVenta,
 } from "../domain/calculators";
 import type { VentaTotalesCalculo } from "../domain/calculators";
+import type { TeclaNumerica } from "@/components/ui/numeric-keypad";
 
 /** A product option as returned by `listarProductosAction`. */
 export interface ProductoOpcion {
@@ -113,6 +114,31 @@ export function limpiarDescuentoLinea(
   return carro.map((l) =>
     l.productoId === productoId ? { ...l, descuento: DESCUENTO_CERO } : l,
   );
+}
+
+/**
+ * F2 (D4/R-V23) — pure keypad composition: append/drop overdigits per the SAME
+ * line-validity regexes the domain validates. `BSP` strips the last char, `CLR`
+ * clears; `.` inserts at most once; the decimal floor follows `maxDecimales`
+ * (2 = money fields, 3 = quantity field).
+ */
+export function componerValor(
+  actual: string,
+  tecla: TeclaNumerica,
+  maxDecimales: 2 | 3,
+): string {
+  if (tecla === "CLR") return "";
+  if (tecla === "BSP") return actual.slice(0, -1);
+  if (tecla === ".") {
+    // At most one point; a mid-edit trailing point is allowed ("1." is legal
+    // input state — the preview line simply stays non-computable until digits
+    // follow, same as any other transient shape).
+    return actual.includes(".") ? actual : `${actual}.`;
+  }
+  const patron =
+    maxDecimales === 3 ? /^\d{1,9}(\.\d{1,3})?$/ : /^\d{1,9}(\.\d{1,2})?$/;
+  const siguiente = actual + tecla;
+  return patron.test(siguiente) ? siguiente : actual;
 }
 
 /**

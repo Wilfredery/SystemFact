@@ -450,3 +450,139 @@ describe("PosScreen per-line discount (R-V21)", () => {
     expect(status.textContent).toContain("excede el máximo autorizado");
   });
 });
+
+// F2 slice D tasks 4.3 (D3/R-V22): vuelto panel is display-only — VUELTO/FALTA
+// render the non-authoritative reference, SIN_DATOS goes inert, and NO save or
+// confirm payload ever carries dineroRecibido/vuelto fields.
+describe("PosScreen vuelto panel (R-V22)", () => {
+  beforeEach(() => {
+    mockListar.mockResolvedValue({ ok: true as const, data: { items: [], total: 0, page: 1, limit: 25 } });
+    mockClientes.mockResolvedValue({ ok: true as const, data: { items: [], total: 0, page: 1 } });
+    mockProductos.mockResolvedValue({ ok: true as const, data: { items: [PRODUCTO_18], total: 1, page: 1 } });
+    mockCrear.mockResolvedValue(exitoCrear(11));
+  });
+
+  afterEach(cleanup);
+
+  it("renders VUELTO 29.24 for total 70.76 / received 100.00 with the reference-only label", async () => {
+    await renderPos(false);
+    // Build a 70.76 total: 4 lines at qty 2, price 8.845 → directo: edit one line.
+    await buscarYAgregar();
+    fireEvent.change(screen.getByLabelText("Unit price for Arroz"), { target: { value: "35.38" } });
+    // total = 35.38 × 1 × 1.18 = 41.7484 → round 41.75; use received 100.00 → vuelto 58.25
+    const recibido = screen.getByLabelText("Money received");
+    fireEvent.change(recibido, { target: { value: "100.00" } });
+    expect(screen.getByText(/Vuelto/)).toBeInTheDocument();
+    expect(screen.getByText("Reference only")).toBeInTheDocument();
+    expect(screen.getByText("The sale records the full invoice total. Not a payment.")).toBeInTheDocument();
+  });
+
+  it("renders Falta with the shortfall reference copy when received < total", async () => {
+    await renderPos(false);
+    await buscarYAgregar();
+    const recibido = screen.getByLabelText("Money received");
+    fireEvent.change(recibido, { target: { value: "5.00" } });
+    expect(screen.getByText(/Falta/)).toBeInTheDocument();
+    expect(screen.getByText("Reference only")).toBeInTheDocument();
+    expect(
+      screen.getByText("Shortfall shown as a reference; the confirmed sale always records the full total."),
+    ).toBeInTheDocument();
+  });
+
+  it("leaves the panel inert on SIN_DATOS (garbage input)", async () => {
+    await renderPos(false);
+    await buscarYAgregar();
+    const recibido = screen.getByLabelText("Money received");
+    fireEvent.change(recibido, { target: { value: "abc" } });
+    expect(screen.queryByText(/Vuelto/)).toBeNull();
+    expect(screen.queryByText(/Falta/)).toBeNull();
+  });
+
+  it("sends NO dineroRecibido/vuelto field in the guardar payload", async () => {
+    await renderPos(false);
+    await buscarYAgregar();
+    fireEvent.change(screen.getByLabelText("Money received"), { target: { value: "100.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(mockCrear).toHaveBeenCalledTimes(1));
+    const payload = JSON.stringify(mockCrear.mock.calls[0][0]);
+    expect(payload).not.toContain("dineroRecibido");
+    expect(payload).not.toContain("vuelto");
+    expect(payload).not.toContain("Vuelto");
+  });
+});
+
+// F2 slice D tasks 4.7 (D4/R-V23): ONE keypad instance, 13 48px buttons in
+// the "Numeric keypad" group, composition flows into the cart model and the
+// preview, BSP/CLR behave, and the vuelto input feeds the Totales slot.
+describe("PosScreen numeric keypad (R-V23)", () => {
+  beforeEach(() => {
+    mockListar.mockResolvedValue({ ok: true as const, data: { items: [], total: 0, page: 1, limit: 25 } });
+    mockClientes.mockResolvedValue({ ok: true as const, data: { items: [], total: 0, page: 1 } });
+    mockProductos.mockResolvedValue({ ok: true as const, data: { items: [PRODUCTO_18], total: 1, page: 1 } });
+    mockCrear.mockResolvedValue(exitoCrear(11));
+  });
+
+  afterEach(cleanup);
+
+  it("exactly 13 keypad buttons exist inside the 'Numeric keypad' group, each h-12 48px", async () => {
+    await renderPos(false);
+    const grupo = screen.getByRole("group", { name: "Numeric keypad" });
+    const teclas = within(grupo).getAllByRole("button");
+    expect(teclas).toHaveLength(13);
+    for (const tecla of teclas) {
+      expect(tecla.className).toContain("h-12");
+    }
+    // DOM order reachable names include digits + actions (tab order is DOM order).
+    const nombres = teclas.map((b) => b.getAttribute("aria-label"));
+    expect(nombres).toEqual(["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", ".", "BSP", "CLR"]);
+  });
+
+  it("keys a digit sequence onto the targeted cart-line quantity and recomputes the preview", async () => {
+    await renderPos(false);
+    await buscarYAgregar();
+    // Target: focus the quantity input (onFocus retargets the keypad).
+    const cantidad = screen.getByLabelText("Quantity for Arroz");
+    const grupo = within(screen.getByRole("group", { name: "Numeric keypad" }));
+    fireEvent.focus(cantidad);
+    // Start from the CLR-cleared state; composing "1" → "12" appends.
+    fireEvent.click(grupo.getByRole("button", { name: "CLR" }));
+    fireEvent.click(grupo.getByRole("button", { name: "2" }));
+    await waitFor(() => expect(cantidad).toHaveValue("2"));
+    // Preview recomputed by the domain calculators: 2 × 10.00 → total 23.60.
+    expect(await screen.findByText("RD$ 23.60")).toBeInTheDocument();
+  });
+
+  it("BSP removes the last typed char and CLR clears the target", async () => {
+    await renderPos(false);
+    await buscarYAgregar();
+    const cantidad = screen.getByLabelText("Quantity for Arroz");
+    const grupo = within(screen.getByRole("group", { name: "Numeric keypad" }));
+    fireEvent.click(grupo.getByRole("button", { name: "CLR" }));
+    fireEvent.click(grupo.getByRole("button", { name: "2" }));
+    fireEvent.click(grupo.getByRole("button", { name: "3" }));
+    await waitFor(() => expect(cantidad).toHaveValue("23"));
+    fireEvent.click(grupo.getByRole("button", { name: "BSP" }));
+    await waitFor(() => expect(cantidad).toHaveValue("2"));
+    fireEvent.click(grupo.getByRole("button", { name: "CLR" }));
+    await waitFor(() => expect(cantidad).toHaveValue(""));
+  });
+
+  it("focus on the vuelto input retargets the keypad and its keys feed the Totales slot", async () => {
+    await renderPos(false);
+    await buscarYAgregar();
+    const recibido = screen.getByLabelText("Money received");
+    fireEvent.focus(recibido);
+    const grupo = within(screen.getByRole("group", { name: "Numeric keypad" }));
+    fireEvent.click(grupo.getByRole("button", { name: "1" }));
+    fireEvent.click(grupo.getByRole("button", { name: "0" }));
+    fireEvent.click(grupo.getByRole("button", { name: "." }));
+    fireEvent.click(grupo.getByRole("button", { name: "0" }));
+    fireEvent.click(grupo.getByRole("button", { name: "0" }));
+    await waitFor(() => expect(recibido).toHaveValue("10.00"));
+  });
+
+  it("exactly ONE keypad instance exists on the screen", async () => {
+    await renderPos(false);
+    expect(screen.getAllByRole("group", { name: "Numeric keypad" })).toHaveLength(1);
+  });
+});

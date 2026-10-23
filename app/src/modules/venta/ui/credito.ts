@@ -1,3 +1,5 @@
+import { Decimal } from "decimal.js";
+
 /**
  * Venta UI — F2 credit display derivations (R-V19 / R-V20 / R-V27 consumer side).
  *
@@ -103,4 +105,24 @@ export function superficieRechazoCredito(
   code: string,
 ): SuperficieRechazoCredito | null {
   return SUPERFICIES[code] ?? null;
+}
+
+/**
+ * D3/R-V22 pure vuelto math: received − total as a display reference. Decimal.js
+ * only (money never a float); unparseable inputs → `SIN_DATOS` so the panel goes
+ * inert mid-edit. Display-only by construction: `FALTA` NEVER blocks and nothing
+ * here is ever sent — the sale always records the full invoice total.
+ */
+export function calcularVuelto(
+  total: string,
+  recibido: string,
+): { estado: "SIN_DATOS" | "VUELTO" | "FALTA"; monto: string } {
+  if (!/^\d{1,9}(\.\d{1,2})?$/.test(recibido.trim())) {
+    return { estado: "SIN_DATOS", monto: "0.00" };
+  }
+  const diff = new Decimal(recibido).minus(total).toFixed(2);
+  if (new Decimal(diff).isNegative()) {
+    return { estado: "FALTA", monto: new Decimal(diff).abs().toFixed(2) };
+  }
+  return { estado: "VUELTO", monto: diff };
 }
