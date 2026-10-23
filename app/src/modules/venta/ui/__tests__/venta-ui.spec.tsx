@@ -164,7 +164,14 @@ describe("PosScreen (R-V14)", () => {
     };
     // The resolver seam owns the CF: the UI submits `null`, never a client id.
     expect(payload.clienteId).toBeNull();
-    expect(payload.lineas).toEqual([{ productoId: 7, cantidad: "1", precioUnitario: "10.00" }]);
+    expect(payload.lineas).toEqual([
+      {
+        productoId: 7,
+        cantidad: "1",
+        precioUnitario: "10.00",
+        descuento: { descuentoTipo: "PORCENTAJE", descuentoValor: "0.00" },
+      },
+    ]);
   });
 
   it("hides the discount panel for non-admins and shows it for the Administrador role", async () => {
@@ -372,5 +379,74 @@ describe("PosScreen credit-mode derivation (R-V19)", () => {
 
     const strip = await screen.findByText(/Due date:/);
     expect(strip.textContent).toContain("2026-03-16");
+  });
+});
+
+// F2 slice C task 3.5 (D2/R-V21): admin-gated per-line discount inputs, the
+// zero-shape default rides the guardar payload, and over-cap rejects surface
+// ONLY through the server's stable codes via the existing banner.
+describe("PosScreen per-line discount (R-V21)", () => {
+  beforeEach(() => {
+    mockListar.mockResolvedValue({ ok: true as const, data: { items: [], total: 0, page: 1, limit: 25 } });
+    mockClientes.mockResolvedValue({ ok: true as const, data: { items: [], total: 0, page: 1 } });
+    mockProductos.mockResolvedValue({ ok: true as const, data: { items: [PRODUCTO_18], total: 1, page: 1 } });
+    mockCrear.mockResolvedValue(exitoCrear(11));
+  });
+
+  afterEach(cleanup);
+
+  it("renders NO per-line discount input for a non-admin session", async () => {
+    await renderPos(false);
+    await buscarYAgregar();
+    expect(screen.queryByLabelText("Discount type for Arroz")).toBeNull();
+    expect(screen.queryByLabelText("Discount value for Arroz")).toBeNull();
+  });
+
+  it("renders the per-line discount select+input for an admin session", async () => {
+    await renderPos(true);
+    await buscarYAgregar();
+    const tipo = screen.getByLabelText("Discount type for Arroz");
+    const valor = screen.getByLabelText("Discount value for Arroz");
+    expect(tipo).toHaveValue("PORCENTAJE"); // zero-shape default
+    expect(valor).toHaveValue("0.00");
+    // Editing routes into the pure model.
+    fireEvent.change(tipo, { target: { value: "MONTO" } });
+    fireEvent.change(valor, { target: { value: "1.50" } });
+    await waitFor(() =>
+      expect(valor).toHaveValue("1.50"),
+    );
+  });
+
+  it("sends the per-line descuento in the guardar payload (zero shape for a fresh line)", async () => {
+    await renderPos(true);
+    await buscarYAgregar();
+    fireEvent.change(screen.getByLabelText("Discount value for Arroz"), { target: { value: "2.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(mockCrear).toHaveBeenCalledTimes(1));
+    const payload = mockCrear.mock.calls[0][0] as {
+      lineas: { productoId: number; descuento: { descuentoTipo: string; descuentoValor: string } }[];
+    };
+    expect(payload.lineas).toEqual([
+      { productoId: 7, cantidad: "1", precioUnitario: "10.00", descuento: { descuentoTipo: "PORCENTAJE", descuentoValor: "2.00" } },
+    ]);
+    // A fresh untouched line keeps the zero shape (zero-discount scenario).
+    await buscarYAgregar();
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(mockCrear).toHaveBeenCalledTimes(2));
+    const payload2 = mockCrear.mock.calls[1][0] as typeof payload;
+    expect(payload2.lineas[0].descuento).toEqual({ descuentoTipo: "PORCENTAJE", descuentoValor: "0.00" });
+  });
+
+  it("surfaces an over-cap reject through the server's stable code via the banner", async () => {
+    mockCrear.mockResolvedValue({
+      ok: false as const,
+      error: { code: "DESCUENTO_EXCEDE_MAXIMO", message: "El descuento excede el máximo autorizado" },
+    });
+    await renderPos(true);
+    await buscarYAgregar();
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toContain("[DESCUENTO_EXCEDE_MAXIMO]");
+    expect(status.textContent).toContain("excede el máximo autorizado");
   });
 });

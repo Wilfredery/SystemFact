@@ -34,7 +34,13 @@ export interface ProductoOpcion {
   readonly tasaItbis: string;
 }
 
-/** One ephemeral cart line (never persisted until a save round-trip). */
+/**
+ * One ephemeral cart line (never persisted until a save round-trip).
+ *
+ * F2 (D2/R-V21): every line carries its OWN discount (seeded `DESCUENTO_CERO`;
+ * only user input transitions the shape). The persisted carrier form matches
+ * R-V7 — `Descuento` with type + value, resolved money computed by the server.
+ */
 export interface CarroLinea {
   readonly productoId: number;
   readonly codigo: string;
@@ -45,6 +51,7 @@ export interface CarroLinea {
   readonly precioUnitario: string;
   /** Product's ITBIS rate carried from search for the live preview. */
   readonly tasaItbis: string;
+  readonly descuento: Descuento;
 }
 
 /** The client's selection; `id === null` means Consumidor Final (contado). */
@@ -77,8 +84,35 @@ export function agregarAlCarrito(
       cantidad: "1",
       precioUnitario: producto.precioVenta,
       tasaItbis: producto.tasaItbis,
+      descuento: DESCUENTO_CERO,
     },
   ];
+}
+
+/**
+ * F2 (D2/R-V21) — merge a partial discount onto ONE line, immutably; other
+ * lines pass through untouched. Never decides caps: the server rejects an
+ * over-cap discount with its stable codes on save (the preview stays
+ * non-authoritative by construction).
+ */
+export function editarDescuentoLinea(
+  carro: readonly CarroLinea[],
+  productoId: number,
+  parcial: Partial<Descuento>,
+): CarroLinea[] {
+  return carro.map((l) =>
+    l.productoId === productoId ? { ...l, descuento: { ...l.descuento, ...parcial } } : l,
+  );
+}
+
+/** Restore the zero-discount shape (R-V7 carrier form) on ONE line, immutably. */
+export function limpiarDescuentoLinea(
+  carro: readonly CarroLinea[],
+  productoId: number,
+): CarroLinea[] {
+  return carro.map((l) =>
+    l.productoId === productoId ? { ...l, descuento: DESCUENTO_CERO } : l,
+  );
 }
 
 /**
@@ -117,7 +151,7 @@ export function lineaComputable(linea: CarroLinea): boolean {
     productoId: linea.productoId,
     cantidad: linea.cantidad,
     precioUnitario: linea.precioUnitario,
-    descuento: DESCUENTO_CERO,
+    descuento: linea.descuento,
   };
   return validarLineaVenta(input, linea.tasaItbis) === null;
 }
@@ -150,7 +184,7 @@ export function calcularVistaPrevia(
         productoId: linea.productoId,
         cantidad: linea.cantidad,
         precioUnitario: linea.precioUnitario,
-        descuento: DESCUENTO_CERO,
+        descuento: linea.descuento,
       },
       linea.tasaItbis,
     );

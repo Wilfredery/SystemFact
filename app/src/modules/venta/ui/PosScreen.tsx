@@ -36,6 +36,8 @@ import {
   calcularVistaPrevia,
   editarLinea,
   quitarDelCarrito,
+  editarDescuentoLinea,
+  limpiarDescuentoLinea,
   type CarroLinea,
   type SeleccionCliente,
 } from "./carro";
@@ -137,6 +139,7 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
         productoId: l.productoId,
         cantidad: l.cantidad,
         precioUnitario: l.precioUnitario,
+        descuento: l.descuento,
       })),
       descuentoCabecera: descuento,
     };
@@ -197,6 +200,7 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
         cantidad: l.cantidad,
         precioUnitario: l.precioUnitario,
         tasaItbis: l.tasaItbis,
+        descuento: DESCUENTO_CERO,
       })),
     );
     // Zero-discount drafts round-trip faithfully as the canonical zero.
@@ -358,6 +362,7 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
         <div className="flex flex-col gap-4">
           <CartTable
             lineas={vista.porLinea}
+            puedeDescontar={esAdmin}
             onCantidadChange={(id, v) =>
               setLineas((prev) => editarLinea(prev, id, "cantidad", v))
             }
@@ -365,6 +370,12 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
               setLineas((prev) => editarLinea(prev, id, "precioUnitario", v))
             }
             onRemove={(id) => setLineas((prev) => quitarDelCarrito(prev, id))}
+            onDescuentoLineaChange={(id, parcial) =>
+              setLineas((prev) => editarDescuentoLinea(prev, id, parcial))
+            }
+            onDescuentoLineaClear={(id) =>
+              setLineas((prev) => limpiarDescuentoLinea(prev, id))
+            }
           />
           {/* Credit context strip (D6/R-V19): derived indicator — NO toggle
               control exists anywhere. "Cash (Consumidor Final)" when no client
