@@ -331,9 +331,12 @@ access identifier is the username, never the email) and walk:
    Con `facturaAutomatica=false`, sin stock duro o sin rango: `FACTURA_AUTOMATICA_FALTA`,
    `STOCK_INSUFICIENTE_BLOQUEO`, `NCF_AGOTADA/VENCIDA/SEC_INEXISTENTE` (el draft
    queda intacto — nada se quema).
-9. **Cancel draft vs Cancel sale** → *Cancel draft N* (BORRADOR) va a `CANCELADA`
-   sin efectos; *Cancel sale N* (CONFIRMADA) anula su factura (`VIGENTE → ANULADA`)
-   y repone stock (608). El NCF consumido jamás se revierte.
+9. **Cancel draft vs Void sale** → *Cancel draft N* (BORRADOR) va a `CANCELADA`
+   sin efectos. En una fila CONFIRMADA, la sesión administrativa ve *Void sale N*,
+   que abre un diálogo con motivo obligatorio en la UI y, al confirmar, anula su
+   factura (`VIGENTE → ANULADA`) y repone stock (608). El motivo lo exige solo la
+   UI: el servidor lo sigue aceptando opcional (R-V16). El NCF consumido jamás se
+   revierte.
 10. **No-payment boundary** → confirm there is no *Cobrar* / payment control
     anywhere (Fase 6 scope).
 

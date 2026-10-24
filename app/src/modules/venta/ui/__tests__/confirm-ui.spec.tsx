@@ -110,11 +110,11 @@ async function settle(): Promise<void> {
   });
 }
 
-async function renderPos(items: ListItem[]) {
+async function renderPos(items: ListItem[], esAdmin = false) {
   mockListar.mockResolvedValue(lista(items));
   mockClientes.mockResolvedValue({ ok: true as const, data: { items: [], total: 0, page: 1 } });
   mockProductos.mockResolvedValue({ ok: true as const, data: { items: [], total: 0, page: 1 } });
-  const result = render(<PosScreen esAdmin={false} />);
+  const result = render(<PosScreen esAdmin={esAdmin} />);
   await settle();
   return result;
 }
@@ -181,8 +181,8 @@ describe("POS confirm control (R-V14 5c slice)", () => {
     await waitFor(() => expect(screen.getByText(/B0200000101/)).toBeInTheDocument());
   });
 
-  it("renders CONFIRMADA rows with their NCF and a cancel (void) control routed through cancelarVentaAction", async () => {
-    await renderPos([CONFIRMADA_4]);
+  it("renders CONFIRMADA rows with their NCF and an admin-only void control routed through the reason Dialog", async () => {
+    await renderPos([CONFIRMADA_4], true);
     // CONFIRMADA rows are not editable draft rows anymore: no draft controls.
     expect(screen.queryByRole("button", { name: "Edit draft 4" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Confirm draft 4" })).toBeNull();
@@ -193,8 +193,21 @@ describe("POS confirm control (R-V14 5c slice)", () => {
     expect(row.textContent).toContain("B0200000101");
 
     mockCancelar.mockResolvedValue({ ok: true, data: { id: 4, estado: ESTADO_VENTA.CANCELADA } });
-    fireEvent.click(screen.getByRole("button", { name: "Cancel sale 4" }));
-    await waitFor(() => expect(mockCancelar).toHaveBeenCalledWith({ id: 4 }));
+    fireEvent.click(screen.getByRole("button", { name: "Void sale 4" }));
+
+    // R-V24: the control opens the mandatory-reason Dialog; nothing is voided yet.
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("Void sale #4");
+    expect(dialog.textContent).toContain("Formato 608");
+    expect(mockCancelar).not.toHaveBeenCalled();
+
+    fireEvent.change(within(dialog).getByLabelText("Reason for voiding"), {
+      target: { value: "  Customer rejected  " },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Void sale" }));
+    await waitFor(() =>
+      expect(mockCancelar).toHaveBeenCalledWith({ id: 4, motivo: "Customer rejected" }),
+    );
     await settle();
   });
 

@@ -19,68 +19,50 @@
  * E2E_PASSWORD, E2E_PRODUCT (default "Arroz").
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import "dotenv/config";
-import { Pool } from "pg";
+import { login } from "./utils/login";
+import { openDb, usuarioPrecond, type UsuarioPrecond } from "./utils/db";
+import {
+  CLIENTE_CREDITO_DEMO_NOMBRE,
+  E2E_PASSWORD,
+  E2E_PRODUCT,
+  E2E_USER,
+  buscarYAgregar,
+  guardarYConfirmar,
+  idClienteCreditoDemo,
+} from "./utils/venta-pos";
 
-const E2E_USER = process.env.E2E_USER ?? "e2e";
-const E2E_PASSWORD = process.env.E2E_PASSWORD ?? "";
-const E2E_PRODUCT = process.env.E2E_PRODUCT ?? "Arroz";
+// Superuser read for ASSERTIONS ONLY (RLS would tenant-filter the probe).
+const pool = openDb();
 
-// Superuser read for ASSERTIONS ONLY (RLS would tenant-filter the probe);
-// falls back to the app URL when DIRECT_URL is absent. Queries never mutate.
-const pool = new Pool({
-  connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
-});
-
-type Precond = {
-  usuarioId: number;
-  empresaId: number;
-  sucursalId: number;
-};
-
-let precond: Precond;
+let precond: UsuarioPrecond;
+/** Demo CREDITO client id; 0 when the seed row is absent (test self-skips). */
+let clienteIdCredito = 0;
 
 async function checkPreconditions(): Promise<void> {
-  const user = await pool.query(
-    `select u.id as "usuarioId", u."empresaId", u."sucursalId", r.nombre as rol
-       from "USUARIO" u
-       left join "USUARIO_ROL" ur on ur."usuarioId" = u.id
-       left join "ROL" r on r.id = ur."rolId"
-      where u."nombreUsuario" = $1 and u.activo = true`,
-    [E2E_USER],
-  );
-  if (user.rowCount === 0) {
-    throw new Error(
-      `E2E_USER "${E2E_USER}" not found in the precondition DB (DIRECT_URL/DATABASE_URL). ` +
-        `Create the user row there, then run pnpm seed:venta && pnpm seed:ncf && pnpm seed:cliente.`,
-    );
-  }
-  const row = user.rows[0];
-  if (row.rol !== "Administrador" && row.rol !== "Operador") {
-    throw new Error(`E2E_USER "${E2E_USER}" has rol "${row.rol}"; the POS requires Administrador/Operador.`);
-  }
+  precond = await usuarioPrecond(pool, E2E_USER);
 
   // The confirm emission gate: the empresa must auto-invoice (R-F1). The
   // flag lives on EMPRESA (`facturaAutomatica`); CONFIGURACION_EMPRESA is the
   // key/value params table (DESC_MAX, ITBIS validity…), not a boolean row.
   const cfg = await pool.query(
     `select "facturaAutomatica" from "EMPRESA" where id = $1`,
-    [row.empresaId],
+    [precond.empresaId],
   );
   if (cfg.rowCount === 0 || !cfg.rows[0].facturaAutomatica) {
-    throw new Error(`Empresa ${row.empresaId} has facturaAutomatica=false (R-F1 blocks confirm).`);
+    throw new Error(`Empresa ${precond.empresaId} has facturaAutomatica=false (R-F1 blocks confirm).`);
   }
 
   // B01/B02 ranges must exist for the user's empresa (seed:ncf).
   const ncf = await pool.query(
     `select "tipoNcf", "rangoInicio", "rangoFin", "secuenciaActual", activa
        from "NCF_SECUENCIA" where "empresaId" = $1 order by "tipoNcf"`,
-    [row.empresaId],
+    [precond.empresaId],
   );
   const tipos = ncf.rows.map((r) => r.tipoNcf);
   if (!tipos.includes("B01") || !tipos.includes("B02")) {
-    throw new Error(`Empresa ${row.empresaId} lacks B01/B02 NCF ranges — run pnpm seed:ncf.`);
+    throw new Error(`Empresa ${precond.empresaId} lacks B01/B02 NCF ranges — run pnpm seed:ncf.`);
   }
 
   // The E2E must sell a real stocked product at the user's branch.
@@ -89,31 +71,17 @@ async function checkPreconditions(): Promise<void> {
        from "PRODUCTO" p
        left join "INVENTARIO" i on i."productoId" = p.id and i."sucursalId" = $2
       where p.nombre = $1 and p.activo = true`,
-    [E2E_PRODUCT, row.sucursalId],
+    [E2E_PRODUCT, precond.sucursalId],
   );
   if (prod.rowCount === 0) {
-    throw new Error(`E2E_PRODUCT "${E2E_PRODUCT}" not found/active — seed products with stock at sucursal ${row.sucursalId}.`);
+    throw new Error(`E2E_PRODUCT "${E2E_PRODUCT}" not found/active — seed products with stock at sucursal ${precond.sucursalId}.`);
   }
   if (Number(prod.rows[0].cantidad) < 1) {
-    throw new Error(`"${E2E_PRODUCT}" has no stock at sucursal ${row.sucursalId} (cantidad=${prod.rows[0].cantidad}).`);
+    throw new Error(`"${E2E_PRODUCT}" has no stock at sucursal ${precond.sucursalId} (cantidad=${prod.rows[0].cantidad}).`);
   }
 
-  precond = {
-    usuarioId: row.usuarioId,
-    empresaId: row.empresaId,
-    sucursalId: row.sucursalId,
-  };
-}
-
-async function login(page: Page): Promise<void> {
-  await page.goto("/login");
-  await page.getByLabel("Usuario").fill(E2E_USER);
-  await page.getByLabel("Contraseña").fill(E2E_PASSWORD);
-  await page.getByRole("button", { name: "Ingresar" }).click();
-  // LANDING AUDIT (auth-tenant-selector, design D2): a multi-branch admin now
-  // lands on /selector-empresa-sucursal; a single-branch admin (current E2E seed,
-  // single branch) keeps /dashboard. Accept EITHER so the helper pins no wrong landing.
-  await page.waitForURL(/\/(dashboard|selector-empresa-sucursal)/, { timeout: 20_000 });
+  // Optional for the credit case: absence self-skips that test (task 5.13).
+  clienteIdCredito = await idClienteCreditoDemo(pool, precond.empresaId);
 }
 
 test.describe("confirm smoke (R-V15)", () => {
@@ -127,7 +95,7 @@ test.describe("confirm smoke (R-V15)", () => {
 
   test("draft → confirm → CONFIRMADA with NCF, plus the full DB observable chain", async ({ page }) => {
     test.skip(E2E_PASSWORD === "", "Set E2E_USER/E2E_PASSWORD (Supabase Auth) to run the smoke.");
-    await login(page);
+    await login(page, { user: E2E_USER, password: E2E_PASSWORD });
 
     await page.goto("/venta");
     await page.getByRole("heading", { name: "Point of sale" }).waitFor();
@@ -161,12 +129,24 @@ test.describe("confirm smoke (R-V15)", () => {
     expect(venta.rows[0]?.estado).toBe("CONFIRMADA");
 
     const factura = await pool.query(
-      `select ncf, estado, "tipoNcf" from "FACTURA" where "ventaId" = $1`,
+      `select id, ncf, estado, "tipoNcf", total from "FACTURA" where "ventaId" = $1`,
       [ventaId],
     );
     expect(factura.rowCount).toBe(1);
     expect(factura.rows[0].ncf).toBe(saleNcf);
     expect(factura.rows[0].estado).toBe("VIGENTE");
+
+    // R-V26/D8 contado COBRO gap: a cash sale auto-settles, so exactly ONE
+    // applied COBRO exists for the invoice and it covers the frozen total.
+    const pagos = await pool.query(
+      `select tipo, estado, monto from "PAGO"
+        where "facturaId" = $1 and "empresaId" = $2`,
+      [factura.rows[0].id, precond.empresaId],
+    );
+    expect(pagos.rowCount).toBe(1);
+    expect(pagos.rows[0].tipo).toBe("COBRO");
+    expect(pagos.rows[0].estado).toBe("APLICADO");
+    expect(Number(pagos.rows[0].monto)).toBe(Number(factura.rows[0].total));
 
     // The consumed NCF advances the range's sequence exactly to its %08d tail.
     const sec = await pool.query(
@@ -183,5 +163,53 @@ test.describe("confirm smoke (R-V15)", () => {
     expect(movs.rowCount).toBe(1);
     expect(movs.rows[0].tipoMovimiento).toBe("SALIDA_VENTA");
     expect(Number(movs.rows[0].cantidadNueva)).toBeLessThan(Number(movs.rows[0].cantidadAnterior));
+  });
+
+  /**
+   * R-V26/D8 credit divergence: the SAME flow with a CREDITO client must NOT
+   * auto-settle. No COBRO is created — the receivable stays collectable for
+   * fase 6 (ADR-017: balances are derived, never materialized on confirm).
+   */
+  test("credit client → confirm → CONFIRMADA + VIGENTE invoice with ZERO COBRO rows", async ({ page }) => {
+    test.skip(E2E_PASSWORD === "", "Set E2E_USER/E2E_PASSWORD (Supabase Auth) to run the smoke.");
+    test.skip(
+      clienteIdCredito === 0,
+      `Demo CREDITO client "${CLIENTE_CREDITO_DEMO_NOMBRE}" not seeded for empresa ${precond.empresaId} — run pnpm seed:bootstrap.`,
+    );
+    await login(page, { user: E2E_USER, password: E2E_PASSWORD });
+
+    await page.goto("/venta");
+    await page.getByRole("heading", { name: "Point of sale" }).waitFor();
+    await page.getByRole("combobox", { name: "Client selection" }).selectOption({
+      label: CLIENTE_CREDITO_DEMO_NOMBRE,
+    });
+    await buscarYAgregar(page, E2E_PRODUCT);
+
+    const { ventaId, ncf } = await guardarYConfirmar(page);
+    // The banner carries the emitted NCF (same copy shape as the cash path).
+    await expect(page.getByText(/Sale #\d+ confirmed — invoice B\d+/)).toBeVisible();
+    await expect(page.getByTestId(`venta-fila-${ventaId}`)).toContainText(ncf);
+
+    const venta = await pool.query(
+      `select estado from "VENTA" where id = $1 and "empresaId" = $2 and "sucursalId" = $3`,
+      [ventaId, precond.empresaId, precond.sucursalId],
+    );
+    expect(venta.rows[0]?.estado).toBe("CONFIRMADA");
+
+    const factura = await pool.query(
+      `select id, ncf, estado from "FACTURA" where "ventaId" = $1`,
+      [ventaId],
+    );
+    expect(factura.rowCount).toBe(1);
+    expect(factura.rows[0].ncf).toBe(ncf);
+    expect(factura.rows[0].estado).toBe("VIGENTE");
+
+    // Credit edge: nothing auto-collects. ZERO applied COBRO rows.
+    const pagos = await pool.query(
+      `select count(*)::int as n from "PAGO"
+        where "facturaId" = $1 and "empresaId" = $2 and tipo = 'COBRO' and estado = 'APLICADO'`,
+      [factura.rows[0].id, precond.empresaId],
+    );
+    expect(pagos.rows[0].n).toBe(0);
   });
 });

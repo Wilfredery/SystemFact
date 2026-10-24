@@ -16,6 +16,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
   actualizarVentaAction,
   cancelarVentaAction,
   confirmarVentaAction,
@@ -99,6 +109,14 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
     | { campo: "vuelto" }
     | { campo: "cantidad" | "precioUnitario"; productoId: number };
   const [keypadObjetivo, setKeypadObjetivo] = useState<KeypadObjetivo | null>(null);
+  // D5/R-V24: the anulación Dialog snapshots the row it acts on; `motivo` is the
+  // mandatory UI-gated reason (server keeps `motivo` OPTIONAL — R-V16 frozen).
+  const [anulacion, setAnulacion] = useState<{
+    id: number;
+    total: string;
+    ncf: string | null;
+  } | null>(null);
+  const [motivo, setMotivo] = useState("");
   const targetKey = keypadObjetivo === null
     ? (lineas[0] !== undefined
         ? { campo: "cantidad" as const, productoId: lineas[0].productoId }
@@ -255,6 +273,41 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
       return;
     }
     setMensaje({ kind: "ok", text: `Sale #${id} cancelled.` });
+    void recargarBorradores();
+  }
+
+  /**
+   * D5/R-V24: the admin "Void sale" control opens the mandatory-reason Dialog
+   * with the row snapshot. Non-admin sessions never render the control.
+   */
+  function abrirAnulacion(id: number) {
+    const fila = borradores.find((b) => b.id === id);
+    if (fila === undefined) return;
+    setAnulacion({ id, total: fila.total, ncf: fila.ncf });
+    setMotivo("");
+  }
+
+  function cerrarAnulacion() {
+    setAnulacion(null);
+    setMotivo("");
+  }
+
+  /**
+   * Fiscal void (R-V24/R-V16): same `cancelarVentaAction` as the draft cancel,
+   * now carrying the reason. The server stays the authorization and state
+   * authority; the reason is UI-mandatory only.
+   */
+  async function anularVenta(id: number) {
+    const r = await cancelarVentaAction({ id, motivo: motivo.trim() });
+    if (!r.ok) {
+      setMensaje({ kind: "error", code: r.error.code, text: r.error.message });
+      return;
+    }
+    setMensaje({
+      kind: "ok",
+      text: `Sale #${id} voided — invoice annulled (Formato 608), stock restocked.`,
+    });
+    cerrarAnulacion();
     void recargarBorradores();
   }
 
@@ -485,10 +538,58 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
         cargando={listaCargando}
         editandoId={editandoId}
         confirmandoId={confirmandoId}
+        puedeAnular={esAdmin}
         onLoad={(id) => void cargarBorrador(id)}
         onCancel={(id) => void cancelarBorrador(id)}
         onConfirm={(id) => void confirmarBorrador(id)}
+        onAnular={abrirAnulacion}
       />
+
+      {/* D5/R-V24: mandatory-reason void Dialog. Copy is design-frozen — the
+          "Formats the Anulada fiscal state" wording is rendered verbatim. */}
+      <Dialog
+        open={anulacion !== null}
+        onOpenChange={(open) => {
+          if (!open) cerrarAnulacion();
+        }}
+      >
+        <DialogContent aria-label="Void sale">
+          <DialogHeader>
+            <DialogTitle>Void sale #{anulacion?.id ?? ""}</DialogTitle>
+            <DialogDescription>
+              This annuls invoice NCF {anulacion?.ncf ?? "—"} (Formats the Anulada
+              fiscal state - Formato 608) and restocks the sale. This cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="anulacion-motivo">Reason for voiding</Label>
+            <Input
+              id="anulacion-motivo"
+              aria-label="Reason for voiding"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={cerrarAnulacion}>
+              Keep sale
+            </Button>
+            <Button
+              type="button"
+              size="pos"
+              className="text-danger"
+              disabled={motivo.trim() === ""}
+              onClick={() => {
+                if (anulacion === null) return;
+                void anularVenta(anulacion.id);
+              }}
+            >
+              Void sale
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

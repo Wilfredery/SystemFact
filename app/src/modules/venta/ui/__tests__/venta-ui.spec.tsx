@@ -585,4 +585,128 @@ describe("PosScreen numeric keypad (R-V23)", () => {
     await renderPos(false);
     expect(screen.getAllByRole("group", { name: "Numeric keypad" })).toHaveLength(1);
   });
+
+  // F2 slice E (task 5.11, R-V24/D5): the CONFIRMADA void flow — an admin-only
+  // control that opens a mandatory-reason Dialog and routes the reason to the
+  // unchanged `cancelarVentaAction` (server keeps `motivo` optional, R-V16).
+  describe("void sale Dialog (R-V24)", () => {
+    type ListItem = {
+      id: number;
+      fecha: string;
+      estado: string;
+      total: string;
+      descuento: string;
+      clienteNombre: string;
+      usuarioNombre: string;
+      ncf: string | null;
+    };
+
+    function lista(items: ListItem[]) {
+      return { ok: true as const, data: { items, total: items.length, page: 1, limit: 25 } };
+    }
+
+    const BORRADOR_3: ListItem = {
+      id: 3,
+      fecha: new Date().toISOString(),
+      estado: ESTADO_VENTA.BORRADOR,
+      total: "118.00",
+      descuento: "0.00",
+      clienteNombre: "Consumidor Final",
+      usuarioNombre: "Ana",
+      ncf: null,
+    };
+
+    const CONFIRMADA_4: ListItem = {
+      ...BORRADOR_3,
+      id: 4,
+      estado: ESTADO_VENTA.CONFIRMADA,
+      ncf: "B0200000101",
+    };
+
+    it("admin: the Void control opens the Dialog and nothing is voided before submit", async () => {
+      mockListar.mockResolvedValue(lista([CONFIRMADA_4]));
+      await renderPos(true);
+
+      fireEvent.click(await screen.findByRole("button", { name: "Void sale 4" }));
+
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog.textContent).toContain("Void sale #4");
+      expect(dialog.textContent).toContain("B0200000101");
+      expect(dialog.textContent).toContain("Formato 608");
+      expect(mockCancelar).not.toHaveBeenCalled();
+    });
+
+    it("an empty (or whitespace-only) motivo blocks submission and never invokes the action", async () => {
+      mockListar.mockResolvedValue(lista([CONFIRMADA_4]));
+      await renderPos(true);
+
+      fireEvent.click(await screen.findByRole("button", { name: "Void sale 4" }));
+      const dialog = await screen.findByRole("dialog");
+      const submit = within(dialog).getByRole("button", { name: "Void sale" });
+      expect(submit).toBeDisabled();
+
+      fireEvent.change(within(dialog).getByLabelText("Reason for voiding"), {
+        target: { value: "   " },
+      });
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      await settle();
+      expect(mockCancelar).not.toHaveBeenCalled();
+    });
+
+    it("submitting a motivo calls cancelarVentaAction with the trimmed reason and posts the fiscal copy", async () => {
+      mockListar.mockResolvedValue(lista([CONFIRMADA_4]));
+      mockCancelar.mockResolvedValue({
+        ok: true as const,
+        data: { id: 4, estado: ESTADO_VENTA.CANCELADA },
+      });
+      await renderPos(true);
+
+      fireEvent.click(await screen.findByRole("button", { name: "Void sale 4" }));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.change(within(dialog).getByLabelText("Reason for voiding"), {
+        target: { value: "  Customer rejected the goods  " },
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Void sale" }));
+
+      await waitFor(() =>
+        expect(mockCancelar).toHaveBeenCalledWith({
+          id: 4,
+          motivo: "Customer rejected the goods",
+        }),
+      );
+      const status = await screen.findByRole("status");
+      expect(status.textContent).toContain(
+        "Sale #4 voided — invoice annulled (Formato 608), stock restocked.",
+      );
+      // The Dialog closes; the list refresh drops the CANCELADA row.
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(mockListar).toHaveBeenCalled();
+    });
+
+    it("non-admin sessions never see the Void control", async () => {
+      mockListar.mockResolvedValue(lista([CONFIRMADA_4]));
+      await renderPos(false);
+
+      expect(await screen.findByTestId("venta-fila-4")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Void sale 4" })).toBeNull();
+    });
+
+    it("BORRADOR cancel keeps working with no Dialog and no motivo", async () => {
+      mockListar.mockResolvedValue(lista([BORRADOR_3]));
+      mockCancelar.mockResolvedValue({
+        ok: true as const,
+        data: { id: 3, estado: ESTADO_VENTA.CANCELADA },
+      });
+      await renderPos(true);
+
+      fireEvent.click(await screen.findByRole("button", { name: "Cancel draft 3" }));
+
+      await waitFor(() => expect(mockCancelar).toHaveBeenCalledWith({ id: 3 }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      await settle();
+      const status = await screen.findByRole("status");
+      expect(status.textContent).toContain("Sale #3 cancelled.");
+    });
+  });
 });

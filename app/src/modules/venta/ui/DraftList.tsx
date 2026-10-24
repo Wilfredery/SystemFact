@@ -5,8 +5,10 @@
  * BORRADOR drafts AND CONFIRMADA rows with their emitted NCF. Draft rows keep
  * load/edit, cancel and the fase-5c CONFIRM control (single-shot: disabled while
  * a confirm is in flight so a double-click never consumes twice, R-V15).
- * CONFIRMADA rows render their NCF plus a cancel (608 void) control routed
- * through `cancelarVentaAction`; they lose ALL draft affordances (no edit, no
+ * CONFIRMADA rows render their NCF, the return control and — for admin
+ * sessions only — a `Void sale` control that opens the mandatory-reason Dialog
+ * (R-V24, D5); the Dialog submit routes to `cancelarVentaAction` and the row
+ * leaves the list. CONFIRMADA rows lose ALL draft affordances (no edit, no
  * confirm, no draft-cancel — a confirmed sale is no longer a draft). In-place
  * edit is offered only for zero-discount drafts (see `PosScreen.cargarBorrador`
  * — a persisted `PORCENTAJE` discount is not recoverable, ADR-018).
@@ -39,18 +41,25 @@ export function DraftList({
   cargando,
   editandoId,
   confirmandoId,
+  puedeAnular,
   onLoad,
   onCancel,
   onConfirm,
+  onAnular,
 }: {
   readonly items: readonly BorradorFila[];
   readonly cargando: boolean;
   readonly editandoId: number | null;
   /** Sale id whose confirm is in flight; its button is disabled (single-shot). */
   readonly confirmandoId: number | null;
+  /** UI gate only (D5): non-admin sessions never see the Void control; the
+   * server action's role path stays the real authorization (R-V16). */
+  readonly puedeAnular: boolean;
   readonly onLoad: (id: number) => void;
   readonly onCancel: (id: number) => void;
   readonly onConfirm: (id: number) => void;
+  /** Opens the mandatory-reason void Dialog (R-V24); never cancels directly. */
+  readonly onAnular: (id: number) => void;
 }) {
   return (
     <Card aria-label="My drafts">
@@ -131,17 +140,19 @@ export function DraftList({
                     ) : (
                       <>
                         <DevolverButton ventaId={d.id} />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="pos"
-                          className="text-danger"
-                          onClick={() => onCancel(d.id)}
-                          aria-label={`Cancel sale ${d.id}`}
-                          title="Cancel the sale and void (anular) its fiscal invoice"
-                        >
-                          Cancel sale
-                        </Button>
+                        {puedeAnular && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="pos"
+                            className="text-danger"
+                            onClick={() => onAnular(d.id)}
+                            aria-label={`Void sale ${d.id}`}
+                            title="Void the sale and annul (anular) its fiscal invoice"
+                          >
+                            Void sale
+                          </Button>
+                        )}
                       </>
                     )}
                   </div>

@@ -13,27 +13,15 @@
  * is covered by the jest loader/use-case suites and the integration harness.
  */
 
-import { expect, test, type Page } from "@playwright/test";
-
-const E2E_USER = process.env.E2E_USER ?? "";
-
-async function login(page: Page): Promise<void> {
-  await page.goto("/login");
-  await page.getByLabel("Usuario").fill(E2E_USER);
-  await page.getByLabel("Contraseña").fill(process.env.E2E_PASSWORD ?? "");
-  await page
-    .getByRole("button", { name: "Ingresar" })
-    .click();
-  await page.waitForURL(/\/(dashboard|selector-empresa-sucursal)/, {
-    timeout: 20_000,
-  });
-}
+import { expect, test } from "@playwright/test";
+import { login } from "./utils/login";
+import { E2E_PASSWORD, E2E_USER } from "./utils/venta-pos";
 
 test.describe("selector-empresa-sucursal (auth-tenant-selector)", () => {
   test.skip(E2E_USER === "", "Set E2E_USER/E2E_PASSWORD to run the smoke.");
 
   test("SEL-SLOT-05-A: the header trigger navigates to the selector", async ({ page }) => {
-    await login(page);
+    await login(page, { user: E2E_USER, password: E2E_PASSWORD });
 
     const trigger = page.getByTestId("cambiar-sucursal");
     await expect(trigger).toBeVisible();
@@ -44,7 +32,7 @@ test.describe("selector-empresa-sucursal (auth-tenant-selector)", () => {
   });
 
   test("SEL-RENDER-02-A: the empresa appears exactly once, as static content", async ({ page }) => {
-    await login(page);
+    await login(page, { user: E2E_USER, password: E2E_PASSWORD });
     await page.goto("/selector-empresa-sucursal");
 
     const heading = page.getByTestId("selector-empresa");
@@ -57,7 +45,7 @@ test.describe("selector-empresa-sucursal (auth-tenant-selector)", () => {
   });
 
   test("SEL-NAV-06-B: re-confirming the current branch keeps the session and lands on /dashboard", async ({ page }) => {
-    await login(page);
+    await login(page, { user: E2E_USER, password: E2E_PASSWORD });
     await page.goto("/selector-empresa-sucursal");
 
     await expect(page.getByTestId("selector-branch-select")).toBeVisible();

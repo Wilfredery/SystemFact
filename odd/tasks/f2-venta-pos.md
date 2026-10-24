@@ -21,7 +21,7 @@ Binding specs (verbatim): `openspec/changes/f2-venta-pos/tasks.md` (tasks 3.x/4.
 | Slice B (tasks 2.1–2.12) | — | inline | done | `02fb45a` |
 | Slice C (tasks 3.1–3.5) | S1 | inline | done (gate re-run pending in S5) | `8137a59` |
 | Slice D (tasks 4.1–4.7) | S2 | inline | done (53/53 UI suites, tsc 0, lint 0 errors, build 0) | `6707de5` |
-| Slice E (tasks 5.1–5.14) | S3 | inline | open | — |
+| Slice E (tasks 5.1–5.14) | S3 | inline | done except 5.1/5.6/5.14 e2e run (env-blocked locally, CI ratifies) | pending commit |
 | Bump + gates + PR (6.1–6.8) | S4,S5 | inline | open | — |
 
 ## Log
@@ -31,3 +31,4 @@ Binding specs (verbatim): `openspec/changes/f2-venta-pos/tasks.md` (tasks 3.x/4.
 - L3 (2026-10-23): Slice B committed `02fb45a`; verification evidence in `openspec/changes/f2-venta-pos/apply-progress.md`. Next: slice C task 3.1.
 - L4 (2026-10-23): Slice C committed `8137a59` (per-line discount cart wiring, 5 files / +326). Slice D committed `6707de5` (vuelto panel + numeric keypad, 8 files / +416) with observed verification: 53/53 UI suites, `tsc --noEmit` 0, lint 0 errors, `pnpm build` 0; `dineroRecibido` stays display-only (PosScreen/Totales/venta-ui spec, never in payload). Slice C per-commit gate evidence was not captured to Engram at commit time — re-run in the S5 final gate, not assumed. Next: slice E task 5.1.
 - L5 (2026-10-24): Workspace cleanup before slice E (owner-authorized): restored `app/package.json` + `app/pnpm-lock.yaml` to HEAD (they were `v0.16.2` master content, not branch work), ignored `*.penpot` (6 MB local design binary, never to be committed), committed Next-generated `app/AGENTS.md`/`app/CLAUDE.md`, the root `AGENTS.md` CI/CD trim, and this tracker; merged `origin/master` (`3c4455f`) into the branch. Rationale: one coherent work unit per commit, no binary in history, no docs rewrite inside the feature PR.
+- L6 (2026-10-24): Slice E implemented inline. e2e utils extracted (`e2e/utils/login.ts`, `db.ts`, `venta-pos.ts`; four specs swapped, helpers byte-equivalent in behavior). R-V24 admin-only Void sale Dialog in `DraftList`/`PosScreen` (reason UI-mandatory, `zCancelarVentaInput.motivo` stays optional — R-V16 frozen). Contado case gained the `PAGO (COBRO/APLICADO, monto = factura.total)` assertion; new credit case proves ZERO COBRO. Observed gate: jest 30 suites / 320 tests green, `tsc --noEmit` 0, lint 0 errors, `pnpm build` 0. `pnpm e2e` attempted and env-blocked: no Postgres on `localhost:5433` (`AggregateError` in `usuarioPrecond`), so 5.1/5.6/5.14 are CI-ratified, not locally proven. Next: commit slice E, then 6.1–6.8 (version 0.17.0 + single PR).
