@@ -1,3 +1,8 @@
+## [0.16.2](https://github.com/Wilfredery/SystemFact/compare/v0.16.1...v0.16.2) (2026-10-22)
+
+### Miscellaneous Chores
+
+* **deps:** bump @types/node to 24 to match the Node.js 24 runtime (installed 24.22.1 post-security-update); no runtime behavior change, 	sc --noEmit and 1262 jest tests green.
 ## [0.16.1](https://github.com/Wilfredery/SystemFact/compare/v0.16.0...v0.16.1) (2026-10-14)
 
 ### Bug Fixes
