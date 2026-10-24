@@ -1,3 +1,14 @@
+## [0.17.0](https://github.com/Wilfredery/SystemFact/compare/v0.16.2...v0.17.0) (2026-10-24)
+
+### Features
+
+* **venta:** F0 POS restyle with the fiscal preview parity contract — light-only token surface, touch-first controls and the empty-cart guard, while every displayed figure keeps coming from the same pure domain calculators the server re-runs on save.
+* **venta:** credit surfaces — `ConfirmarVentaOutput.credito` exposes the derived form (CONTADO/CREDITO) and due date as presentation-only data (ADR-017: nothing persisted), rendered as the read-only credit strip.
+* **venta:** per-line discount wiring — admin-gated amount/percentage inputs compose the line money through the released calculators, with the cap and actor decided server-side (R-V21, ADR-018 preview parity).
+* **venta:** vuelto panel and shared numeric keypad — reference-only VUELTO/FALTA display with an inert SIN_DATOS state; the received amount never enters any payload.
+* **venta:** admin anulación dialog — CONFIRMADA rows gain an admin-only *Void sale* control that requires a reason in the UI and routes through `cancelarVentaAction`; the fiscal outcome (annulled invoice, Formato 608, restocked stock) is named in the success copy.
+* **e2e:** shared POS harness (`login`, `db`, `venta-pos` helpers) reused by the four specs, plus the contado COBRO assertion and a self-skipping credit case that proves confirm settles nothing for a CREDITO client.
+
 ## [0.16.2](https://github.com/Wilfredery/SystemFact/compare/v0.16.1...v0.16.2) (2026-10-22)
 
 ### Miscellaneous Chores
