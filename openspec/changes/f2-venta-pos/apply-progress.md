@@ -43,11 +43,10 @@ pnpm e2e (attempted, env-gated) → EXIT: 1 with 3 AggregateError precondition D
 | Runtime harness command/scenario + exact result | `pnpm build` (Next prod build, real router compile of /venta) exit 0; `pnpm e2e` attempted → env-blocked at DB precondition (AggregateError, no UI assertion reached); runtime E2E proof delegated to CI per env-gating contract — flagged honestly, 1.9 left unchecked |
 | Rollback boundary | `git revert 2e89caf` → cosmetic only; no state/flow change; slices B–E depend on no class names from slice A; native-select semantics byte-stable |
 
-## Not done (honest — remaining slices, DO NOT start Slice B in this batch)
+## Not done (honest — remaining work before the single PR closes)
 
-- Phase 2 Slice B: /credit surfaces — credito.ts, credito.spec.ts, cliente DTO contract test, D7 chain (application + repository + http + actions test), selector/PosScreen consumption, R-V19 prose normalization, regression net (tasks 2.1–2.12)
-- Phase 3 Slice C: per-line discount wiring (tasks 3.1–3.5)
-- Phase 4 Slice D: vuelto panel + numeric keypad (tasks 4.1–4.7)
-- Phase 5 Slice E: anulación Dialog + e2e utils + credit-path coverage (tasks 5.1–5.14)
-- Phase 6: version bump 0.16.1 → 0.17.0 + final gates + PR (tasks 6.1–6.8)
-- Open carry-over: 1.9 e2e flow-proof (env-blocked locally; CI ratifies)
+- Slices B, C, D and E are committed (`02fb45a`, `8137a59`, `6707de5`, `a98dfe3`); the bump is `573a570`.
+- Open carry-over: 1.9 e2e flow-proof and slice E tasks 5.1/5.6/5.14 (`pnpm e2e`) are env-blocked locally — no Postgres on `localhost:5433` (`AggregateError` in `usuarioPrecond`, `app/e2e/utils/db.ts:34`); CI ratifies.
+- Remaining: open the single PR (task 6.7). Nothing else in this change is unwritten.
+
+bump validated: 0.17.0
