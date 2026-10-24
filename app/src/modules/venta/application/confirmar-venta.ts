@@ -84,6 +84,19 @@ export interface ConfirmarVentaOutput {
   readonly itbis: string;
   readonly descuento: string;
   readonly total: string;
+  /**
+   * Display-only credit verdict (D7, R-V25): `forma` mirrors the step-5c gate
+   * local; a CREDITO verdict carries the applied term (from the step-4 client
+   * read's one-column select extension) and the FACTURA emission instant
+   * (`factura.fechaEmision`, NOT `venta.fecha` — FIN-2/ADR-017 anchors the
+   * due-date display on invoice emission; the SD calendar conversion is done
+   * in the pure display layer `venta/ui/credito.ts`).
+   */
+  readonly credito: { readonly forma: "CONTADO" } | {
+    readonly forma: "CREDITO";
+    readonly plazoCreditoDias: number;
+    readonly fechaEmision: string;
+  };
 }
 
 export type ConfirmarVentaResult =
@@ -364,6 +377,14 @@ export async function confirmarVenta(
       correlativoInterno,
       ...totales,
       descuento: venta.descuento,
+      credito:
+        credito.forma === "CREDITO"
+          ? {
+              forma: "CREDITO",
+              plazoCreditoDias: cliente.plazoCreditoDias,
+              fechaEmision: factura.fechaEmision.toISOString(),
+            }
+          : { forma: "CONTADO" },
     },
   };
   return warnings.length > 0 ? { ...resultado, warnings } : resultado;

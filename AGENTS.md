@@ -92,84 +92,39 @@ These rules derive from the canonical engineering constitution in the project do
 - Prisma migrations always in their own reviewable commit, never mixed with feature changes.
 
 ## CI/CD (GitHub Actions)
-- **⚠️ VERSIONING POLICY (2026-09-15, SUPERSEDES EVERYTHING BELOW): automatic tagging is PARKED.**
-  The release-please loop never achieved a reliable closed cycle (legacy-title anchors lost on
-  squash merges #27/#31/#35/#37; silent success runs; PR #41's parseable-title proof still failed
-  with exit 2 and the bot relapsed to legacy titles with a duplicated-changelog proposal #42).
-  Cost of fighting the bot exceeded its value. **New human-driven protocol:**
-  1. User notifies the agent after merging a completed PR.
-  2. Agent prepares the version bump (`app/package.json` + `app/CHANGELOG.md` +
-     `.release-please-manifest.json`), opens a `chore: release X.Y.Z` PR, and the user squash-merges.
-     OR simpler: user merges feature PR → notifies agent → agent prepares tag notes and the user
-     creates the `vX.Y.Z` tag + GitHub Release on the release commit from the GitHub Releases UI.
-  3. Semver input unchanged: `feat` → MINOR, `fix`/`perf`/chore(release)/docs → PATCH, `!`/BREAKING
-     CHANGE → MINOR while pre-1.0.
-  4. Do NOT invest more tokens debugging release-please unless the user explicitly re-opens that
-     effort. Merge rule below (Squash and merge) still applies to any release PR created by hand.
-  The `.github/workflows/release-please.yml` workflow may stay enabled but its output is
-  informational; never treat a silent run as a versioning failure again — manual is the version
-  of record. Anything below this banner is historical context, not current policy.
-- **⚠️ RELEASE CONVENTION (2026-09-18, maintainer-approved — binding for agents):**
-  1. **Every feature/fix/refactor PR carries its own version bump.** `app/package.json` +
-     `.release-please-manifest.json` + `app/CHANGELOG.md` are edited IN the PR (its final patch
-     commit), so master never stacks un-bumped releases. The standalone `chore(release)` PR is
-     reserved for (a) retro-syncs when a bump was missed, or (b) the closes of genuine
-     multi-PR chains where the maintainer explicitly says "bumpra al cierre".
-  2. Semver: `feat` → MINOR; `fix`/`perf`/`chore(release)`/`docs`/`test`/`refactor` → PATCH
-     (in pre-1.0); `!`/BREAKING CHANGE → MINOR pre-1.0. Tag as annotated `vX.Y.Z` at the
-     squash-merge commit + GitHub Release with compare notes (like v0.11.2–v0.11.5).
-  3. **UTF-8 BOM rule (machine-consumed files):** NEVER write versioned config/text
-     (`app/package.json`, `.release-please-manifest.json`, `app/CHANGELOG.md`, tsconfig, YAML
-     consumed by Node tooling) with PowerShell 5.1 `Set-Content -Encoding UTF8` — it silently
-     prepends a BOM (EF BB BF) and breaks Node parsers in CI (pnpm/action-setup JSON.parse
-     fails with "Unexpected token '?'"; root cause of the PR #59 CI break). Write with
-     `[IO.File]::WriteAllText/WriteAllBytes` using `UTF8Encoding($false)`, or verify
-     `bytes[0] -ne 0xEF` after writing. Sonar TS sensors tolerate the BOM; Node tooling does not.
 - `.github/workflows/ci.yml` — runs on every PR targeting `master` and again on `master`
   after the merge: ESLint, strict typecheck, `prisma validate`, unit tests, integration tests
   against a real Postgres 16 (RLS enforced via the `systemfact_app` role), production build and
   a Conventional Commits guard. The aggregate job **CI gate** is the single required status check.
-- `.github/workflows/release-please.yml` — on every merge to `master` it refreshes ONE release
-  PR with the next version (`app/package.json`) and `app/CHANGELOG.md`; merging that PR creates
-  the `vX.Y.Z` tag and publishes the GitHub Release. It never pushes to `master` directly.
-  Config: `release-please-config.json` + `.release-please-manifest.json`.
-- **MANDATORY: merge release PRs (`release-please--branches--*`) with "Squash and merge", NEVER
-  "Create a merge commit".** release-please detects the merged release PR by the message of the
-  pushed commit; a merge commit ("Merge pull request #N...") breaks that detection, so the run
-  ends green but silently creates NO tag and NO release (happened on v0.2.0, PR #27 — tag had to
-  be created manually). With squash, the commit message is the PR title ("chore(master): release
-  systemfact X.Y.Z") and the tag is created automatically.
-- **Silent runs without a release PR (diagnose in this order):** if a brand-new `feat` commit
-  landed on `master` but release-please shows "success" with NO output ("release_created",
-  "tag_name", "pr" all empty), suspect a stuck state machine, not a missing commit:
-  1. Check open PRs: is there a `chore: release master` PR? If not present, then:
-  2. Labels on PAST release PRs (closed, `release-please--branches--*` base): label
-     `autorelease: pending` on any MERGED release PR makes every future run abort with
-     "There are untagged, merged release PRs outstanding - aborting". Happened after PR #27
-     (v0.2.0 was tagged manually, so the bot's own pending state could never resolve).
-  3. Unstick (documented escape hatch): if the tag/release exists manually, replace the label
-     with `autorelease: tagged` ("already processed"), then `workflow_dispatch` the Release
-     workflow and verify the new release PR appears (v0.3.0 via PR #31 after this fix).
-  Always report a stalled release run back to the user explicitly — silence is not success.
-- **Root cause fixed (PR #39): `component: systemfact` was REMOVED from `release-please-config.json`**
-  and the title pattern is now `chore: release ${version}`. With the component key present and
-  `include-component-in-tag: false`, release-please failed BOTH ways: the bot titled its release
-  PR `chore: release master` (legacy default, component token missing on empty component), and
-  after merging, the workflow's re-parse produced `component: undefined` ≠ configured
-  `systemfact` → tag never created → "untagged, merged release PRs outstanding" → every run
-  aborted (v0.2.0 #27, v0.3.0 #31, v0.4.0-adjacent #35, v0.4.1 #37 — all needed manual tags).
-  From #39 onward: release PR title `chore: release X.Y.Z` round-trips through the parser and
-  the tag + GitHub Release are created automatically right after the squash merge. Tags only
-  need manual creation for release PRs merged with the legacy title (immutable once merged).
-- Commit subjects are the release input: `feat` → MINOR, `fix`/`perf` → PATCH, `!`/BREAKING
-  CHANGE → MINOR while pre-1.0 (`bump-minor-pre-major`). Validate locally:
-  `pnpm lint:commits --from origin/master --to HEAD`.
 - E2E (Playwright) runs only when the repo secrets `E2E_USER`, `E2E_PASSWORD`,
   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` exist; otherwise the job skips
   with a notice instead of failing. Optional repo variable `E2E_PRODUCT` (default `Arroz`).
-- One-time repo setting: Settings → Actions → General → allow GitHub Actions to create and approve
-  pull requests, so release-please can open its PR. Optional secret `RELEASE_PLEASE_TOKEN` (PAT)
-  if you also want CI to run on the release PR.
+
+### Versioning — human-driven (2026-09-15; release-please automatic tagging is PARKED)
+- Release-please automatic tagging is parked permanently: its output (`.github/workflows/
+  release-please.yml`) is informational only. Manual versioning is the version of record.
+  Never debug release-please unless the user explicitly re-opens that effort.
+- Protocol: user merges a feature/fix PR and notifies the agent → user creates the
+  annotated `vX.Y.Z` tag + GitHub Release on the release commit (compare notes like
+  v0.11.2–v0.11.5), OR the agent opens a `chore: release X.Y.Z` PR to squash-merge.
+- Semver (pre-1.0): `feat` → MINOR; `fix`/`perf`/`chore(release)`/`docs`/`test`/`refactor`
+  → PATCH; `!`/BREAKING CHANGE → MINOR. Validate: `pnpm lint:commits --from origin/master --to HEAD`.
+
+### Release convention (2026-09-18, maintainer-approved — binding)
+- **Every feature/fix/refactor PR carries its own version bump** (`app/package.json` +
+  `.release-please-manifest.json` + `app/CHANGELOG.md` edited in the PR's final patch commit),
+  so `master` never stacks un-bumped releases. A standalone `chore(release)` PR is only for
+  retro-syncs of missed bumps or explicit multi-PR chains ("bump at close").
+- **UTF-8 BOM rule (machine-consumed files):** NEVER write versioned config/text
+  (`app/package.json`, `.release-please-manifest.json`, `app/CHANGELOG.md`, tsconfig, YAML
+  consumed by Node tooling) with PowerShell 5.1 `Set-Content -Encoding UTF8` — it prepends a
+  BOM (EF BB BF) that breaks Node JSON parsers in CI (root cause of the PR #59 CI break).
+  Write with `[IO.File]::WriteAllText/WriteAllBytes` using `UTF8Encoding($false)`, or verify
+  `bytes[0] -ne 0xEF` after writing. Sonar TS sensors tolerate the BOM; Node tooling does not.
+- **Any hand-made release PR merges with "Squash and merge", NEVER "Create a merge commit"** —
+  release-please detects the merged release PR by the pushed commit's message.
+- Historical release-please diagnosis, silent-run escape hatches, and root-cause notes
+  (PRs #27–#42): `docs/release-please-historia.md`.
 
 ## Definition of Done
 A feature is done when it: (1) meets the requirement + acceptance criteria;

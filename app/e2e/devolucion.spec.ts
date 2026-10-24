@@ -27,65 +27,36 @@
 
 import { test, expect, type Page } from "@playwright/test";
 import "dotenv/config";
-import { Pool } from "pg";
-
-const E2E_USER = process.env.E2E_USER ?? "e2e";
-const E2E_PASSWORD = process.env.E2E_PASSWORD ?? "";
-const E2E_PRODUCT = process.env.E2E_PRODUCT ?? "Arroz";
+import { login } from "./utils/login";
+import { openDb, usuarioPrecond, type UsuarioPrecond } from "./utils/db";
+import { E2E_PASSWORD, E2E_PRODUCT, E2E_USER } from "./utils/venta-pos";
 
 // Superuser read for ASSERTIONS ONLY (RLS would tenant-filter the probe);
 // queries never mutate.
-const pool = new Pool({
-  connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
-});
+const pool = openDb();
 
-type Precond = {
-  usuarioId: number;
-  empresaId: number;
-  sucursalId: number;
-};
-
-let precond: Precond;
+let precond: UsuarioPrecond;
 
 async function checkPreconditions(): Promise<void> {
-  const user = await pool.query(
-    `select u.id as "usuarioId", u."empresaId", u."sucursalId", r.nombre as rol
-       from "USUARIO" u
-       left join "USUARIO_ROL" ur on ur."usuarioId" = u.id
-       left join "ROL" r on r.id = ur."rolId"
-      where u."nombreUsuario" = $1 and u.activo = true`,
-    [E2E_USER],
-  );
-  if (user.rowCount === 0) {
-    throw new Error(
-      `E2E_USER "${E2E_USER}" not found in the precondition DB (DIRECT_URL/DATABASE_URL). ` +
-        `Create the user row there, then run pnpm seed:venta && pnpm seed:ncf && pnpm seed:cliente.`,
-    );
-  }
-  const row = user.rows[0];
-  if (row.rol !== "Administrador" && row.rol !== "Operador") {
-    throw new Error(
-      `E2E_USER "${E2E_USER}" has rol "${row.rol}"; the return requires Administrador/Operador.`,
-    );
-  }
+  precond = await usuarioPrecond(pool, E2E_USER);
 
   const cfg = await pool.query(
     `select "facturaAutomatica" from "EMPRESA" where id = $1`,
-    [row.empresaId],
+    [precond.empresaId],
   );
   if (cfg.rowCount === 0 || !cfg.rows[0].facturaAutomatica) {
-    throw new Error(`Empresa ${row.empresaId} has facturaAutomatica=false (R-F1 blocks confirm).`);
+    throw new Error(`Empresa ${precond.empresaId} has facturaAutomatica=false (R-F1 blocks confirm).`);
   }
 
   // B01/B02 for the confirm emission AND B04 for the credit note (seed:ncf).
   const ncf = await pool.query(
     `select "tipoNcf" from "NCF_SECUENCIA" where "empresaId" = $1 order by "tipoNcf"`,
-    [row.empresaId],
+    [precond.empresaId],
   );
   const tipos = ncf.rows.map((r) => r.tipoNcf);
   if (!tipos.includes("B01") || !tipos.includes("B02") || !tipos.includes("B04")) {
     throw new Error(
-      `Empresa ${row.empresaId} lacks B01/B02/B04 NCF ranges — run pnpm seed:ncf.`,
+      `Empresa ${precond.empresaId} lacks B01/B02/B04 NCF ranges — run pnpm seed:ncf.`,
     );
   }
 
@@ -94,35 +65,18 @@ async function checkPreconditions(): Promise<void> {
        from "PRODUCTO" p
        left join "INVENTARIO" i on i."productoId" = p.id and i."sucursalId" = $2
       where p.nombre = $1 and p.activo = true`,
-    [E2E_PRODUCT, row.sucursalId],
+    [E2E_PRODUCT, precond.sucursalId],
   );
   if (prod.rowCount === 0) {
     throw new Error(
-      `E2E_PRODUCT "${E2E_PRODUCT}" not found/active — seed products with stock at sucursal ${row.sucursalId}.`,
+      `E2E_PRODUCT "${E2E_PRODUCT}" not found/active — seed products with stock at sucursal ${precond.sucursalId}.`,
     );
   }
   if (Number(prod.rows[0].cantidad) < 1) {
     throw new Error(
-      `"${E2E_PRODUCT}" has no stock at sucursal ${row.sucursalId} (cantidad=${prod.rows[0].cantidad}).`,
+      `"${E2E_PRODUCT}" has no stock at sucursal ${precond.sucursalId} (cantidad=${prod.rows[0].cantidad}).`,
     );
   }
-
-  precond = {
-    usuarioId: row.usuarioId,
-    empresaId: row.empresaId,
-    sucursalId: row.sucursalId,
-  };
-}
-
-async function login(page: Page): Promise<void> {
-  await page.goto("/login");
-  await page.getByLabel("Usuario").fill(E2E_USER);
-  await page.getByLabel("Contraseña").fill(E2E_PASSWORD);
-  await page.getByRole("button", { name: "Ingresar" }).click();
-  // LANDING AUDIT (auth-tenant-selector, design D2): a multi-branch admin now
-  // lands on /selector-empresa-sucursal; a single-branch admin (current E2E seed,
-  // single branch) keeps /dashboard. Accept EITHER so the helper pins no wrong landing.
-  await page.waitForURL(/\/(dashboard|selector-empresa-sucursal)/, { timeout: 20_000 });
 }
 
 /** Draft + confirm a one-line sale (fase-5c harness) to obtain a RETURNABLE row. */
@@ -161,7 +115,7 @@ test.describe("devolucion smoke (fase-5d task 2.3)", () => {
     page,
   }) => {
     test.skip(E2E_PASSWORD === "", "Set E2E_USER/E2E_PASSWORD (Supabase Auth) to run the smoke.");
-    await login(page);
+    await login(page, { user: E2E_USER, password: E2E_PASSWORD });
 
     const { ventaId, ncf: ventaNcf } = await crearVentaConfirmada(page);
 

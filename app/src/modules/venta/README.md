@@ -34,7 +34,7 @@ deferred to 5c when the board is available.
 | `ui/CartTable.tsx` | Live cart lines with qty/price editing and per-line ITBIS. |
 | `ui/DiscountPanel.tsx` | Header discount, rendered only for `esAdmin` (UI gate; the cap + actor are server-side, R-V8). |
 | `ui/Totales.tsx` | Totals with the gravado/exento breakdown (returned-only figures, R-V6). |
-| `ui/DraftList.tsx` | "My drafts" (BORRADOR, own user) with Edit/Cancel wired to the PR-2 actions. In-place **Edit** is gated to zero-discount drafts (see below); discounted drafts are view/cancel-only. |
+| `ui/DraftList.tsx` | "My drafts" (BORRADOR, own user) with Edit/Cancel wired to the PR-2 actions; CONFIRMADA rows show their NCF, the return control and — admin sessions only — *Void sale*, which opens the mandatory-reason Dialog (R-V24). In-place **Edit** is gated to zero-discount drafts (see below); discounted drafts are view/cancel-only. |
 | `ui/fecha.ts` | Santo Domingo presentation formatting (`Intl.DateTimeFormat` + `timeZone`, never `toLocaleString` with the browser zone). |
 | `ui/__tests__/venta-ui.spec.tsx` | jsdom + React Testing Library component tests for R-V14. |
 

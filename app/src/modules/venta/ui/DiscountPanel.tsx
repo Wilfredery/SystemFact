@@ -9,6 +9,8 @@
  */
 
 import { DESCUENTO_TIPO, type Descuento } from "../domain/venta";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 export function DiscountPanel({
   descuento,
@@ -19,47 +21,51 @@ export function DiscountPanel({
 }) {
   const esPorcentaje = descuento.descuentoTipo === DESCUENTO_TIPO.PORCENTAJE;
   return (
-    <section aria-label="Discount" className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Header discount (admin)</h2>
-      <div className="flex items-end gap-2">
-        <label className="text-xs text-zinc-600 dark:text-zinc-400">
-          <span>Type</span>
-          <select
-            aria-label="Discount type"
-            value={descuento.descuentoTipo}
-            onChange={(e) =>
-              onChange({
-                descuentoTipo: e.target.value as Descuento["descuentoTipo"],
-                descuentoValor: descuento.descuentoValor,
-              })
-            }
-            className="mt-1 h-9 rounded-lg border border-zinc-300 px-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
-          >
-            <option value={DESCUENTO_TIPO.PORCENTAJE}>Percentage</option>
-            <option value={DESCUENTO_TIPO.MONTO}>Amount</option>
-          </select>
-        </label>
-        <label className="text-xs text-zinc-600 dark:text-zinc-400">
-          <span>Value</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            aria-label="Discount value"
-            value={descuento.descuentoValor}
-            onChange={(e) =>
-              onChange({
-                descuentoTipo: descuento.descuentoTipo,
-                descuentoValor: e.target.value,
-              })
-            }
-            className="mt-1 h-9 w-28 rounded-lg border border-zinc-300 px-2 text-right text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
-          />
-        </label>
-      </div>
-      <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-        {esPorcentaje ? "Percent of the gross subtotal" : "Fixed amount"}; capped by the{" "}
-        <code>DESC_MAX</code> parameter server-side.
-      </p>
-    </section>
+    <Card aria-label="Discount">
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold">Header discount (admin)</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-end gap-4">
+          <label className="text-xs text-ink-muted">
+            <span>Type</span>
+            <select
+              aria-label="Discount type"
+              value={descuento.descuentoTipo}
+              onChange={(e) =>
+                onChange({
+                  descuentoTipo: e.target.value as Descuento["descuentoTipo"],
+                  descuentoValor: descuento.descuentoValor,
+                })
+              }
+              className="mt-1 min-h-11 rounded-lg border border-line bg-surface px-2.5 text-sm text-ink"
+            >
+              <option value={DESCUENTO_TIPO.PORCENTAJE}>Percentage</option>
+              <option value={DESCUENTO_TIPO.MONTO}>Amount</option>
+            </select>
+          </label>
+          <label className="text-xs text-ink-muted">
+            <span>Value</span>
+            <Input
+              type="text"
+              inputMode="decimal"
+              aria-label="Discount value"
+              value={descuento.descuentoValor}
+              onChange={(e) =>
+                onChange({
+                  descuentoTipo: descuento.descuentoTipo,
+                  descuentoValor: e.target.value,
+                })
+              }
+              className="mt-1 w-28 text-right"
+            />
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-ink-muted">
+          {esPorcentaje ? "Percent of the gross subtotal" : "Fixed amount"}; capped by the{" "}
+          <code>DESC_MAX</code> parameter server-side.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
