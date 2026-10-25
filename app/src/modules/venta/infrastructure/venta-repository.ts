@@ -638,18 +638,24 @@ export async function leerFacturaAutomaticaDeEmpresaEnTx(
 
 /**
  * Client facts for NCF type eligibility (R-F2): the CF flag and the stored fiscal
- * id. Empresa-scoped so a foreign id yields `null`.
+ * id. Empresa-scoped so a foreign id yields `null`. F2 (D7, R-V25) adds the
+ * client's applied credit term to the SAME single-row read — display-only output
+ * data; no new query, no cobros import.
  */
 export async function leerClienteParaElegibilidadEnTx(
   tx: PrismaTx,
   empresaId: number,
   clienteId: number,
 ): Promise<
-  { readonly esConsumidorFinal: boolean; readonly identificacionFiscal: string | null } | null
+  {
+    readonly esConsumidorFinal: boolean;
+    readonly identificacionFiscal: string | null;
+    readonly plazoCreditoDias: number;
+  } | null
 > {
   const row = await tx.cliente.findFirst({
     where: { id: clienteId, empresaId },
-    select: { esConsumidorFinal: true, identificacionFiscal: true },
+    select: { esConsumidorFinal: true, identificacionFiscal: true, plazoCreditoDias: true },
   });
   return row;
 }

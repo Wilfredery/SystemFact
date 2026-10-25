@@ -55,3 +55,7 @@ Thumbs.db
 # --- Verificación / test ---
 playwright-report/
 test-results/
+
+# --- Memoria / artefactos de diseño (binarios locales) ---
+.engram/
+*.penpot

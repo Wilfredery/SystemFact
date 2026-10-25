@@ -23,52 +23,26 @@
 
 import { test, expect, type Page } from "@playwright/test";
 import "dotenv/config";
-import { Pool } from "pg";
+import { login } from "./utils/login";
+import { openDb, usuarioPrecond, type UsuarioPrecond } from "./utils/db";
+import {
+  CLIENTE_CREDITO_DEMO_NOMBRE,
+  E2E_PASSWORD,
+  E2E_PRODUCT,
+  E2E_USER,
+  buscarYAgregar,
+  guardarYConfirmar,
+  idClienteCreditoDemo,
+} from "./utils/venta-pos";
 
-const E2E_USER = process.env.E2E_USER ?? "e2e";
-const E2E_PASSWORD = process.env.E2E_PASSWORD ?? "";
-const E2E_PRODUCT = process.env.E2E_PRODUCT ?? "Arroz";
+const pool = openDb();
 
-const pool = new Pool({
-  connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
-});
-
-type EmpresaPrecond = { usuarioId: number; empresaId: number; rol: string };
-
-/** The demo CREDITO client seeded by seed:bootstrap (name is a contract). */
-const CLIENTE_CREDITO_DEMO_NOMBRE = "Comercios Clara, SRL (demo)";
-
-let precond: EmpresaPrecond;
+let precond: UsuarioPrecond;
 let clienteIdCredito: number;
 
 async function checkPreconditions(): Promise<void> {
-  const user = await pool.query(
-    `select u.id as "usuarioId", u."empresaId", r.nombre as rol
-       from "USUARIO" u
-       left join "USUARIO_ROL" ur on ur."usuarioId" = u.id
-       left join "ROL" r on r.id = ur."rolId"
-      where u."nombreUsuario" = $1 and u.activo = true
-      limit 1`,
-    [E2E_USER],
-  );
-  if (user.rowCount === 0) {
-    throw new Error(`E2E_USER "${E2E_USER}" not found in the precondition DB (DIRECT_URL/DATABASE_URL).`);
-  }
-  const row = user.rows[0];
-  if (row.rol !== "Administrador" && row.rol !== "Operador") {
-    throw new Error(
-      `E2E_USER "${E2E_USER}" has rol "${row.rol}"; Cobros requires Administrador/Operador (R-C6).`,
-    );
-  }
-  precond = { usuarioId: row.usuarioId, empresaId: row.empresaId, rol: row.rol };
-  const cliente = await pool.query(
-    `select id from "CLIENTE"
-      where "empresaId" = $1 and nombre = $2 and "tipoCliente" = 'CREDITO' and "creditoHabilitado" = true
-       and activo = true
-       limit 1`,
-    [precond.empresaId, CLIENTE_CREDITO_DEMO_NOMBRE],
-  );
-  clienteIdCredito = cliente.rows[0]?.id ?? 0;
+  precond = await usuarioPrecond(pool, E2E_USER);
+  clienteIdCredito = await idClienteCreditoDemo(pool, precond.empresaId);
 }
 
 /**
@@ -100,20 +74,8 @@ async function crearVentaCreditoPendiente(page: Page): Promise<number> {
   await page.getByRole("combobox", { name: "Client selection" }).selectOption({
     label: CLIENTE_CREDITO_DEMO_NOMBRE,
   });
-  await page.getByLabel("Search products").fill(E2E_PRODUCT);
-  await page.getByRole("button", { name: "Search" }).click();
-  await page.getByRole("button", { name: "Add" }).first().click();
-  await page.getByRole("button", { name: "Save draft" }).click();
-
-  const confirmar = page.getByRole("button", { name: /Confirm draft \d+/ });
-  await confirmar.waitFor();
-  await confirmar.click();
-
-  // Anchor to the specific poster text (the page may hold several role=status
-  // banners; the sale-confirmed one is unique per venta).
-  const poster = page.getByText(/Sale #\d+ confirmed/);
-  await expect(poster).toContainText(/Sale #\d+ confirmed/);
-  const ventaId = Number(((await poster.textContent())!.match(/#(\d+)/))![1]);
+  await buscarYAgregar(page, E2E_PRODUCT);
+  const { ventaId } = await guardarYConfirmar(page);
 
   const factura = await pool.query(
     `select f.id from "FACTURA" f
@@ -166,17 +128,6 @@ async function contarCobros(facturaId: number): Promise<number> {
   return res.rows[0].n as number;
 }
 
-async function login(page: Page): Promise<void> {
-  await page.goto("/login");
-  await page.getByLabel("Usuario").fill(E2E_USER);
-  await page.getByLabel("Contraseña").fill(E2E_PASSWORD);
-  await page.getByRole("button", { name: "Ingresar" }).click();
-  // LANDING AUDIT (auth-tenant-selector, design D2): a multi-branch admin now
-  // lands on /selector-empresa-sucursal; a single-branch admin (current E2E seed,
-  // single branch) keeps /dashboard. Accept EITHER so the helper pins no wrong landing.
-  await page.waitForURL(/\/(dashboard|selector-empresa-sucursal)/, { timeout: 20_000 });
-}
-
 test.describe("cobros board + collection idempotency (fase-6 R-C7)", () => {
   test.beforeAll(async () => {
     await checkPreconditions();
@@ -187,7 +138,7 @@ test.describe("cobros board + collection idempotency (fase-6 R-C7)", () => {
 
   test("double-click on the payment form persists AT MOST ONE collection", async ({ page }) => {
     test.skip(E2E_PASSWORD === "", "Set E2E_USER/E2E_PASSWORD (Supabase Auth) to run the smoke.");
-    await login(page);
+    await login(page, { user: E2E_USER, password: E2E_PASSWORD });
     // Self-seeded fresh invoice: VIGENTE credit terms, positive derived pending.
     const facturaId = await crearVentaCreditoPendiente(page);
 
@@ -234,7 +185,7 @@ test.describe("cobros board + collection idempotency (fase-6 R-C7)", () => {
 
   test("estado de cuenta renders derived facts for the mixed-state customer", async ({ page }) => {
     test.skip(E2E_PASSWORD === "", "Set E2E_USER/E2E_PASSWORD (Supabase Auth) to run the smoke.");
-    await login(page);
+    await login(page, { user: E2E_USER, password: E2E_PASSWORD });
     // Mixed-state construction: collect test 1's invoice (from a previous run,
     // or a sibling run's row) plus THIS test's own fresh pending one, attached
     // to the SAME wallet - the estado de cuenta must render both facts side by

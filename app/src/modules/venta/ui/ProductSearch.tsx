@@ -11,6 +11,9 @@
 import { useState, type FormEvent } from "react";
 import { listarProductosAction } from "@/modules/producto/http/actions";
 import type { ProductoOpcion } from "./carro";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 export function ProductSearch({ onAdd }: { readonly onAdd: (p: ProductoOpcion) => void }) {
   const [termino, setTermino] = useState("");
@@ -29,46 +32,52 @@ export function ProductSearch({ onAdd }: { readonly onAdd: (p: ProductoOpcion) =
   }
 
   return (
-    <section aria-label="Product search" className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Find product</h2>
-      <form onSubmit={buscar} className="flex gap-2">
-        <input
-          value={termino}
-          onChange={(e) => setTermino(e.target.value)}
-          placeholder="Name or code"
-          aria-label="Search products"
-          className="h-10 flex-1 rounded-lg border border-zinc-300 px-3 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
-        />
-        <button
-          type="submit"
-          disabled={buscando}
-          className="h-10 rounded-lg bg-indigo-600 px-4 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {buscando ? "Searching…" : "Search"}
-        </button>
-      </form>
-      {error !== null && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}
-      {resultados.length > 0 && (
-        <ul className="mt-3 max-h-64 divide-y divide-zinc-100 overflow-y-auto dark:divide-zinc-800">
-          {resultados.map((p) => (
-            <li key={p.id} className="flex items-center justify-between gap-3 py-2">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">{p.nombre}</p>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  {p.codigo} · ITBIS {p.tasaItbis}%
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => onAdd(p)}
-                className="h-8 shrink-0 rounded-lg border border-indigo-600 px-3 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:hover:bg-zinc-800"
-              >
-                Add
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <Card aria-label="Product search">
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold">Find product</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={buscar} className="flex gap-2">
+          <Input
+            value={termino}
+            onChange={(e) => setTermino(e.target.value)}
+            placeholder="Name or code"
+            aria-label="Search products"
+            className="flex-1"
+          />
+          <Button
+            type="submit"
+            disabled={buscando}
+            className="self-end"
+          >
+            {buscando ? "Searching…" : "Search"}
+          </Button>
+        </form>
+        {error !== null && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
+        {resultados.length > 0 && (
+          <ul className="mt-4 max-h-64 divide-y divide-line overflow-y-auto">
+            {resultados.map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-ink">{p.nombre}</p>
+                  <p className="text-xs text-ink-muted">
+                    {p.codigo} · ITBIS {p.tasaItbis}%
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onAdd(p)}
+                  className="shrink-0 text-xs"
+                >
+                  Add
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }

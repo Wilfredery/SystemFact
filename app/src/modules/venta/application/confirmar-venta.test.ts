@@ -188,6 +188,43 @@ describe("confirmarVenta (mocked repos, v2r-10 optimistic flip)", () => {
     expect(confirmarVentaFlipEnTx).toHaveBeenCalledWith(txMock, ctxMock, 7, UPDATED_AT);
   });
 
+  // F2 slice B task 2.4 (D7, R-V25): the output exposes the credit verdict built
+  // from existing locals only — forma from the step-5c credito local, the applied
+  // term from the step-4 client read, fechaEmision from the FACTURA emission
+  // instant (NOT venta.fecha). Display-only; no extra read, no cobros import.
+  it("exposes the CONTADO verdict on the output (D7)", async () => {
+    const resultado = await confirmarVenta(txMock, ctxMock, { id: 7 });
+    expect(resultado.ok).toBe(true);
+    if (resultado.ok) expect(resultado.data.credito).toEqual({ forma: "CONTADO" });
+  });
+
+  it("exposes the CREDITO verdict with applied term and factura emission instant (D7)", async () => {
+    (leerClienteParaElegibilidadEnTx as jest.Mock).mockResolvedValue({
+      esConsumidorFinal: false,
+      identificacionFiscal: "131045677",
+      plazoCreditoDias: 15,
+    });
+    (evaluarCreditoPort.evaluarCreditoCliente as jest.Mock).mockResolvedValue({
+      forma: "CREDITO",
+      permitido: true,
+    });
+    const resultado = await confirmarVenta(txMock, ctxMock, { id: 7 });
+    expect(resultado.ok).toBe(true);
+    if (resultado.ok) {
+      expect(resultado.data.credito).toEqual({
+        forma: "CREDITO",
+        plazoCreditoDias: 15,
+        fechaEmision: expect.any(String),
+      });
+      if (resultado.data.credito.forma === "CREDITO") {
+        // ISO UTC instant — parses cleanly and matches the factura emission read.
+        expect(Number.isNaN(Date.parse(resultado.data.credito.fechaEmision))).toBe(false);
+      }
+      // A credit sale is NOT closed with an auto-COBRO (fixed 5c semantics).
+      expect(registrarCobro).not.toHaveBeenCalled();
+    }
+  });
+
   it("THROWS CONCURRENCIA_CONFLICTO when the flip misses an edited draft — the consume rolls back (v2r-10)", async () => {
     (confirmarVentaFlipEnTx as jest.Mock).mockResolvedValue({ flipUpdated: false });
     await expect(confirmarVenta(txMock, ctxMock, { id: 7 })).rejects.toMatchObject({

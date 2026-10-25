@@ -211,6 +211,33 @@ describe("listarClientesAction", () => {
     const result = await listarClientesAction({ page: 1, limit: 25 });
     expect(result.ok === true && result.data.items[0].limiteCredito).toBe("0.00");
   });
+
+  // F2 slice B task 2.3 (R-V27, DTO contract test ONLY — zero production change;
+  // ClienteDto/toDto already ship the three credit fields per shared.ts:29-59).
+  it("DTO row carries the credit profile with Decimal-string money and NO email/auth field (ADR-014)", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (listarClientes as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: {
+        items: [makeCliente({ creditoHabilitado: true, limiteCredito: new Decimal("20000.00"), plazoCreditoDias: 15 })],
+        total: 1,
+        page: 1,
+      },
+    });
+    const result = await listarClientesAction({ page: 1, limit: 25 });
+    if (!result.ok) throw new Error("expected ok");
+    const row = result.data.items[0];
+    expect(row.creditoHabilitado).toBe(true);
+    expect(typeof row.limiteCredito).toBe("string"); // Decimal-string money, never a float
+    expect(row.limiteCredito).toBe("20000.00");
+    expect(row.plazoCreditoDias).toBe(15);
+    // ADR-014: the access identifier is nombreUsuario/unique code — email is
+    // NEVER a credential, so no email/auth-related field maps across the row.
+    const keys = Object.keys(row);
+    expect(keys).not.toContain("email");
+    expect(keys.filter((k) => /mail|auth|password|usuario.*@|supabase/i.test(k))).toEqual([]);
+  });
 });
 
 describe("desactivarClienteAction", () => {
