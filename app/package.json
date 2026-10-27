@@ -1,10 +1,6 @@
 {
   "name": "systemfact",
-<<<<<<< HEAD
-  "version": "0.17.1",
-=======
-  "version": "0.17.0",
->>>>>>> origin/master
+rigin/master
   "private": true,
   "scripts": {
     "dev": "next dev",
