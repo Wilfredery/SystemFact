@@ -39,6 +39,7 @@ import {
   VENTA_INMUTABLE,
   VENTA_NO_ENCONTRADO,
   CONCURRENCIA_CONFLICTO,
+  DESCUENTO_NO_AUTORIZADO,
   messageFor,
   VentaDomainError,
   type StockWarning,
@@ -62,6 +63,7 @@ import {
   contarVentasEnTx,
   obtenerVentaDetalleEnTx,
   registrarAuditVentaEnTx,
+  tieneRolPermitidoEnTx,
   type ListarVentasFiltro,
   type VentaDetalle,
   type VentaListRow,
@@ -290,7 +292,8 @@ function cancelError(
   code:
     | typeof VENTA_NO_ENCONTRADO
     | typeof VENTA_INMUTABLE
-    | typeof CONCURRENCIA_CONFLICTO,
+    | typeof CONCURRENCIA_CONFLICTO
+    | typeof DESCUENTO_NO_AUTORIZADO,
 ): { ok: false; code: VentaErrorCode; message: string } {
   return { ok: false, code, message: messageFor(code) };
 }
@@ -348,6 +351,15 @@ export async function cancelarVenta(
   }
 
   // --- CONFIRMADA path (R-V16). ---
+  // Void of a confirmed/fiscal sale is admin-only (server-side enforcement;
+  // UI hiding is NOT security).
+  const ROL_ADMINISTRADOR = "Administrador";
+  const esAdmin = await tieneRolPermitidoEnTx(tx, ctx.usuarioId, ctx.empresaId, [
+    ROL_ADMINISTRADOR,
+  ]);
+  if (!esAdmin) {
+    return cancelError(DESCUENTO_NO_AUTORIZADO);
+  }
   return cancelarVentaConfirmada(tx, ctx, input.id, input.motivo);
 }
 

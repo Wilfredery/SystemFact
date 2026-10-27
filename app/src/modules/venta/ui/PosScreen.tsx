@@ -33,7 +33,7 @@ import {
   obtenerVentaAction,
   listarVentasAction,
 } from "../http/actions";
-import type { StockWarning } from "../domain/errors";
+import { VENTA_INMUTABLE, type StockWarning } from "../domain/errors";
 import {
   DESCUENTO_CERO,
   ESTADO_VENTA,
@@ -236,15 +236,22 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
     const d = r.data;
     // ADR-018 / R-V7: a persisted discount stores only its RESOLVED MONEY — a
     // `PORCENTAJE` authorization's original percentage is not recoverable from
-    // the DTO. Re-entering a non-zero discount as `MONTO` would silently change
-    // the frozen `descuentoTipo`, so in-place editing is offered ONLY for
-    // zero-discount drafts (`"0.00"` is the canonical stored zero). Discounted
-    // drafts are view/cancel only in 5b.
-    if (d.descuento !== "0.00") {
+    // the DTO when proration makes it unreconstructible. A `MONTO` discount's
+    // resolved amount equals its input amount and is stored with
+    // `descuentoTipo: "MONTO"`, so it CAN be reconstructed for re-edit.
+    // In-place editing is offered for zero-discount drafts and for drafts whose
+    // header and all line discounts are `MONTO` (reconstructible).
+    const headerEsMonto = d.descuentoTipo === "MONTO" && d.descuento !== "0.00";
+    const headerEsCero = d.descuento === "0.00";
+    const lineasMontoOk = d.lineas.every((l) => {
+      if (l.descuentoLinea === "0.00") return true;
+      return l.descuentoTipo === "MONTO";
+    });
+    if (!headerEsCero && !(headerEsMonto && lineasMontoOk)) {
       setMensaje({
         kind: "error",
-        code: "EDICION_DESCUENTO_NO_DISPONIBLE",
-        text: "Drafts with a discount cannot be re-edited here (the percentage is not recoverable); cancel and recreate instead.",
+        code: VENTA_INMUTABLE,
+        text: "Drafts with a percentage discount cannot be re-edited here (the percentage is not recoverable); cancel and recreate instead.",
       });
       return;
     }
@@ -256,11 +263,17 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
         cantidad: l.cantidad,
         precioUnitario: l.precioUnitario,
         tasaItbis: l.tasaItbis,
-        descuento: DESCUENTO_CERO,
+        descuento:
+          l.descuentoLinea === "0.00" || l.descuentoTipo !== "MONTO"
+            ? DESCUENTO_CERO
+            : { descuentoTipo: "MONTO", descuentoValor: l.descuentoLinea },
       })),
     );
-    // Zero-discount drafts round-trip faithfully as the canonical zero.
-    setDescuento(DESCUENTO_CERO);
+    setDescuento(
+      headerEsMonto
+        ? { descuentoTipo: "MONTO", descuentoValor: d.descuento }
+        : DESCUENTO_CERO,
+    );
     setCliente({ id: d.clienteId, nombre: d.clienteNombre });
     setEditandoId(d.id);
     setMensaje({ kind: "ok", text: `Editing draft #${d.id}.` });
