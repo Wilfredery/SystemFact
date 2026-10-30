@@ -234,19 +234,33 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
       return;
     }
     const d = r.data;
-    // ADR-018 / R-V7: a persisted discount stores only its RESOLVED MONEY — a
-    // `PORCENTAJE` authorization's original percentage is not recoverable from
-    // the DTO. Re-entering a non-zero discount as `MONTO` would silently change
-    // the frozen `descuentoTipo`, so in-place editing is offered ONLY for
-    // zero-discount drafts (`"0.00"` is the canonical stored zero). Discounted
-    // drafts are view/cancel only in 5b.
-    if (d.descuento !== "0.00") {
+    // ADR-018 / R-V7: a persisted discount stores only its RESOLVED MONEY.
+    // For MONTO, the resolved money equals the input amount and descuentoTipo
+    // is MONTO, so it is reconstructible. For PORCENTAJE, proration makes the
+    // original percentage unrecoverable, so percentage discounts remain blocked.
+    const headerDescuento =
+      d.descuento !== "0.00" && d.descuentoTipo === "MONTO"
+        ? { descuentoTipo: "MONTO" as const, descuentoValor: d.descuento }
+        : d.descuento !== "0.00"
+          ? null
+          : DESCUENTO_CERO;
+    if (headerDescuento === null) {
       setMensaje({
         kind: "error",
         code: "EDICION_DESCUENTO_NO_DISPONIBLE",
         text: "Drafts with a discount cannot be re-edited here (the percentage is not recoverable); cancel and recreate instead.",
       });
       return;
+    }
+    for (const l of d.lineas) {
+      if (l.descuentoLinea !== "0.00" && l.descuentoTipo !== "MONTO") {
+        setMensaje({
+          kind: "error",
+          code: "EDICION_DESCUENTO_NO_DISPONIBLE",
+          text: "Drafts with a discount cannot be re-edited here (the percentage is not recoverable); cancel and recreate instead.",
+        });
+        return;
+      }
     }
     setLineas(
       d.lineas.map((l) => ({
@@ -256,11 +270,13 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
         cantidad: l.cantidad,
         precioUnitario: l.precioUnitario,
         tasaItbis: l.tasaItbis,
-        descuento: DESCUENTO_CERO,
+        descuento:
+          l.descuentoLinea !== "0.00" && l.descuentoTipo === "MONTO"
+            ? { descuentoTipo: "MONTO" as const, descuentoValor: l.descuentoLinea }
+            : DESCUENTO_CERO,
       })),
     );
-    // Zero-discount drafts round-trip faithfully as the canonical zero.
-    setDescuento(DESCUENTO_CERO);
+    setDescuento(headerDescuento);
     setCliente({ id: d.clienteId, nombre: d.clienteNombre });
     setEditandoId(d.id);
     setMensaje({ kind: "ok", text: `Editing draft #${d.id}.` });

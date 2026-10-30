@@ -348,6 +348,10 @@ export async function cancelarVenta(
   }
 
   // --- CONFIRMADA path (R-V16). ---
+  const permitido = await tieneRolPermitidoEnTx(tx, ctx.usuarioId, ctx.empresaId, ["Administrador"]);
+  if (!permitido) {
+    return { ok: false, code: DESCUENTO_NO_AUTORIZADO, message: messageFor(DESCUENTO_NO_AUTORIZADO) };
+  }
   return cancelarVentaConfirmada(tx, ctx, input.id, input.motivo);
 }
 
