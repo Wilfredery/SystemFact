@@ -39,6 +39,7 @@ import {
   VENTA_INMUTABLE,
   VENTA_NO_ENCONTRADO,
   CONCURRENCIA_CONFLICTO,
+  DESCUENTO_NO_AUTORIZADO,
   messageFor,
   VentaDomainError,
   type StockWarning,
@@ -62,6 +63,7 @@ import {
   contarVentasEnTx,
   obtenerVentaDetalleEnTx,
   registrarAuditVentaEnTx,
+  tieneRolPermitidoEnTx,
   type ListarVentasFiltro,
   type VentaDetalle,
   type VentaListRow,
@@ -348,6 +350,10 @@ export async function cancelarVenta(
   }
 
   // --- CONFIRMADA path (R-V16). ---
+  const permitido = await tieneRolPermitidoEnTx(tx, ctx.usuarioId, ctx.empresaId, ["Administrador"]);
+  if (!permitido) {
+    return { ok: false, code: DESCUENTO_NO_AUTORIZADO, message: messageFor(DESCUENTO_NO_AUTORIZADO) };
+  }
   return cancelarVentaConfirmada(tx, ctx, input.id, input.motivo);
 }
 
