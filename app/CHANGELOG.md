@@ -1,3 +1,9 @@
+## [0.17.1](https://github.com/Wilfredery/SystemFact/compare/v0.17.0...v0.17.1) (2026-11-02)
+
+### Bug Fixes
+
+* **venta:** allow re-editing BORRADOR drafts that carry MONTO discounts (`EDICION_DESCUENTO_NO_DISPONIBLE` no longer fires for amount discounts), and require an admin to cancel a CONFIRMADA sale via a server-side `DESCUENTO_NO_AUTORIZADO` gate (issue #127).
+
 ## [0.17.0](https://github.com/Wilfredery/SystemFact/compare/v0.16.2...v0.17.0) (2026-10-24)
 
 ### Features
@@ -92,7 +98,8 @@
 
 * **cobros:** server-side pagination of the CxC board (R-C9) — the outstanding-filtered page cut (LIMIT/OFFSET, echaEmision DESC, id DESC order pinned) executes in SQL through an outward wrapper over the canonical ADR-017 aggregate (kept byte-identical; the coupling-fragment rule follows the existing loquearYCalcularSaldoFacturaEnTx pattern); the action returns typed metadata {filas, total, page, pageSize, totalPages}; page size normalizes 0/absent→25, 250→100 before data access; the customer statement keeps its whole-account full read via the dedicated consultarEstadoDeCuentaAction (the board's outstanding filter would lose settled rows). Pins: order page-walk parity vs the canonical order at pageSize 25/100, PAGADA-boundary SQL parity (cobrosAplicados < total re-encoding ONLY the classifier's threshold — incl. cobros>total and debit-note re-inflation exclusions), 110-row clamp walk
 * **auditoria:** absorb the consultation pagination helpers into the shared contract (AU-4) — local caps/normalizers/object-shape calcularOffset deleted; a non-positive pageSize now folds to the shared default 25 instead of 1 (uniform clamp; audit zod already rejects sizes below 1 transport-side)
-* **reportes:** single pagina<T> assembler in eportes/domain/reporte-resultado.ts (D7) — the duplicated copies in operacional.ts/inanciero.ts deleted; fixtures-equivalence test pins byte-equal Pagina output; duplicated pagination helpers in the cobros board + auditoria + financiero/operacional scope = 0
+* **reportes:** single pagina<T> assembler in 
+eportes/domain/reporte-resultado.ts (D7) — the duplicated copies in operacional.ts/inanciero.ts deleted; fixtures-equivalence test pins byte-equal Pagina output; duplicated pagination helpers in the cobros board + auditoria + financiero/operacional scope = 0
 * **cobros:** ACCEPTED BEHAVIOR CHANGE (design risk #3): the board's three bucket counts/rows are PAGE-SCOPED — per-bucket totals across the whole tenant would require the derived mora/estado rules re-encoded in SQL (forbidden second encoding); board page navigation is server-driven (Anterior/Siguiente honoring 	otalPages), and cobros/ui/board.ts paginar is now a composition over the server page metadata (the in-memory full-set page cut is gone)
 ## [0.14.8](https://github.com/Wilfredery/SystemFact/compare/v0.14.7...v0.14.8) (2026-10-12)
 
