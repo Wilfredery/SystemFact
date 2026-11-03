@@ -1,6 +1,6 @@
 /**
  * Integration — Reportes slice A: shared contracts, the dashboard reads, the admin widen
- * and the role gate (real Postgres 16, RLS on, `systemfact_app` role; DB-2..DB-6).
+ * and the role gate (real Postgres, RLS on, `systemfact_app` role; DB-2..DB-6).
  *
  * Seeding runs on the trusted superuser harness client (bypasses RLS), exactly like
  * `auditoria-consulta.integration.test.ts`. The code under test

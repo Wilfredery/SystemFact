@@ -1,6 +1,6 @@
 /**
  * Integration — audit WRITE port wired into cobros (R-C8, AU-2 #3, AU-3;
- * real Postgres 16, RLS on, `systemfact_app` role).
+ * real Postgres, RLS on, `systemfact_app` role).
  *
  * Seeding runs on the trusted superuser harness (bypasses RLS); the code under
  * test (`registrarCobro` / `registrarReembolso`) always runs through the app role

@@ -1,5 +1,5 @@
 /**
- * Integration — Auditoria consultation read path (real Postgres 16, RLS on).
+ * Integration — Auditoria consultation read path (real Postgres, RLS on).
  *
  * Seeding runs on the trusted superuser harness client (bypasses RLS), exactly
  * like `cobros-saldo-cxc.integration.test.ts`. The code under test

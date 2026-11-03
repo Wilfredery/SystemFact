@@ -38,6 +38,12 @@
 --     then update app/.env / app/.env.integration accordingly.
 --
 -- Idempotent: safe to re-run any number of times.
+--
+-- COMPANION (2026-11-03, local Postgres 16 -> 17.6 parity): cluster roles+grants are only half of
+-- what the local harness needs. `provision-integration-db.sql` handles DB-level
+-- object ownership, without which `truncateAll()` fails with
+-- "permission denied for table FACTURA" (SQLSTATE 42501) after any volume recreate.
+-- Order matters: migrate as superuser, then roles, then that script.
 -- ============================================================
 
 -- 1. Roles (parity with migration 20260902150000_create_app_role).

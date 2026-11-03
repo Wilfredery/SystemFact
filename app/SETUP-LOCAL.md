@@ -1,7 +1,7 @@
 # Setup Local — SystemFact
 
-Entorno de desarrollo local-first con Postgres 16 en Docker.
-Mantiene paridad con Supabase en runtime (mismas RLS policies, mismo rol).
+Entorno de desarrollo local-first con Postgres 17.6 en Docker.
+Mantiene paridad con Supabase en runtime (misma major del motor, mismas RLS policies, mismo rol).
 
 ## ¿Por qué local-first?
 
@@ -11,7 +11,8 @@ tocar datos reales). Local-first da:
 
 - **Iteración 5-10x más rápida**: sin latencia de red
 - **Offline-capable**: podés trabajar sin internet
-- **Wipe & reseed trivial**: `docker compose down -v && docker compose up -d`
+- **Wipe & reseed**: `docker compose down && docker volume rm sf-pgdata17 && docker volume create sf-pgdata17 && docker compose up -d`
+  (`docker compose down -v` NO alcanza: el volumen es `external`, así que compose no lo borra)
 - **Mismas reglas Postgres**: lo que funciona local funciona en Supabase
 
 ## Prerrequisitos
@@ -23,18 +24,23 @@ tocar datos reales). Local-first da:
 ## Quick start
 
 ```bash
-# 1. Levantar Postgres local
+# 1. Crear el volume externo (una sola vez; el compose lo declara external: true
+#    y NO lo crea solo — sin este paso falla con
+#    `external volume "sf-pgdata17" not found`)
+docker volume create sf-pgdata17
+
+# 2. Levantar Postgres local
 docker compose up -d
 
-# 2. Esperar a que el healthcheck sea "healthy"
+# 3. Esperar a que el healthcheck sea "healthy"
 docker inspect --format "{{.State.Health.Status}}" sf-postgres
 # → healthy
 
-# 3. Configurar .env (una vez, ver app/.env.example)
+# 4. Configurar .env (una vez, ver app/.env.example)
 #    DATABASE_URL=postgresql://systemfact_app:<password>@localhost:5433/postgres
 #    DIRECT_URL=postgresql://postgres:devpass@localhost:5433/postgres
 
-# 4. Aplicar migrations
+# 5. Aplicar migrations
 cd app && pnpm prisma migrate deploy
 
 # 5. Verificar
@@ -47,9 +53,9 @@ npx tsx scripts/diagnose-rls.ts  # control positivo de RLS
 
 | Pieza | Detalle |
 |---|---|
-| Container | `sf-postgres` (postgres:16) |
+| Container | `sf-postgres` (postgres:17.6 — misma major que el proyecto Supabase) |
 | Puerto host | 5433 (no 5432, evita conflicto con Postgres nativo Windows) |
-| Volume | `sf-pgdata` (datos persisten entre recreaciones) |
+| Volume | `sf-pgdata17` (datos persisten entre recreaciones; volumen **externo**, se crea con `docker volume create`) |
 | Restart policy | `unless-stopped` (sobrevive Docker Desktop restarts) |
 | Healthcheck | `pg_isready` cada 10s, hasta 5 reintentos |
 

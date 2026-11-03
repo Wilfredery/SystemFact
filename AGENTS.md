@@ -94,7 +94,7 @@ These rules derive from the canonical engineering constitution in the project do
 ## CI/CD (GitHub Actions)
 - `.github/workflows/ci.yml` — runs on every PR targeting `master` and again on `master`
   after the merge: ESLint, strict typecheck, `prisma validate`, unit tests, integration tests
-  against a real Postgres 16 (RLS enforced via the `systemfact_app` role), production build and
+  against a real Postgres 17.6 (same engine as the Supabase project; RLS enforced via the `systemfact_app` role), production build and
   a Conventional Commits guard. The aggregate job **CI gate** is the single required status check.
 - E2E (Playwright) runs only when the repo secrets `E2E_USER`, `E2E_PASSWORD`,
   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` exist; otherwise the job skips

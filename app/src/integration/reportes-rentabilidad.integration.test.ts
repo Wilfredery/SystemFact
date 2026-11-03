@@ -1,5 +1,5 @@
 /**
- * Integration — Reportes slice D: rentabilidad por producto (real Postgres 16, RLS on,
+ * Integration — Reportes slice D: rentabilidad por producto (real Postgres, RLS on,
  * `systemfact_app` role; REN-1..REN-3, EXP-2/EXP-4).
  *
  * Seeding runs on the trusted superuser harness client (bypasses RLS), exactly like the slice-B/C
