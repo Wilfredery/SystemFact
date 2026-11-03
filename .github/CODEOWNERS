@@ -16,10 +16,14 @@
 #   Settings → Branches → master → Require review from Code Owners.
 #
 # EL RIESGO QUE ESTO *NO* CUBRE
-#   Un mantenedor que edita un workflow sigue teniendo acceso a los secrets.
-#   La mitigación real de eso no es este archivo: es que el secreto de E2E sea
-#   un usuario dedicado, con el menor privilegio que los specs permitan y
-#   rotable desde el environment `e2e` sin tocar el repositorio.
+#   Un mantenedor que edita un workflow sigue teniendo acceso a los secretos que
+#   ese workflow pueda leer. La mitigación real de eso no es este archivo: es no
+#   guardar credenciales capaces de tocar producción cuando se puede evitar. La
+#   lane de E2E lo hizo así desde v0.17.7 — levanta un stack Supabase local y
+#   efímero dentro del runner y no lee ningún secret (issue #138, opción C). Si
+#   alguna vez vuelve a hacer falta un secret real, aplica la regla anterior:
+#   identidad dedicada, mínimo privilegio que los specs permitan, y rotable sin
+#   tocar el repositorio.
 
 /.github/workflows/  @Wilfredery
 /.github/ci/         @Wilfredery
