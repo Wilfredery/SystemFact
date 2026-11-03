@@ -142,12 +142,17 @@ async function filaCxcEnBoard(page: Page, facturaId: number) {
  * It never substitutes a timeout for the walk-and-throw contract below: if the
  * invoice really is missing from a loaded board, that still fails loudly.
  */
+/** How long the board is given to leave its loading state (also quoted in the failure). */
+const TABLERO_TIMEOUT_MS = 30_000;
+/** Poll interval while the island is still resolving. */
+const PASO_ESPERA_TABLERO_MS = 250;
+
 async function esperarTableroCargado(page: Page): Promise<void> {
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + TABLERO_TIMEOUT_MS;
   for (;;) {
     if ((await page.getByText(/Cargando cuentas por cobrar/).count()) > 0) {
       if (Date.now() > deadline) break;
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(PASO_ESPERA_TABLERO_MS);
       continue;
     }
 
@@ -169,12 +174,17 @@ async function esperarTableroCargado(page: Page): Promise<void> {
       );
     }
 
-    if (Date.now() > deadline) break;
-    await page.waitForTimeout(250);
+    if (Date.now() > deadline) {
+      // Last look before failing: the board may have settled during the final
+      // sleep, and a timeout must never beat a load that already succeeded.
+      if ((await page.locator('[data-testid^="cxc-fila-"]').count()) > 0) return;
+      break;
+    }
+    await page.waitForTimeout(PASO_ESPERA_TABLERO_MS);
   }
 
   throw new Error(
-    "El tablero de CxC no llegó a un estado estable tras 30s: o sigue 'Cargando cuentas por cobrar…' o se asentó sin filas ni error — un tablero así no es un pase.",
+    `El tablero de CxC no llegó a un estado estable tras ${TABLERO_TIMEOUT_MS / 1000}s: o sigue 'Cargando cuentas por cobrar…' o se asentó sin filas ni error — un tablero así no es un pase.`,
   );
 }
 

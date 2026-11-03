@@ -85,7 +85,7 @@ async function crearCliente(nombre: string): Promise<number> {
 async function crearFactura(
   clienteId: number,
   total: string,
-  minutos: number,
+  minutos?: number,
   fechaEmision?: Date,
 ): Promise<number> {
   const db = getHarnessDb();
@@ -109,7 +109,7 @@ async function crearFactura(
       // newer emission, so id DESC and fechaEmision DESC agree row-for-row.
       // An explicit `fechaEmision` (same-day test) replaces the staggered base.
       fechaEmision:
-        fechaEmision ?? new Date(BASE_FECHA.getTime() + minutos * 60_000),
+        fechaEmision ?? new Date(BASE_FECHA.getTime() + (minutos ?? 0) * 60_000),
     },
     select: { id: true },
   });
@@ -322,7 +322,7 @@ describe("CxC board server-side pagination (real DB, RLS on, R-C9)", () => {
     // still be the NEWEST (first in `fechaEmision DESC`) so ordering cannot
     // hide it.
     await crearFactura(clienteId, "5000.00", 0);
-    const hoyId = await crearFactura(clienteId, "5000.00", 0, now);
+    const hoyId = await crearFactura(clienteId, "5000.00", undefined, now);
 
     // Board page (R-C9) through the public application surface.
     const pagina = await withTenantTransaction(ctx, async (tx) => {

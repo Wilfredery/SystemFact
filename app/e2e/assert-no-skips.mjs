@@ -51,15 +51,20 @@ try {
 
 const skipped = (report.suites ?? []).flatMap((suite) => skips(suite, []));
 const stats = report.stats ?? {};
-// `stats.expected` is the number of tests Playwright EXPECTED to run, not the
-// number executed: a run where every test skipped still reports a nonzero
-// `expected`. This check therefore targets the empty/malformed report (no
-// tests at all), and the skip branch below covers the fully-skipped run.
+// Playwright's `stats` splits outcomes: `expected` counts tests that PASSED,
+// `skipped` and `unexpected` the rest. A fully-skipped run therefore reports
+// `expected = 0` with `skipped = N`, so testing `expected` alone would report
+// "no tests at all" and hide the skip list — the opposite of this guard's job.
+// The empty-report check must sum all three outcomes; the skip branch below
+// owns the fully-skipped case.
 const expected = stats.expected ?? 0;
+const skippedReported = stats.skipped ?? 0;
+const unexpected = stats.unexpected ?? 0;
+const totalReported = expected + skippedReported + unexpected;
 
-if (expected === 0) {
+if (totalReported === 0) {
   console.error(
-    "FAIL: the report contains no tests at all (stats.expected = 0) — an empty run is not a pass.",
+    "FAIL: the report contains no tests at all (stats.expected + skipped + unexpected = 0) — an empty run is not a pass.",
   );
   process.exit(1);
 }
