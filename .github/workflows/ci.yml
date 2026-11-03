@@ -231,6 +231,10 @@ jobs:
   e2e-gate:
     name: E2E preflight
     runs-on: ubuntu-latest
+    # Los cuatro secrets de E2E viven en el environment `e2e`, no a nivel repo:
+    # sin declararlo acá el preflight los veria vacios y omitiria el smoke.
+    # Este job y el job `e2e` deben declararlo los DOS.
+    environment: e2e
     # Este job no hace checkout: el working-directory global (app/) no existiría.
     defaults:
       run:
@@ -259,6 +263,8 @@ jobs:
     needs: e2e-gate
     if: needs.e2e-gate.outputs.enabled == 'true'
     runs-on: ubuntu-latest
+    # Los secrets se resuelven desde el environment `e2e` (ver `e2e-gate`).
+    environment: e2e
     services:
       postgres:
         image: postgres:17.6
