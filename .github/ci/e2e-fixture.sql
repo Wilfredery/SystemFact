@@ -2,9 +2,10 @@
 -- e2e-fixture.sql — fixture EXCLUSIVO de CI para el smoke de Playwright.
 --
 -- El smoke (app/e2e/confirm-venta.spec.ts) asume un entorno "dev-shaped":
--- Supabase Auth remoto + una base local con empresa, sucursal, rol, usuario y
--- un producto con stock. En la máquina de cada developer eso ya existe; en el
--- runner de GitHub la base arranca vacía, así que este archivo la prepara.
+-- Supabase Auth + una base Postgres. En la máquina de cada developer eso ya
+-- existe; en el runner de GitHub lo levanta `supabase start` (stack local y
+-- efímero, sin secrets — issue #138), así que la base arranca vacía y este
+-- archivo la prepara junto con .github/ci/provision-local-e2e.sh.
 --
 -- ¿Por qué SQL suelto y no un seed de app/tools/scripts? Porque es data
 -- descartable que NUNCA debe poder apuntarse a una base real: vive junto al

@@ -96,9 +96,12 @@ These rules derive from the canonical engineering constitution in the project do
   after the merge: ESLint, strict typecheck, `prisma validate`, unit tests, integration tests
   against a real Postgres 17.6 (same engine as the Supabase project; RLS enforced via the `systemfact_app` role), production build and
   a Conventional Commits guard. The aggregate job **CI gate** is the single required status check.
-- E2E (Playwright) runs only when the repo secrets `E2E_USER`, `E2E_PASSWORD`,
-  `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` exist; otherwise the job skips
-  with a notice instead of failing. Optional repo variable `E2E_PRODUCT` (default `Arroz`).
+- E2E (Playwright) runs on every PR against a **local, ephemeral Supabase stack**
+  (`supabase start`, config in `supabase/config.toml`), provisioned inside the runner by
+  `.github/ci/provision-local-e2e.sh`. It needs **zero repository secrets** and has no
+  skip-if-missing preflight: if the stack cannot start, or if any of the 12 specs is skipped,
+  the job fails (`app/e2e/assert-no-skips.mjs`). A green job that silently skips reads as
+  coverage it does not have. Optional repo variable `E2E_PRODUCT` (default `Arroz`).
 
 ### Versioning — human-driven (2026-09-15; release-please automatic tagging is PARKED)
 - Release-please automatic tagging is parked permanently: its output (`.github/workflows/

@@ -7,8 +7,9 @@
  * ejecutado 9 de 12 tests. Playwright no tiene fail-on-skip nativo, así que se
  * lee el reporte JSON y se decide acá.
  *
- * En CI los secretos E2E siempre existen (el job no corre si faltan), por eso
- * cualquier skip es inesperado: no hay caso legítimo.
+ * En CI la suite corre siempre: no hay secrets que puedan faltar ni un
+ * preflight que pueda omitir el job (el stack Supabase es local y efímero), así
+ * que cualquier skip es inesperado y no hay caso legítimo.
  *
  * También protege contra dos falsos verdes: un reporte estructuralmente válido
  * con `stats.expected === 0` (el run no matcheó NADA y no es un pase) y un
