@@ -7,7 +7,7 @@
 # Capas (AGENTS.md § Testing):
 #   1. quality     → ESLint, TypeScript estricto (noEmit) y `prisma validate`
 #   2. unit        → Jest (dominio fiscal, aplicación, UI jsdom) sin base de datos
-#   3. integration → Jest contra Postgres 16 REAL con RLS forzado (rol
+#   3. integration → Jest contra Postgres 17.6 REAL con RLS forzado (rol
 #                    systemfact_app NOBYPASSRLS), igual que el entorno local
 #   4. build       → `next build` de producción (detecta errores de build-time)
 #   5. commits     → guardián de Conventional Commits (insumo de release-please)
@@ -91,7 +91,7 @@ jobs:
   # 3. Integración contra Postgres real con RLS
   # ----------------------------------------------------------
   # Reproduce el entorno de SETUP-LOCAL.md dentro del runner:
-  #   - Postgres 16 (misma major que Supabase),
+  #   - Postgres 17.6 (misma major que el proyecto Supabase),
   #   - migraciones aplicadas como superuser (DIRECT_URL),
   #   - rol de aplicación `systemfact_app` NOBYPASSRLS con password efímero
   #     (la migración create_app_role lo crea SIN password, out-of-band por
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -261,7 +261,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

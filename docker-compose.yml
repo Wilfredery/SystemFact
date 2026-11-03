@@ -1,10 +1,17 @@
 # Docker Compose for local development.
 #
-# - postgres:16 container matches Supabase's Postgres 16 to keep behavior consistent.
+# - postgres:17.6 matches the Supabase cloud project's engine (PostgreSQL 17.6,
+#   confirmed 2026-11-03). The previous local image was postgres:16, which meant
+#   every RLS/concurrency integration test certified a different major version
+#   than production (local engine parity with the Supabase project). Keep this tag pinned to the cloud minor and
+#   keep .github/workflows/ci.yml in agreement -- local, CI and prod must agree.
 # - Port 5433 (not 5432) to avoid conflicts with the native Windows PostgreSQL service.
 # - restart: unless-stopped so the container survives Docker Desktop restarts.
 # - healthcheck ensures we know when the service is actually ready (not just "Up").
-# - Named volume (sf-pgdata) preserves data across container recreations.
+# - Named volume (sf-pgdata17) preserves data across container recreations.
+#   ROLLBACK: the pre-T0b volume `sf-pgdata` (PostgreSQL 16 data directory) is kept
+#   intact and untouched. PostgreSQL 17 cannot open a 16 data directory, so rolling
+#   back means re-creating the old container against `sf-pgdata`, never mixing them.
 #
 # Usage:
 #   docker compose up -d        # start
@@ -14,7 +21,7 @@
 
 services:
   postgres:
-    image: postgres:16
+    image: postgres:17.6
     container_name: sf-postgres
     restart: unless-stopped
     environment:
@@ -24,7 +31,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - sf-pgdata:/var/lib/postgresql/data
+      - sf-pgdata17:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 10s
@@ -33,6 +40,6 @@ services:
       start_period: 10s
 
 volumes:
-  sf-pgdata:
-    name: sf-pgdata
+  sf-pgdata17:
+    name: sf-pgdata17
     external: true

@@ -1,5 +1,5 @@
 /**
- * Integration — Reportes slice E: fiscal reports + DGII exporters (real Postgres 16, RLS on,
+ * Integration — Reportes slice E: fiscal reports + DGII exporters (real Postgres, RLS on,
  * `systemfact_app` role; FIS-1..FIS-6, EXP-2/EXP-4).
  *
  * Seeding runs on the trusted superuser harness client (bypasses RLS), exactly like the slice-B/C/D

@@ -1,5 +1,5 @@
 /**
- * Integration — Reportes slice C: CxC aging, CxP, comparativa (real Postgres 16, RLS on,
+ * Integration — Reportes slice C: CxC aging, CxP, comparativa (real Postgres, RLS on,
  * `systemfact_app` role; FIN-1..FIN-5, EXP-2/EXP-4).
  *
  * Seeding runs on the trusted superuser harness client (bypasses RLS), exactly like the slice-A/B

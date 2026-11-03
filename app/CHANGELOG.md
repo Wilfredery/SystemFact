@@ -1,3 +1,10 @@
+## [0.17.2](https://github.com/Wilfredery/SystemFact/compare/v0.17.1...v0.17.2) (2026-11-03)
+
+### Chores
+
+* **infra:** run local Docker and both CI Postgres service containers on `postgres:17.6`, the engine the Supabase project runs, so integration, RLS and concurrency suites certify the version production uses (parity was `16` locally and in CI). Data moved by logical dump/restore into a new volume `sf-pgdata17`, leaving the previous volume untouched for rollback.
+* **infra:** add `.gitattributes` (`*.sql text eol=lf`) so Windows checkouts stop storing CRLF inside plpgsql function bodies, which made a Windows-migrated database differ from CI.
+* **infra:** add `provision-integration-db.sql` plus the runbook fix, so a local volume recreate restores test-database object ownership instead of failing the harness with `permission denied for table FACTURA` (SQLSTATE 42501).
 ## [0.17.1](https://github.com/Wilfredery/SystemFact/compare/v0.17.0...v0.17.1) (2026-11-02)
 
 ### Bug Fixes

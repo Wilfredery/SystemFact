@@ -1,6 +1,6 @@
 /**
  * Integration — M4 `producto.listed` dedupe + M2 canonical writer round-trip on
- * the REAL Postgres 16 (RLS on, `systemfact_app`).
+ * the REAL Postgres (RLS on, `systemfact_app`).
  *
  * REQ-PROD-010 scenarios on a real ledger:
  *   - the FIRST listing inside an empty window appends exactly ONE row whose

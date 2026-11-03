@@ -1,6 +1,6 @@
 /**
  * Integration — audit WRITE port on the auth standalone path (REQ-AUTH-AUD-001,
- * AU-2 #13, AU-1; real Postgres 16, RLS on, `systemfact_app` role).
+ * AU-2 #13, AU-1; real Postgres, RLS on, `systemfact_app` role).
  *
  * The Supabase credential round-trip is REMOTE and cannot run in a real-DB test,
  * so this suite drives the exact standalone mechanism the login/logout paths use:

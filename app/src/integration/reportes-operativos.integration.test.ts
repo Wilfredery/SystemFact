@@ -1,5 +1,5 @@
 /**
- * Integration — Reportes slice B: operational reports + CSV (real Postgres 16, RLS on,
+ * Integration — Reportes slice B: operational reports + CSV (real Postgres, RLS on,
  * `systemfact_app` role; OP-1..OP-6, EXP-2/EXP-4).
  *
  * Seeding runs on the trusted superuser harness client (bypasses RLS), exactly like the slice-A

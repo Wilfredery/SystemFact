@@ -1,0 +1,13 @@
+# Line-ending policy (docs/22 T0b, 2026-11-03).
+#
+# Why: this repo is developed on Windows with core.autocrlf=true. Windows
+# checkouts therefore carried CRLF into SQL migration files, and
+# `prisma migrate deploy` stores the migration text verbatim inside plpgsql
+# function bodies. A database migrated on Windows then differed from the same
+# database migrated in CI (Linux) — cosmetic for plpgsql, but it makes
+# `pg_dump --schema-only` comparisons noisy and turns an environment
+# difference into permanent schema drift.
+#
+# Scope is deliberately narrow: only SQL (migrations, provisioning scripts).
+# Normalising every file type is a separate decision with its own review cost.
+*.sql text eol=lf
