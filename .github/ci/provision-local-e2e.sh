@@ -2,7 +2,7 @@
 # ============================================================
 # provision-local-e2e.sh — prepares the ephemeral Supabase stack for the E2E lane.
 #
-# WHAT IT DOES (idempotent; re-runnable against the same stack):
+# WHAT IT DOES (expects a FRESH stack; see "RE-RUNNING" below):
 #   1. Reads the running stack's endpoints/keys from `supabase status`.
 #   2. Applies the Prisma migrations as `supabase_admin` (the local superuser;
 #      the plain `postgres` role is NOT superuser in Supabase's local stack and
@@ -20,6 +20,13 @@
 # WHY A SCRIPT AND NOT WORKFLOW STEPS: the same recipe has to be reproducible on a
 # developer machine (app/SETUP-LOCAL.md) and must fail the same way in both places.
 # The CI job only boots the stack and calls this file.
+#
+# Usage above assumes a stack that has just been started. RE-RUNNING: the steps
+# themselves are re-runnable (migrations, seeds and the auth user are idempotent),
+# but .github/ci/e2e-fixture.sql deliberately aborts on a database that already
+# has the fixture empresa — it exists to make pointing it at a real database
+# impossible. To provision again, wipe the stack first:
+#   npx --yes supabase@3.0.0 stop --no-backup && npx --yes supabase@3.0.0 start
 #
 # USAGE (repo root, stack already started with `supabase start`):
 #   bash .github/ci/provision-local-e2e.sh                     # → app/.env.e2e.stack
@@ -44,6 +51,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP_DIR="$REPO_ROOT/app"
 PSQL="${PSQL:-psql}"
+# shellcheck disable=SC2086 # intentional word splitting: the default is a command with flags
 SUPABASE_CLI="${SUPABASE_CLI:-npx --yes supabase@3.0.0}"
 
 E2E_USER="${E2E_USER:-e2e-automation}"

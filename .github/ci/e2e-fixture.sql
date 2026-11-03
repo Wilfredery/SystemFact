@@ -51,9 +51,9 @@ SELECT 'Administrador', 'Rol del fixture E2E de CI'
 WHERE NOT EXISTS (SELECT 1 FROM "ROL" WHERE "nombre" = 'Administrador');
 
 INSERT INTO "USUARIO" (
-  "empresaId", "sucursalId", "nombre", "nombreUsuario", "passwordHash", "updatedAt"
+  "empresaId", "sucursalId", "nombre", "nombreUsuario", "passwordHash", "activo", "updatedAt"
 )
-SELECT e.id, s.id, :'e2e_user', :'e2e_user', 'ci-e2e-supabase-auth', now()
+SELECT e.id, s.id, :'e2e_user', :'e2e_user', 'ci-e2e-supabase-auth', true, now()
 FROM "EMPRESA" e
 JOIN "SUCURSAL" s ON s."empresaId" = e.id
 WHERE e."rnc" = '131000001';
@@ -72,11 +72,11 @@ WHERE u."nombreUsuario" = :'e2e_user' AND r."nombre" = 'Administrador';
 -- el proyecto real, no para el runner.
 INSERT INTO "CLIENTE" (
   "empresaId", "nombre", "telefono", "direccion", "identificacionFiscal",
-  "tipoCliente", "creditoHabilitado", "limiteCredito", "plazoCreditoDias", "updatedAt"
+  "tipoCliente", "creditoHabilitado", "limiteCredito", "plazoCreditoDias", "activo", "updatedAt"
 )
 SELECT e.id, 'Comercios Clara, SRL (demo)', '809-000-0001',
        'Calle El Sol #111, Los Prados, Santo Domingo, RD', '131000010',
-       'CREDITO', true, 10000.00, 15, now()
+       'CREDITO', true, 10000.00, 15, true, now()
 FROM "EMPRESA" e
 WHERE e."rnc" = '131000001';
 
