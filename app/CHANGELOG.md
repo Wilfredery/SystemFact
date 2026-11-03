@@ -1,3 +1,18 @@
+## [0.17.7](https://github.com/Wilfredery/SystemFact/compare/v0.17.6...v0.17.7) (2026-11-03)
+
+### Chores
+
+* **ci:** the E2E lane no longer authenticates against the hosted Supabase project. It boots its own **ephemeral local Supabase stack** (`supabase start`, configured by the new committed `supabase/config.toml`) and provisions it inside the runner, so CI holds **no real credential at all** (issue #138, option C). Deleted with it: the `E2E preflight` job and its `needs`/`if` wiring, `environment: e2e`, the four secret references, and the `postgres:17.6` service container. The job now **always** runs — an unstartable stack fails it instead of silently skipping the suite — and the fail-on-skip guard is unchanged. Only `postgres`, `kong`, `gotrue` and `postgrest` boot: studio, mail, storage, realtime, edge runtime and analytics are off, and `db.seed` is off because Prisma owns the schema.
+* **ci:** add `.github/ci/provision-local-e2e.sh`, one recipe for CI and for a developer. It applies the Prisma migrations as **`supabase_admin`** (the plain `postgres` role is not superuser in Supabase's local stack, and `ALTER ROLE postgres NOBYPASSRLS` fails under it), sets a per-run password on the RLS-bound `systemfact_app` role, loads `.github/ci/e2e-fixture.sql`, runs `seed:venta`/`seed:ncf`/`seed:cliente`/`config:verify`, and writes the env file the app and the specs read.
+* **ci:** add `.github/ci/upsert-e2e-auth-user.mjs`: find-or-create the GoTrue user for `E2E_USER` through the admin API and **verify the password grant** before Playwright starts, so a broken identity fails with its real cause instead of a login timeout. The password is generated per run and never printed.
+* **chore:** `.gitattributes` pins `*.sh` to LF — a CRLF checkout turns `set -euo pipefail` into a syntax error — and `app/.gitignore` now ignores the `e2e-results.json` run artifact.
+
+### Documentation
+
+* **docs:** `SETUP-LOCAL.md` gains the reproducible local-stack recipe (three commands) plus the local facts that matter: API `54321`, Postgres `54322` (no clash with the `5433` compose), `supabase_admin` is the real superuser, the app role password is per-run, and `ANON_KEY`/`SERVICE_ROLE_KEY` are static public defaults. `AGENTS.md` documents the lane, and the fixture, `playwright.config.ts` and the skip guard no longer describe auth as necessarily remote.
+
+**Verification:** proven locally with the exact CI order on a wiped stack (`stop --no-backup` → `start` → provision → Playwright → guard): `Running 12 tests` → `12 passed` → `OK: 12 test(s) ejecutados, 0 salteados.` The PR's own CI run is the authoritative proof; the `e2e` environment and its four secrets are deleted only after it reports the same counts.
+
 ## [0.17.6](https://github.com/Wilfredery/SystemFact/compare/v0.17.5...v0.17.6) (2026-11-03)
 
 ### Chores
