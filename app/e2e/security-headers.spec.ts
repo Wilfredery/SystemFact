@@ -43,4 +43,30 @@ test.describe("cabeceras de seguridad (T1 stage 1)", () => {
       expect(response.headers()[nombre], `cabecera ${nombre} en el redirect`).toBe(valor);
     }
   });
+
+  test("una ruta inexistente (404) también las lleva", async ({ request }) => {
+    // El 404 lo sirve Next, ningún route handler: es la respuesta que más se
+    // escaparía de un control por handler. Si quedara sin `X-Frame-Options`,
+    // un tercero podría incrustar la página de error y sondear la app desde un
+    // iframe opaco.
+    const response = await request.get("/ruta-que-no-existe", { maxRedirects: 0 });
+
+    expect(response.status()).toBe(404);
+    for (const [nombre, valor] of Object.entries(CABECERAS_REQUERIDAS)) {
+      expect(response.headers()[nombre], `cabecera ${nombre} en el 404`).toBe(valor);
+    }
+  });
+
+  test("un asset estático también las lleva", async ({ request }) => {
+    // El matcher del proxy excluye `.*\.(?:svg|png|...)$`, así que esta
+    // respuesta la sirve el sistema de archivos y NUNCA pasa por el proxy:
+    // sólo la capa de config puede ponerle las cabeceras. Sin este caso, la
+    // cobertura de assets queda afirmada en el CHANGELOG pero sin pin real.
+    const response = await request.get("/next.svg");
+
+    expect(response.status()).toBe(200);
+    for (const [nombre, valor] of Object.entries(CABECERAS_REQUERIDAS)) {
+      expect(response.headers()[nombre], `cabecera ${nombre} en el asset`).toBe(valor);
+    }
+  });
 });
