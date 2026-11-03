@@ -131,26 +131,61 @@ async function filaCxcEnBoard(page: Page, facturaId: number) {
  * and no "Página siguiente" button, breaks on its first iteration and throws a
  * false `Invoice N not found on any board page`.
  *
- * The wait is deliberately narrow: it only observes that the island SETTLED (its
- * loading copy is gone and a settled surface is rendered — rows on success, the
- * typed `role="alert"` on a failed read). It never substitutes a timeout for the
- * walk-and-throw contract below: if the invoice really is missing from a loaded
- * board, that still fails loudly.
+ * The wait only observes that the island SETTLED into a *diagnosable* state:
+ *   - the loading copy keeps the poll waiting (the island is still resolving);
+ *   - `[data-testid^="cxc-fila-"]` rows mean the board loaded successfully;
+ *   - a `role="alert"` SCOPED TO THE BOARD REGION (`main`) is the board's OWN
+ *     read failure — it THROWS with the board's error text so the failure names
+ *     the real cause instead of degrading into "Invoice N not found";
+ *   - anything else after the loading copy is gone (neither rows nor board
+ *     error) is a stuck board and still THROWS — never a silent skip.
+ * It never substitutes a timeout for the walk-and-throw contract below: if the
+ * invoice really is missing from a loaded board, that still fails loudly.
  */
+/** How long the board is given to leave its loading state (also quoted in the failure). */
+const TABLERO_TIMEOUT_MS = 30_000;
+/** Poll interval while the island is still resolving. */
+const PASO_ESPERA_TABLERO_MS = 250;
+
 async function esperarTableroCargado(page: Page): Promise<void> {
-  await expect
-    .poll(
-      async () => {
-        if ((await page.getByText(/Cargando cuentas por cobrar/).count()) > 0) {
-          return "cargando";
-        }
-        const filas = await page.locator('[data-testid^="cxc-fila-"]').count();
-        const alerta = await page.getByRole("alert").count();
-        return filas + alerta > 0 ? "listo" : "vacio";
-      },
-      { timeout: 30_000 },
-    )
-    .toBe("listo");
+  const deadline = Date.now() + TABLERO_TIMEOUT_MS;
+  for (;;) {
+    if ((await page.getByText(/Cargando cuentas por cobrar/).count()) > 0) {
+      if (Date.now() > deadline) break;
+      await page.waitForTimeout(PASO_ESPERA_TABLERO_MS);
+      continue;
+    }
+
+    if ((await page.locator('[data-testid^="cxc-fila-"]').count()) > 0) {
+      return;
+    }
+
+    // Board-scoped error: the board's OWN `role="alert"` (inside `main`), not
+    // any alert on the page (the login screen renders one too). Presence alone
+    // is the signal — `allTextContents()` never auto-waits, so an absent alert
+    // cannot block the loop and an alert whose text is still empty still names
+    // the board failure instead of falling through to the generic message.
+    const alerta = page.locator("main").getByRole("alert");
+    const textos = await alerta.allTextContents();
+    if (textos.length > 0) {
+      const texto = textos.join(" ").trim();
+      throw new Error(
+        `El tablero de CxC falló al cargar: ${texto === "" ? "(el tablero reportó un error sin texto)" : texto}`,
+      );
+    }
+
+    if (Date.now() > deadline) {
+      // Last look before failing: the board may have settled during the final
+      // sleep, and a timeout must never beat a load that already succeeded.
+      if ((await page.locator('[data-testid^="cxc-fila-"]').count()) > 0) return;
+      break;
+    }
+    await page.waitForTimeout(PASO_ESPERA_TABLERO_MS);
+  }
+
+  throw new Error(
+    `El tablero de CxC no llegó a un estado estable tras ${TABLERO_TIMEOUT_MS / 1000}s: o sigue 'Cargando cuentas por cobrar…' o se asentó sin filas ni error — un tablero así no es un pase.`,
+  );
 }
 
 async function contarCobros(facturaId: number): Promise<number> {

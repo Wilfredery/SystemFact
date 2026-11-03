@@ -1,3 +1,19 @@
+## [0.17.5](https://github.com/Wilfredery/SystemFact/compare/v0.17.4...v0.17.5) (2026-11-03)
+
+### Chores
+
+* **ci:** seed the demo CREDITO client (`Comercios Clara, SRL (demo)`) in the CI-only E2E fixture. Three specs look it up by name + `tipoCliente` + `creditoHabilitado` + `activo` and were skipping without it (`cobros.spec.ts` ×2 and the credit-sale case of `confirm-venta.spec.ts`), so the E2E job reported success having executed 9 of 12 tests. Seeded in the fixture, deliberately NOT via `pnpm seed:bootstrap`: that script writes `auth.users` over a privileged connection (`PROD_PRIVILEGED_URL` first) and belongs to the real project.
+* **ci:** add `app/e2e/assert-no-skips.mjs` and wire it into the E2E job. A skipped test now fails the run (the E2E secrets always exist in that job, so no skip is legitimate), a report with no tests at all fails, and a missing or unparseable report fails with a message naming the step and the expected file instead of an unhandled `JSON.parse` exception.
+
+### Bug Fixes
+
+* **test:** the same-day CxC test is time-injected. One `now` instantiates the fixture's `fechaEmision` and is also passed as the domain clock of `consultarSaldoCxcPaginado`/`consultarSaldoCxC`, so a Santo Domingo midnight boundary can no longer split fixture and assertions; `crearFactura` gained an optional emission date instead of a duplicated fixture helper that could drift.
+* **e2e:** the board settled-state detector scopes its `role="alert"` check to the board region and throws the board's own error text, so a failed board read names its real cause instead of degrading into `Invoice N not found`; a board that settles with neither rows nor an error still fails loudly after the deadline. The walk-and-throw contract is unchanged.
+
+### Documentation
+
+* **docs:** the `pnpm dev` / `next/font` troubleshooting entry now records the second, transient mode — the same message failing `next build` on a fresh CI checkout and clearing on re-run, while the same tree built locally in ~22s — and says to re-run first, clearing `.next` only if the failure persists locally.
+
 ## [0.17.4](https://github.com/Wilfredery/SystemFact/compare/v0.17.3...v0.17.4) (2026-11-03)
 
 ### Bug Fixes
