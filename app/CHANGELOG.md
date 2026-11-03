@@ -1,3 +1,14 @@
+## [0.17.4](https://github.com/Wilfredery/SystemFact/compare/v0.17.3...v0.17.4) (2026-11-03)
+
+### Bug Fixes
+
+* **e2e:** wait for the CxC board's client island to settle before counting rows. `filaCxcEnBoard` called `page.goto("/cobros/cxc-board")` and counted immediately, but the board renders "Cargando cuentas por cobrar…" until its mount `consultarSaldoCxcAction` resolves and only renders its pagination control once loaded. On a slow first render — a cold dev compile in CI is seconds — the walk read an empty board, found no "Página siguiente" button, broke on its first iteration and threw `Invoice N not found on any board page`, a false failure that read like a product defect (issue #133). The wait observes only the island's settled state (loading copy gone plus rows or the typed alert); the walk still throws when an invoice really is missing.
+* **test:** pin same-day CxC visibility deterministically. `cobros-saldo-cxc-tablero.integration.test.ts` dated every fixture invoice `2026-09-01`, so no deterministic test ever covered an invoice emitted on the current business day; the only same-day path was the Playwright spec that was failing.
+
+### Documentation
+
+* **docs:** `SETUP-LOCAL.md` troubleshooting entry for `pnpm dev` returning 500 on every route (`Module not found: @vercel/turbopack-next/internal/font/google/font`): an inconsistent `.next` cache, most often caused by running `pnpm build` or deleting `.next` while `next dev` is serving. Includes the rule that build and dev never run in parallel.
+
 ## [0.17.3](https://github.com/Wilfredery/SystemFact/compare/v0.17.2...v0.17.3) (2026-11-03)
 
 ### Chores
