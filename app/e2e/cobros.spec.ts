@@ -104,6 +104,7 @@ async function crearVentaCreditoPendiente(page: Page): Promise<number> {
  */
 async function filaCxcEnBoard(page: Page, facturaId: number) {
   await page.goto("/cobros/cxc-board");
+  await esperarTableroCargado(page);
   const fila = page.getByTestId(`cxc-fila-${facturaId}`);
   for (let pag = 1; pag <= 50; pag++) {
     if ((await fila.count()) > 0) return fila;
@@ -117,6 +118,39 @@ async function filaCxcEnBoard(page: Page, facturaId: number) {
   throw new Error(
     `Invoice ${facturaId} not found on any board page (walked 50) - the server-paged board must list every VIGENTE pending invoice.`,
   );
+}
+
+/**
+ * Wait for the board's ASYNC boundary before any row is counted (issue #133).
+ *
+ * `CxcBoardScreen` is a client island: it renders "Cargando cuentas por cobrar…"
+ * until its mount `consultarSaldoCxcAction` resolves, and the pagination control
+ * exists ONLY inside the loaded branch. Counting rows right after `page.goto`
+ * therefore reads an EMPTY board whenever the first render is slow — a cold dev
+ * compile makes that window seconds long — and `filaCxcEnBoard` then finds no row
+ * and no "Página siguiente" button, breaks on its first iteration and throws a
+ * false `Invoice N not found on any board page`.
+ *
+ * The wait is deliberately narrow: it only observes that the island SETTLED (its
+ * loading copy is gone and a settled surface is rendered — rows on success, the
+ * typed `role="alert"` on a failed read). It never substitutes a timeout for the
+ * walk-and-throw contract below: if the invoice really is missing from a loaded
+ * board, that still fails loudly.
+ */
+async function esperarTableroCargado(page: Page): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        if ((await page.getByText(/Cargando cuentas por cobrar/).count()) > 0) {
+          return "cargando";
+        }
+        const filas = await page.locator('[data-testid^="cxc-fila-"]').count();
+        const alerta = await page.getByRole("alert").count();
+        return filas + alerta > 0 ? "listo" : "vacio";
+      },
+      { timeout: 30_000 },
+    )
+    .toBe("listo");
 }
 
 async function contarCobros(facturaId: number): Promise<number> {

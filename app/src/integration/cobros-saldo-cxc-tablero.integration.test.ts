@@ -35,6 +35,7 @@ import {
   consultarSaldoCxcEnTx,
 } from "@/modules/cobros/infrastructure/saldo-cxc.repository";
 import {
+  consultarSaldoCxC,
   consultarSaldoCxcPaginado,
 } from "@/modules/cobros/application/consultar-saldo-cxc";
 import { ESTADO_PAGO_DERIVADO } from "@/modules/cobros/domain/pago";
@@ -102,6 +103,39 @@ async function crearFactura(
       // Distinct instants make `fechaEmision DESC` a TOTAL order: higher id =
       // newer emission, so id DESC and fechaEmision DESC agree row-for-row.
       fechaEmision: new Date(BASE_FECHA.getTime() + minutos * 60_000),
+    },
+    select: { id: true },
+  });
+  return f.id;
+}
+
+/**
+ * Create a VIGENTE FACTURA emitted at the CURRENT instant (`new Date()`), so
+ * its Santo Domingo calendar date is today. Mirrors `crearFactura` but skips
+ * the minute-staggered `BASE_FECHA` offset.
+ */
+async function crearFacturaHoy(
+  clienteId: number,
+  total: string,
+): Promise<number> {
+  const db = getHarnessDb();
+  ncfSeq += 1;
+  const f = await db.factura.create({
+    data: {
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      clienteId,
+      usuarioId: ctx.usuarioId,
+      tipoNcf: "B01",
+      ncf: `B01${String(ncfSeq).padStart(10, "0")}`,
+      correlativoInterno: `FAC-${ncfSeq}`,
+      estado: "VIGENTE",
+      subtotalGravado: new Prisma.Decimal(total),
+      itbis: new Prisma.Decimal("0.00"),
+      subtotalExento: new Prisma.Decimal("0.00"),
+      descuento: new Prisma.Decimal("0.00"),
+      total: new Prisma.Decimal(total),
+      fechaEmision: new Date(),
     },
     select: { id: true },
   });
@@ -302,5 +336,42 @@ describe("CxC board server-side pagination (real DB, RLS on, R-C9)", () => {
     expect(
       data.filas.every((f) => f.estadoPago !== ESTADO_PAGO_DERIVADO.PAGADA),
     ).toBe(true);
+  });
+
+  it("same-day zero-payment invoice is served on the board page and in the canonical read as PENDIENTE, not in mora", async () => {
+    const clienteId = await crearCliente("Tablero Mismo Dia");
+    // One older outstanding invoice anchors ordering: the same-day row must
+    // still be the NEWEST (first in `fechaEmision DESC`) so ordering cannot
+    // hide it.
+    await crearFactura(clienteId, "5000.00", 0);
+    const hoyId = await crearFacturaHoy(clienteId, "5000.00");
+
+    // Board page (R-C9) through the public application surface.
+    const pagina = await withTenantTransaction(ctx, async (tx) => {
+      const result = await consultarSaldoCxcPaginado(tx, ctx, { page: 1 });
+      if (!result.ok) throw new Error(result.message);
+      return result.data;
+    });
+
+    // The same-day invoice is the newest row and IS served on page 1.
+    expect(pagina.filas[0]!.facturaId).toBe(hoyId);
+    // Filtered total counts BOTH outstanding rows, same-day included.
+    expect(pagina.total).toBe(2);
+
+    const fila = pagina.filas.find((f) => f.facturaId === hoyId);
+    expect(fila).toBeDefined();
+    expect(fila!.estadoPago).toBe(ESTADO_PAGO_DERIVADO.PENDIENTE);
+    expect(fila!.enMora).toBe(false);
+
+    // Canonical full read (R-B1) serves the same row with identical facts.
+    const canonico = await withTenantTransaction(ctx, async (tx) => {
+      const result = await consultarSaldoCxC(tx, ctx);
+      if (!result.ok) throw new Error(result.message);
+      return result.data;
+    });
+    const canonica = canonico.find((f) => f.facturaId === hoyId);
+    expect(canonica).toBeDefined();
+    expect(canonica!.estadoPago).toBe(ESTADO_PAGO_DERIVADO.PENDIENTE);
+    expect(canonica!.enMora).toBe(false);
   });
 });

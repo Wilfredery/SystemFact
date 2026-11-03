@@ -436,6 +436,24 @@ pnpm prisma migrate deploy
 docker inspect --format "{{.State.Health.Status}}" sf-postgres
 ```
 
+### `pnpm dev` responde 500 en TODAS las rutas (Turbopack + `next/font`)
+
+Síntoma: el server arranca, pero cualquier ruta devuelve 500 con
+`Module not found: Can't resolve '@vercel/turbopack-next/internal/font/google/font'`
+o `next/font/google queries have exactly one entry`.
+
+Causa: el cache de desarrollo (`.next/`) quedó inconsistente. Lo más frecuente es
+borrar `.next` o correr `pnpm build` MIENTRAS `next dev` está sirviendo: build y dev
+escriben el mismo directorio.
+
+```bash
+# Parar el server y limpiar sólo el cache (no toca la BD ni el código)
+rm -rf .next
+pnpm dev
+```
+
+Regla: `pnpm build` y `pnpm dev` NUNCA en paralelo.
+
 ### Resetear todo (wipe + start fresh)
 ```bash
 docker compose down -v   # BORRA el volume (todos los datos)
