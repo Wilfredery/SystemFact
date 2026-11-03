@@ -132,7 +132,7 @@ function parsePublic() {
   return parsed.data;
 }
 
-/** Server-side env (Server Components, Server Actions, middleware, Node runtime). */
+/** Server-side env (Server Components, Server Actions, proxy, Node runtime). */
 export const serverEnv = parseServer();
 
 /** Client-side env (browser bundle). */

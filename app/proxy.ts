@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createMiddlewareClient } from "@/lib/supabase/middleware";
+import { createProxyClient } from "@/lib/supabase/proxy";
 
 /**
  * Public routes that do NOT require authentication.
@@ -13,7 +13,7 @@ function isPublicPath(pathname: string): boolean {
   );
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const response = NextResponse.next({
     request: {
@@ -21,7 +21,7 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const supabase = createMiddlewareClient(request, response);
+  const supabase = createProxyClient(request, response);
 
   // Refresh the session before any protected route handler runs.
   // Also triggers Set-Cookie refresh on the response if the token is stale.

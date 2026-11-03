@@ -3,12 +3,16 @@ import type { NextRequest, NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env";
 
 /**
- * Supabase client for Next.js middleware.
+ * Supabase client for the Next.js proxy (`app/proxy.ts`).
  *
  * Refreshes the session by setting new cookies on the outgoing response when
  * the access token is close to expiring (official @supabase/ssr pattern).
+ *
+ * Named after the Next 16 file convention: `middleware.ts` is deprecated in
+ * favor of `proxy.ts` (see `app/node_modules/next/dist/docs/01-app/03-api-
+ * reference/03-file-conventions/proxy.md`), and the export it feeds is `proxy`.
  */
-export function createMiddlewareClient(
+export function createProxyClient(
   request: NextRequest,
   response: NextResponse,
 ) {

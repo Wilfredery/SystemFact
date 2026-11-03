@@ -1,3 +1,9 @@
+## [0.17.3](https://github.com/Wilfredery/SystemFact/compare/v0.17.2...v0.17.3) (2026-11-03)
+
+### Chores
+
+* **security:** send baseline security response headers (`Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`) on every route from `app/next.config.ts`, so the proxy redirect and 404s carry them too (docs/22 T1 stage 1). Pinned by a unit test that imports the real config plus one Playwright header assertion. The nonce CSP is deliberately not here: it forces dynamic rendering and needs its own Report-Only pass.
+* **security:** move the auth gate to the Next 16 `proxy` file convention (`app/middleware.ts` -> `app/proxy.ts`, `createMiddlewareClient` -> `createProxyClient`). Behavior unchanged: unauthenticated requests still redirect with `307` to `/login`, and an authenticated visit to `/login` still lands on `/dashboard`.
 ## [0.17.2](https://github.com/Wilfredery/SystemFact/compare/v0.17.1...v0.17.2) (2026-11-03)
 
 ### Chores

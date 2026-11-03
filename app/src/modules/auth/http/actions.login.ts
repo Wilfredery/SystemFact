@@ -31,7 +31,7 @@ const loginInputSchema = z.object({
 
 /**
  * Logs a user in using `nombreUsuario` + password (ADR-014).
- * On success the landing is decided HERE per design D2 — the middleware stays
+ * On success the landing is decided HERE per design D2 — the proxy stays
  * byte-identical: a multi-branch ADMIN (`esAdmin && activeBranchCount > 1`)
  * goes to `/selector-empresa-sucursal`; everyone else (non-admin fast path
  * 17 §5, single-branch admin) goes to `/dashboard`, unchanged.
