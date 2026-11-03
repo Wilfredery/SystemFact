@@ -51,17 +51,21 @@ try {
 
 const skipped = (report.suites ?? []).flatMap((suite) => skips(suite, []));
 const stats = report.stats ?? {};
-const passed = stats.expected ?? 0;
+// `stats.expected` is the number of tests Playwright EXPECTED to run, not the
+// number executed: a run where every test skipped still reports a nonzero
+// `expected`. This check therefore targets the empty/malformed report (no
+// tests at all), and the skip branch below covers the fully-skipped run.
+const expected = stats.expected ?? 0;
 
-if (passed === 0) {
+if (expected === 0) {
   console.error(
-    "FAIL: the report contains 0 executed tests — the run matched nothing, which is not a pass.",
+    "FAIL: the report contains no tests at all (stats.expected = 0) — an empty run is not a pass.",
   );
   process.exit(1);
 }
 
 if (skipped.length === 0) {
-  console.log(`OK: ${passed} test(s) ejecutados, 0 salteados.`);
+  console.log(`OK: ${expected} test(s) ejecutados, 0 salteados.`);
   process.exit(0);
 }
 

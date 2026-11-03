@@ -3,7 +3,7 @@
 ### Chores
 
 * **ci:** seed the demo CREDITO client (`Comercios Clara, SRL (demo)`) in the CI-only E2E fixture. Three specs look it up by name + `tipoCliente` + `creditoHabilitado` + `activo` and were skipping without it (`cobros.spec.ts` ×2 and the credit-sale case of `confirm-venta.spec.ts`), so the E2E job reported success having executed 9 of 12 tests. Seeded in the fixture, deliberately NOT via `pnpm seed:bootstrap`: that script writes `auth.users` over a privileged connection (`PROD_PRIVILEGED_URL` first) and belongs to the real project.
-* **ci:** add `app/e2e/assert-no-skips.mjs` and wire it into the E2E job. A skipped test now fails the run (the E2E secrets always exist in that job, so no skip is legitimate), a report with zero executed tests fails, and a missing or unparseable report fails with a message naming the step and the expected file instead of an unhandled `JSON.parse` exception.
+* **ci:** add `app/e2e/assert-no-skips.mjs` and wire it into the E2E job. A skipped test now fails the run (the E2E secrets always exist in that job, so no skip is legitimate), a report with no tests at all fails, and a missing or unparseable report fails with a message naming the step and the expected file instead of an unhandled `JSON.parse` exception.
 
 ### Bug Fixes
 

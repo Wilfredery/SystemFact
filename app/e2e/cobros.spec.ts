@@ -156,11 +156,17 @@ async function esperarTableroCargado(page: Page): Promise<void> {
     }
 
     // Board-scoped error: the board's OWN `role="alert"` (inside `main`), not
-    // any alert on the page (the login screen renders one too).
+    // any alert on the page (the login screen renders one too). Presence alone
+    // is the signal — `allTextContents()` never auto-waits, so an absent alert
+    // cannot block the loop and an alert whose text is still empty still names
+    // the board failure instead of falling through to the generic message.
     const alerta = page.locator("main").getByRole("alert");
-    const texto = ((await alerta.first().textContent()) ?? "").trim();
-    if (texto !== "") {
-      throw new Error(`El tablero de CxC falló al cargar: ${texto}`);
+    const textos = await alerta.allTextContents();
+    if (textos.length > 0) {
+      const texto = textos.join(" ").trim();
+      throw new Error(
+        `El tablero de CxC falló al cargar: ${texto === "" ? "(el tablero reportó un error sin texto)" : texto}`,
+      );
     }
 
     if (Date.now() > deadline) break;
