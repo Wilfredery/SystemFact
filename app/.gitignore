@@ -18,6 +18,9 @@
 /test-results
 /playwright-report
 /.playwright-mcp
+# JSON report written by the E2E job (PLAYWRIGHT_JSON_OUTPUT_NAME) and by the
+# skip guard's local reproduction; it is a run artifact, never a committed file.
+/e2e-results.json
 
 # next.js
 /.next/
