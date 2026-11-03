@@ -1,3 +1,10 @@
+## [0.17.4](https://github.com/Wilfredery/SystemFact/compare/v0.17.3...v0.17.4) (2026-11-03)
+
+### Chores
+
+* **ci:** seed the demo CREDITO client (`Comercios Clara, SRL (demo)`) in the CI-only E2E fixture, so `cobros.spec.ts` (2 cases) and the credit-sale case of `confirm-venta.spec.ts` actually run instead of skipping. Before this change the E2E job reported success having executed 9 of 12 tests: the three skipped because `idClienteCreditoDemo` found no such client in the ephemeral database.
+* **ci:** add `app/e2e/assert-no-skips.mjs` and wire it into the E2E job, so any skipped test fails the run. A green job that silently skips tests reads as coverage it does not have; in that job the E2E secrets always exist, so every skip is unexpected. The fixture, not `pnpm seed:bootstrap`, is the place for CI data: the bootstrap script writes `auth.users` over a privileged connection (`PROD_PRIVILEGED_URL` first) and is meant for the real project.
+
 ## [0.17.3](https://github.com/Wilfredery/SystemFact/compare/v0.17.2...v0.17.3) (2026-11-03)
 
 ### Chores

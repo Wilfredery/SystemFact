@@ -62,6 +62,23 @@ SELECT u.id, r.id
 FROM "USUARIO" u, "ROL" r
 WHERE u."nombreUsuario" = :'e2e_user' AND r."nombre" = 'Administrador';
 
+-- Cliente CREDITO demo. Tres specs lo buscan por nombre + tipoCliente +
+-- creditoHabilitado + activo (e2e/utils/venta-pos.ts idClienteCreditoDemo) y se
+-- SALTAN si no existe: cobros.spec.ts (x2) y confirm-venta.spec.ts (venta a
+-- credito). Sin esta fila el job queda verde habiendo ejecutado 9 de 12 tests.
+-- Se siembra aca y NO con `pnpm seed:bootstrap`: ese script escribe auth.users
+-- por conexion privilegiada (PROD_PRIVILEGED_URL primero) y esta pensado para
+-- el proyecto real, no para el runner.
+INSERT INTO "CLIENTE" (
+  "empresaId", "nombre", "telefono", "direccion", "identificacionFiscal",
+  "tipoCliente", "creditoHabilitado", "limiteCredito", "plazoCreditoDias", "updatedAt"
+)
+SELECT e.id, 'Comercios Clara, SRL (demo)', '809-000-0001',
+       'Calle El Sol #111, Los Prados, Santo Domingo, RD', '131000010',
+       'CREDITO', true, 10000.00, 15, now()
+FROM "EMPRESA" e
+WHERE e."rnc" = '131000001';
+
 INSERT INTO "CATEGORIA" ("empresaId", "nombre", "updatedAt")
 SELECT id, 'CI', now() FROM "EMPRESA" WHERE "rnc" = '131000001';
 
