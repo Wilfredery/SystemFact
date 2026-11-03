@@ -1,3 +1,10 @@
+## [0.17.6](https://github.com/Wilfredery/SystemFact/compare/v0.17.5...v0.17.6) (2026-11-03)
+
+### Chores
+
+* **ci:** move the four E2E secrets (`E2E_USER`, `E2E_PASSWORD`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) from repository scope into a GitHub **Environment** named `e2e`, and declare `environment: e2e` on **both** the `E2E preflight` job and the `E2E smoke` job. Declaring it on only one would leave the preflight reading empty values and silently skipping the suite — the exact failure mode that hid a real defect for two releases. The repository-level copies were deleted first, so the verification could not fall back to them: one copy exists now, and it can be rotated from the environment without touching the repository.
+* **chore:** add `.github/CODEOWNERS` covering the two paths by which a change can read repository secrets or alter the CI gate: `.github/workflows/` and `.github/ci/`. It is **documentation only** — "Require review from Code Owners" is deliberately NOT enabled, because GitHub does not let a single maintainer approve their own PR and the rule would permanently block any PR touching those files. The file records why, and how to enable it once a second maintainer exists. It also states what CODEOWNERS cannot fix: a maintainer who edits a workflow still reaches the secrets, so the real mitigation is a dedicated, least-privilege, rotable credential.
+
 ## [0.17.5](https://github.com/Wilfredery/SystemFact/compare/v0.17.4...v0.17.5) (2026-11-03)
 
 ### Chores

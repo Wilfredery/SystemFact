@@ -1,0 +1,25 @@
+# CODEOWNERS — SystemFact
+#
+# QUÉ PROTEGE ESTE ARCHIVO
+#   Los dos únicos caminos por los que un cambio puede leer los secrets del
+#   repositorio o alterar la puerta de CI: los workflows y el fixture de CI.
+#   Un PR que toque `.github/workflows/` puede imprimir `${{ secrets.* }}` y
+#   exfiltrarlo, así que ese directorio se marca como propiedad del
+#   mantenedor para que GitHub solicite su review.
+#
+# POR QUÉ *NO* ESTÁ ACTIVADA LA REGLA ESTRICTA
+#   "Require review from Code Owners" sólo protege de verdad si hay más de un
+#   mantenedor: GitHub no permite aprobar tu propio PR, así que activarla en
+#   un repositorio de un solo mantenedor bloquearía para siempre cualquier PR
+#   que toque estos archivos. Se deja como documentación + pedido de review,
+#   sin enforcement, hasta que exista un segundo mantenedor. Cuando exista:
+#   Settings → Branches → master → Require review from Code Owners.
+#
+# EL RIESGO QUE ESTO *NO* CUBRE
+#   Un mantenedor que edita un workflow sigue teniendo acceso a los secrets.
+#   La mitigación real de eso no es este archivo: es que el secreto de E2E sea
+#   un usuario dedicado, con el menor privilegio que los specs permitan y
+#   rotable desde el environment `e2e` sin tocar el repositorio.
+
+/.github/workflows/  @Wilfredery
+/.github/ci/         @Wilfredery
