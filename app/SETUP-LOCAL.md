@@ -446,6 +446,14 @@ Causa: el cache de desarrollo (`.next/`) quedó inconsistente. Lo más frecuente
 borrar `.next` o correr `pnpm build` MIENTRAS `next dev` está sirviendo: build y dev
 escriben el mismo directorio.
 
+Observado también en CI: el MISMO mensaje falló un `next build` sobre un checkout
+FRESCO (sin cache), y un re-run del mismo job pasó — mientras que el build local del
+mismo árbol compilaba en ~22s. O sea, el fallo no siempre es un `.next` inconsistente:
+puede ser un error transitorio de resolución del módulo.
+
+Qué hacer: primero RE-INTENTÁ (en CI, re-run del job); sólo si el fallo PERSISTE en
+local, limpiá el cache:
+
 ```bash
 # Parar el server y limpiar sólo el cache (no toca la BD ni el código)
 rm -rf .next

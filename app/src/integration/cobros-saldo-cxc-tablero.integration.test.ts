@@ -77,11 +77,16 @@ async function crearCliente(nombre: string): Promise<number> {
   return cliente.id;
 }
 
-/** Create a VIGENTE FACTURA with a unique minute-staggered emission instant. */
+/**
+ * Create a VIGENTE FACTURA with a unique minute-staggered emission instant,
+ * or an explicit `fechaEmision` when the caller needs a specific instant
+ * (same-day tests inject the SAME `now` the domain clock resolves against).
+ */
 async function crearFactura(
   clienteId: number,
   total: string,
   minutos: number,
+  fechaEmision?: Date,
 ): Promise<number> {
   const db = getHarnessDb();
   ncfSeq += 1;
@@ -102,40 +107,9 @@ async function crearFactura(
       total: new Prisma.Decimal(total),
       // Distinct instants make `fechaEmision DESC` a TOTAL order: higher id =
       // newer emission, so id DESC and fechaEmision DESC agree row-for-row.
-      fechaEmision: new Date(BASE_FECHA.getTime() + minutos * 60_000),
-    },
-    select: { id: true },
-  });
-  return f.id;
-}
-
-/**
- * Create a VIGENTE FACTURA emitted at the CURRENT instant (`new Date()`), so
- * its Santo Domingo calendar date is today. Mirrors `crearFactura` but skips
- * the minute-staggered `BASE_FECHA` offset.
- */
-async function crearFacturaHoy(
-  clienteId: number,
-  total: string,
-): Promise<number> {
-  const db = getHarnessDb();
-  ncfSeq += 1;
-  const f = await db.factura.create({
-    data: {
-      empresaId: ctx.empresaId,
-      sucursalId: ctx.sucursalId,
-      clienteId,
-      usuarioId: ctx.usuarioId,
-      tipoNcf: "B01",
-      ncf: `B01${String(ncfSeq).padStart(10, "0")}`,
-      correlativoInterno: `FAC-${ncfSeq}`,
-      estado: "VIGENTE",
-      subtotalGravado: new Prisma.Decimal(total),
-      itbis: new Prisma.Decimal("0.00"),
-      subtotalExento: new Prisma.Decimal("0.00"),
-      descuento: new Prisma.Decimal("0.00"),
-      total: new Prisma.Decimal(total),
-      fechaEmision: new Date(),
+      // An explicit `fechaEmision` (same-day test) replaces the staggered base.
+      fechaEmision:
+        fechaEmision ?? new Date(BASE_FECHA.getTime() + minutos * 60_000),
     },
     select: { id: true },
   });
@@ -339,16 +313,20 @@ describe("CxC board server-side pagination (real DB, RLS on, R-C9)", () => {
   });
 
   it("same-day zero-payment invoice is served on the board page and in the canonical read as PENDIENTE, not in mora", async () => {
+    // ONE instant for the fixture AND the domain clock: the same-day row is
+    // emitted at `now` and both reads resolve their Santo-Domingo mora/date
+    // against the SAME `now`, so a midnight boundary can never split them.
+    const now = new Date();
     const clienteId = await crearCliente("Tablero Mismo Dia");
     // One older outstanding invoice anchors ordering: the same-day row must
     // still be the NEWEST (first in `fechaEmision DESC`) so ordering cannot
     // hide it.
     await crearFactura(clienteId, "5000.00", 0);
-    const hoyId = await crearFacturaHoy(clienteId, "5000.00");
+    const hoyId = await crearFactura(clienteId, "5000.00", 0, now);
 
     // Board page (R-C9) through the public application surface.
     const pagina = await withTenantTransaction(ctx, async (tx) => {
-      const result = await consultarSaldoCxcPaginado(tx, ctx, { page: 1 });
+      const result = await consultarSaldoCxcPaginado(tx, ctx, { page: 1, now });
       if (!result.ok) throw new Error(result.message);
       return result.data;
     });
@@ -365,7 +343,7 @@ describe("CxC board server-side pagination (real DB, RLS on, R-C9)", () => {
 
     // Canonical full read (R-B1) serves the same row with identical facts.
     const canonico = await withTenantTransaction(ctx, async (tx) => {
-      const result = await consultarSaldoCxC(tx, ctx);
+      const result = await consultarSaldoCxC(tx, ctx, { now });
       if (!result.ok) throw new Error(result.message);
       return result.data;
     });

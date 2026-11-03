@@ -131,26 +131,45 @@ async function filaCxcEnBoard(page: Page, facturaId: number) {
  * and no "Página siguiente" button, breaks on its first iteration and throws a
  * false `Invoice N not found on any board page`.
  *
- * The wait is deliberately narrow: it only observes that the island SETTLED (its
- * loading copy is gone and a settled surface is rendered — rows on success, the
- * typed `role="alert"` on a failed read). It never substitutes a timeout for the
- * walk-and-throw contract below: if the invoice really is missing from a loaded
- * board, that still fails loudly.
+ * The wait only observes that the island SETTLED into a *diagnosable* state:
+ *   - the loading copy keeps the poll waiting (the island is still resolving);
+ *   - `[data-testid^="cxc-fila-"]` rows mean the board loaded successfully;
+ *   - a `role="alert"` SCOPED TO THE BOARD REGION (`main`) is the board's OWN
+ *     read failure — it THROWS with the board's error text so the failure names
+ *     the real cause instead of degrading into "Invoice N not found";
+ *   - anything else after the loading copy is gone (neither rows nor board
+ *     error) is a stuck board and still THROWS — never a silent skip.
+ * It never substitutes a timeout for the walk-and-throw contract below: if the
+ * invoice really is missing from a loaded board, that still fails loudly.
  */
 async function esperarTableroCargado(page: Page): Promise<void> {
-  await expect
-    .poll(
-      async () => {
-        if ((await page.getByText(/Cargando cuentas por cobrar/).count()) > 0) {
-          return "cargando";
-        }
-        const filas = await page.locator('[data-testid^="cxc-fila-"]').count();
-        const alerta = await page.getByRole("alert").count();
-        return filas + alerta > 0 ? "listo" : "vacio";
-      },
-      { timeout: 30_000 },
-    )
-    .toBe("listo");
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    if ((await page.getByText(/Cargando cuentas por cobrar/).count()) > 0) {
+      if (Date.now() > deadline) break;
+      await page.waitForTimeout(250);
+      continue;
+    }
+
+    if ((await page.locator('[data-testid^="cxc-fila-"]').count()) > 0) {
+      return;
+    }
+
+    // Board-scoped error: the board's OWN `role="alert"` (inside `main`), not
+    // any alert on the page (the login screen renders one too).
+    const alerta = page.locator("main").getByRole("alert");
+    const texto = ((await alerta.first().textContent()) ?? "").trim();
+    if (texto !== "") {
+      throw new Error(`El tablero de CxC falló al cargar: ${texto}`);
+    }
+
+    if (Date.now() > deadline) break;
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error(
+    "El tablero de CxC no llegó a un estado estable tras 30s: o sigue 'Cargando cuentas por cobrar…' o se asentó sin filas ni error — un tablero así no es un pase.",
+  );
 }
 
 async function contarCobros(facturaId: number): Promise<number> {

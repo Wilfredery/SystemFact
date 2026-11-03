@@ -346,7 +346,16 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Run the confirm smoke
-        run: pnpm e2e
+        # El reporte JSON es el insumo del guard de skips de abajo; `list` queda
+        # para que el log se lea igual que antes.
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: e2e-results.json
+        run: pnpm exec playwright test --reporter=list,json
+
+      - name: Fail when a test is skipped
+        # Un job verde con skips lee como cobertura aunque no la haya: los
+        # secretos E2E existen en este job, asi que todo skip es inesperado.
+        run: node e2e/assert-no-skips.mjs e2e-results.json
 
       - name: Upload Playwright report on failure
         if: failure()
