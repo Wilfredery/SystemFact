@@ -11,3 +11,9 @@
 # Scope is deliberately narrow: only SQL (migrations, provisioning scripts).
 # Normalising every file type is a separate decision with its own review cost.
 *.sql text eol=lf
+
+# Shell scripts are executed by bash (CI, and a developer reproducing the E2E
+# stack locally). A CRLF checkout turns `set -euo pipefail` into a syntax error
+# and the shebang into an unknown interpreter, so their bytes must be LF even on
+# a Windows working copy with core.autocrlf=true.
+*.sh text eol=lf

@@ -7,8 +7,9 @@
  * ejecutado 9 de 12 tests. Playwright no tiene fail-on-skip nativo, así que se
  * lee el reporte JSON y se decide acá.
  *
- * En CI los secretos E2E siempre existen (el job no corre si faltan), por eso
- * cualquier skip es inesperado: no hay caso legítimo.
+ * En CI la suite corre siempre: no hay secrets que puedan faltar ni un
+ * preflight que pueda omitir el job (el stack Supabase es local y efímero), así
+ * que cualquier skip es inesperado y no hay caso legítimo.
  *
  * También protege contra dos falsos verdes: un reporte estructuralmente válido
  * con `stats.expected === 0` (el run no matcheó NADA y no es un pase) y un
@@ -51,26 +52,29 @@ try {
 
 const skipped = (report.suites ?? []).flatMap((suite) => skips(suite, []));
 const stats = report.stats ?? {};
-// Playwright's `stats` splits outcomes: `expected` counts tests that PASSED,
-// `skipped` and `unexpected` the rest. A fully-skipped run therefore reports
-// `expected = 0` with `skipped = N`, so testing `expected` alone would report
-// "no tests at all" and hide the skip list — the opposite of this guard's job.
-// The empty-report check must sum all three outcomes; the skip branch below
-// owns the fully-skipped case.
+// Playwright's `stats` splits outcomes: `expected` counts tests that PASSED on
+// the first attempt, `flaky` those that passed only after a retry, `skipped` and
+// `unexpected` the rest. A fully-skipped run therefore reports `expected = 0`
+// with `skipped = N`, so testing `expected` alone would report "no tests at all"
+// and hide the skip list — the opposite of this guard's job. The empty-report
+// check must sum every outcome; the skip branch below owns the fully-skipped
+// case. `flaky` is included because it is a PASSED test, not an absence.
 const expected = stats.expected ?? 0;
+const flaky = stats.flaky ?? 0;
 const skippedReported = stats.skipped ?? 0;
 const unexpected = stats.unexpected ?? 0;
-const totalReported = expected + skippedReported + unexpected;
+const executed = expected + flaky;
+const totalReported = executed + skippedReported + unexpected;
 
 if (totalReported === 0) {
   console.error(
-    "FAIL: the report contains no tests at all (stats.expected + skipped + unexpected = 0) — an empty run is not a pass.",
+    "FAIL: the report contains no tests at all (stats.expected + flaky + skipped + unexpected = 0) — an empty run is not a pass.",
   );
   process.exit(1);
 }
 
 if (skipped.length === 0) {
-  console.log(`OK: ${expected} test(s) ejecutados, 0 salteados.`);
+  console.log(`OK: ${executed} test(s) ejecutados, 0 salteados.`);
   process.exit(0);
 }
 

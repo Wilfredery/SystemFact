@@ -351,10 +351,11 @@ access identifier is the username, never the email) and walk:
 
 ## E2E Playwright (fase 5c — `pnpm e2e`)
 
-Un smoke end-to-end contra el stack real: login (Supabase Auth remoto) → POS →
-borrador → confirm → CONFIRMADA + NCF en pantalla → cadena observable completa
-en la BD local (venta, factura, secuencia, movimiento). Spec:
-`app/e2e/confirm-venta.spec.ts` (config en `app/playwright.config.ts`).
+Un smoke end-to-end contra el stack real: login (Supabase Auth remoto en la
+máquina del developer; LOCAL y efímero en CI — ver "E2E sin credenciales"
+abajo) → POS → borrador → confirm → CONFIRMADA + NCF en pantalla → cadena
+observable completa en la BD local (venta, factura, secuencia, movimiento).
+Spec: `app/e2e/confirm-venta.spec.ts` (config en `app/playwright.config.ts`).
 
 > **Seed + DB caveat (documentado por contrato)**: el runtime de la app lee
 > Postgres LOCAL mientras la autenticación es Supabase REMOTA. El smoke necesita
@@ -379,6 +380,47 @@ El `beforeAll` valida las precondiciones (usuario con rol POS, empresa con
 `facturaAutomatica=true`, rangos B01/B02, producto con stock en la sucursal) y
 falla con el paso exacto a corregir. La suíte corre en serie (`workers: 1`):
 cada ejecución consume UNA secuencia real del rango B02.
+
+### E2E sin credenciales — stack Supabase local (lo que corre CI)
+
+Desde v0.17.7 el job `e2e` de CI **no usa ningún secret**: levanta su propio
+stack Supabase efímero (`supabase/config.toml`) y provisiona todo dentro del
+runner. Es la opción C de la issue #138 y el único camino donde no existe un
+credential real que robar. El mismo recipe corre en una máquina de developer:
+
+```bash
+# 1. Levantar el stack (requiere Docker). Solo postgres + kong + gotrue +
+#    postgrest: studio, mail, storage, realtime, edge runtime y analytics
+#    están apagados en supabase/config.toml.
+npx --yes supabase@3.0.0 start
+
+# 2. Provisionar: migrations como supabase_admin, password del rol RLS,
+#    fixture CI, seeds de negocio, usuario GoTrue y app/.env.e2e.stack.
+bash .github/ci/provision-local-e2e.sh
+#    Si `psql` no está en el PATH (Windows):
+#    PSQL="C:/Program Files/PostgreSQL/18/bin/psql.exe" bash .github/ci/provision-local-e2e.sh
+
+# 3. Correr la suite apuntando al stack local.
+cd app && set -a && . ./.env.e2e.stack && set +a && pnpm e2e
+```
+
+Evidencia esperada: `Running 12 tests` → `12 passed` →
+`node e2e/assert-no-skips.mjs e2e-results.json` →
+`OK: 12 test(s) ejecutados, 0 salteados.` Un job (o una corrida) verde con
+skips **no** es cobertura: el guard falla si falta un test o si algo se salteó.
+
+| Hecho del stack local | Valor |
+|---|---|
+| API / Auth (Kong → GoTrue) | `http://127.0.0.1:54321` |
+| Postgres | `127.0.0.1:54322` (no choca con el compose de `:5433`) |
+| Superuser real | `supabase_admin` / `postgres` (el rol `postgres` **no** es superuser acá: `ALTER ROLE postgres NOBYPASSRLS` falla bajo él) |
+| Rol de la app | `systemfact_app`, password efímero por corrida (la migración lo crea sin password) |
+| Claves `ANON_KEY` / `SERVICE_ROLE_KEY` | estáticas y públicas del entorno local (no son secretos) |
+| Wipe total | `npx --yes supabase@3.0.0 stop --no-backup` |
+
+El camino viejo (Supabase Auth **remoto** contra la BD local, credencial en
+`app/.env.e2e.local`) sigue sirviendo para probar contra el proyecto real; CI
+ya no lo usa.
 
 ## Comandos útiles
 

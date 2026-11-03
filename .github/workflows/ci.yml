@@ -11,8 +11,9 @@
 #                    systemfact_app NOBYPASSRLS), igual que el entorno local
 #   4. build       → `next build` de producción (detecta errores de build-time)
 #   5. commits     → guardián de Conventional Commits (insumo de release-please)
-#   6. e2e         → smoke Playwright; SOLO corre si están los secrets (si no,
-#                    se saltea con un aviso y no bloquea el PR)
+#   6. e2e         → smoke Playwright sobre un stack Supabase LOCAL y efímero
+#                    (`supabase start`); no necesita ningún secret real
+#                    (issue #138, opción C)
 #
 # El job agregado "CI gate" es el único check requerido por la protección de
 # rama: si un job obligatorio falla, el gate falla.
@@ -223,70 +224,25 @@ jobs:
             --to "${{ github.sha }}"
 
   # ----------------------------------------------------------
-  # 6. E2E (Playwright) — opcional, dependiente de secrets
+  # 6. E2E (Playwright) sobre un stack Supabase LOCAL y efímero
   # ----------------------------------------------------------
-  # El smoke usa Supabase Auth REMOTO + la base local: sin credenciales reales
-  # no puede correr. Este preflight decide si el job arranca; si faltan los
-  # secrets, el pipeline avisa y sigue (no bloquea PRs de terceros).
-  e2e-gate:
-    name: E2E preflight
-    runs-on: ubuntu-latest
-    # Los cuatro secrets de E2E viven en el environment `e2e`, no a nivel repo:
-    # sin declararlo acá el preflight los veria vacios y omitiria el smoke.
-    # Este job y el job `e2e` deben declararlo los DOS.
-    environment: e2e
-    # Este job no hace checkout: el working-directory global (app/) no existiría.
-    defaults:
-      run:
-        working-directory: .
-    outputs:
-      enabled: ${{ steps.check.outputs.enabled }}
-    steps:
-      - id: check
-        env:
-          E2E_USER: ${{ secrets.E2E_USER }}
-          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
-          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -n "${E2E_USER}" ] && [ -n "${E2E_PASSWORD}" ] && [ -n "${SUPABASE_URL}" ] && [ -n "${SUPABASE_ANON_KEY}" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Secrets de E2E detectados: corre el smoke de Playwright."
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::E2E omitido: configurá los secrets E2E_USER, E2E_PASSWORD, NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY para habilitar el smoke de Playwright."
-          fi
-
+  # HISTÓRICO: este job autenticaba contra el proyecto Supabase hospedado con un
+  # credential `Administrador` guardado como secret de GitHub (primero a nivel
+  # repo, luego en el environment `e2e`). Hoy levanta su propio stack con
+  # `supabase start` y las claves públicas y estáticas del entorno local
+  # (`supabase/config.toml`): en CI no queda ningún credential real que robar
+  # (issue #138, opción C).
+  #
+  # Tampoco hay preflight ni `environment:`: "se saltea si faltan los secrets"
+  # reportaba verde sin cubrir nada (pasó de verdad: 9 de 12 tests). El stack se
+  # levanta siempre, y si no levanta o si la suite se saltea un test, el job FALLA.
   e2e:
-    name: E2E smoke (Playwright)
-    needs: e2e-gate
-    if: needs.e2e-gate.outputs.enabled == 'true'
+    name: E2E smoke (Playwright, local Supabase)
     runs-on: ubuntu-latest
-    # Los secrets se resuelven desde el environment `e2e` (ver `e2e-gate`).
-    environment: e2e
-    services:
-      postgres:
-        image: postgres:17.6
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
-      PGSUPERPASSWORD: postgres
-      APP_PASSWORD: ci-app-password
-      E2E_DB: systemfact_e2e
-      SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      E2E_USER: ${{ secrets.E2E_USER }}
-      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+      E2E_USER: e2e-automation
+      # Optional repo variable; the default is what every spec and the fixture
+      # were written against. It is a product name, not a credential.
       E2E_PRODUCT: ${{ vars.E2E_PRODUCT || 'Arroz' }}
     steps:
       - uses: actions/checkout@v7
@@ -294,59 +250,30 @@ jobs:
       - uses: ./.github/actions/setup-project
 
       - name: Ensure psql client
+        # The fixture and the role password are applied with psql; the runner
+        # image happens to ship one, but the step must not depend on that.
+        working-directory: .
         run: |
           if ! command -v psql >/dev/null 2>&1; then
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends postgresql-client
           fi
 
-      - name: Provision dev-shaped database (migrations + app role)
-        run: |
-          set -euo pipefail
-          export PGPASSWORD="${PGSUPERPASSWORD}"
-          SUPER_URL="postgresql://postgres:${PGSUPERPASSWORD}@localhost:5432/${E2E_DB}"
+      # Cold runners pull the stack images (~1-3 min). The stack IS the job, so
+      # an unstartable stack must fail here instead of skipping the suite.
+      - name: Start the local Supabase stack
+        working-directory: .
+        run: npx --yes supabase@3.0.0 start
 
-          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
-            -c "CREATE DATABASE ${E2E_DB}"
-
-          # app/.env es lo que leen Next.js, Playwright y los seeds.
-          cat > .env <<EOF
-          DATABASE_URL="postgresql://systemfact_app:${APP_PASSWORD}@localhost:5432/${E2E_DB}"
-          DIRECT_URL="${SUPER_URL}"
-          NEXT_PUBLIC_SUPABASE_URL="${SUPABASE_URL}"
-          NEXT_PUBLIC_SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY}"
-          E2E_USER="${E2E_USER}"
-          E2E_PASSWORD="${E2E_PASSWORD}"
-          E2E_PRODUCT="${E2E_PRODUCT}"
-          EOF
-
-          DATABASE_URL="${SUPER_URL}" DIRECT_URL="${SUPER_URL}" pnpm exec prisma migrate deploy
-
-          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
-            -c "ALTER ROLE systemfact_app WITH PASSWORD '${APP_PASSWORD}'" \
-            -c "GRANT CONNECT ON DATABASE ${E2E_DB} TO systemfact_app"
-
-      - name: Seed the E2E tenant
-        run: |
-          set -euo pipefail
-          export PGPASSWORD="${PGSUPERPASSWORD}"
-          # Fixture CI-only (empresa + sucursal + rol + usuario + producto con stock).
-          # No vive en app/tools/scripts: no debe poder apuntarse a una base real.
-          psql -h localhost -U postgres -d "${E2E_DB}" \
-            -v ON_ERROR_STOP=1 \
-            -v e2e_user="${E2E_USER}" \
-            -v e2e_product="${E2E_PRODUCT}" \
-            -f ../.github/ci/e2e-fixture.sql
-          # Seeds de negocio que ya usa el entorno local (idempotentes).
-          pnpm seed:venta
-          pnpm seed:ncf
-          pnpm seed:cliente
-          # Integridad de configuracion: toda empresa debe tener las claves de
-          # negocio activas y vigentes, o las ventas se bloquean en runtime.
-          # Solo aqui (no en el job de integracion): el job de Jest siembra sus
-          # empresas desde app/src/integration/setup/fixtures.ts, que no ejecuta
-          # los seeds de negocio y fallaría por diseño.
-          pnpm config:verify
+      # One recipe for CI and for a developer (app/SETUP-LOCAL.md): Prisma
+      # migrations as supabase_admin, a per-run password for the RLS-bound app
+      # role, the CI fixture, the business seeds, the GoTrue user (with the
+      # password grant proven) and the env file the app and the specs read.
+      - name: Provision the E2E tenant, identity and env file
+        working-directory: .
+        env:
+          ENV_FILE: app/.env
+        run: bash .github/ci/provision-local-e2e.sh
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
@@ -359,9 +286,15 @@ jobs:
         run: pnpm exec playwright test --reporter=list,json
 
       - name: Fail when a test is skipped
-        # Un job verde con skips lee como cobertura aunque no la haya: los
-        # secretos E2E existen en este job, asi que todo skip es inesperado.
+        # Un job verde con skips lee como cobertura aunque no la haya: Playwright
+        # no tiene fail-on-skip nativo, así que el guard lee el reporte JSON y
+        # falla si el run está vacío o si algún test se salteó.
         run: node e2e/assert-no-skips.mjs e2e-results.json
+
+      - name: Stack status on failure
+        if: failure()
+        working-directory: .
+        run: npx --yes supabase@3.0.0 status
 
       - name: Upload Playwright report on failure
         if: failure()
@@ -392,4 +325,4 @@ jobs:
 
       - name: All required jobs passed
         run: |
-          echo "OK: lint, types, schema, unit, integration y build en verde."
+          echo "OK: lint, types, schema, unit, integration, build y e2e en verde."
