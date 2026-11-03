@@ -30,7 +30,7 @@ export async function createClient() {
             );
           } catch {
             // Called from a Server Component: cookies() is read-only there.
-            // The middleware refreshes the session on navigation, so this
+            // The proxy refreshes the session on navigation, so this
             // is safe to ignore.
           }
         },
