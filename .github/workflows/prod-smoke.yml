@@ -1,0 +1,101 @@
+# ============================================================
+# Production smoke — SystemFact
+#
+# Un chequeo de SOLO LECTURA contra el despliegue real
+# (`https://systemfact.vercel.app`): responde "¿funciona producción?" con una
+# identidad de mínimo privilegio (un Operador) y sin escrituras fiscales (nunca
+# confirma una venta, nunca consume un NCF, nunca anula nada). Es un lane
+# distinto del job `e2e` de ci.yml: aquél levanta su propio stack Supabase
+# local y efímero; éste apunta a la app DESPLEGADA y jamás levanta un server
+# local (ver app/playwright.prod.config.ts, que no declara `webServer`).
+#
+# Solo manual (workflow_dispatch): producción se despliega a mano desde Vercel
+# (no hay integración Vercel↔GitHub — sin auto-deploy, sin checks en PRs). Este
+# workflow se corre DESPUÉS de un deploy manual del owner, nunca por cron.
+#
+# Los ÚNICOS secrets que lee este workflow son PROD_USER, PROD_PASSWORD y
+# PROD_PROTECTION_BYPASS, y viven en el environment `prod-smoke` (no a nivel
+# repo). PROD_BASE_URL es una variable opcional del repo, no un secret.
+#
+# Nunca forma parte de `ci-gate`: es un chequeo de observabilidad, y un rojo acá
+# no debe bloquear un merge (pero SÍ debe llegarle a alguien — por eso la issue
+# deduplicada de abajo).
+# ============================================================
+name: Production smoke
+
+on:
+  # Solo manual (workflow_dispatch): producción se despliega a mano desde Vercel
+  # (no hay integración Vercel↔GitHub — sin auto-deploy, sin checks en PRs). Un
+  # schedule reportaría sobre un deploy que el owner NO hizo; corré este
+  # workflow DESPUÉS de cada deploy manual de Vercel.
+  workflow_dispatch:
+
+# Un solo grupo fijo: dos corridas nunca se pisan (la segunda espera).
+concurrency:
+  group: prod-smoke
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Para crear/comentar la issue deduplicada de fallo con github.token.
+  issues: write
+
+# El código Next.js vive en app/ (el root del repo no es un paquete Node).
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  prod-smoke:
+    name: Production smoke
+    runs-on: ubuntu-latest
+    environment: prod-smoke
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-project
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run the production smoke
+        # El reporte JSON es el insumo del guard de skips de abajo; `list` queda
+        # para que el log se lea igual que el job e2e de ci.yml.
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: prod-smoke-results.json
+          PROD_BASE_URL: ${{ vars.PROD_BASE_URL || 'https://systemfact.vercel.app' }}
+          # Únicos secrets del workflow (environment prod-smoke).
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_PASSWORD: ${{ secrets.PROD_PASSWORD }}
+          E2E_PROTECTION_BYPASS: ${{ secrets.PROD_PROTECTION_BYPASS }}
+        run: pnpm exec playwright test -c playwright.prod.config.ts --reporter=list,json
+
+      - name: Fail when a test is skipped
+        # Un job verde con skips lee como cobertura aunque no la haya: este smoke
+        # existe para que un skip sea IMPOSIBLE de pasar por alto. Mismo guard
+        # que el job e2e de ci.yml.
+        run: node e2e/assert-no-skips.mjs prod-smoke-results.json
+
+      - name: Report the failure on a deduplicated issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          BODY="El smoke de producción falló en la corrida ${RUN_URL}. Revisá el log del job para ver qué aserción (o skip) lo dejó en rojo."
+          ISSUE_URL="$(gh issue list --search 'Production smoke in:title' --state open --limit 1 --json url --jq '.[0].url')"
+          if [ -n "${ISSUE_URL}" ]; then
+            echo "Issue existente: ${ISSUE_URL} — comentando."
+            gh issue comment "${ISSUE_URL}" --body "${BODY}"
+          else
+            echo "No hay issue abierta — creando."
+            gh issue create --title "Production smoke failed" --body "${BODY}"
+          fi
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prod-smoke-report
+          path: app/playwright-report
+          retention-days: 7

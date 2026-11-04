@@ -102,6 +102,12 @@ These rules derive from the canonical engineering constitution in the project do
   skip-if-missing preflight: if the stack cannot start, or if any of the 12 specs is skipped,
   the job fails (`app/e2e/assert-no-skips.mjs`). A green job that silently skips reads as
   coverage it does not have. Optional repo variable `E2E_PRODUCT` (default `Arroz`).
+- Production smoke (`.github/workflows/prod-smoke.yml`) — a read-only Playwright check against
+  the deployed app (`https://systemfact.vercel.app`). It is manual/dispatch-only: production is
+  deployed by hand from Vercel (no Vercel↔GitHub integration), so the smoke is run after a manual
+  deploy, in its own `prod-smoke` environment, and is never part of `ci-gate`. It reads the hosted
+  tenant read-only (never writes: no sales, no NCF, no voids) and skips fail the run exactly
+  like the local E2E suite. See `odd/tasks/prod-smoke.md`.
 
 ### Versioning — human-driven (2026-09-15; release-please automatic tagging is PARKED)
 - Release-please automatic tagging is parked permanently: its output (`.github/workflows/

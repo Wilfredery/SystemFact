@@ -427,6 +427,41 @@ devuelve `400 user_banned` (issue #138). El stack local de arriba es el único
 camino soportado, y es el que corre CI desde v0.17.7. Si alguna vez hace falta
 volver atrás, el SQL de reversión está registrado en #138.
 
+## Smoke de producción
+
+Un chequeo de solo lectura contra el despliegue real
+(`https://systemfact.vercel.app`), separado del stack local de `pnpm e2e`:
+**nunca levanta un servidor local y nunca escribe en producción** (no confirma
+ventas, no consume NCF, no anula nada). Apunta a la app desplegada porque
+responde a la pregunta que el stack local no puede: ¿funciona producción?
+
+Es **manual / solo `workflow_dispatch`**: no hay integración Vercel↔GitHub
+(producción se despliega a mano desde Vercel), así que corré el smoke **después
+de cada deploy manual** de Vercel. Nunca forma parte de `ci-gate` y un test
+salteado falla el run (mismo guard que `pnpm e2e`).
+
+```bash
+cd app
+pnpm e2e:prod
+```
+
+Qué chequea (config en `app/playwright.prod.config.ts`):
+
+- **Anónimo (siempre corre, sin credenciales)**: `GET /` responde 307 a
+  `/login`; `GET /login` responde 200 con las cinco cabeceras base de
+  `next.config.ts` (`strict-transport-security`, `x-content-type-options`,
+  `x-frame-options`, `referrer-policy`, `permissions-policy`); `GET /dashboard`
+  sin sesión responde 307 a `/login`.
+- **Con sesión**: con `PROD_USER`/`PROD_PASSWORD` (un Operador de una sola
+  sucursal) entra por el formulario real y verifica que `/dashboard` renderiza
+  contenido real (el saludo `Hola, …`, no el shell de carga). Si faltan las
+  credenciales, el test **FALLA** — nunca se saltea: un chequeo de producción
+  salteado es justo la mentira que este lane existe para evitar.
+
+Env: `PROD_BASE_URL` (default `https://systemfact.vercel.app`),
+`PROD_USER`/`PROD_PASSWORD` (Operador), `E2E_PROTECTION_BYPASS` (bypass del SSO
+de Vercel). Detalle de diseño y decisiones: `odd/tasks/prod-smoke.md`.
+
 ## Comandos útiles
 
 
