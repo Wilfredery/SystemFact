@@ -1,3 +1,17 @@
+## [0.18.0](https://github.com/Wilfredery/SystemFact/compare/v0.17.9...v0.18.0) (2026-11-04)
+
+### Features
+
+* **e2e:** a **production smoke** that answers "does production work" against the deployed app, as a lane separate from the local-stack E2E job. `app/playwright.prod.config.ts` declares **no `webServer`** (it must never boot a local server and call the result production), trace and screenshots are **off** (a trace of a live production login can carry the password, and the artifacts are uploaded in a public repo), and there is **no Vercel protection bypass at all**: the lane has to see what a visitor sees, and an opt-in flag whose trigger sits in a repository variable is weaker than the secret it gates.
+* **e2e:** the suite is two spec files. `app/e2e-prod/public-smoke.spec.ts` asserts the anonymous surface (`/` redirects to `/login`, the login page answers 200 and carries the five baseline security headers); `app/e2e-prod/session-smoke.spec.ts` logs in through the real form as a single-branch **Operador**, asserts `/dashboard`, the `Hola, <nombre>` greeting and the tenant line, asserts the `Su rol no incluye paneles de reporte.` denial, and asserts that **no KPI tile renders** - a role-gate leak is a security regression, so it fails the run. Missing credentials **fail** the check instead of skipping it.
+* **ci:** `.github/workflows/prod-smoke.yml` is `workflow_dispatch` only, uses its own `prod-smoke` **environment** for `PROD_USER`/`PROD_PASSWORD`, and deduplicates its failure issue. It is deliberately **not** part of `ci-gate`: production is deployed by hand from Vercel (no Vercel-to-GitHub integration), so a red production smoke must inform, never block a merge.
+
+### Bug Fixes
+
+* **e2e:** scope the role-gate assertion to `main`. An unscoped `getByRole("alert")` matches both the denial paragraph and Next's route announcer (`#__next-route-announcer__`), so strict mode failed the assertion before it could say anything about the gate.
+
+**Verification:** with a real least-privilege identity against the deployed app, `pnpm e2e:prod` reports **`3 passed / 1 failed`** in 8.0s: the session smoke is green (login, dashboard, greeting, tenant line, denial, no KPI tile) and the single failure is the deployed build `2a76c31` (#118) missing four baseline headers, which predates v0.17.3 and clears on the next manual Vercel deploy. `tsc --noEmit` and `eslint` are clean; a failing run leaves only `test-results/.last-run.json`.
+
 ## [0.17.9](https://github.com/Wilfredery/SystemFact/compare/v0.17.8...v0.17.9) (2026-11-04)
 
 ### Documentation
