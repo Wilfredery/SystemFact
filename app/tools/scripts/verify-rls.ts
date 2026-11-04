@@ -13,6 +13,7 @@ type RoleRow = { current_user: string; rolbypassrls: boolean };
 type OwnerRow = { tableowner: string };
 type IndexRow = { indexname: string; indexdef: string };
 type TriggerRow = { tgname: string };
+type TableRlsRow = { relname: string; relrowsecurity: boolean; policies: number };
 
 async function main() {
   const [role] = await prisma.$queryRaw<RoleRow[]>`
@@ -36,6 +37,7 @@ async function main() {
   }
 
   await verifyV2r01IdentityControls();
+  await verifyEveryTableHasRls();
 
   const url = process.env.DATABASE_URL ?? "";
   if (!isTransactionModePooling(url)) {
@@ -109,6 +111,60 @@ async function verifyV2r01IdentityControls(): Promise<void> {
   }
 
   console.log(`OK: v2r-01 controls present (index "${bindingIndex.indexname}", trigger trg_usuario_auth_user_id_no_null)`);
+}
+
+/**
+ * Every table in the app schema must have RLS ENABLED and at least one policy.
+ *
+ * Why this exists (`docs/22` T5): the rest of this script proves the ROLE cannot
+ * bypass RLS, which is a different claim from "every table actually has
+ * policies". A new context-aware table — or a migration that recreates one — can
+ * ship with `relrowsecurity = false` and zero policies, and then:
+ *   - the role is still NOBYPASSRLS, so the existing check stays green;
+ *   - unit and integration tests still pass, because they authenticate;
+ *   - every query that forgets `empresaId` returns another tenant's rows.
+ * Multi-tenancy is this project's #1 risk (`AGENTS.md`), so the guard belongs in
+ * CI where a merge is blocked, not in a review checklist.
+ *
+ * The failure names every offending table, in both directions, so the fix is
+ * visible from the log: RLS off is one class, RLS on with zero policies is the
+ * other (enabled but nobody wrote a rule = still wide open).
+ */
+async function verifyEveryTableHasRls(): Promise<void> {
+  const tables = await prisma.$queryRaw<TableRlsRow[]>`
+    SELECT c.relname,
+           c.relrowsecurity,
+           COALESCE(p.n, 0)::int AS policies
+    FROM pg_class c
+    JOIN pg_namespace ns ON ns.oid = c.relnamespace
+    LEFT JOIN (
+      SELECT polrelid, COUNT(*) AS n FROM pg_policy GROUP BY polrelid
+    ) p ON p.polrelid = c.oid
+    WHERE ns.nspname = current_schema()
+      AND c.relkind = 'r'
+    ORDER BY c.relname`;
+
+  // An empty result must fail, never pass: it would mean the query looked in the
+  // wrong schema and "verified" nothing.
+  if (tables.length === 0) {
+    throw new Error("RLS coverage found no tables in the current schema: the check verified nothing");
+  }
+
+  const sinRls = tables.filter((t) => !t.relrowsecurity).map((t) => t.relname);
+  const sinPolitica = tables.filter((t) => t.policies === 0).map((t) => t.relname);
+
+  if (sinRls.length > 0 || sinPolitica.length > 0) {
+    const partes: string[] = [];
+    if (sinRls.length > 0) partes.push(`RLS disabled on: ${sinRls.join(", ")}`);
+    if (sinPolitica.length > 0) partes.push(`no policy at all on: ${sinPolitica.join(", ")}`);
+    throw new Error(
+      `RLS coverage incomplete — ${partes.join(" | ")}. ` +
+        "Every table in the schema needs ENABLE ROW LEVEL SECURITY and at least one policy; " +
+        "without them, any connection using the app role can read or write another tenant's rows.",
+    );
+  }
+
+  console.log(`OK: all ${tables.length} tables have RLS enabled and at least one policy`);
 }
 
 main()

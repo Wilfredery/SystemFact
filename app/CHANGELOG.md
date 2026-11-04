@@ -1,3 +1,12 @@
+## [0.18.6](https://github.com/Wilfredery/SystemFact/compare/v0.18.5...v0.18.6) (2026-11-04)
+
+### Bug Fixes
+
+* **db:** `_prisma_migrations` had a RESTRICTIVE deny-all policy and **no RLS enabled**, and no migration turned it on. `20261012192000` only creates the policy, and `20260902120000_enable_rls` lists the application tables by hand; the HOSTED project reads `relrowsecurity = true` only because an operator ran the `ALTER TABLE` by hand during the October advisor cleanup. Consequence: a database rebuilt from migrations alone - CI's ephemeral stack, or a disaster-recovery restore - came up with Prisma's ledger readable by the application role, because a policy on a table whose RLS is disabled is decoration. New migration `20261104230000_prisma_migrations_enable_rls` enables it; owner and superusers still bypass RLS, so `prisma migrate deploy` keeps working, and `FORCE` is deliberately not set so a rebuilt database matches the hosted posture instead of changing it.
+* **ci:** `pnpm rls:verify` now proves **coverage**, not just the role. The existing checks assert the connection role is NOBYPASSRLS, which is a different claim from "every table has policies": a new context-aware table could ship with RLS off and zero policies while that check stayed green, and then any query that forgets `empresaId` returns another tenant's rows. The script enumerates `pg_class.relrowsecurity` plus its `pg_policy` count for every table and fails naming each offender in both directions (RLS off; RLS on with zero policies), and fails closed when the query returns nothing. This is what found the `_prisma_migrations` gap on its first real run.
+
+**Verification:** local stack - guard GREEN (`all 26 tables have RLS enabled and at least one policy`), RED after `ALTER TABLE "CONFIGURACION_EMPRESA" DISABLE ROW LEVEL SECURITY` (error named the table), GREEN again after re-enabling. `tsc --noEmit` 0, `eslint` 0. CI runs the same guard inside the integration job, which is inside `ci-gate`.
+
 ## [0.18.5](https://github.com/Wilfredery/SystemFact/compare/v0.18.4...v0.18.5) (2026-11-04)
 
 ### Bug Fixes
