@@ -35,13 +35,13 @@ Sourced verbatim from `docs/22-security-hardening-plan.md` (T0/T7, owner-approve
 
 | ID | S# | Route | Status | Commit |
 |----|----|-------|--------|--------|
-| T1 backup script + runbook | S1 | inline | in progress | — |
-| T2 restore rehearsal recorded | S2 | inline | pending | — |
-| T3 non-production label | S3 | inline | pending | — |
-| T4 revisit trigger recorded | S4 | inline | pending | — |
-| T5 docs/22 T0 closure entry | S1-S4 | inline | pending | — |
-| T6 tracker committed | S5 | inline | pending | — |
-| T7 `WeakPasswordError` typed outcome | S6 | inline | pending | — |
+| T1 backup script + runbook | S1 | inline | done | `3e1d637` |
+| T2 restore rehearsal recorded | S2 | inline | done | `3e1d637` (evidence in this doc + `docs/22` + `app/BACKUP-RESTORE.md`) |
+| T3 non-production label | S3 | inline | done (README + plan); `app/.env.example` pending owner approval | `e4deb85` |
+| T4 revisit trigger recorded | S4 | inline | done | `e4deb85` |
+| T5 docs/22 T0 closure entry | S1-S4 | inline | done | local-only (`docs/` is gitignored) |
+| T6 tracker committed | S5 | inline | done | `15fa827` |
+| T7 `WeakPasswordError` typed outcome | S6 | inline | in progress | — |
 
 Routing note: every task is a single-module change well under a subagent start cost (one script, one runbook, four one-line doc edits, one error branch in the login action), so the Writer rule does not fire; work is inline.
 
@@ -51,3 +51,4 @@ Routing note: every task is a single-module change well under a subagent start c
 - L2 (2026-11-04): "I like the order u propused me, go ahead." — authorizes the proposed order: (1) T0 durability, (2) this tracked tracker, (3) T7 code half after the owner-side dashboard setting.
 - L3 (2026-11-04): "Remember that u have engram check the context too" — Engram checked; it corrected two claims from the previous session: T0 is **not** an open decision (Option B decided 2026-11-03) and the previously promised `odd/tasks/security-hardening.md` **never existed**. This file is that tracker, actually created.
 - L4 (2026-11-04): docs/22 is **not** published. Reasons recorded: `docs/` is gitignored by design + documented as "Never commit this file"; the repo is PUBLIC and the plan is an inventory of unmitigated controls with `file:line` pointers. Agent access does not require git — the plan is read from disk.
+- L5 (2026-11-04): T0 delivered in three commits (`3e1d637` script + runbook, `e4deb85` label + dump guard, `15fa827` this tracker). The pipeline was proven end to end against the local engine, not merely written: probe OK, 26/26 tables verified, artifact 0.16 MB in 2.6 s with a matching SHA-256 sidecar, restore into `sf_restore_probe` in **5.6 s** yielding **26/26 tables and 452 rows with an identical per-table count diff**, scratch database dropped. The cloud artifact itself is still one owner command (hidden password): no cloud credential exists on disk by design. The `app/.env.example` comment is the one T0 piece not written — the agent edit guard blocks `.env.*` paths without explicit approval.
