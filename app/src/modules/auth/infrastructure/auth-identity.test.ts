@@ -28,7 +28,9 @@ import {
   AUTH_ENLACE_CONFLICTO,
   AUTH_ENLACE_DUPLICADO,
   AUTH_ENLACE_NO_RESUELTO,
+  AUTH_PASSWORD_POLICY,
   AUTH_USUARIO_INACTIVO,
+  messageFor,
 } from "@/modules/auth/domain/errors";
 
 const SUB_A = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
@@ -538,6 +540,41 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(usuario.updateMany).not.toHaveBeenCalled();
     // REQ-AUTH-AUD-001 #2 — the rejection itself is not recorded. Nothing was
     // authenticated, so there is no actor and nothing to attribute a row to.
+    expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a password that no longer meets the policy as its OWN outcome, not as invalid credentials", async () => {
+    // docs/22 T7: raising the minimum length makes GoTrue reject an EXISTING user
+    // whose stored password no longer satisfies it, at sign-in time, with
+    // `code: "weak_password"`. Collapsing that into AUTH_CREDENCIALES_INVALIDAS
+    // tells a legitimate user their credentials are wrong, and leaves them with no
+    // next step. The provider text is never the surface either: it echoes policy
+    // configuration the app does not own.
+    const supabase = supabaseWithUser(null);
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: {
+        name: "AuthApiError",
+        message: "Password should be at least 12 characters.",
+        status: 422,
+        code: "weak_password",
+      },
+    });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "corta");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_PASSWORD_POLICY,
+      message: messageFor(AUTH_PASSWORD_POLICY),
+    });
+    // The catalog owns the text: no provider message, no policy number leaked.
+    const message = res.ok ? null : res.message;
+    expect(message).not.toContain("at least 12");
+    expect(message).not.toMatch(/Password should/i);
+    // Same no-enumeration posture as every other rejection.
+    expect(usuario.findUnique).not.toHaveBeenCalled();
+    expect(usuario.updateMany).not.toHaveBeenCalled();
     expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
   });
 
