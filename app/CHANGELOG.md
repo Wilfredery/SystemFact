@@ -1,3 +1,9 @@
+## [0.18.4](https://github.com/Wilfredery/SystemFact/compare/v0.18.3...v0.18.4) (2026-11-04)
+
+### Chores
+
+* **ci:** drop the `url` from the `prod-smoke` environment, reverting 0.18.3. It was meant to turn the deployment record into a link to production, but it earns its keep the other way: the hash-based deployment URLs sit behind Vercel Deployment Protection (SSO), so the button leads to a Vercel login screen rather than to the app, and the record is more useful as a plain `prod-smoke` entry per run. The environment itself stays - it is what scopes `PROD_USER`/`PROD_PASSWORD` to that single job - and no protection rules are added.
+
 ## [0.18.3](https://github.com/Wilfredery/SystemFact/compare/v0.18.2...v0.18.3) (2026-11-04)
 
 ### Chores

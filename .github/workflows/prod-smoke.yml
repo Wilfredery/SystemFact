@@ -53,13 +53,12 @@ jobs:
     runs-on: ubuntu-latest
     # El environment acota los DOS secretos de producción (sólo este job puede
     # leer PROD_USER / PROD_PASSWORD) y deja un registro por corrida en
-    # Deployments. La `url` hace que ese registro enlace a producción en vez de
-    # ser un nombre suelto. Sin reglas de protección a propósito: este chequeo
-    # dura segundos y tiene que correr después de cada deploy, no esperar un
-    # click.
-    environment:
-      name: prod-smoke
-      url: https://systemfact.vercel.app
+    # Deployments. Sin `url` a propósito: GitHub la muestra como un botón
+    # "View deployment" en cada corrida y, al ser una URL con hash, sólo lleva a
+    # la pantalla de login de Vercel. Ruido, no información. Sin reglas de
+    # protección tampoco: el chequeo dura segundos y tiene que correr después de
+    # cada deploy, no esperar un click.
+    environment: prod-smoke
     steps:
       - uses: actions/checkout@v7
 
