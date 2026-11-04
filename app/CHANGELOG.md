@@ -1,3 +1,10 @@
+## [0.18.2](https://github.com/Wilfredery/SystemFact/compare/v0.18.1...v0.18.2) (2026-11-04)
+
+### Documentation
+
+* **docs:** close the production-smoke tracker with the runs that matter: `41894569175` (3 passed / 1 failed) is the run that FOUND the auth-gate regression of 0.18.1 by asking `/` for a 307 and getting 200, and `41897923869` on `22f6573` is the green one - **4 passed / 0 failed in 6.6s** - after redeploying the fix.
+* **docs:** record how production is actually deployed, because it cost an hour here. The Vercel project `systemfact` keeps **Root Directory `.`** while the Next app lives in `app/`, so a git-source production deployment fails with `[NEXT_NO_VERSION] No Next.js version detected` (Vercel looks for a package.json at the repo root). The working recipe is an upload from the app directory: `cd app && vercel deploy --prod`, with `app/.vercel/project.json` already linked and gitignored. It creates no GitHub Deployment entry - the only `deployments` entries in the repository are the `prod-smoke`/`e2e` GitHub *environments* used by Actions, which is what the owner wanted to avoid from Vercel.
+
 ## [0.18.1](https://github.com/Wilfredery/SystemFact/compare/v0.18.0...v0.18.1) (2026-11-04)
 
 ### Bug Fixes

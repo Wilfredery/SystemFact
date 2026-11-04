@@ -20,8 +20,8 @@ Branch: `feature/prod-smoke` · Delivery: single PR (version bump included).
 | T2 smoke code: prod playwright config, public + session specs, workflow, docs | S1,S4 | worker | done — reviewed and approved (lineage `review-fb125ae86d69f039`) | `9b38bfc`→`2688396` |
 | T3 prove the public half against the deployed URL (expected red until production is redeployed) | S1 | inline | done — `2 passed / 1 failed`; the header test names all four missing headers | — |
 | T4 least-privilege identity + `prod-smoke` environment secrets (explicit production write) | S2,S4 | inline | done — auth user (owner) · environment `26281220650` + 2 secrets (agent, password rotated) · `USUARIO` 6 / `USUARIO_ROL` (Operador) | |
-| T5 one real run with counts (dispatch-only; the cron is superseded by the deployment model) | S3 | inline | pending — needs merge first: GitHub only registers `workflow_dispatch` from the default branch | |
-| T6 ODD: version bump, PR, review per assess | — | inline | in progress — bump **0.18.0** committed (`6f02cf8`), review of the delivery candidate **approved and burned** (`review-a29de896ef7c114a`); **PR is the owner's decision** | |
+| T5 one real run with counts (dispatch-only; the cron is superseded by the deployment model) | S3 | inline | done — run `41897923869` on `22f6573` (**4 passed / 0 failed, 6.6s**); the earlier run `41894569175` was 3/1 and is what found the auth-gate regression | |
+| T6 ODD: version bump, PR, review per assess | — | inline | done — PR #145 (0.18.0, reviewed: `review-a29de896ef7c114a`), PR #147 (0.18.1, the gate fix); tagged and released | — bump **0.18.0** committed (`6f02cf8`), review of the delivery candidate **approved and burned** (`review-a29de896ef7c114a`); **PR is the owner's decision** | |
 
 ## Deployment model (owner clarification, 2026-11-04 — binding)
 
@@ -161,4 +161,6 @@ The smoke paid for itself on its first dispatch-only run. To make that run meani
 
 **Fix**: `git mv app/proxy.ts app/src/proxy.ts` - no code change - plus `app/e2e/auth-gate.spec.ts`, which asserts the two cases only the proxy can satisfy: anonymous `/` and an unknown path must both answer 307 to `/login`. Observed RED with the file at the root (build has no `ƒ Proxy`; spec 2 failed, `/` = 200, unknown = 404) and GREEN at `src/proxy.ts` (build prints `ƒ Proxy (Middleware)`, `/` = 307, spec 2 passed in 1.7s). AGENTS.md now says 14 specs, not 12.
 
-Confirmed on the second production run after redeploying: see the follow-up docs commit for the counts.
+**Closed on the second production run** (`41897923869`, commit `22f6573`, after redeploying `0.18.1`): **4 passed / 0 failed (6.6s)** — root 307, five headers, dashboard redirect, and the real Operador session. The lane now reports the truth in both directions: it went red on the regression and green once the gate was actually running.
+
+**How production gets deployed** (learned the hard way here): the Vercel project `systemfact` has **Root Directory `.`**, while the Next app lives in `app/`, so a git-source production deployment fails with `[NEXT_NO_VERSION] No Next.js version detected`. The working path is an upload from the app directory: `cd app && vercel deploy --prod`. `app/.vercel/project.json` is gitignored and already linked, so no `vercel link` is needed. This does not create a GitHub Deployment entry (the only `deployments` entries are the `prod-smoke`/`e2e` GitHub *environments* used by Actions).
