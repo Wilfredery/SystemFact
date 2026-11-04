@@ -13,9 +13,8 @@
  * `next` (or ephemeral Supabase) stack for the mutating E2E suite.
  *
  * Env vars (optional): `PROD_BASE_URL` (default https://systemfact.vercel.app),
- * `E2E_PROTECTION_BYPASS` (Vercel Authentication bypass secret, same pattern as
- * `playwright.config.ts`), `PROD_USER` / `PROD_PASSWORD` (an Operador for the
- * logged-in half of the smoke).
+ * `PROD_USER` / `PROD_PASSWORD` (an Operador for the logged-in half).
+ * There is no protection-bypass option on purpose — see the note further down.
  */
 
 import { defineConfig, devices } from "@playwright/test";
@@ -42,20 +41,15 @@ export default defineConfig({
     // instead, never by attaching a trace of a production login.
     trace: "off",
     screenshot: "off",
-    // Vercel Authentication (SSO) protects per-deployment URLs. Sending the
-    // bypass header by DEFAULT would defeat the anonymous half of this smoke:
-    // it would answer "200" even if the public alias were misconfigured to hide
-    // behind SSO, which is exactly what a visitor would not see. So the header
-    // is opt-in only, for the deliberate case of probing a protected deployment
-    // URL, and the public alias is always tested as an anonymous visitor.
-    ...(process.env.PROD_PROTECTION_BYPASS === "1" &&
-    process.env.E2E_PROTECTION_BYPASS
-      ? {
-          extraHTTPHeaders: {
-            "x-vercel-protection-bypass": process.env.E2E_PROTECTION_BYPASS,
-          },
-        }
-      : {}),
+    // NO VERCEL PROTECTION BYPASS. This lane probes the PUBLIC alias as an
+    // anonymous visitor, which is the only thing that proves a visitor can use
+    // production. A bypass header would answer 200 even if the alias were
+    // misconfigured behind SSO, so the capability is deliberately absent rather
+    // than configurable: an opt-in flag is still a knob that can be flipped, and
+    // the trigger would sit in a weaker-protected place than the secret it gates
+    // (review R1-workflow-env-conflation). If a protected deployment URL ever
+    // needs probing, add that deliberately, with its own check and its own
+    // reason — never as a flag on this one.
   },
   projects: [
     {

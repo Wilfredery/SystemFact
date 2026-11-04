@@ -63,3 +63,13 @@ Fixes applied (new commit, not a lineage correction):
 - `AGENTS.md` + `SETUP-LOCAL.md`: the no-artifact policy and the opt-in bypass are stated so nobody "improves" them back into a leak.
 
 Verified after the fix: `tsc --noEmit` 0 · `eslint` 0 · public smoke still `2 passed / 1 failed` (four headers missing in the deployed build — expected under manual deploys) · session smoke still **fails** on missing credentials · a failing run now leaves only `test-results/.last-run.json`, **no `trace.zip` and no screenshots**.
+
+## Review round 2 (2026-11-04) — lineage `review-9019743e10883a21` (tier high, risk + reliability)
+
+Findings: `R1-workflow-env-conflation` (**CRITICAL**), `R1-public-repo-secret-scope` (WARNING), `R3-hardcoded-default-headers` (WARNING), and two SUGGESTIONs. The refuter sustained the CRITICAL.
+
+**`R1-workflow-env-conflation`, and why it is right.** Round 1 replaced a default-on bypass with an opt-in one, but the trigger was a repository **variable** (`PROD_PROTECTION_BYPASS`) gating a **secret** (`E2E_PROTECTION_BYPASS`), and both names shared a stem. Two consequences: whoever can set the variable can enable the bypass even when the secret is empty, and a correctly-set secret does nothing unless the variable says `1`. An opt-in flag is still a knob whose trigger sits somewhere weaker than the thing it gates.
+
+**Fix: delete the knob.** The capability is gone rather than configurable — no `extraHTTPHeaders`, no bypass variable, no bypass secret. The lane probes the public alias as an anonymous visitor, which is the only thing that proves a visitor can use production; if a protected deployment URL ever needs probing, that gets its own check and its own reason. Consequence: the `prod-smoke` environment now holds **two** secrets (`PROD_USER`, `PROD_PASSWORD`), not three.
+
+Not changed, deliberately: `R1-public-repo-secret-scope` (the environment scoping it asks for is already the design — `environment: prod-smoke` on the only job); `R3-hardcoded-default-headers` (importing `next.config.ts` into a Playwright spec would couple the check to Next's module loading, and the deployed headers are exactly what must be asserted, not the local constant); the two SUGGESTIONs.

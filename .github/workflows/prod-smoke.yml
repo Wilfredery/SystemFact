@@ -13,9 +13,11 @@
 # (no hay integración Vercel↔GitHub — sin auto-deploy, sin checks en PRs). Este
 # workflow se corre DESPUÉS de un deploy manual del owner, nunca por cron.
 #
-# Los ÚNICOS secrets que lee este workflow son PROD_USER, PROD_PASSWORD y
-# PROD_PROTECTION_BYPASS, y viven en el environment `prod-smoke` (no a nivel
-# repo). PROD_BASE_URL es una variable opcional del repo, no un secret.
+# Los ÚNICOS secrets que lee este workflow son PROD_USER y PROD_PASSWORD, y
+# viven en el environment `prod-smoke` (no a nivel repo). PROD_BASE_URL es una
+# variable opcional del repo, no un secret. No hay bypass de Vercel: este lane
+# mira el alias público como un visitante anónimo, y un header de bypass haría
+# que un alias mal configurado detrás de SSO igual respondiera 200.
 #
 # Nunca forma parte de `ci-gate`: es un chequeo de observabilidad, y un rojo acá
 # no debe bloquear un merge (pero SÍ debe llegarle a alguien — por eso la issue
@@ -67,11 +69,7 @@ jobs:
           # Únicos secrets del workflow (environment prod-smoke).
           PROD_USER: ${{ secrets.PROD_USER }}
           PROD_PASSWORD: ${{ secrets.PROD_PASSWORD }}
-          # El bypass de Vercel SOLO se manda si esta variable vale "1": las
-          # pruebas anónimas tienen que ver lo que ve un visitante, no una
-          # respuesta desbloqueada por el header (ver playwright.prod.config.ts).
-          PROD_PROTECTION_BYPASS: ${{ vars.PROD_PROTECTION_BYPASS || '0' }}
-          E2E_PROTECTION_BYPASS: ${{ secrets.PROD_PROTECTION_BYPASS }}
+          # Sin bypass de Vercel a propósito: ver playwright.prod.config.ts.
         run: pnpm exec playwright test -c playwright.prod.config.ts --reporter=list,json
 
       - name: Fail when a test is skipped

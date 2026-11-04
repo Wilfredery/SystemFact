@@ -109,8 +109,9 @@ These rules derive from the canonical engineering constitution in the project do
   tenant read-only (never writes: no sales, no NCF, no voids) and skips fail the run exactly
   like the local E2E suite. Two policies are deliberate and must not be "improved": traces and
   screenshots are **off** (a trace of a real production login can capture the password, and the
-  artifacts are uploaded in a public repo), and the Vercel protection-bypass header is **opt-in**
-  (`PROD_PROTECTION_BYPASS=1` only) so the anonymous half sees what a visitor sees.
+  artifacts are uploaded in a public repo), and there is **no Vercel protection-bypass option at
+  all** — the lane must see what a visitor sees, and an opt-in flag is still a knob whose trigger
+  would sit in a weaker-protected place than the secret it gates (`R1-workflow-env-conflation`).
   See `odd/tasks/prod-smoke.md`.
 
 ### Versioning — human-driven (2026-09-15; release-please automatic tagging is PARKED)

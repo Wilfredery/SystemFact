@@ -469,15 +469,18 @@ DOM y la red, así que el valor del campo contraseña puede quedar adentro, y el
 workflow sube los artefactos cuando falla. Eso sería una fuga de credencial
 disfrazada de ayuda para depurar — se depura local con una identidad descartable.
 
-**El bypass de Vercel es opt-in.** Las pruebas anónimas tienen que ver lo que ve
-un visitante; mandar `x-vercel-protection-bypass` por defecto devolvería `200`
-incluso si el alias público quedara detrás de SSO por error. El header solo se
-envía con `PROD_PROTECTION_BYPASS=1`, para el caso deliberado de probar una URL
-de deployment protegida.
+**No hay bypass de Vercel, a propósito.** Las pruebas anónimas tienen que ver lo
+que ve un visitante; un header `x-vercel-protection-bypass` devolvería `200`
+incluso si el alias público quedara detrás de SSO por error. La capacidad no
+existe en vez de ser configurable: un flag opt-in sigue siendo un interruptor que
+se puede accionar, y su trigger viviría en un lugar menos protegido que el secret
+que habilita (hallazgo `R1-workflow-env-conflation`). Si algún día hace falta
+probar una URL de deployment protegida, se agrega deliberadamente, con su propio
+chequeo y su propia razón.
 
 Env: `PROD_BASE_URL` (default `https://systemfact.vercel.app`),
-`PROD_USER`/`PROD_PASSWORD` (Operador), `E2E_PROTECTION_BYPASS` (bypass del SSO
-de Vercel). Detalle de diseño y decisiones: `odd/tasks/prod-smoke.md`.
+`PROD_USER`/`PROD_PASSWORD` (Operador). Detalle de diseño y decisiones:
+`odd/tasks/prod-smoke.md`.
 
 ## Comandos útiles
 
