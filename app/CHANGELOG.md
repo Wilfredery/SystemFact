@@ -1,3 +1,9 @@
+## [0.17.9](https://github.com/Wilfredery/SystemFact/compare/v0.17.8...v0.17.9) (2026-11-04)
+
+### Documentation
+
+* **docs:** `SETUP-LOCAL.md` no longer claims the hosted E2E path works. Both robot identities in the hosted project (`e2e-automation@users.systemfact.internal` and `e2e@users.systemfact.internal`) are **banned** — `banned_until` to 2126, `auth.sessions` and `auth.refresh_tokens` cleared — and the verification is a real password grant that returned `200` before and `400 user_banned` after, not the `UPDATE`'s own return value. The local stack (`supabase start` + `.github/ci/provision-local-e2e.sh`) is the only supported path and the one CI has run since v0.17.7; the reversal and completion SQL are recorded on issue #138 so the decision stays reversible without archaeology. The two `auth.users` rows were then deleted, which is the step that makes the removal permanent — the ban was deliberately the reversible half first. Post-deletion the same grant answers `400 invalid_credentials` (the identity no longer exists), and `auth.users`/`identities`/`sessions`/`refresh_tokens` all count 0 for it. The hosted `USUARIO` row (empresa 5, rol `Administrador`, `authUserId = null`) is untouched by the auth deletion and is now simply unreachable; deleting an app row is a separate decision with its own audit trail.
+* **docs:** this release exists so that `master` and the version ledger agree: the merged change was documentation only, so the entry above is the entirety of it. No application behaviour changed.
 ## [0.17.8](https://github.com/Wilfredery/SystemFact/compare/v0.17.7...v0.17.8) (2026-11-04)
 
 ### Bug Fixes
