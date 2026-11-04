@@ -167,12 +167,16 @@ try {
   Write-Host ""
 
   # --- Host discovery: session pooler supports pg_dump, transaction pooler does not
+  # Supavisor tenant placement is NOT stable. On 2026-11-04 `aws-0-us-east-2` answered
+  # `FATAL: (ENOTFOUND) tenant/user postgres.<ref> not found` while `aws-1-us-east-2`
+  # accepted the same user, so aws-1 is probed first. Treat this list as a hint, never
+  # as a fact: the probe below decides which host actually hosts the tenant.
   $candidates = if ($HostName -and $HostName.Count -gt 0) {
     $HostName
   } elseif ($HostDirect) {
-    @("db.$ProjectRef.supabase.co", "aws-0-us-east-2.pooler.supabase.com", "aws-1-us-east-2.pooler.supabase.com")
+    @("db.$ProjectRef.supabase.co", "aws-1-us-east-2.pooler.supabase.com", "aws-0-us-east-2.pooler.supabase.com")
   } else {
-    @("aws-0-us-east-2.pooler.supabase.com", "aws-1-us-east-2.pooler.supabase.com")
+    @("aws-1-us-east-2.pooler.supabase.com", "aws-0-us-east-2.pooler.supabase.com")
   }
 
   function Resolve-User([string]$host_) {
@@ -181,36 +185,78 @@ try {
     return "postgres"
   }
 
-  function Invoke-Probe([string]$host_, [string]$user_) {
-    & docker run --rm -e PGPASSWORD -e "PGSSLMODE=$SslMode" $image `
-      psql -h $host_ -p $Port -U $user_ -d $Database -tAc "select 1" 2>&1 | Out-Null
-    return ($LASTEXITCODE -eq 0)
+  # Native stderr must NEVER terminate this script. With $ErrorActionPreference = 'Stop'
+  # a failed `docker run` raises NativeCommandError, and the operator sees a stack trace
+  # instead of the diagnosis (that is exactly what happened on 2026-11-04: the first
+  # candidate's "tenant/user not found" aborted the run before the second was tried).
+  # Every docker call goes through here and returns its text AND exit code.
+  function Invoke-DockerNative {
+    param([string[]]$DockerArgs)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+      $raw = & docker @DockerArgs 2>&1
+      $code = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previous
+    }
+    $joined = (@($raw) | ForEach-Object { "$_" }) -join "`n"
+    return [pscustomobject]@{ Exit = $code; Text = $joined }
+  }
+
+  function Invoke-Probe([string]$targetHost, [string]$user_) {
+    return (Invoke-DockerNative @(
+        "run", "--rm", "-e", "PGPASSWORD", "-e", "PGSSLMODE=$SslMode", $image,
+        "psql", "-h", $targetHost, "-p", "$Port", "-U", $user_, "-d", $Database, "-tAc", "select 1"
+      ))
+  }
+
+  # Order matters: Supavisor reports a unknown tenant as `(ENOTFOUND) tenant/user ...`,
+  # so the TENANT test must run before the generic network test.
+  function Get-FailureClass([string]$text) {
+    if ($text -match 'tenant/user .* not found') { return 'TENANT' }
+    if ($text -match 'password authentication failed|28P01|28000') { return 'AUTH' }
+    if ($text -match 'could not translate host name|Name or service not known|ECONNREFUSED|ETIMEDOUT|no route to host') { return 'NET' }
+    return 'OTHER'
   }
 
   $chosenHost = $null
   $chosenUser = $null
+  $failures = @()
   foreach ($candidate in $candidates) {
     $u = Resolve-User $candidate
     $masked = "{0}@{1}:{2}/{3}" -f $u, $candidate, $Port, $Database
     Write-Host "Probing $masked ..." -ForegroundColor DarkGray -NoNewline
-    if (Invoke-Probe $candidate $u) {
+    $probe = Invoke-Probe $candidate $u
+    if ($probe.Exit -eq 0) {
       Write-Host " OK" -ForegroundColor Green
       $chosenHost = $candidate
       $chosenUser = $u
       break
     }
-    Write-Host " NO" -ForegroundColor Red
+    $class = Get-FailureClass $probe.Text
+    Write-Host " $class" -ForegroundColor Red
+    $failures += ("{0} -> {1}" -f $masked, $class)
+    if ($class -eq 'AUTH') {
+      # This host HAS the tenant; the credentials are wrong. Falling through to another
+      # host would hide the real problem behind a misleading 'no candidate worked'.
+      throw "Password rejected by $candidate. That host is the right one (the tenant exists there), so the problem is the password, not the network. Nothing was dumped."
+    }
   }
   if (-not $chosenHost) {
-    throw "No candidate host accepted the connection. Verify the password and that the project is ACTIVE (a paused free-plan project answers nothing). Pass -HostDirect if the project has the Direct Connection IPv4 add-on."
+    $detail = if ($failures.Count -gt 0) { $failures -join '; ' } else { 'no candidate was tried' }
+    throw "No candidate host accepted the connection. Tried: $detail. TENANT means that pooler does not host this project any more (Supavisor moved it - try the other aws-N host); NET means it is unreachable from here (the direct host needs the IPv4 add-on). A paused free-plan project answers nothing at all."
   }
 
   # --- Independent expectation: how many tables does the source actually have? ---
-  $sourceTables = (& docker run --rm -e PGPASSWORD -e "PGSSLMODE=$SslMode" $image `
-    psql -h $chosenHost -p $Port -U $chosenUser -d $Database -tAc `
-    "select count(*) from pg_tables where schemaname = 'public'" 2>&1 | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0 -or $sourceTables -notmatch '^\d+$') {
-    throw "Could not count source tables (output: '$sourceTables'). Refusing to produce an unverified artifact."
+  $countProbe = Invoke-DockerNative @(
+    "run", "--rm", "-e", "PGPASSWORD", "-e", "PGSSLMODE=$SslMode", $image,
+    "psql", "-h", $chosenHost, "-p", "$Port", "-U", $chosenUser, "-d", $Database, "-tAc",
+    "select count(*) from pg_tables where schemaname = 'public'"
+  )
+  $sourceTables = $countProbe.Text.Trim()
+  if ($countProbe.Exit -ne 0 -or $sourceTables -notmatch '^\d+$') {
+    throw "Could not count source tables (exit $($countProbe.Exit)): $sourceTables. Refusing to produce an unverified artifact."
   }
   $sourceTables = [int]$sourceTables
   if ($sourceTables -eq 0) {
@@ -226,13 +272,14 @@ try {
 
   Write-Host "Dumping (custom format, this is the slow part) ..." -ForegroundColor Cyan
   $sw = [Diagnostics.Stopwatch]::StartNew()
-  & docker run --rm -e PGPASSWORD -e "PGSSLMODE=$SslMode" --mount $mountArg $image `
-    pg_dump -h $chosenHost -p $Port -U $chosenUser -d $Database `
-    --format=custom --compress=6 --no-password --file="/backup/$name"
-  $dumpExit = $LASTEXITCODE
+  $dumpRun = Invoke-DockerNative @(
+    "run", "--rm", "-e", "PGPASSWORD", "-e", "PGSSLMODE=$SslMode", "--mount", $mountArg, $image,
+    "pg_dump", "-h", $chosenHost, "-p", "$Port", "-U", $chosenUser, "-d", $Database,
+    "--format=custom", "--compress=6", "--no-password", "--file=/backup/$name"
+  )
   $sw.Stop()
-  if ($dumpExit -ne 0) {
-    throw "pg_dump failed with exit code $dumpExit. No artifact was recorded."
+  if ($dumpRun.Exit -ne 0) {
+    throw "pg_dump failed with exit code $($dumpRun.Exit): $($dumpRun.Text.Trim()). No artifact was recorded."
   }
   if (-not (Test-Path -LiteralPath $artifact)) {
     throw "pg_dump reported success but '$artifact' does not exist. Investigate before trusting any backup."
@@ -240,11 +287,11 @@ try {
 
   # --- Verify the artifact: real archive, and every source table carries data ---
   Write-Host "Verifying the artifact ..." -ForegroundColor Cyan
-  $toc = & docker run --rm --mount $mountArg $image pg_restore --list "/backup/$name" 2>&1
-  if ($LASTEXITCODE -ne 0) {
-    throw "pg_restore cannot read the artifact back ('$artifact'). An unreadable dump is not a backup."
+  $tocRun = Invoke-DockerNative @("run", "--rm", "--mount", $mountArg, $image, "pg_restore", "--list", "/backup/$name")
+  if ($tocRun.Exit -ne 0) {
+    throw "pg_restore cannot read the artifact back ('$artifact'): $($tocRun.Text.Trim()). An unreadable dump is not a backup."
   }
-  $dumpedTables = @($toc | Select-String -Pattern 'TABLE DATA public ').Count
+  $dumpedTables = @($tocRun.Text -split "`n" | Select-String -Pattern 'TABLE DATA public ').Count
   if ($dumpedTables -ne $sourceTables) {
     throw ("Artifact declares {0} tables with data but the source has {1}. Treat '$artifact' as INVALID: inspect before deleting it, and restore from a different artifact if one exists." -f $dumpedTables, $sourceTables)
   }
@@ -279,6 +326,14 @@ try {
       Write-Host "  pruned: $($old.Name)" -ForegroundColor DarkGray
     }
   }
+}
+catch {
+  # Expected failures (wrong host, wrong password, unverifiable artifact) are answers,
+  # not crashes: print the diagnosis as one line and exit non-zero so a scheduled task
+  # records a real failure without a PowerShell error record dumped over the reason.
+  Write-Host ""
+  Write-Host "BACKUP FAILED: $($_.Exception.Message)" -ForegroundColor Red
+  exit 1
 }
 finally {
   Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue

@@ -137,6 +137,21 @@ A free-plan project answers nothing after a week of inactivity. Resume it in the
 dashboard, confirm `ACTIVE_HEALTHY`, and take a backup **the same day** — the pause is the
 warning that nothing is protecting this data.
 
+## When the connection is refused
+
+The script classifies every candidate host instead of dying on the first one, and the class
+names the problem:
+
+| Class | Message | Meaning |
+|---|---|---|
+| `TENANT` | `tenant/user postgres.<ref> not found` | That pooler does not host the project any more (Supavisor moved it). The next `aws-N` candidate is tried automatically. |
+| `AUTH` | `password authentication failed` | **The host is right and the tenant exists** — the password is wrong. The run stops here on purpose: trying another host would bury the real cause. |
+| `NET` | `could not translate host name` / timeout | Unreachable from this machine. The direct host needs the IPv4 add-on, and a paused project answers nothing at all. |
+
+Recorded case (2026-11-04): `aws-0-us-east-2` returned `TENANT` while `aws-1-us-east-2` was
+serving the project, with the same user name and password. This is why the host list is a
+hint and the probe decides.
+
 ## Before the first real invoice
 
 Two things must have happened before a real tenant is onboarded onto this plan:
