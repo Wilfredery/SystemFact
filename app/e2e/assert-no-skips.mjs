@@ -74,6 +74,16 @@ if (totalReported === 0) {
 }
 
 if (skipped.length === 0) {
+  // A report can carry failures when this guard is run by hand against a JSON
+  // report (in CI the Playwright step fails first and this step never runs).
+  // Printing "OK" for a run with failures would be the same lie as a skip.
+  if (unexpected > 0) {
+    console.error(
+      `FAIL: ${unexpected} test(s) fallaron. El reporte contiene fallos, así que no es un pase: ` +
+        "corregí el test o el codigo, no el guard.",
+    );
+    process.exit(1);
+  }
   console.log(`OK: ${executed} test(s) ejecutados, 0 salteados.`);
   process.exit(0);
 }

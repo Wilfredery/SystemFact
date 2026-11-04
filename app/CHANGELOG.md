@@ -1,3 +1,9 @@
+## [0.17.8](https://github.com/Wilfredery/SystemFact/compare/v0.17.7...v0.17.8) (2026-11-04)
+
+### Bug Fixes
+
+* **e2e:** CI now runs the smoke against the **compiled production server** (`pnpm build && pnpm start`) instead of `next dev`. Two flake classes lived in the dev path and both vanish in a build. First, Turbopack's `next/font` machinery failed to resolve this app's Google font on a cold dev start (`NextFontGoogleFontFileReplacer … resolve_internal failed`, then `Timed out waiting 120000ms from config.webServer`) while the **same font compiled fine in `next build` during the same run** — one failure in four attempts, on a gate that is required for every PR. Second, the first spec to hit a route paid that route's compile cost inside its own per-test timeout: the double-click idempotency test took `32.7s` against the `30000ms` default and failed, then passed in `28.3s` on a warm run. A gate must not go red for a bundler it is not testing, and a re-run habit is how a real failure gets waved through. Measured effect of the change: the same 12 specs went from `6–33s` each to `1–5s` each (nothing compiles at test time) and the whole suite from `1.0–2.1m` to `1.1m` including the build. Local runs keep `pnpm dev`, and `reuseExistingServer` still honours an already-running server.
+* **e2e:** the skip guard now fails a report that **contains failures**. Running it by hand against a report with one failing test printed `OK: 11 test(s) ejecutados, 0 salteados.` and exited 0 — the same lie as a skip, from the same file. In CI the Playwright step fails first, so the gate was never fooled; the guard was, and it is the artifact people read to decide whether a run counted. Covered by four synthetic reports: 12 passed → `OK`, 11 passed + 1 failed → exit 1, 3 flaky → `OK`, empty → exit 1.
 ## [0.17.7](https://github.com/Wilfredery/SystemFact/compare/v0.17.6...v0.17.7) (2026-11-03)
 
 ### Chores
