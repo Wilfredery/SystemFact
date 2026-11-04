@@ -1,0 +1,170 @@
+# AGENTS.md — SystemFact Engineering Standards
+
+Coding standards and engineering rules for agents and reviewers working on the SystemFact codebase.
+These rules derive from the canonical engineering constitution in the project documentation
+(`docs/19-directivas_desarrollo.md`), which remains the full source of truth.
+
+## Stack
+- **Next.js 16** (App Router) fullstack monolith, **TypeScript** strict, **Tailwind CSS 4**, **pnpm**.
+- **Supabase** (PostgreSQL + Auth). **Prisma ORM** as the only data access layer.
+- Node LTS + pnpm declared in `package.json` (`engines`) + committed lockfile. No lockfile, no PR.
+
+## Architecture (modular monolith — ADR-013)
+- One deployment. Per-module structure is mandatory:
+  ```
+  src/modules/<domain>/
+    domain/           # pure TS entities, business rules, fiscal calculations
+    application/      # use cases, orchestration
+    infrastructure/   # Prisma, repositories, external services
+    http/             # Server Actions / API Routes — thin adapters
+  ```
+- `domain/` is PURE: no imports of Next.js, React, Prisma or Supabase. All fiscal math
+  (ITBIS per product, NCF sequences, retentions, invoice state transitions) lives here as testable functions.
+- Server Actions / API Routes are thin adapters: validate input, check authorization, delegate to a use case. Zero business logic.
+- Data access ONLY via Prisma from `infrastructure/`. Never call `prisma.*` from `application/`, `http/`, or components.
+- React: server components by default; `"use client"` only for real interactivity. UI consumes use cases, never the ORM.
+
+## Security (non-negotiable)
+- **Multi-tenancy ALWAYS**: every context-aware query filters by `empresaId` (+ `sucursalId` where applicable). A query without that filter is a critical bug. #1 risk is cross-tenant data leakage.
+- **Server Actions MUST wrap DB access in `withTenantTransaction(ctx, fn)`**: the wrapper opens a Prisma transaction, sets the RLS GUCs (`app.current_empresa_id`, `app.current_sucursal_id`, `app.current_usuario_id`, `app.current_es_admin`) with `set_config(..., true)` as the first statement, and delegates to the callback. See `docs/19-directivas_desarrollo.md` §3.1 for the full convention. Enforced defense-in-depth by the project-local ESLint rule `systemfact/server-action-must-wrap-tenant` (wired in `app/eslint.config.mjs`, scoped to `src/**/actions.ts(x)`).
+- **Server-side authorization on every action**: verify role + company + assigned branch on the server. Hiding UI buttons is NOT security.
+- **Access identifier = `nombreUsuario`/unique code** (ADR-014): email is NEVER a credential. Supabase Auth uses internal synthetic emails (`<nombreUsuario>@users.systemfact.internal`), never exposed in UI.
+- **Granular authorization** against the role/permission matrix; default is deny-by-default.
+- **Audit log is append-only**: no UPDATE/DELETE on audit, ever.
+- Secrets ONLY in `.env` (never hardcoded, never in repo). `.env.example` committed with all keys (no secrets).
+
+## Data integrity
+- **Money = Decimal**: amounts `Decimal(12,2)`, quantities `Decimal(12,3)` (ERD v4.7). Use `prisma.Decimal` in TS. **NEVER `number`/float for money.**
+- **Inventory never edited directly**: every stock change produces a `MovimientoInventario` (sale, purchase, adjustment with reason, return). Inventory is PER BRANCH.
+- **Insufficient stock blocks the sale** (no negatives). Stock is debited when CONFIRMING.
+- **NCF**: consumed on document confirmation (not draft); independent sequences per type+company; warning at 90% of range; block when exhausted/expired.
+- **Fiscal documents are NEVER deleted**: `Cancelada` (no fiscal effect, not in 607) vs `Anulada` (fiscal effect, reported in 608).
+- **Balances/payment state are DERIVED**: always computed from the single canonical query over valid documents
+  (total − Σreceipts − Σcredit notes + Σdebit notes). NEVER materialized or cached (ADR-017).
+- **Discount = structured data** (`descuentoTipo` PORCENTAJE/MONTO + `descuentoAutorizadoPor`) frozen at confirm; applied BEFORE ITBIS (ADR-018).
+- **State enums frozen**: fiscal doc `VIGENTE/CANCELADA/ANULADA`; sale `BORRADOR/CONFIRMADA/CANCELADA`; payment `COBRO/REEMBOLSO`. No free strings.
+- **Atomic NCF assignment**: row-lock consumption inside the transaction.
+- Master entities with history (client, supplier, product, user) are NEVER deleted: `activo=false`.
+
+## Code practices
+- **Strict TypeScript**: zero `any`; types derived from the Prisma schema, never hand-duplicated models.
+- **Explicit errors**: use cases return typed results (success/business error); no try/catch that swallows errors.
+- **Conventional commits**; one commit = one coherent work unit (code + its tests + its docs). No AI attribution in commits.
+- Small functions named by business intent (e.g. `calcularRetencionISR`, `consumirSecuenciaNcf`), not generic (`process`, `handle`).
+- **Parameters from DB, never hardcoded constants**: ITBIS rate (with validity), max discount %, returns term, credit term, ISR/ITBIS retentions, mora threshold.
+- **Strict YAGNI**: outside reserved extension seams, no speculative flexibility.
+
+## Dates & time
+- Always store UTC (`timestamptz`). `America/Santo_Domingo` is ONLY presentation/business-calculation layer.
+- "Today", mora, NCF/ITBIS validity and daily cash close are computed in `America/Santo_Domingo`.
+- Conversions via a dedicated library (date-fns-tz or equivalent); no manual hour arithmetic.
+
+## Performance (measure before optimizing)
+- Lists ALWAYS paginated (default 25/page, max 100). No `findMany` without limit on list views.
+- Explicit `select` on heavy lists; full `include` only on detail views.
+- **No N+1**: no queries inside loops.
+- Reports/KPIs via SQL aggregation (`aggregate`/`groupBy`).
+- Multi-table writes ALWAYS in `$transaction` (sale → invoice + inventory + movement; received purchase → inventory + avg cost; annulment → full reversal).
+- Fiscal operations NEVER optimistic: definitive state shown only after real server confirmation.
+
+## Errors
+- Use cases return typed success/error results. Every business error carries a **stable code**, user message, and minimal context.
+- Single error-code catalog, versioned with the domain. No ad-hoc codes in adapters/components.
+- Never expose stack traces or internal Prisma errors to the client.
+
+## Concurrency & idempotency
+- Every action that CONFIRMS or mutates money/inventory/NCF is **idempotent**: retrying does not duplicate effects.
+- Confirmation buttons disabled on first click AND the server revalidates everything.
+- Optimistic locking (`version` column) for concurrent edits; conflicts reload data and ask for explicit retry.
+- Critical contention (NCF sequence, stock on confirm, balance on parallel payments) resolved INSIDE the transaction with row locks or verified `UPDATE ... WHERE`.
+
+## Testing
+- **Jest** (unit/integration) + **Playwright** (E2E). TDD not mandatory.
+- Coverage priority: (1) fiscal domain (ITBIS 18/16/0 mixed, NCF sequences, ISR/ITBIS retentions, invoice state transitions incl. Cancelada vs Anulada);
+  (2) critical integration (sale confirm → inventory + movement; partial payment → Parcial/Pagada; received purchase → avg cost);
+  (3) E2E (cash sale, credit sale → collection, return with B04, daily close); (4) UI.
+- Domain tests run with no database (domain is pure).
+
+## Git workflow
+- `master` protected: advances only via reviewed, green PR.
+- Branches `feature/<phase>-<module>` aligned to roadmap phases.
+- Conventional commits; one work unit per commit.
+- Prisma migrations always in their own reviewable commit, never mixed with feature changes.
+
+## CI/CD (GitHub Actions)
+- `.github/workflows/ci.yml` — runs on every PR targeting `master` and again on `master`
+  after the merge: ESLint, strict typecheck, `prisma validate`, unit tests, integration tests
+  against a real Postgres 17.6 (same engine as the Supabase project; RLS enforced via the `systemfact_app` role), production build and
+  a Conventional Commits guard. The aggregate job **CI gate** is the single required status check.
+- E2E (Playwright) runs on every PR against a **local, ephemeral Supabase stack**
+  (`supabase start`, config in `supabase/config.toml`), provisioned inside the runner by
+  `.github/ci/provision-local-e2e.sh`. It needs **zero repository secrets** and has no
+  skip-if-missing preflight: if the stack cannot start, or if any of the 14 specs is skipped,
+  the job fails (`app/e2e/assert-no-skips.mjs`). A green job that silently skips reads as
+  coverage it does not have. Optional repo variable `E2E_PRODUCT` (default `Arroz`).
+- Production smoke (`.github/workflows/prod-smoke.yml`) — a read-only Playwright check against
+  the deployed app (`https://systemfact.vercel.app`). It is manual/dispatch-only: production is
+  deployed by hand from Vercel (no Vercel↔GitHub integration), so the smoke is run after a manual
+  deploy, in its own `prod-smoke` environment, and is never part of `ci-gate`. It reads the hosted
+  tenant read-only (never writes: no sales, no NCF, no voids) and skips fail the run exactly
+  like the local E2E suite. Two policies are deliberate and must not be "improved": traces and
+  screenshots are **off** (a trace of a real production login can capture the password, and the
+  artifacts are uploaded in a public repo), and there is **no Vercel protection-bypass option at
+  all** — the lane must see what a visitor sees, and an opt-in flag is still a knob whose trigger
+  would sit in a weaker-protected place than the secret it gates (`R1-workflow-env-conflation`).
+  See `odd/tasks/prod-smoke.md`.
+
+### When production must be deployed and checked (2026-11-04, maintainer-approved)
+- Merging is **not** shipping: production is deployed by hand from Vercel. A merge that can change
+  what the deployed app serves (`app/src/**`, `app/prisma/**`, `app/next.config.ts`, `app/proxy.ts`
+  or `app/src/proxy.ts`, runtime dependency or `app/package.json` changes) is **not done** until it
+  reaches production and the smoke says so.
+- The agent does not assume that deployment: it **asks for explicit manual-deploy approval**, naming
+  the commit and what the smoke will prove.
+- Deploy: `cd app && vercel deploy --prod`. Then `gh workflow run prod-smoke.yml --ref master` and
+  report the **counts**, never the job colour.
+- Docs-only, test-only and CI-only changes need no deploy: nothing a visitor sees changed.
+- A red smoke after a deploy is a real finding, not noise. Fix it before starting the next feature.
+- Why this exists: on 2026-11-04 production was serving a build 22 days old (`2a76c31`, #118) while
+  `master` was at v0.18.0 — every lane green, production a month behind, and the deployment was the
+  only place the missing auth gate showed.
+
+### Versioning — human-driven (2026-09-15; release-please automatic tagging is PARKED)
+- Release-please automatic tagging is parked permanently: its output (`.github/workflows/
+  release-please.yml`) is informational only. Manual versioning is the version of record.
+  Never debug release-please unless the user explicitly re-opens that effort.
+- Protocol: user merges a feature/fix PR and notifies the agent → user creates the
+  annotated `vX.Y.Z` tag + GitHub Release on the release commit (compare notes like
+  v0.11.2–v0.11.5), OR the agent opens a `chore: release X.Y.Z` PR to squash-merge.
+- Semver (pre-1.0): `feat` → MINOR; `fix`/`perf`/`chore(release)`/`docs`/`test`/`refactor`
+  → PATCH; `!`/BREAKING CHANGE → MINOR. Validate: `pnpm lint:commits --from origin/master --to HEAD`.
+
+### Release convention (2026-09-18, maintainer-approved — binding)
+- **Every feature/fix/refactor PR carries its own version bump** (`app/package.json` +
+  `.release-please-manifest.json` + `app/CHANGELOG.md` edited in the PR's final patch commit),
+  so `master` never stacks un-bumped releases. A standalone `chore(release)` PR is only for
+  retro-syncs of missed bumps or explicit multi-PR chains ("bump at close").
+- **Scope of the bump (amended 2026-11-04, maintainer-approved):** the bump is required when the PR
+  can change the built artifact or the delivery pipeline — `app/src/**`, `app/prisma/**`,
+  `app/next.config.ts`, `app/proxy.ts` / `app/src/proxy.ts`, runtime `app/package.json` fields,
+  `.github/workflows/**`, `.github/actions/**`. **Exempt**: `docs/**`, `odd/**`, `**/*.md`,
+  `README*`, `LICENSE*`, `**/*.test.ts`, `**/*.spec.ts` and `app/tools/**` — none of it can change
+  what production serves, so it rides into the next release's changelog instead of paying a tag
+  (v0.18.2 was a whole patch release for two paragraphs: that is the ceremony this removes).
+  Follow-up: make it mechanical in CI (a step that fails when a non-exempt path changed and the
+  three version files did not), so the rule stops depending on judgement.
+- **UTF-8 BOM rule (machine-consumed files):** NEVER write versioned config/text
+  (`app/package.json`, `.release-please-manifest.json`, `app/CHANGELOG.md`, tsconfig, YAML
+  consumed by Node tooling) with PowerShell 5.1 `Set-Content -Encoding UTF8` — it prepends a
+  BOM (EF BB BF) that breaks Node JSON parsers in CI (root cause of the PR #59 CI break).
+  Write with `[IO.File]::WriteAllText/WriteAllBytes` using `UTF8Encoding($false)`, or verify
+  `bytes[0] -ne 0xEF` after writing. Sonar TS sensors tolerate the BOM; Node tooling does not.
+- **Any hand-made release PR merges with "Squash and merge", NEVER "Create a merge commit"** —
+  release-please detects the merged release PR by the pushed commit's message.
+- Historical release-please diagnosis, silent-run escape hatches, and root-cause notes
+  (PRs #27–#42): `docs/release-please-historia.md`.
+
+## Definition of Done
+A feature is done when it: (1) meets the requirement + acceptance criteria;
+(2) respects business rules; (3) has tests per priority; (4) is documented;
+(5) was reviewed (human PR or another AI session with these directives).
