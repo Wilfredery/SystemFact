@@ -1,3 +1,9 @@
+## [0.18.3](https://github.com/Wilfredery/SystemFact/compare/v0.18.2...v0.18.3) (2026-11-04)
+
+### Chores
+
+* **ci:** the `prod-smoke` environment now declares a **url** (`https://systemfact.vercel.app`), so the deployment record this repo already shows for each smoke run links to production instead of being a bare name. What the record IS does not change: it comes from the GitHub Actions environment that scopes `PROD_USER`/`PROD_PASSWORD` to that single job, and the manual `vercel deploy --prod` still creates nothing in GitHub - no deployment entry, no commit status. No protection rules, deliberately: the check lasts seconds and must run after every deploy, not wait for a click.
+
 ## [0.18.2](https://github.com/Wilfredery/SystemFact/compare/v0.18.1...v0.18.2) (2026-11-04)
 
 ### Documentation
