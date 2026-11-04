@@ -71,11 +71,16 @@ test.describe("production session smoke", () => {
     ).toBeVisible();
     await expect(page.locator("main h1 + p")).toContainText(/\S/);
 
-    // Role gate: an Operador gets the access message, not KPI data.
-    await expect(page.getByRole("alert")).toBeVisible();
-    await expect(page.getByRole("alert")).toContainText(
-      "Su rol no incluye paneles de reporte.",
-    );
+    // Role gate: an Operador gets the access message, not KPI data. Scoped to
+    // `main` on purpose: right after a client-side navigation Next.js injects
+    // its route announcer (`<div role="alert" id="__next-route-announcer__">`,
+    // which announces the greeting) into <body>, so an unscoped
+    // `getByRole("alert")` resolves to two elements and dies on strict mode
+    // before it asserts anything about the gate.
+    const denial = page.locator("main").getByRole("alert");
+    await expect(denial).toHaveCount(1);
+    await expect(denial).toBeVisible();
+    await expect(denial).toContainText("Su rol no incluye paneles de reporte.");
 
     // And explicitly: NO KPI tile may render for this role.
     for (const label of KPI_TILES) {
