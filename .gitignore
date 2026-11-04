@@ -59,3 +59,9 @@ test-results/
 # --- Memoria / artefactos de diseño (binarios locales) ---
 .engram/
 *.penpot
+
+# --- Backups de base de datos (un dump fiscal NUNCA se versiona) ---
+# El script de respaldo escribe fuera del repo por defecto;
+# este patrón es la red de seguridad si alguien apunta -OutDir adentro.
+*.dump
+*.dump.sha256
