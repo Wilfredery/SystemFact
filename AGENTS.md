@@ -131,6 +131,26 @@ These rules derive from the canonical engineering constitution in the project do
   `master` was at v0.18.0 — every lane green, production a month behind, and the deployment was the
   only place the missing auth gate showed.
 
+### Dependencies (2026-11-04, maintainer-approved — binding)
+- **Nothing updates itself.** Dependabot opens **no npm version PRs** (`open-pull-requests-limit: 0`
+  in `.github/dependabot.yml`); the `github-actions` half stays on, because a pinned SHA that never
+  moves becomes the vulnerability. Upgrades are manual and deliberate.
+- **Every upgrade quotes its upstream release notes in the PR**, next to the audit output. The
+  audit only says a version is *patched*; the release notes say what else changed. A bump without
+  both is not reviewable — that miss happened with `next` 16.4.5 (it was correct: the November 2026
+  security release, but the PR showed only the audit's patched range).
+- **`@types/node` tracks the runtime major — Node 24 — never ahead of it.** Typing against another
+  major's API is how imports compile and then fail at runtime. Same rule for any `@types/*` bound to
+  a platform major. (Dependabot proposed 26.6.6 for a Node 24 project; that is why version PRs are off.)
+- **A transitive advisory is lifted with a patch-level override** in `app/pnpm-workspace.yaml`, with
+  the advisory id in the comment — never by rewriting a direct dependency's range to dodge it, and
+  never by deleting the dependency from `package.json` to make the audit quiet.
+- **Runtime versions have one source each**: Node lives in `engines.node`, the CI default
+  (`setup-project` input `node-version`) and the Vercel project setting — change all three or none.
+- The guard is the **`audit` job in `ci-gate`** (`pnpm audit --prod --audit-level high`): a
+  production-scope advisory blocks the merge and names the advisory plus the patched version. That
+  is the protection against "a vulnerability in the future", not an automatic bump.
+
 ### Versioning — human-driven (2026-09-15; release-please automatic tagging is PARKED)
 - Release-please automatic tagging is parked permanently: its output (`.github/workflows/
   release-please.yml`) is informational only. Manual versioning is the version of record.
