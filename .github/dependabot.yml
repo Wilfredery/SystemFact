@@ -17,7 +17,16 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    # 0 = no VERSION-update PRs. Owner decision (2026-11-04) after the first
+    # batch proposed changes nobody asked for, including @types/node 26.6.6 for a
+    # project that runs Node 24 (local v24.22.1, CI node-version "24", Vercel
+    # 24.x): typing against another major's API is how imports compile and then
+    # fail on the runtime.
+    # Security-update PRs are NOT affected by this limit (GitHub keeps a separate
+    # internal limit for them), and the real alarm is the `audit` job inside
+    # `ci-gate`: a production-scope advisory blocks the merge with the advisory
+    # and the patched version in the log.
+    open-pull-requests-limit: 0
     commit-message:
       prefix: fix
       prefix-development: chore

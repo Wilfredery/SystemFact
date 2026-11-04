@@ -1,3 +1,9 @@
+## [0.18.7](https://github.com/Wilfredery/SystemFact/compare/v0.18.6...v0.18.7) (2026-11-04)
+
+### Chores
+
+* **ci:** Dependabot no longer opens npm **version** PRs (`open-pull-requests-limit: 0`), by owner decision after the first batch proposed changes nobody asked for. The clearest one was `@types/node` **26.6.6** for a project that runs **Node 24** (local `v24.22.1`, CI `node-version: "24"`, Vercel 24.x): typing against another major's API is how imports compile and then fail at runtime. Security-update PRs are unaffected — GitHub keeps a separate limit for them — and the alarm that matters is the `audit` job inside `ci-gate`: a production-scope advisory blocks the merge, naming the advisory and the patched version. The `github-actions` entry stays on, because a pinned SHA that never moves is its own risk.
+
 ## [0.18.6](https://github.com/Wilfredery/SystemFact/compare/v0.18.5...v0.18.6) (2026-11-04)
 
 ### Bug Fixes
