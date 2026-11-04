@@ -419,8 +419,12 @@ skips **no** es cobertura: el guard falla si falta un test o si algo se salteó.
 | Wipe total | `npx --yes supabase@3.0.0 stop --no-backup` |
 
 El camino viejo (Supabase Auth **remoto** contra la BD local, credencial en
-`app/.env.e2e.local`) sigue sirviendo para probar contra el proyecto real; CI
-ya no lo usa.
+`app/.env.e2e.local`) **ya no funciona**: las identidades robot del proyecto
+hospedado (`e2e-automation@…` y `e2e@users.systemfact.internal`) están baneadas
+desde el 2026-11-04 — `banned_until` a 100 años y sus sesiones y refresh tokens
+borrados, verificado con el mismo grant que antes devolvía `200` y ahora
+devuelve `400 user_banned` (issue #138). El stack local de arriba es el único
+camino soportado, y es el que corre CI desde v0.17.7.
 
 ## Comandos útiles
 
