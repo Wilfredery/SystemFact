@@ -20,8 +20,8 @@ Branch: `feature/prod-smoke` · Delivery: single PR (version bump included).
 | T2 smoke code: prod playwright config, public + session specs, workflow, docs | S1,S4 | worker | done — reviewed and approved (lineage `review-fb125ae86d69f039`) | `9b38bfc`→`2688396` |
 | T3 prove the public half against the deployed URL (expected red until production is redeployed) | S1 | inline | done — `2 passed / 1 failed`; the header test names all four missing headers | — |
 | T4 least-privilege identity + `prod-smoke` environment secrets (explicit production write) | S2,S4 | inline | done — auth user (owner) · environment `26281220650` + 2 secrets (agent, password rotated) · `USUARIO` 6 / `USUARIO_ROL` (Operador) | |
-| T5 one real run with counts; enable the cron only after a green run | S3 | inline | pending | |
-| T6 ODD: version bump, PR, review per assess | — | inline | pending | |
+| T5 one real run with counts (dispatch-only; the cron is superseded by the deployment model) | S3 | inline | pending — needs merge first: GitHub only registers `workflow_dispatch` from the default branch | |
+| T6 ODD: version bump, PR, review per assess | — | inline | in progress — bump **0.18.0** committed (`6f02cf8`), review of the delivery candidate **approved and burned** (`review-a29de896ef7c114a`); **PR is the owner's decision** | |
 
 ## Deployment model (owner clarification, 2026-11-04 — binding)
 
@@ -88,6 +88,26 @@ Advisory findings, all non-blocking and recorded as later work:
 - `R3-001` (WARNING): the empresa/sucursal assertion only proves the line is non-empty, not that it carries the real tenant. **Worth fixing later**: the page falls back to the literal `Empresa` when the tenant binding is missing, so asserting the line is not exactly `Empresa` would turn this into a tenant-resolution check.
 - `R3-002` (WARNING): asserting `307` specifically can go red if Next/Vercel changes the redirect status for the same visitor-visible behaviour. Deliberate: a status change is worth knowing about.
 - `R3-003` (WARNING): `readCredentials()` is called in `beforeAll` and again per test; deterministic, no reliability gap, but it is a duplicate read.
+
+## Review round 4 (delivery candidate `master..feature/prod-smoke`, 545 lines) — lineage `review-a29de896ef7c114a` — **APPROVED**
+
+Tier **high** (risk + reliability; the workflow is a `shell_process` boundary and hands two production secrets to a live login). Approved, authority **burned**. Nine advisory findings, **none blocking**, none opened a correction:
+
+| id | lens | severity | location |
+|---|---|---|---|
+| `R1-prod-smoke-base-url-variable` | risk | SUGGESTION | `.github/workflows/prod-smoke.yml:69` |
+| `R1-prod-smoke-environment-secret-exposure` | risk | WARNING | `.github/workflows/prod-smoke.yml:72-75` |
+| `R1-prod-smoke-issue-gh-token` | risk | SUGGESTION | `.github/workflows/prod-smoke.yml:89-92` |
+| `R1-prod-smoke-public-repo-secret-scope` | risk | WARNING | `.github/workflows/prod-smoke.yml:56` |
+| `R1-prod-smoke-no-bypass-confirmed` | risk | SUGGESTION | `app/playwright.prod.config.ts:45-48` |
+| `R1-prod-smoke-trace-screenshot-off` | risk | SUGGESTION | `app/playwright.prod.config.ts:38-42` |
+| `R3-001` | reliability | WARNING | `app/e2e-prod/session-smoke.spec.ts:67-69` |
+| `R3-002` | reliability | WARNING | `app/e2e-prod/session-smoke.spec.ts:25-30` |
+| `R3-003` | reliability | SUGGESTION | `app/e2e-prod/public-smoke.spec.ts:49-52` |
+
+`R3-001` is the same tenant assertion from round 3: `main h1 + p` only proves the line is non-empty, while the page falls back to the literal `Empresa`, so asserting `not exactly "Empresa"` would turn it into a real tenant check. Later work, not a blocker.
+
+Note on the harness: the reviewer-group capture rejected a hand-assembled array of both slots, while the single-slot capture accepted the same bindings one at a time; both lenses were collected and admitted individually.
 
 ## Two rounds, one lesson
 
