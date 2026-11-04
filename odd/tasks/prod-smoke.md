@@ -17,9 +17,9 @@ Branch: `feature/prod-smoke` · Delivery: single PR (version bump included).
 | ID | S# | Route | Status | Commit |
 |----|----|-------|--------|--------|
 | T1 production URL + real header state measured | S1 | inline | done — `https://systemfact.vercel.app`; `/` → 307 `/login`; `/login` 200 but only HSTS of the five headers; newest prod deploy = `2a76c31` (#118) vs master `5113f64` (0.17.9) | — |
-| T2 smoke code: prod playwright config, public + session specs, workflow, docs | S1,S4 | worker | pending | |
-| T3 prove the public half against the deployed URL (expected red until production is redeployed) | S1 | inline | pending | |
-| T4 least-privilege identity + `prod-smoke` environment secrets (explicit production write) | S2,S4 | inline | pending | |
+| T2 smoke code: prod playwright config, public + session specs, workflow, docs | S1,S4 | worker | done — reviewed and approved (lineage `review-fb125ae86d69f039`) | `9b38bfc`→`2688396` |
+| T3 prove the public half against the deployed URL (expected red until production is redeployed) | S1 | inline | done — `2 passed / 1 failed`; the header test names all four missing headers | — |
+| T4 least-privilege identity + `prod-smoke` environment secrets (explicit production write) | S2,S4 | inline | in progress — auth user created (owner) · environment created + `USUARIO` 6 / `USUARIO_ROL` (Operador) inserted (agent) · **secrets pending owner** | |
 | T5 one real run with counts; enable the cron only after a green run | S3 | inline | pending | |
 | T6 ODD: version bump, PR, review per assess | — | inline | pending | |
 
@@ -43,6 +43,8 @@ Original measurement kept for the record: alias `systemfact.vercel.app` → `dpl
 - L3 (2026-11-04): owner decisions captured (S1–S3). Cadence was explained before they chose: scheduled run + how a failure reaches them.
 - L4 (2026-11-04): production probed: cache-busted `/login` still returns `X-Vercel-Cache: HIT` with a 22-day `Age`, and `/favicon.ico` serves without the four app headers — consistent with a build older than v0.17.3.
 - L5 (2026-11-04, owner, verbatim): "FYI, i dont want to get deploy appears in my repo, thats why we setup like that, cause as we're still developing i dont want to have vercel appears in deploy in my repo github yet cause we're still working I just want it through my vercel to make sure if its working in production and thats it". → binding: manual deploys from Vercel, no GitHub integration, smoke is dispatch-only. My "restore auto-deploy" recommendation was against the owner's model and is withdrawn (see the Deployment model section).
+- L6 (2026-11-04, owner, verbatim): "Continue with the last session. I created the new user(prod-smoke@users.systemfact.internal) with the password in my supabase. I dint understand this: [the `gh secret set` block]. Option A". → step 1 of the pending list closed by the owner; step 2 explained (what an environment secret is, why `--env`, why stdin) and the missing `prod-smoke` environment created by the agent (`26281220650`) so the command cannot 404.
+- L7 (2026-11-04): hosted write of step 3 executed and read back separately — `USUARIO` id 6 (empresa 5 / sucursal 4 / activo / `authUserId` NULL) + `USUARIO_ROL` (6, 10 `Operador`); empresa 5, sucursal 4 and rol 10 = `Operador` re-checked before the insert; `passwordHash` is never selected by the auth path (`src/modules/auth/infrastructure/auth-identity.ts:76`), so the placeholder cannot break login.
 
 ## Review round 1 (2026-11-04) — lineage `review-cc9d6fea50f2cc80` (tier high, risk + reliability)
 
@@ -106,14 +108,20 @@ Also worth recording about the harness: a `correction_required` lineage can end 
 
 **Verified so far** (do not re-derive): `tsc --noEmit` 0 · `eslint` 0 · public smoke against production `2 passed / 1 failed` (the four app headers are missing in the deployed build `2a76c31`/#118 — expected, it predates v0.17.3) · session smoke **fails** on missing credentials instead of skipping · a failing run leaves only `test-results/.last-run.json` (no trace, no screenshots). Hosted ground: empresa **5** (`SistemaFact Demo`), sucursal **4**, rol **10** = `Operador`; no `prod-smoke` auth user or `USUARIO` row exists yet.
 
-**Pending — owner's two steps first** (the credential never passes through the agent):
+**Step 1 — DONE (owner, 2026-11-04 18:37Z)**: auth user `prod-smoke@users.systemfact.internal` exists (`1be13c6a-8186-4099-9164-10436d56c130`), `email_confirmed_at` set, not banned, password set.
 
-1. Supabase dashboard → Authentication → Users → **Add user**: email `prod-smoke@users.systemfact.internal`, any 32+ char password, **Auto Confirm User ON**. (Dashboard, not SQL: GoTrue must create its own identity/token columns.)
-2. `gh secret set PROD_USER --env prod-smoke --repo Wilfredery/SystemFact` (value `prod-smoke`) and `gh secret set PROD_PASSWORD --env prod-smoke --repo Wilfredery/SystemFact` (the password; stdin, never argv).
+**Step 2 — environment created by the agent, secrets still pending (owner)**: `prod-smoke` did not exist (`gh secret list --env prod-smoke` → HTTP 404), so `PUT /repos/.../environments/prod-smoke` created it (id `26281220650`, no protection rules). Then, in a terminal, with the value typed at the hidden prompt (stdin — never `--body`, never argv, never shell history):
+
+```powershell
+gh secret set PROD_USER --env prod-smoke --repo Wilfredery/SystemFact      # value: prod-smoke
+gh secret set PROD_PASSWORD --env prod-smoke --repo Wilfredery/SystemFact  # value: the Supabase password
+```
 
 **Then the agent's steps:**
 
-3. Two app rows only (the whole hosted write):
+3. Two app rows only (the whole hosted write) — **DONE 2026-11-04**: `USUARIO` id **6** (empresa 5 / sucursal 4 / `activo` true / `authUserId` NULL) + `USUARIO_ROL` (6, rol 10 `Operador`). Verified by read-back. Rollback: `DELETE FROM "USUARIO_ROL" WHERE "usuarioId"=6; DELETE FROM "USUARIO" WHERE id=6;`
+
+   _Original planned SQL:_
    ```sql
    INSERT INTO "USUARIO" ("empresaId","sucursalId","nombre","nombreUsuario","passwordHash","activo","updatedAt")
    VALUES (5, 4, 'Production smoke (robot)', 'prod-smoke', 'robot-no-login', true, now())
@@ -122,5 +130,5 @@ Also worth recording about the harness: a `correction_required` lineage can end 
    SELECT id, 10 FROM "USUARIO" WHERE "nombreUsuario" = 'prod-smoke';
    ```
    `authUserId` stays NULL by design; the first login binds the real `sub` (`usuario_auth_user_id`).
-4. Proof: `pnpm e2e:prod` with the real identity — expect the session test to pass (login → `/dashboard` → `Hola, …` → `Su rol no incluye paneles de reporte.` → **no KPI tile**) and the header test still red until the owner's next manual Vercel deploy.
+4. Proof: `pnpm e2e:prod` with the real identity — expect the session test to pass (login → `/dashboard` → `Hola, …` → `Su rol no incluye paneles de reporte.` → **no KPI tile**) and the header test still red until the owner's next manual Vercel deploy. The password only exists in the owner's head and in the GitHub secret, so this local run is the **owner's** to execute (in their terminal, env vars set for that session only); the agent cannot run it and must not ask for the value. `workflow_dispatch` is not available before merge either — GitHub only registers the trigger from the default branch — so pre-merge proof is that local run or nothing.
 5. Version bump **0.18.0** (`feat`), PR, merge, then one `workflow_dispatch` run for the record.
