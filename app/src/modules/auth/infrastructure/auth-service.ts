@@ -31,6 +31,7 @@ import { setLoginFlow } from "@/modules/tenant/infrastructure/login-flow";
 import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import {
   AUTH_CREDENCIALES_INVALIDAS,
+  AUTH_PASSWORD_POLICY,
   AUTH_USUARIO_INACTIVO,
   messageFor,
   type AuthErrorCode,
@@ -183,10 +184,28 @@ export async function loginWithCredenciales(
   });
 
   if (error !== null || session === null) {
+    // A password that no longer satisfies the CURRENT policy is NOT a credential
+    // failure: GoTrue refuses the sign-in with error code `weak_password` before the
+    // user gets anywhere (docs/22 T7 raised the minimum length to 12, so every
+    // account still holding a shorter one lands here on its next login). Reporting
+    // "Credenciales inválidas" would be false and would strand a legitimate user.
+    //
+    // Matched on the STABLE error code only. The provider message is prose about the
+    // policy ("Password should be at least 12 characters.") and changes whenever the
+    // dashboard setting does, so matching it would turn this lookup into a guess.
+    // The provider text is never returned: the catalog owns the user-facing copy, and
+    // echoing it would publish policy configuration to an unauthenticated caller.
+    //
+    // No tenant read or write happens on this branch — same posture as the generic
+    // rejection below.
+    const codigo: AuthErrorCode =
+      error?.code === "weak_password"
+        ? AUTH_PASSWORD_POLICY
+        : AUTH_CREDENCIALES_INVALIDAS;
     return {
       ok: false,
-      code: AUTH_CREDENCIALES_INVALIDAS,
-      message: messageFor(AUTH_CREDENCIALES_INVALIDAS),
+      code: codigo,
+      message: messageFor(codigo),
     };
   }
 
