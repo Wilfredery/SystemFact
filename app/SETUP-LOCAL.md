@@ -435,6 +435,27 @@ Un chequeo de solo lectura contra el despliegue real
 ventas, no consume NCF, no anula nada). Apunta a la app desplegada porque
 responde a la pregunta que el stack local no puede: ¿funciona producción?
 
+### Cómo se despliega producción (receta real, 2026-11-04)
+
+El proyecto de Vercel `systemfact` tiene **Root Directory `.`**, pero la app de
+Next vive en `app/`. Por eso un despliegue *desde Git* falla con
+`[NEXT_NO_VERSION] No Next.js version detected` (Vercel busca un `package.json`
+en la raíz del repo). La receta que funciona es subir el directorio de la app:
+
+```bash
+cd app
+vercel deploy --prod        # imprime la Production URL: https://systemfact.vercel.app
+```
+
+`app/.vercel/project.json` ya está enlazado al proyecto y está gitignoreado, así
+que no hace falta `vercel link`. Esto **no** genera entradas de GitHub
+Deployments: las únicas entradas `deployments` del repo son los *environments*
+de GitHub Actions (`prod-smoke`, `e2e`), que es justo lo que se quería evitar de
+Vercel.
+
+Después del deploy, corré el smoke (`gh workflow run prod-smoke.yml --ref master`)
+y mirá los counts, no el color del job.
+
 Es **manual / solo `workflow_dispatch`**: no hay integración Vercel↔GitHub
 (producción se despliega a mano desde Vercel), así que corré el smoke **después
 de cada deploy manual** de Vercel. Nunca forma parte de `ci-gate` y un test
