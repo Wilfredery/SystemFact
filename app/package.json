@@ -66,7 +66,7 @@
     "@types/react-dom": "19",
     "@typescript-eslint/rule-tester": "8.69.0",
     "@typescript-eslint/utils": "8.69.0",
-    "babel-jest": "29.7.0",
+    "babel-jest": "30.5.2",
     "dotenv": "17.4.2",
     "eslint": "9",
     "eslint-config-next": "16.4.5",
