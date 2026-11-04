@@ -1,3 +1,14 @@
+## [0.18.1](https://github.com/Wilfredery/SystemFact/compare/v0.18.0...v0.18.1) (2026-11-04)
+
+### Bug Fixes
+
+* **security:** the auth gate was not running in ANY build since #132. `proxy.ts` sat at the project root, but this app uses a `src/` directory, and Next only detects the proxy inside `src/` in that case: the build never printed `ƒ Proxy (Middleware)` and no warning said so. The consequence was invisible because every `(app)` page redirects from its own layout, so `/dashboard` still answered 307; what changed was that anything WITHOUT a page-level guard stopped being protected. A deployment that finally matched `master` showed it: an anonymous `/` served the Next.js scaffold page with 200, and an unknown path answered 404 instead of redirecting to `/login`. The fix is the file location - `app/src/proxy.ts` - and the build now names `ƒ Proxy (Middleware)`.
+* **e2e:** add `app/e2e/auth-gate.spec.ts`. The existing suite asked for `/dashboard` without a session and expected 307, which passes even when the proxy never runs, because the `(app)` layout redirects on its own. The new spec hits two cases that only the proxy can satisfy: the static `/` and an unknown path, both of which must answer 307 to `/login`. With the file at the root both fail (200 and 404); at `src/proxy.ts` both pass.
+
+* **e2e:** `security-headers.spec.ts` asked for a **404** on an unknown path and was green for as long as the proxy was dead, so the suite had encoded the consequence of the bug as correct behaviour. With the gate running, an unknown path is protected by default and answers 307 to `/login`; the case now asserts that redirect with the five headers, and the comment records why an anonymous 404 is unreachable (covering a 404 needs a session - follow-up).
+
+**Verification:** RED with `proxy.ts` at the project root - build output has no `ƒ Proxy`, the spec fails 2/2 (`/` = 200, unknown = 404). GREEN at `src/proxy.ts` - build prints `ƒ Proxy (Middleware)`, anonymous `/` = 307, spec 2 passed (1.7s). Found by the production smoke on its first run against a deployment that actually contained `master`; the earlier green on that assertion only held because the deployed build predated #132.
+
 ## [0.18.0](https://github.com/Wilfredery/SystemFact/compare/v0.17.9...v0.18.0) (2026-11-04)
 
 ### Features
