@@ -73,3 +73,20 @@ Findings: `R1-workflow-env-conflation` (**CRITICAL**), `R1-public-repo-secret-sc
 **Fix: delete the knob.** The capability is gone rather than configurable — no `extraHTTPHeaders`, no bypass variable, no bypass secret. The lane probes the public alias as an anonymous visitor, which is the only thing that proves a visitor can use production; if a protected deployment URL ever needs probing, that gets its own check and its own reason. Consequence: the `prod-smoke` environment now holds **two** secrets (`PROD_USER`, `PROD_PASSWORD`), not three.
 
 Not changed, deliberately: `R1-public-repo-secret-scope` (the environment scoping it asks for is already the design — `environment: prod-smoke` on the only job); `R3-hardcoded-default-headers` (importing `next.config.ts` into a Playwright spec would couple the check to Next's module loading, and the deployed headers are exactly what must be asserted, not the local constant); the two SUGGESTIONs.
+
+## Review round 3 (final) — lineage `review-fb125ae86d69f039` — **APPROVED**
+
+Tier high, risk + reliability, candidate `2688396` (feature + round-1 fixes + round-2 correction), 466 changed lines. Authority burned after reading the claims.
+
+Advisory findings, all non-blocking and recorded as later work:
+
+- `R1-workflow-secret-env-scope` (WARNING): `PROD_USER`/`PROD_PASSWORD` reach the Playwright process as env vars; a reporter that dumps env on failure could print them. Mitigated by GitHub masking and by trace/screenshot being off. Accepted as-is.
+- `R3-001` (WARNING): the empresa/sucursal assertion only proves the line is non-empty, not that it carries the real tenant. **Worth fixing later**: the page falls back to the literal `Empresa` when the tenant binding is missing, so asserting the line is not exactly `Empresa` would turn this into a tenant-resolution check.
+- `R3-002` (WARNING): asserting `307` specifically can go red if Next/Vercel changes the redirect status for the same visitor-visible behaviour. Deliberate: a status change is worth knowing about.
+- `R3-003` (WARNING): `readCredentials()` is called in `beforeAll` and again per test; deterministic, no reliability gap, but it is a duplicate read.
+
+## Two rounds, one lesson
+
+Round 1 found a **BLOCKER** (trace/screenshot could capture the production password, artifacts uploaded in a public repo) and a CRITICAL (bypass header applied globally). Round 2 found that the round-1 *fix* for the second one was still wrong: an opt-in flag whose trigger is a repository variable gating a secret is still a knob in a weaker place. The final answer was not a better flag, it was **deleting the capability**.
+
+Also worth recording about the harness: a `correction_required` lineage can end in a terminal `stop: corrupted_or_unverifiable_authority` (round 1) and a correction-plan capture is **prospective** — committing the fix before declaring the plan makes its binding permanently stale (round 2). In both cases the honest path was: fix, then start a fresh lineage. Never RESET/RECOVER without explicit owner authorization.
