@@ -149,3 +149,16 @@ Also worth recording about the harness: a `correction_required` lineage can end 
    `authUserId` stays NULL by design; the first login binds the real `sub` (`usuario_auth_user_id`).
 4. Proof — **DONE 2026-11-04, `pnpm e2e:prod` with the real identity**: run 1 = `2 passed / 2 failed` (14.2s) — the session test failed on **strict mode**, not on behaviour: an unscoped `getByRole("alert")` matched both the denial paragraph and Next's route announcer (`#__next-route-announcer__`, announcing `Hola, Production smoke (robot)`), which also proves the greeting rendered. Fixed by scoping to `main` (`8b9e9ae`); run 2 = **`3 passed / 1 failed`** (8.0s), the single failure being the known stale deploy (four baseline headers absent: `referrer-policy`, `permissions-policy`, …). So: **login with the real password works, `/dashboard` renders, the `Hola, Production smoke (robot)` greeting and the tenant line render, the `Su rol no incluye paneles de reporte.` denial renders, and no KPI tile appears for an Operador.**
 5. Version bump **0.18.0** (`feat`), PR, merge, then one `workflow_dispatch` run for the record.
+
+## 0.18.1 - the gate was not running (found by the FIRST real production run, 2026-11-04)
+
+The smoke paid for itself on its first dispatch-only run. To make that run meaningful the production deployment had to be brought up to `master` (it was `2a76c31`, #118). After the deploy:
+
+- `run 41894569175` -> **3 passed / 1 failed (5.5s)**: the four baseline headers are now green (so the deploy is genuinely current), the session smoke is green, and `GET /` returned **200 instead of 307**.
+- Probing: anonymous `/` = 200 serving the Next.js scaffold page, `/dashboard` = 307 (page-level guard), unknown path = **404** (no guard). A 404 for an unknown unauthenticated path is the discriminator: if the proxy ran, nothing outside `/login` could ever reach a route handler.
+
+**Root cause**: `app/proxy.ts` was at the project root. This app uses `src/`, and in that case Next looks for the proxy inside `src/` - `app/src/proxy.ts`. The build silently omitted it (no `ƒ Proxy (Middleware)` line, no warning), so **the gate had not run in any build since #132**, and no test noticed because `security-headers.spec.ts` asks for `/dashboard`, which the `(app)` layout redirects on its own. The old deployment was green only because it predated #132.
+
+**Fix**: `git mv app/proxy.ts app/src/proxy.ts` - no code change - plus `app/e2e/auth-gate.spec.ts`, which asserts the two cases only the proxy can satisfy: anonymous `/` and an unknown path must both answer 307 to `/login`. Observed RED with the file at the root (build has no `ƒ Proxy`; spec 2 failed, `/` = 200, unknown = 404) and GREEN at `src/proxy.ts` (build prints `ƒ Proxy (Middleware)`, `/` = 307, spec 2 passed in 1.7s). AGENTS.md now says 14 specs, not 12.
+
+Confirmed on the second production run after redeploying: see the follow-up docs commit for the counts.

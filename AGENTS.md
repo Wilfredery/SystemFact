@@ -99,7 +99,7 @@ These rules derive from the canonical engineering constitution in the project do
 - E2E (Playwright) runs on every PR against a **local, ephemeral Supabase stack**
   (`supabase start`, config in `supabase/config.toml`), provisioned inside the runner by
   `.github/ci/provision-local-e2e.sh`. It needs **zero repository secrets** and has no
-  skip-if-missing preflight: if the stack cannot start, or if any of the 12 specs is skipped,
+  skip-if-missing preflight: if the stack cannot start, or if any of the 14 specs is skipped,
   the job fails (`app/e2e/assert-no-skips.mjs`). A green job that silently skips reads as
   coverage it does not have. Optional repo variable `E2E_PRODUCT` (default `Arroz`).
 - Production smoke (`.github/workflows/prod-smoke.yml`) — a read-only Playwright check against
