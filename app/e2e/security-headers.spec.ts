@@ -44,16 +44,26 @@ test.describe("cabeceras de seguridad (T1 stage 1)", () => {
     }
   });
 
-  test("una ruta inexistente (404) también las lleva", async ({ request }) => {
-    // El 404 lo sirve Next, ningún route handler: es la respuesta que más se
-    // escaparía de un control por handler. Si quedara sin `X-Frame-Options`,
-    // un tercero podría incrustar la página de error y sondear la app desde un
-    // iframe opaco.
+  test("una ruta inexistente sin sesión la corta el gate, con las cinco", async ({
+    request,
+  }) => {
+    // Historia de esta aserción (0.18.1): antes pedía un 404 y estaba verde
+    // mientras el proxy NO corría, porque Next resolvía la ruta desconocida y
+    // servía su página de error. O sea: la prueba fijaba como correcta la
+    // consecuencia del bug. Con el gate vivo, lo que no es público se protege
+    // por defecto, así que una ruta inexistente nunca llega a 404 sin sesión.
+    // El 404 sigue siendo una respuesta que hay que cubrir, pero sólo se
+    // alcanza autenticado (follow-up: afirmarlo en una spec que ya tiene
+    // sesión).
     const response = await request.get("/ruta-que-no-existe", { maxRedirects: 0 });
 
-    expect(response.status()).toBe(404);
+    expect(response.status()).toBe(307);
+    expect(response.headers()["location"]).toContain("/login");
     for (const [nombre, valor] of Object.entries(CABECERAS_REQUERIDAS)) {
-      expect(response.headers()[nombre], `cabecera ${nombre} en el 404`).toBe(valor);
+      expect(
+        response.headers()[nombre],
+        `cabecera ${nombre} en el redirect del gate`,
+      ).toBe(valor);
     }
   });
 
