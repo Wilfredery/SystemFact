@@ -1,3 +1,8 @@
+## [0.18.8](https://github.com/Wilfredery/SystemFact/compare/v0.18.7...v0.18.8) (2026-11-04)
+
+### Bug Fixes
+
+* **auth:** a password that no longer meets the current policy now has its own typed outcome (`AUTH_PASSWORD_POLICY`) instead of being reported as `Credenciales invalidas`. Raising the minimum length (docs/22 T7: 12 characters, no forced rotation, passphrases allowed) makes GoTrue refuse an existing account at sign-in with error code `weak_password`. That is not a credential failure: collapsing it into `AUTH_CREDENCIALES_INVALIDAS` told a legitimate user their credentials were wrong and left them no next step. The mapping reads the **stable error code** only - the provider message is prose about project configuration that changes with the dashboard, so matching it would turn the lookup into a guess - and the provider text is never surfaced: the auth error catalog owns the copy, which deliberately names no policy number, because the minimum length is Supabase configuration and not an app constant. No tenant read, no write and no audit row on this branch, the same posture as the generic rejection. Test-first: the RED assertion reproduced the collapse before the mapping existed.
 ## [0.18.7](https://github.com/Wilfredery/SystemFact/compare/v0.18.6...v0.18.7) (2026-11-04)
 
 ### Chores

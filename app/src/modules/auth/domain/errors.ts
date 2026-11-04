@@ -14,6 +14,13 @@
 export const AUTH_CAMPOS_REQUERIDOS = "AUTH_CAMPOS_REQUERIDOS";
 export const AUTH_CREDENCIALES_INVALIDAS = "AUTH_CREDENCIALES_INVALIDAS";
 export const AUTH_USUARIO_INACTIVO = "AUTH_USUARIO_INACTIVO";
+// The stored password no longer satisfies the CURRENT password policy (docs/22 T7:
+// minimum length raised to 12). GoTrue refuses that sign-in with error code
+// `weak_password`. It gets its own code because the two conditions are not the same
+// fact: AUTH_CREDENCIALES_INVALIDAS says "what you typed is wrong", while this one
+// says "what you typed may be right, but it is no longer acceptable" and hands the
+// user a next step (update it / ask the administrator) instead of a dead end.
+export const AUTH_PASSWORD_POLICY = "AUTH_PASSWORD_POLICY";
 // Identity-link failures at the lazy `authUserId` binding (audit v2r-01). All are
 // admin-actionable and none leaks the conflicting row: the messages below reveal that
 // a link could not be established, never WHO holds it or in which empresa.
@@ -32,6 +39,7 @@ export const AUTH_ERROR_CODES = [
   AUTH_CAMPOS_REQUERIDOS,
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_USUARIO_INACTIVO,
+  AUTH_PASSWORD_POLICY,
   AUTH_ENLACE_CONFLICTO,
   AUTH_ENLACE_DUPLICADO,
   AUTH_ENLACE_NO_RESUELTO,
@@ -47,6 +55,13 @@ const AUTH_ERROR_MESSAGES: Readonly<Record<AuthErrorCode, string>> = {
   // enlace distinction (LOG-02-B).
   [AUTH_CREDENCIALES_INVALIDAS]: "Credenciales inválidas",
   [AUTH_USUARIO_INACTIVO]: "Tu usuario está inactivo. Contacta al administrador.",
+  // No policy number in the copy on purpose: the minimum length is Supabase project
+  // configuration, not an app constant, so quoting it here would drift the day the
+  // dashboard changes and would document the policy to an unauthenticated caller.
+  // "Update it" is honest: no self-service reset exists yet (T4), hence the
+  // administrator path.
+  [AUTH_PASSWORD_POLICY]:
+    "Tu contraseña ya no cumple la política de seguridad vigente. Debes actualizarla: contacta al administrador.",
   // The Auth user was deleted and recreated with the same synthetic email, so
   // the row already points at a `sub` that no longer exists. Refused, never
   // overwritten: an admin must decide whether to re-point the link.
