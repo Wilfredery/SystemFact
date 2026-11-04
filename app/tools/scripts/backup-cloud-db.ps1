@@ -299,7 +299,11 @@ try {
   $sizeMb = [math]::Round((Get-Item -LiteralPath $artifact).Length / 1MB, 2)
   $hash = (Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
   $sidecar = "$artifact.sha256"
-  $manifestLine = (("{0}  {1}" -f $hash, $name) + [Environment]::NewLine)
+  # LF, never [Environment]::NewLine: on Windows that is CRLF, and `sha256sum -c` on
+  # Linux, macOS or Git Bash then reads the file name with a trailing CR and reports
+  # "could not read" even though the hash is correct. A checksum file has to verify
+  # with standard tooling on any machine, not only on the one that wrote it.
+  $manifestLine = ("{0}  {1}`n" -f $hash, $name)
   [IO.File]::WriteAllText($sidecar, $manifestLine, (New-Object Text.UTF8Encoding($false)))
 
   Write-Host ""

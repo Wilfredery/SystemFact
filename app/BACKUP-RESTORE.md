@@ -73,6 +73,15 @@ docker run --rm --mount "type=bind,source=<dir>,target=/backup" postgres:17.6 `
   pg_restore --list "/backup/<artifact>.dump" | Select-String 'TABLE DATA public ' | Measure-Object
 ```
 
+> **Git Bash / MSYS rewrites the container path.** `/backup/...` becomes
+> `C:/Program Files/Git/backup/...` before docker ever sees it, and `pg_restore` then reports
+> `could not open input file` — a healthy 570 KB backup looked unreadable exactly this way on
+> 2026-11-04. Prefix the command with `MSYS_NO_PATHCONV=1`, or run it from PowerShell.
+>
+> The `.sha256` sidecar is written with **LF** line endings on purpose, so `sha256sum -c`
+> verifies it on Linux, macOS and Git Bash alike (a CRLF sidecar makes `-c` report
+> "could not read" while the hash is in fact correct).
+
 The count must match the source:
 
 ```powershell
@@ -87,6 +96,9 @@ Restoring into a **scratch** database is the only thing that proves the artifact
 It is non-destructive and takes seconds at this data size. Verified commands (local engine):
 
 ```bash
+# Git Bash rewrites /backup into C:/Program Files/Git/backup - turn that off first.
+export MSYS_NO_PATHCONV=1
+
 # 1. Scratch database, never the real one.
 docker exec sf-postgres psql -U postgres -q \
   -c "DROP DATABASE IF EXISTS sf_restore_probe" \
