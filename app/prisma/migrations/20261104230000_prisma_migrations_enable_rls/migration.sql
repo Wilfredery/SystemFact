@@ -1,0 +1,35 @@
+-- `_prisma_migrations` must have RLS ENABLED, not just a deny-all policy.
+--
+-- Found on 2026-11-04 by the new coverage guard in tools/scripts/verify-rls.ts
+-- (`pnpm rls:verify`, inside the CI integration job). The guard compares every
+-- table in the schema against `pg_class.relrowsecurity` and its policy count, and
+-- it failed against a database built from these migrations:
+--
+--   Cobertura RLS incompleta — RLS deshabilitado en: _prisma_migrations
+--
+-- Why it was missing: 20261012192000_prisma_migrations_restrictive_rls creates
+-- the RESTRICTIVE deny-all policy but never enables RLS, and
+-- 20260902120000_enable_rls lists the application tables by hand. The HOSTED
+-- project reads `relrowsecurity = true` only because an operator ran the
+-- `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` by hand during the October advisor
+-- cleanup — nothing in this repository does it. Consequence, before this
+-- migration: a database rebuilt from migrations alone (CI's ephemeral stack, or a
+-- disaster-recovery restore) came up with the migration ledger readable by the
+-- application role. A policy without RLS is decoration: Postgres never consults
+-- policies on a table whose RLS is disabled.
+--
+-- Why this is safe to enable:
+--   * a RESTRICTIVE deny-all policy is already in place, so once RLS is enabled
+--     every role it applies to (PUBLIC) is denied reads and writes — which is the
+--     intent, and matches the hosted project's posture;
+--   * the table OWNER and superusers bypass RLS, and `prisma migrate deploy` runs
+--     as the owner (app/tools/scripts/supabase-prod-migrate.ps1 keeps migrations
+--     on the operator machine), so the migration ledger keeps working;
+--   * the application role `systemfact_app` is neither owner nor superuser and
+--     never selects from this table, so application behaviour is unchanged.
+--
+-- FORCE is deliberately NOT set: the hosted project runs with `relforcerowsecurity
+-- = false` and this migration exists to make a rebuilt database match it, not to
+-- change the posture that is already in production.
+
+ALTER TABLE public."_prisma_migrations" ENABLE ROW LEVEL SECURITY;
