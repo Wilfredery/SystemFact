@@ -94,8 +94,10 @@ These rules derive from the canonical engineering constitution in the project do
 ## CI/CD (GitHub Actions)
 - `.github/workflows/ci.yml` — runs on every PR targeting `master` and again on `master`
   after the merge: ESLint, strict typecheck, `prisma validate`, unit tests, integration tests
-  against a real Postgres 17.6 (same engine as the Supabase project; RLS enforced via the `systemfact_app` role), production build and
-  a Conventional Commits guard. The aggregate job **CI gate** is the single required status check.
+  against a real Postgres 17.6 (same engine as the Supabase project; RLS enforced via the `systemfact_app` role), production build,
+  a **prod-scope dependency audit** (`pnpm audit --prod --audit-level high`, in `ci-gate`) and a Conventional Commits guard.
+  Third-party actions are pinned to **commit SHAs** and Dependabot moves them: a moved tag is code execution in CI. The aggregate
+  job **CI gate** is the single required status check.
 - E2E (Playwright) runs on every PR against a **local, ephemeral Supabase stack**
   (`supabase start`, config in `supabase/config.toml`), provisioned inside the runner by
   `.github/ci/provision-local-e2e.sh`. It needs **zero repository secrets** and has no

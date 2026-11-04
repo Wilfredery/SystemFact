@@ -1,3 +1,13 @@
+## [0.18.5](https://github.com/Wilfredery/SystemFact/compare/v0.18.4...v0.18.5) (2026-11-04)
+
+### Bug Fixes
+
+* **deps:** the production audit was not a chore, it was a hole. `pnpm audit --prod` reported **37 advisories — 15 high, 3 critical**, and all three criticals were **`next` 16.3.3**: remote code execution in `next/og` ImageResponse, unauthenticated RCE in Image Optimization, and RCE in `use cache`, patched in `>=16.3.6` / `>=16.4.1`. Now **`next` 16.4.5**, `eslint-config-next` 16.4.5, `zod` 4.6.7, and `fast-uri` / `source-map-js` forced to their patched floors in `app/pnpm-workspace.yaml` (they arrive through prisma's CLI chain and postcss). `shadcn` — a CLI that never ships — moved from `dependencies` to `devDependencies`, where it was pulling a Windows command-injection advisory into the production tree for nothing. Result: **`pnpm audit --prod --audit-level high` → no known vulnerabilities** (37 → 0).
+* **ci:** that finding is now enforced instead of remembered. Job `audit` runs `pnpm audit --prod --audit-level high` and is listed in **`ci-gate`'s `needs`**, so a new advisory blocks a merge instead of surfacing months later. All **12 third-party action refs are pinned to commit SHAs** (previously `@vN` tags: a moved tag is code execution inside CI) and `.github/dependabot.yml` groups weekly npm/Actions updates so those SHAs and versions move through PRs that CI actually checks.
+* **docs:** the plan document behind this work (`docs/22`, kept out of this repo's git on purpose — `docs/` is ignored) had two things to correct and both are corrected there: T1's checkbox claiming the `middleware.ts` → `proxy.ts` rename was "zero behavior change, verified" was **false**, and the auth gate stayed dead for several releases because of it (0.18.1 fixed the code; the box now names the observation that would have failed), and T2 closes with the measured baseline. Nothing under `docs/` is shipped by this PR.
+
+**Verification:** local `next build` green and still emitting `ƒ Proxy (Middleware)` (16.4.5 resolves `src/proxy.ts` the same way), `tsc --noEmit` 0, `eslint` 0 errors (17 pre-existing warnings), unit **141 suites / 1319 tests passed**. CI covers integration and E2E on the PR, plus the new audit job.
+
 ## [0.18.4](https://github.com/Wilfredery/SystemFact/compare/v0.18.3...v0.18.4) (2026-11-04)
 
 ### Chores

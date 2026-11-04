@@ -1,0 +1,44 @@
+# ============================================================
+# Dependabot — SystemFact
+#
+# Dos razones, ambas de supply chain:
+#   1. pnpm audit corre en CI (job `audit`, dentro de `ci-gate`), así que una
+#      vulnerabilidad nueva aparece como PR en vez de como sorpresa. Dependabot
+#      es el que propone el bump; el gate es el que impide mergear la regresión.
+#   2. Las acciones de terceros están pinneadas a commit SHA: un tag movido es
+#      ejecución de código en CI. Dependabot es el único que debe subir esos
+#      SHAs, y lo hace con el diff a la vista.
+# ============================================================
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: fix
+      prefix-development: chore
+      include: scope
+    groups:
+      # Un PR por grupo y no 40 PRs sueltos: mismo lockfile, un solo CI.
+      production-dependencies:
+        dependency-type: production
+        update-types: [patch, minor]
+      development-dependencies:
+        dependency-type: development
+        update-types: [patch, minor]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
