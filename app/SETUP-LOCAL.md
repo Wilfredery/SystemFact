@@ -427,6 +427,61 @@ devuelve `400 user_banned` (issue #138). El stack local de arriba es el único
 camino soportado, y es el que corre CI desde v0.17.7. Si alguna vez hace falta
 volver atrás, el SQL de reversión está registrado en #138.
 
+## Smoke de producción
+
+Un chequeo de solo lectura contra el despliegue real
+(`https://systemfact.vercel.app`), separado del stack local de `pnpm e2e`:
+**nunca levanta un servidor local y nunca escribe en producción** (no confirma
+ventas, no consume NCF, no anula nada). Apunta a la app desplegada porque
+responde a la pregunta que el stack local no puede: ¿funciona producción?
+
+Es **manual / solo `workflow_dispatch`**: no hay integración Vercel↔GitHub
+(producción se despliega a mano desde Vercel), así que corré el smoke **después
+de cada deploy manual** de Vercel. Nunca forma parte de `ci-gate` y un test
+salteado falla el run (mismo guard que `pnpm e2e`).
+
+```bash
+cd app
+pnpm e2e:prod
+```
+
+Qué chequea (config en `app/playwright.prod.config.ts`):
+
+- **Anónimo (siempre corre, sin credenciales)**: `GET /` responde 307 a
+  `/login`; `GET /login` responde 200 con las cinco cabeceras base de
+  `next.config.ts` (`strict-transport-security`, `x-content-type-options`,
+  `x-frame-options`, `referrer-policy`, `permissions-policy`); `GET /dashboard`
+  sin sesión responde 307 a `/login`.
+- **Con sesión**: con `PROD_USER`/`PROD_PASSWORD` (un Operador de una sola
+  sucursal) entra por el formulario real y verifica: que aterriza en
+  `/dashboard`, que el encabezado de sesión renderiza `Hola, <nombre>` + la
+  línea empresa/sucursal, que el área de KPIs muestra el mensaje de rol sin
+  reportes (`Su rol no incluye paneles de reporte.`) y que **ningún tile de KPI
+  se renderiza** — si un Operador viera datos de KPI, eso es una regresión del
+  gate de roles y el smoke falla. Si faltan las credenciales, el test **FALLA**
+  — nunca se saltea: un chequeo de producción salteado es justo la mentira que
+  este lane existe para evitar.
+
+**Sin trazas ni capturas (a propósito).** `playwright.prod.config.ts` corre con
+`trace: "off"` y `screenshot: "off"`. Este lane loguea en producción con una
+credencial real y el repositorio es público: una traza de Playwright guarda el
+DOM y la red, así que el valor del campo contraseña puede quedar adentro, y el
+workflow sube los artefactos cuando falla. Eso sería una fuga de credencial
+disfrazada de ayuda para depurar — se depura local con una identidad descartable.
+
+**No hay bypass de Vercel, a propósito.** Las pruebas anónimas tienen que ver lo
+que ve un visitante; un header `x-vercel-protection-bypass` devolvería `200`
+incluso si el alias público quedara detrás de SSO por error. La capacidad no
+existe en vez de ser configurable: un flag opt-in sigue siendo un interruptor que
+se puede accionar, y su trigger viviría en un lugar menos protegido que el secret
+que habilita (hallazgo `R1-workflow-env-conflation`). Si algún día hace falta
+probar una URL de deployment protegida, se agrega deliberadamente, con su propio
+chequeo y su propia razón.
+
+Env: `PROD_BASE_URL` (default `https://systemfact.vercel.app`),
+`PROD_USER`/`PROD_PASSWORD` (Operador). Detalle de diseño y decisiones:
+`odd/tasks/prod-smoke.md`.
+
 ## Comandos útiles
 
 
