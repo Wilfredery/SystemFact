@@ -43,3 +43,23 @@ Original measurement kept for the record: alias `systemfact.vercel.app` → `dpl
 - L3 (2026-11-04): owner decisions captured (S1–S3). Cadence was explained before they chose: scheduled run + how a failure reaches them.
 - L4 (2026-11-04): production probed: cache-busted `/login` still returns `X-Vercel-Cache: HIT` with a 22-day `Age`, and `/favicon.ico` serves without the four app headers — consistent with a build older than v0.17.3.
 - L5 (2026-11-04, owner, verbatim): "FYI, i dont want to get deploy appears in my repo, thats why we setup like that, cause as we're still developing i dont want to have vercel appears in deploy in my repo github yet cause we're still working I just want it through my vercel to make sure if its working in production and thats it". → binding: manual deploys from Vercel, no GitHub integration, smoke is dispatch-only. My "restore auto-deploy" recommendation was against the owner's model and is withdrawn (see the Deployment model section).
+
+## Review round 1 (2026-11-04) — lineage `review-cc9d6fea50f2cc80` (tier high, risk + reliability)
+
+Findings, all from the reviewer lenses (verbatim ids):
+
+- `R1-credential-exposure` — **BLOCKER**. `trace: retain-on-failure` + `screenshot: only-on-failure` on a live production login can persist the password (a trace snapshots DOM and network), and the workflow uploads the artifacts in a **public** repository. Real: a credential leak dressed as a debugging aid.
+- `R1-bypass-header-broad-application` — **CRITICAL**. The Vercel bypass header was applied to every request, including the anonymous half, so the public check would answer `200` even if the alias were misconfigured behind SSO. Real: the anonymous half must see what a visitor sees.
+- `R1-secret-logging-via-env-dump` — WARNING (GitHub masks env values; left as-is, documented).
+- `R1-hardcoded-production-url` — SUGGESTION (the default IS the target of this lane; documented).
+- `R3-001` — CRITICAL, about the deduplicated-issue search. The quoted-search part was already correct; the **real** defect underneath it was `--jq '.[0].url'` rendering `null` on an empty list, which is non-empty and would have run `gh issue comment null`.
+
+Refuter: `correction_required`. The immediately following STATUS returned `stop: corrupted_or_unverifiable_authority` — **terminal**, no correction route offered. Per the RDD contract the safe path is to fix the findings and start a fresh lineage; **no RESET/RECOVER was attempted**.
+
+Fixes applied (new commit, not a lineage correction):
+
+- `app/playwright.prod.config.ts`: `trace: "off"` and `screenshot: "off"` with the reason written next to them; the bypass header is now opt-in via `PROD_PROTECTION_BYPASS=1`.
+- `.github/workflows/prod-smoke.yml`: `--jq '.[0].url // empty'`, exact title search, and `PROD_PROTECTION_BYPASS` passed as a repo variable (default `0`).
+- `AGENTS.md` + `SETUP-LOCAL.md`: the no-artifact policy and the opt-in bypass are stated so nobody "improves" them back into a leak.
+
+Verified after the fix: `tsc --noEmit` 0 · `eslint` 0 · public smoke still `2 passed / 1 failed` (four headers missing in the deployed build — expected under manual deploys) · session smoke still **fails** on missing credentials · a failing run now leaves only `test-results/.last-run.json`, **no `trace.zip` and no screenshots**.

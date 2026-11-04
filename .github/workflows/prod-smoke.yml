@@ -67,6 +67,10 @@ jobs:
           # Únicos secrets del workflow (environment prod-smoke).
           PROD_USER: ${{ secrets.PROD_USER }}
           PROD_PASSWORD: ${{ secrets.PROD_PASSWORD }}
+          # El bypass de Vercel SOLO se manda si esta variable vale "1": las
+          # pruebas anónimas tienen que ver lo que ve un visitante, no una
+          # respuesta desbloqueada por el header (ver playwright.prod.config.ts).
+          PROD_PROTECTION_BYPASS: ${{ vars.PROD_PROTECTION_BYPASS || '0' }}
           E2E_PROTECTION_BYPASS: ${{ secrets.PROD_PROTECTION_BYPASS }}
         run: pnpm exec playwright test -c playwright.prod.config.ts --reporter=list,json
 
@@ -83,7 +87,10 @@ jobs:
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           BODY="El smoke de producción falló en la corrida ${RUN_URL}. Revisá el log del job para ver qué aserción (o skip) lo dejó en rojo."
-          ISSUE_URL="$(gh issue list --search 'Production smoke in:title' --state open --limit 1 --json url --jq '.[0].url')"
+          # `// empty` (not the bare `.[0].url`) so an empty list prints nothing:
+          # jq renders a missing element as the literal `null`, which is a
+          # non-empty string and would send `gh issue comment null`.
+          ISSUE_URL="$(gh issue list --search 'in:title "Production smoke failed"' --state open --limit 1 --json url --jq '.[0].url // empty')"
           if [ -n "${ISSUE_URL}" ]; then
             echo "Issue existente: ${ISSUE_URL} — comentando."
             gh issue comment "${ISSUE_URL}" --body "${BODY}"

@@ -453,10 +453,27 @@ Qué chequea (config en `app/playwright.prod.config.ts`):
   `x-frame-options`, `referrer-policy`, `permissions-policy`); `GET /dashboard`
   sin sesión responde 307 a `/login`.
 - **Con sesión**: con `PROD_USER`/`PROD_PASSWORD` (un Operador de una sola
-  sucursal) entra por el formulario real y verifica que `/dashboard` renderiza
-  contenido real (el saludo `Hola, …`, no el shell de carga). Si faltan las
-  credenciales, el test **FALLA** — nunca se saltea: un chequeo de producción
-  salteado es justo la mentira que este lane existe para evitar.
+  sucursal) entra por el formulario real y verifica: que aterriza en
+  `/dashboard`, que el encabezado de sesión renderiza `Hola, <nombre>` + la
+  línea empresa/sucursal, que el área de KPIs muestra el mensaje de rol sin
+  reportes (`Su rol no incluye paneles de reporte.`) y que **ningún tile de KPI
+  se renderiza** — si un Operador viera datos de KPI, eso es una regresión del
+  gate de roles y el smoke falla. Si faltan las credenciales, el test **FALLA**
+  — nunca se saltea: un chequeo de producción salteado es justo la mentira que
+  este lane existe para evitar.
+
+**Sin trazas ni capturas (a propósito).** `playwright.prod.config.ts` corre con
+`trace: "off"` y `screenshot: "off"`. Este lane loguea en producción con una
+credencial real y el repositorio es público: una traza de Playwright guarda el
+DOM y la red, así que el valor del campo contraseña puede quedar adentro, y el
+workflow sube los artefactos cuando falla. Eso sería una fuga de credencial
+disfrazada de ayuda para depurar — se depura local con una identidad descartable.
+
+**El bypass de Vercel es opt-in.** Las pruebas anónimas tienen que ver lo que ve
+un visitante; mandar `x-vercel-protection-bypass` por defecto devolvería `200`
+incluso si el alias público quedara detrás de SSO por error. El header solo se
+envía con `PROD_PROTECTION_BYPASS=1`, para el caso deliberado de probar una URL
+de deployment protegida.
 
 Env: `PROD_BASE_URL` (default `https://systemfact.vercel.app`),
 `PROD_USER`/`PROD_PASSWORD` (Operador), `E2E_PROTECTION_BYPASS` (bypass del SSO

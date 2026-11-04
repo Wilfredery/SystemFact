@@ -107,7 +107,11 @@ These rules derive from the canonical engineering constitution in the project do
   deployed by hand from Vercel (no Vercel↔GitHub integration), so the smoke is run after a manual
   deploy, in its own `prod-smoke` environment, and is never part of `ci-gate`. It reads the hosted
   tenant read-only (never writes: no sales, no NCF, no voids) and skips fail the run exactly
-  like the local E2E suite. See `odd/tasks/prod-smoke.md`.
+  like the local E2E suite. Two policies are deliberate and must not be "improved": traces and
+  screenshots are **off** (a trace of a real production login can capture the password, and the
+  artifacts are uploaded in a public repo), and the Vercel protection-bypass header is **opt-in**
+  (`PROD_PROTECTION_BYPASS=1` only) so the anonymous half sees what a visitor sees.
+  See `odd/tasks/prod-smoke.md`.
 
 ### Versioning — human-driven (2026-09-15; release-please automatic tagging is PARKED)
 - Release-please automatic tagging is parked permanently: its output (`.github/workflows/

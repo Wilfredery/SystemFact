@@ -33,12 +33,23 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL,
-    trace: "retain-on-failure",
-    screenshot: "only-on-failure",
-    // Vercel Authentication (SSO) blocks headless browsers on the protected
-    // deployment; an automation-bypass secret is accepted via this header
-    // (same pattern as `playwright.config.ts`).
-    ...(process.env.E2E_PROTECTION_BYPASS
+    // TRACE AND SCREENSHOT ARE OFF ON PURPOSE — do not turn them on here.
+    // This lane logs into the LIVE hosted project with a real credential. A
+    // Playwright trace snapshots the DOM and the network, so the login form's
+    // password value can end up inside it, and the workflow uploads the
+    // artifacts on failure in a PUBLIC repository: that is a credential leak
+    // dressed as a debugging aid. Debug locally with a throwaway identity
+    // instead, never by attaching a trace of a production login.
+    trace: "off",
+    screenshot: "off",
+    // Vercel Authentication (SSO) protects per-deployment URLs. Sending the
+    // bypass header by DEFAULT would defeat the anonymous half of this smoke:
+    // it would answer "200" even if the public alias were misconfigured to hide
+    // behind SSO, which is exactly what a visitor would not see. So the header
+    // is opt-in only, for the deliberate case of probing a protected deployment
+    // URL, and the public alias is always tested as an anonymous visitor.
+    ...(process.env.PROD_PROTECTION_BYPASS === "1" &&
+    process.env.E2E_PROTECTION_BYPASS
       ? {
           extraHTTPHeaders: {
             "x-vercel-protection-bypass": process.env.E2E_PROTECTION_BYPASS,
