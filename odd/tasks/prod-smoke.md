@@ -164,3 +164,31 @@ The smoke paid for itself on its first dispatch-only run. To make that run meani
 **Closed on the second production run** (`41897923869`, commit `22f6573`, after redeploying `0.18.1`): **4 passed / 0 failed (6.6s)** — root 307, five headers, dashboard redirect, and the real Operador session. The lane now reports the truth in both directions: it went red on the regression and green once the gate was actually running.
 
 **How production gets deployed** (learned the hard way here): the Vercel project `systemfact` has **Root Directory `.`**, while the Next app lives in `app/`, so a git-source production deployment fails with `[NEXT_NO_VERSION] No Next.js version detected`. The working path is an upload from the app directory: `cd app && vercel deploy --prod`. `app/.vercel/project.json` is gitignored and already linked, so no `vercel link` is needed. This does not create a GitHub Deployment entry (the only `deployments` entries are the `prod-smoke`/`e2e` GitHub *environments* used by Actions).
+
+## Follow-ups after 0.18.2 (2026-11-04)
+
+Closed in this PR:
+
+- **Convention pin** - `app/tools/config/next-conventions.test.ts` asserts the proxy lives where
+  Next resolves it (`src/proxy.ts` because this app uses `src/app`), and that no decoy
+  `proxy.ts` sits at the project root. A wrong `git mv` breaks no import, no typecheck and no
+  lint - it only stops the gate from running. Observed RED with the file at the root (2 of 3
+  failed) and GREEN with it in `src/` (3 passed, ~2s).
+- **Release bump scope** - `AGENTS.md` now states which paths require a bump (they change the
+  artifact or the pipeline) and which are exempt (docs, tests, `app/tools/**`). v0.18.2 was a
+  full patch release for two paragraphs; that ceremony is gone.
+
+Still open:
+
+- Assert a **404 with the five headers from an authenticated session** - the anonymous case no
+  longer exists now that the gate is back (an unknown path is 307 to `/login`).
+- `R3-001`: make the tenant assertion real (`main h1 + p` only proves non-empty; the page falls
+  back to the literal `Empresa`).
+- **Build stamp** (`VERCEL_GIT_COMMIT_SHA`) so a run names the commit it tested.
+- `app/.env` carries a legacy anon JWT key the hosted project rejects (`401 Invalid API key`).
+
+**Incident (2026-11-04)**: PR #148 shipped `AGENTS.md` **truncated to 0 bytes**. Cause: a Python
+helper opened the file with `open(..., "wb")` before computing the new content, so the failure of
+the following assertion left an empty file, and `git add -A` committed it. Restored byte-identical
+from `22f6573` in this PR. The working rule is now: compute the new bytes first, verify the result
+is non-empty and longer than the original, write, and read it back.
