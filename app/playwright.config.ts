@@ -46,9 +46,22 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm dev",
+    // CI tests the app AS IT SHIPS, not through a dev server. Two flake classes
+    // came from the dev path and both disappear in a compiled build:
+    //   1. Turbopack's next/font machinery failed to resolve this app's Google
+    //      font on a cold dev start in the runner (`NextFontGoogleFontFileReplacer
+    //      ... resolve_internal failed` → webServer timeout) while the SAME font
+    //      compiled fine in `next build` during the same run;
+    //   2. the first spec to hit a route paid that route's compile cost inside
+    //      its own per-test timeout (32.7s against the 30000ms default).
+    // A required gate must not go red for a bundler it is not testing. Local runs
+    // keep `pnpm dev` (fast iteration) and still honour an already-running server.
+    command: process.env.CI ? "pnpm build && pnpm start" : "pnpm dev",
     url: baseURL,
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    // CI compiles the production bundle before the server answers; that is the
+    // whole point of this command, so the window is wide. Local `pnpm dev`
+    // answers in seconds and is unaffected by a generous deadline.
+    timeout: 300_000,
   },
 });
