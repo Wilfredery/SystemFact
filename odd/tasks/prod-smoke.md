@@ -90,3 +90,37 @@ Advisory findings, all non-blocking and recorded as later work:
 Round 1 found a **BLOCKER** (trace/screenshot could capture the production password, artifacts uploaded in a public repo) and a CRITICAL (bypass header applied globally). Round 2 found that the round-1 *fix* for the second one was still wrong: an opt-in flag whose trigger is a repository variable gating a secret is still a knob in a weaker place. The final answer was not a better flag, it was **deleting the capability**.
 
 Also worth recording about the harness: a `correction_required` lineage can end in a terminal `stop: corrupted_or_unverifiable_authority` (round 1) and a correction-plan capture is **prospective** — committing the fix before declaring the plan makes its binding permanently stale (round 2). In both cases the honest path was: fix, then start a fresh lineage. Never RESET/RECOVER without explicit owner authorization.
+
+## RESUME HERE (session paused 2026-11-04, owner will continue in a new session)
+
+**Branch** `feature/prod-smoke` (not merged; `master` untouched at `5113f64`). Commits:
+
+| Commit | What |
+|---|---|
+| `9b38bfc` | the smoke: prod Playwright config (no webServer), public + session specs, dispatch-only workflow, docs |
+| `beb34e1` | review round 1 fixes: trace/screenshot **off**, bypass opt-in at the time, `jq // empty` |
+| `2688396` | review round 2 correction: Vercel bypass **deleted entirely** (header, variable, secret) |
+| `83b707b` | review record + advisory findings |
+
+**Review state: APPROVED and burned** — lineage `review-fb125ae86d69f039` (tier high, risk + reliability, 466 lines). Four advisory WARNINGs recorded above; none blocks.
+
+**Verified so far** (do not re-derive): `tsc --noEmit` 0 · `eslint` 0 · public smoke against production `2 passed / 1 failed` (the four app headers are missing in the deployed build `2a76c31`/#118 — expected, it predates v0.17.3) · session smoke **fails** on missing credentials instead of skipping · a failing run leaves only `test-results/.last-run.json` (no trace, no screenshots). Hosted ground: empresa **5** (`SistemaFact Demo`), sucursal **4**, rol **10** = `Operador`; no `prod-smoke` auth user or `USUARIO` row exists yet.
+
+**Pending — owner's two steps first** (the credential never passes through the agent):
+
+1. Supabase dashboard → Authentication → Users → **Add user**: email `prod-smoke@users.systemfact.internal`, any 32+ char password, **Auto Confirm User ON**. (Dashboard, not SQL: GoTrue must create its own identity/token columns.)
+2. `gh secret set PROD_USER --env prod-smoke --repo Wilfredery/SystemFact` (value `prod-smoke`) and `gh secret set PROD_PASSWORD --env prod-smoke --repo Wilfredery/SystemFact` (the password; stdin, never argv).
+
+**Then the agent's steps:**
+
+3. Two app rows only (the whole hosted write):
+   ```sql
+   INSERT INTO "USUARIO" ("empresaId","sucursalId","nombre","nombreUsuario","passwordHash","activo","updatedAt")
+   VALUES (5, 4, 'Production smoke (robot)', 'prod-smoke', 'robot-no-login', true, now())
+   RETURNING id;
+   INSERT INTO "USUARIO_ROL" ("usuarioId","rolId")
+   SELECT id, 10 FROM "USUARIO" WHERE "nombreUsuario" = 'prod-smoke';
+   ```
+   `authUserId` stays NULL by design; the first login binds the real `sub` (`usuario_auth_user_id`).
+4. Proof: `pnpm e2e:prod` with the real identity — expect the session test to pass (login → `/dashboard` → `Hola, …` → `Su rol no incluye paneles de reporte.` → **no KPI tile**) and the header test still red until the owner's next manual Vercel deploy.
+5. Version bump **0.18.0** (`feat`), PR, merge, then one `workflow_dispatch` run for the record.
