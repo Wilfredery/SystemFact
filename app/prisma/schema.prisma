@@ -802,3 +802,29 @@ model MovimientoAuditoria {
   @@index([empresaId, usuarioId, fechaHora, id], map: "MOVIMIENTO_AUDITORIA_empresaId_usuarioId_fechaHora_id_idx")
   @@map("MOVIMIENTO_AUDITORIA")
 }
+
+/// Ops table — NON-TENANT BY DESIGN (docs/22 T3, ADR-020).
+///
+/// The login Server Action runs BEFORE any session or `empresaId` exists, so this
+/// table cannot carry a tenant column and cannot be written through
+/// `withTenantTransaction` (which requires a `TenantCtx`). It stores no tenant
+/// data: an originating IP, the normalized username that was attempted, and a
+/// timestamp, swept once the window closes.
+///
+/// Written exclusively through Prisma from `infrastructure/` — never through
+/// PostgREST, so `anon`/`authenticated` get no surface to spam. RLS is enabled
+/// with a deny-all RESTRICTIVE policy (`rls:verify` fails CI on a table with RLS
+/// off or with zero policies); the owner role Prisma connects as bypasses it,
+/// FORCE is deliberately not set — same posture as `_prisma_migrations`.
+///
+/// Tracked in `odd/tasks/login-brute-force.md` (S5-S7).
+model LoginIntento {
+  id                       Int      @id @default(autoincrement())
+  ip                       String   @db.VarChar(45)
+  nombreUsuarioNormalizado String   @db.VarChar(255)
+  creadoEn                 DateTime @default(now()) @db.Timestamptz(6)
+
+  // The only query shape the throttle uses: count one pair inside a window.
+  @@index([ip, nombreUsuarioNormalizado, creadoEn])
+  @@map("LOGIN_INTENTO")
+}
