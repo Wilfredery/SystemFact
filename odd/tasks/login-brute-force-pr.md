@@ -2,7 +2,7 @@
 
 docs/22 **T3** — the app-side login brute-force throttle, exactly as decided (Option B: a
 Postgres-backed counter keyed by `(ip, nombreUsuario)`, exponential delay, never a permanent
-lockout). 20 commits, +1664/−10 across 19 files, version **0.19.0**.
+lockout). 21 commits, +1860/−18 across 21 files, version **0.19.0**.
 
 `docs/` is gitignored by design, so the decision record for this slice lives in
 **`odd/tasks/login-brute-force.md`** (specs S1–S7, 22 log entries) and in **ADR-020** on the
