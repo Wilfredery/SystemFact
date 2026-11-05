@@ -24,6 +24,7 @@ import {
 } from "@/modules/auth/infrastructure/auth-service";
 import { enlazarAuthSub } from "@/modules/auth/infrastructure/auth-identity";
 import {
+  AUTH_AUTENTICACION_NO_DISPONIBLE,
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_ENLACE_CONFLICTO,
   AUTH_ENLACE_DUPLICADO,
@@ -543,8 +544,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
   });
 
-  it("surfaces a password that no longer meets the policy as its OWN outcome, not as invalid credentials", async () => {
-    // docs/22 T7: raising the minimum length makes GoTrue reject an EXISTING user
+  it("surfaces a password that no longer meets the policy as its OWN outcome, not as invalid credentials", async () => {    // docs/22 T7: raising the minimum length makes GoTrue reject an EXISTING user
     // whose stored password no longer satisfies it, at sign-in time, with
     // `code: "weak_password"`. Collapsing that into AUTH_CREDENCIALES_INVALIDAS
     // tells a legitimate user their credentials are wrong, and leaves them with no
@@ -573,6 +573,39 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(message).not.toContain("at least 12");
     expect(message).not.toMatch(/Password should/i);
     // Same no-enumeration posture as every other rejection.
+    expect(usuario.findUnique).not.toHaveBeenCalled();
+    expect(usuario.updateMany).not.toHaveBeenCalled();
+    expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
+  });
+
+  it("maps a provider 429 to 'auth unavailable' instead of blaming the password", async () => {
+    // docs/22 T3 / S4. Because the login is a Server Action, Supabase's password bucket
+    // is keyed on the SERVER's IP, so this 429 is app-wide: it happens to users who typed
+    // nothing wrong. Reporting it as AUTH_CREDENCIALES_INVALIDAS would state a falsehood
+    // about their credentials and send them retrying a correct password.
+    const supabase = supabaseWithUser(null);
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: {
+        name: "AuthApiError",
+        message: "Too many requests",
+        status: 429,
+        code: "over_request_rate_limit",
+      },
+    });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "correcta");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_AUTENTICACION_NO_DISPONIBLE,
+      message: messageFor(AUTH_AUTENTICACION_NO_DISPONIBLE),
+    });
+    // The provider's text and the raw status never reach the client.
+    const message = res.ok ? null : res.message;
+    expect(message).not.toContain("Too many requests");
+    expect(message).not.toContain("429");
+    // Same no-enumeration posture as every other rejection: nothing read, nothing written.
     expect(usuario.findUnique).not.toHaveBeenCalled();
     expect(usuario.updateMany).not.toHaveBeenCalled();
     expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();

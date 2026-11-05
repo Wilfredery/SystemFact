@@ -30,6 +30,7 @@ import { prisma } from "@/lib/prisma";
 import { setLoginFlow } from "@/modules/tenant/infrastructure/login-flow";
 import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import {
+  AUTH_AUTENTICACION_NO_DISPONIBLE,
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_PASSWORD_POLICY,
   AUTH_USUARIO_INACTIVO,
@@ -167,6 +168,32 @@ async function resolverUsuarioDeSesion(
  * Deliberately framework agnostic: receives the session-aware Supabase client
  * (carrying the request cookies) from the http layer.
  */
+/**
+ * Maps an Auth provider rejection onto the app's catalog.
+ *
+ * The provider is the only layer that knows WHY it refused; the client never sees its
+ * words or its status. Order matters: a 429 means the request was never evaluated, so it
+ * outranks every content-based reason below it.
+ *
+ * - `429` / `over_request_rate_limit` → auth unavailable. Project-wide by construction
+ *   here (the bucket is keyed on the server's IP), so it must not read as "your password
+ *   is wrong".
+ * - `weak_password` → the stored password no longer meets the current policy (docs/22 T7).
+ * - everything else → the uniform credential rejection, which is what keeps the stranger
+ *   reachable path free of enumeration oracles.
+ */
+function codigoDeRechazoDeAuth(
+  error: { code?: string | null; status?: number | null } | null,
+): AuthErrorCode {
+  if (error?.status === 429 || error?.code === "over_request_rate_limit") {
+    return AUTH_AUTENTICACION_NO_DISPONIBLE;
+  }
+  if (error?.code === "weak_password") {
+    return AUTH_PASSWORD_POLICY;
+  }
+  return AUTH_CREDENCIALES_INVALIDAS;
+}
+
 export async function loginWithCredenciales(
   supabase: SupabaseClient,
   nombreUsuario: string,
@@ -198,10 +225,12 @@ export async function loginWithCredenciales(
     //
     // No tenant read or write happens on this branch — same posture as the generic
     // rejection below.
-    const codigo: AuthErrorCode =
-      error?.code === "weak_password"
-        ? AUTH_PASSWORD_POLICY
-        : AUTH_CREDENCIALES_INVALIDAS;
+    //
+    // A 429 gets its own outcome too (docs/22 T3, S4): Supabase's password bucket is
+    // keyed on the SERVER's IP because this runs in a Server Action, so a 429 is an
+    // app-wide condition that says nothing about the person typing. Reporting it as
+    // invalid credentials would be false for every user at once.
+    const codigo: AuthErrorCode = codigoDeRechazoDeAuth(error);
     return {
       ok: false,
       code: codigo,

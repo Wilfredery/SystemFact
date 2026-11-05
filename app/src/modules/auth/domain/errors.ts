@@ -34,6 +34,20 @@ export const AUTH_ENLACE_DUPLICADO = "AUTH_ENLACE_DUPLICADO";
 //   for one observable condition. The one condition that IS distinguishable at this
 //   layer — the row holds a different `sub` — keeps `AUTH_ENLACE_CONFLICTO`.
 export const AUTH_ENLACE_NO_RESUELTO = "AUTH_ENLACE_NO_RESUELTO";
+// The app-side login throttle (docs/22 T3, ADR-020) refused this attempt because that
+// (ip, username) pair already failed too often inside the window. It is deliberately
+// NOT `AUTH_CREDENCIALES_INVALIDAS`: the credentials were not evaluated at all, so
+// saying "invalid credentials" would be a false statement about the user's input, and
+// the user would keep retrying a password that may well be correct. Own code, own next
+// step ("wait, then try again"). The delay always expires — there is no lockout state.
+export const AUTH_INTENTOS_EXCEDIDOS = "AUTH_INTENTOS_EXCEDIDOS";
+// Supabase Auth itself answered 429 (or the send/recovery bucket is exhausted). Because
+// the login runs from a Server Action, that bucket is keyed on the SERVER's IP, so this
+// condition is app-wide and says nothing about the person typing (docs/22 T3, verified
+// 2026-11-03). Mapping it to `AUTH_CREDENCIALES_INVALIDAS` would tell every user their
+// password is wrong during a provider-wide lockout — the exact falsehood T7 rejected for
+// `weak_password`. Never surfaces the provider text or a raw 429 to the client.
+export const AUTH_AUTENTICACION_NO_DISPONIBLE = "AUTH_AUTENTICACION_NO_DISPONIBLE";
 
 export const AUTH_ERROR_CODES = [
   AUTH_CAMPOS_REQUERIDOS,
@@ -43,6 +57,8 @@ export const AUTH_ERROR_CODES = [
   AUTH_ENLACE_CONFLICTO,
   AUTH_ENLACE_DUPLICADO,
   AUTH_ENLACE_NO_RESUELTO,
+  AUTH_INTENTOS_EXCEDIDOS,
+  AUTH_AUTENTICACION_NO_DISPONIBLE,
 ] as const;
 
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
@@ -82,6 +98,15 @@ const AUTH_ERROR_MESSAGES: Readonly<Record<AuthErrorCode, string>> = {
   // cause for an entire missing-row case.
   [AUTH_ENLACE_NO_RESUELTO]:
     "No pudimos localizar tu usuario vinculado a esta empresa. Contacta al administrador.",
+  // No count, no window and no remaining time in the copy: those are policy
+  // parameters, and quoting them to an unauthenticated caller publishes the throttling
+  // thresholds for free. "Unos minutos" is true for every value the policy can produce.
+  [AUTH_INTENTOS_EXCEDIDOS]:
+    "Demasiados intentos fallidos. Espera unos minutos e intenta de nuevo.",
+  // Honest about the CAUSE without blaming the person: during a provider-wide 429 every
+  // user sees this, and none of them has a wrong password.
+  [AUTH_AUTENTICACION_NO_DISPONIBLE]:
+    "El servicio de autenticación no está disponible en este momento. Intenta de nuevo en unos minutos.",
 };
 
 export function messageFor(code: AuthErrorCode): string {
