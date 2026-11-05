@@ -2,7 +2,7 @@
 
 docs/22 **T3** — the app-side login brute-force throttle, exactly as decided (Option B: a
 Postgres-backed counter keyed by `(ip, nombreUsuario)`, exponential delay, never a permanent
-lockout). 15 commits, 1565 insertions across 18 files, version **0.19.0**.
+lockout). 20 commits, +1664/−10 across 19 files, version **0.19.0**.
 
 `docs/` is gitignored by design, so the decision record for this slice lives in
 **`odd/tasks/login-brute-force.md`** (specs S1–S7, 22 log entries) and in **ADR-020** on the
@@ -52,6 +52,22 @@ Test-first: RED was observed for the throttle wiring, the 429/transport/email ma
 elapsed-delay rule, the IPv6 rule, the repository query shape and the sweep/id separation.
 It was **not** observed for the last three pins (`b1bc811`) — those are regression pins, not
 reproduced-failure evidence, and the tracker says so.
+
+## Verification found a BLOCKER after every local gate was green
+
+Independent verification (declared `Risk: item 1` / `Risk: item 2`) found that the migration created
+a **RESTRICTIVE** `USING (false)` policy as the table's only policy. Restrictive policies are ANDed
+with every permissive one, so it denied `systemfact_app` as well — and the runtime really does
+connect as `systemfact_app` (NOSUPERUSER, NOBYPASSRLS, not the owner). Reads returned zero rows,
+inserts raised an RLS violation, the fail-open path swallowed it, and **the throttle never throttled
+anything**, while `tsc`, lint, 1377 tests and `rls:verify` were all green. My own migration comment
+asserted the opposite.
+
+Fixed in `2135ee6` — permissive policy scoped to the app role, `verify-rls` now demands a
+permissive policy per table, and an integration test drives the repository through the app role —
+and re-verified as closed. `73c35f4` removes the underlying class: `AuthResult` now carries
+`cuentaComoIntento`, decided where the provider's answer is known, instead of inferring "was this a
+guess?" from a message code that several distinct refusals deliberately share.
 
 ## Review history — read this before approving
 
