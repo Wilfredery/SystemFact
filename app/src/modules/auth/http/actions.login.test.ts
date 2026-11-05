@@ -254,6 +254,23 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
     expect(registrarExitoMock).not.toHaveBeenCalled();
   });
 
+  it("undoes the attempt when the code says 'invalid credentials' but it was NOT a guess", async () => {
+    // The decoupling pin (verification round 2): the action must decide on `cuentaComoIntento`,
+    // never on the code. Several refusals share the uniform AUTH_CREDENCIALES_INVALIDAS message
+    // on purpose, so code-based counting would silently throttle an account whose password was
+    // right. Reverting actions.login.ts to `result.code !== AUTH_CREDENCIALES_INVALIDAS` fails here.
+    loginWithCredencialesMock.mockResolvedValue({
+      ok: false,
+      code: AUTH_CREDENCIALES_INVALIDAS,
+      message: "Credenciales inválidas",
+      cuentaComoIntento: false,
+    });
+
+    await login({ error: null }, formData("admin", "correcta"));
+
+    expect(descartarIntentoMock).toHaveBeenCalledWith(11, almacenIntentosPrisma);
+  });
+
   it("undoes the recorded attempt when the refusal was not a password guess", async () => {
     // The credentials were CORRECT here; the account is disabled. Counting it would let
     // anyone lock out a named user by replaying that user's valid password.

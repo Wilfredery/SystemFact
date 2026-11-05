@@ -549,7 +549,8 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
   });
 
-  it("surfaces a password that no longer meets the policy as its OWN outcome, not as invalid credentials", async () => {    // docs/22 T7: raising the minimum length makes GoTrue reject an EXISTING user
+  it("surfaces a password that no longer meets the policy as its OWN outcome, not as invalid credentials", async () => {
+    // docs/22 T7: raising the minimum length makes GoTrue reject an EXISTING user
     // whose stored password no longer satisfies it, at sign-in time, with
     // `code: "weak_password"`. Collapsing that into AUTH_CREDENCIALES_INVALIDAS
     // tells a legitimate user their credentials are wrong, and leaves them with no
@@ -695,6 +696,18 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(usuario.findUnique).not.toHaveBeenCalled();
     expect(usuario.updateMany).not.toHaveBeenCalled();
     expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
+  });
+
+  it("never counts an unusable identity as a failed password", async () => {
+    // F3: Auth returned a session, so the password was RIGHT; the sub is unusable. Without this
+    // pin, reverting the action to code-based counting stays green.
+    const supabase = supabaseWithUser({ id: "not-a-uuid", email: "ana@users.systemfact.internal" });
+    usuario.findUnique.mockResolvedValueOnce(fila).mockResolvedValueOnce({ authUserId: null });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "pw");
+
+    expect(res.ok).toBe(false);
+    expect(res.ok ? null : res.cuentaComoIntento).toBe(false);
   });
 
   it("rejects a successful Auth sign-in whose sub is unusable (never binds '')", async () => {

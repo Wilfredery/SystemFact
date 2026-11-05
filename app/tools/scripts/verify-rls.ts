@@ -175,8 +175,8 @@ async function verifyEveryTableHasRls(): Promise<void> {
     if (sinPolitica.length > 0) partes.push(`no policy at all on: ${sinPolitica.join(", ")}`);
     if (soloRestrictiva.length > 0) {
       partes.push(
-        `only RESTRICTIVE policies on: ${soloRestrictiva.join(", ")} — the app role can neither ` +
-          "read nor write these, and a fail-open caller turns that into a silently disabled control",
+        `only RESTRICTIVE policies on: ${soloRestrictiva.join(", ")} — the app role has no ` +
+          "policy that permits it, and a fail-open caller turns that into a silently disabled control",
       );
     }
     throw new Error(

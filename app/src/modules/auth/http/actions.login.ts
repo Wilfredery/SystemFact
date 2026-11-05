@@ -12,7 +12,6 @@ import {
 } from "@/modules/auth/infrastructure/auth-service";
 import {
   AUTH_CAMPOS_REQUERIDOS,
-  AUTH_CREDENCIALES_INVALIDAS,
   AUTH_INTENTOS_EXCEDIDOS,
   messageFor,
 } from "@/modules/auth/domain/errors";

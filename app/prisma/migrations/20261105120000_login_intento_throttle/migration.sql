@@ -52,6 +52,11 @@ CREATE INDEX "LOGIN_INTENTO_creadoEn_idx" ON "LOGIN_INTENTO"("creadoEn");
 
 ALTER TABLE public."LOGIN_INTENTO" ENABLE ROW LEVEL SECURITY;
 
+-- Idempotent repair for any database that applied the RESTRICTIVE deny-all version of this
+-- migration out of band: that policy is ANDed with everything and would keep denying the app
+-- while a naive "has a permissive policy" check still looked green.
+DROP POLICY IF EXISTS "login_intento_deny_all" ON public."LOGIN_INTENTO";
+
 -- One PERMISSIVE policy, scoped to the runtime role. `anon`/`authenticated` match no policy
 -- and are therefore denied without needing a restrictive denominator (see the header).
 CREATE POLICY "login_intento_app_role"
@@ -61,3 +66,9 @@ CREATE POLICY "login_intento_app_role"
   TO systemfact_app
   USING (true)
   WITH CHECK (true);
+
+-- Explicit, not inherited: this table is created AFTER the role's default privileges were set
+-- in 20260902150000, so it normally receives them automatically — but a silent dependency on
+-- whoever runs migrations is not something to discover in production.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public."LOGIN_INTENTO" TO systemfact_app;
+GRANT USAGE, SELECT ON SEQUENCE public."LOGIN_INTENTO_id_seq" TO systemfact_app;
