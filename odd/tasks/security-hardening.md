@@ -37,7 +37,7 @@ Sourced verbatim from `docs/22-security-hardening-plan.md` (T0/T7, owner-approve
 |----|----|-------|--------|--------|
 | T1 backup script + runbook | S1 | inline | done | `3e1d637` |
 | T2 restore rehearsal recorded | S2 | inline | done | `3e1d637` (evidence in this doc + `docs/22` + `app/BACKUP-RESTORE.md`) |
-| T3 non-production label | S3 | inline | done (README + plan); `app/.env.example` pending owner approval | `e4deb85` |
+| T3 non-production label | S3 | inline | done (README + plan); `app/.env.example` **declined by the owner** (L10) — closed, do not re-propose | `e4deb85` |
 | T4 revisit trigger recorded | S4 | inline | done | `e4deb85` |
 | T5 docs/22 T0 closure entry | S1-S4 | inline | done | local-only (`docs/` is gitignored) |
 | T6 tracker committed | S5 | inline | done | `15fa827` |
