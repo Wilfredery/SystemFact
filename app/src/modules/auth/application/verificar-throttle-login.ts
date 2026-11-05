@@ -7,10 +7,9 @@ import {
 /**
  * Application seam for the login throttle (docs/22 T3, ADR-020).
  *
- * Two responsibilities, both thin on purpose: turn `(ip, username)` into the counter
- * key the domain expects, and hand the recorded attempts to the pure policy. The
- * adapter above (the Server Action) says WHEN to check; the domain says WHAT the
- * verdict is; this file is the only place that knows both.
+ * Three responsibilities, all thin on purpose: turn `(ip, username)` into the counter
+ * key the domain expects, hand the recorded attempts to the pure policy, and keep the
+ * write ordering that makes the throttle actually hold under a burst.
  *
  * The port is declared HERE, not in `infrastructure/`, so this layer never imports
  * Prisma: the Prisma implementation implements this interface and the http adapter
@@ -20,9 +19,11 @@ import {
 
 /** Storage the throttle needs. Implemented by `infrastructure/login-attempt-repository`. */
 export interface AlmacenIntentosLogin {
-  /** Records one failed attempt for the pair. */
-  registrar(ip: string, nombreUsuarioNormalizado: string, momento: Date): Promise<void>;
-  /** Failure timestamps (epoch ms) for the pair since `desde`. */
+  /** Records one attempt for the pair and returns the row id, so it can be undone. */
+  registrar(ip: string, nombreUsuarioNormalizado: string, momento: Date): Promise<number>;
+  /** Removes one specific attempt (used when the refusal was not a password guess). */
+  descartar(id: number): Promise<void>;
+  /** Attempt timestamps (epoch ms) for the pair since `desde`. */
   listar(ip: string, nombreUsuarioNormalizado: string, desde: Date): Promise<number[]>;
   /** Forgets the pair — called on a successful sign-in. */
   limpiar(ip: string, nombreUsuarioNormalizado: string): Promise<void>;
@@ -41,7 +42,10 @@ export type VeredictoLogin = { permitido: true } | { permitido: false; esperarMs
  * module, so this uses the one channel a deployment actually collects — stderr — with the
  * action that failed as the first token, so it is greppable and attributable.
  */
-function avisarContadorNoDisponible(accion: "verificar" | "registrar" | "limpiar", error: unknown): void {
+function avisarContadorNoDisponible(
+  accion: "verificar" | "registrar" | "descartar" | "limpiar",
+  error: unknown,
+): void {
   console.error(`[auth.throttle] attempt counter unavailable (${accion}); continuing without it`, error);
 }
 
@@ -81,34 +85,62 @@ export async function verificarThrottleLogin(
 }
 
 /**
- * Records one failed attempt and sweeps the expired tail in the same call.
+ * Records the attempt BEFORE the guess is sent to the provider, and returns its id.
  *
- * The sweep rides along instead of running on a timer: this table has no scheduler, and
- * a bounded indexed DELETE on the only path that writes it keeps the row count tied to
- * the window instead of to history. It runs after a FAILED sign-in — traffic that is
- * already rare and already delayed by the policy — never on the success path.
+ * The ordering is the point. Counting first and inserting afterwards leaves the whole
+ * provider round-trip as a window in which a concurrent burst all passes the same check —
+ * which is exactly the burst a brute-force attempt is. Writing first makes each attempt
+ * visible to the next one, so the window shrinks from hundreds of milliseconds to the
+ * microseconds between the read and this insert.
+ *
+ * Honest limit: this is not atomic. True atomicity would need the count and the insert in
+ * one statement or one transaction with a lock, and the residual window here is small
+ * enough that the provider's own per-IP limit (150 password grants / 5 min) is the next
+ * backstop rather than this counter. Recorded so nobody reads this as a guarantee.
+ *
+ * The sweep rides along instead of running on a timer: this table has no scheduler, and a
+ * bounded indexed DELETE on the only path that writes it keeps the row count tied to the
+ * window instead of to history.
  */
-export async function registrarFalloDeLogin(
+export async function registrarIntentoDeLogin(
   nombreUsuario: string,
   ip: string,
   ahora: number,
   almacen: AlmacenIntentosLogin,
-): Promise<void> {
+): Promise<number | null> {
   const clave = normalizarClaveUsuario(nombreUsuario);
   try {
-    await almacen.registrar(ip, clave, new Date(ahora));
+    const id = await almacen.registrar(ip, clave, new Date(ahora));
     await almacen.barrer(new Date(ahora - VENTANA_INTENTOS_MS));
+    return id;
   } catch (error) {
-    // Same reasoning as the fail-open above: an unhealthy counter must not turn a
-    // rejected login into a 500 the user cannot act on. The sign-in outcome stands.
     avisarContadorNoDisponible("registrar", error);
-    return;
+    return null;
   }
 }
 
 /**
- * Forgets the pair after a successful sign-in, so honest typos do not follow a user
- * into their next session (S6). Also fail-open, for the same reason.
+ * Undoes the attempt when the refusal was NOT a password guess.
+ *
+ * A refused inactive account or a password-policy rejection is reached with credentials
+ * Auth already accepted. Counting it would let anyone who knows a valid password lock that
+ * account out, so the row is removed instead of left to age.
+ */
+export async function descartarIntentoDeLogin(
+  id: number | null,
+  almacen: AlmacenIntentosLogin,
+): Promise<void> {
+  if (id === null) return;
+  try {
+    await almacen.descartar(id);
+  } catch (error) {
+    avisarContadorNoDisponible("descartar", error);
+  }
+}
+
+/**
+ * Forgets the pair after a successful sign-in, so honest typos do not follow a user into
+ * their next session (S6) — and so the attempt this login wrote does not linger.
  */
 export async function registrarExitoDeLogin(
   nombreUsuario: string,
@@ -120,6 +152,5 @@ export async function registrarExitoDeLogin(
     await almacen.limpiar(ip, clave);
   } catch (error) {
     avisarContadorNoDisponible("limpiar", error);
-    return;
   }
 }

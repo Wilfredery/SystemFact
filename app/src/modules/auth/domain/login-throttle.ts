@@ -47,9 +47,16 @@ export type VeredictoThrottle =
 /**
  * Decides whether an attempt on this pair must be delayed, and for how long.
  *
- * `intentos` are the failure timestamps (epoch ms) recorded for ONE pair; order does
- * not matter and neither does length — everything outside the window is discarded
- * before counting.
+ * `intentos` are the attempt timestamps (epoch ms) recorded for ONE pair; order does not
+ * matter and neither does length — everything outside the window is discarded before
+ * counting.
+ *
+ * THE DELAY IS ENFORCED BY ELAPSED TIME, not by the count alone. At or above the
+ * threshold the pair is refused only until `esperaParaIntentos` has passed since the most
+ * recent attempt; after that the next attempt is allowed even though the count is still
+ * over the threshold, and a further failure escalates to the next step. Counting alone
+ * would refuse the pair until the attempts aged out of the window — up to 15 minutes for
+ * five typos, which is the permanent-lockout failure mode this policy exists to avoid.
  */
 export function evaluarThrottle(intentos: readonly number[], ahora: number): VeredictoThrottle {
   const corte = ahora - VENTANA_INTENTOS_MS;
@@ -59,11 +66,14 @@ export function evaluarThrottle(intentos: readonly number[], ahora: number): Ver
     return { bloqueado: false, intentosFallidos: recientes.length };
   }
 
-  return {
-    bloqueado: true,
-    intentosFallidos: recientes.length,
-    esperarMs: esperaParaIntentos(recientes.length),
-  };
+  const espera = esperaParaIntentos(recientes.length);
+  const restante = espera - (ahora - Math.max(...recientes));
+
+  if (restante <= 0) {
+    return { bloqueado: false, intentosFallidos: recientes.length };
+  }
+
+  return { bloqueado: true, intentosFallidos: recientes.length, esperarMs: restante };
 }
 
 /**
@@ -99,17 +109,30 @@ export function normalizarClaveUsuario(nombreUsuario: string): string {
  * pair, and the pair survives a forged header because the username half is real.
  * Whatever arrives, the result is a single value that fits the column — an unbounded
  * provider string must never become a database error on the login path.
+ *
+ * The parsing distinguishes the three shapes that actually appear, because collapsing
+ * them is how a per-IP control silently stops being per-anything: `[v6]:port`,
+ * `v4:port`, and a bare address. A bare IPv6 address contains more than one colon and
+ * has NO port to strip, so splitting it would truncate `2001:db8::1` to `2001` and put
+ * every client in that hextet into one bucket.
  */
 export function normalizarIp(cabecera: string | null | undefined): string {
   const primero = (cabecera ?? "").split(",")[0]?.trim() ?? "";
   if (primero === "") return IP_DESCONOCIDA;
 
-  // "[2001:db8::1]:443" -> "2001:db8::1"; "203.0.113.7:51234" -> "203.0.113.7".
-  const sinPuerto = primero.startsWith("[")
-    ? primero.slice(1, primero.indexOf("]") === -1 ? undefined : primero.indexOf("]"))
-    : (primero.split(":")[0] ?? "");
+  let direccion = primero;
+  if (primero.startsWith("[")) {
+    const cierre = primero.indexOf("]");
+    direccion = cierre === -1 ? primero.slice(1) : primero.slice(1, cierre);
+  } else if (primero.split(":").length > 2) {
+    // Bare IPv6: keep the whole address, there is no port to remove.
+    direccion = primero;
+  } else if (primero.includes(":")) {
+    // IPv4 with port.
+    direccion = primero.split(":")[0] ?? "";
+  }
 
-  const limpia = sinPuerto.trim();
+  const limpia = direccion.trim();
   if (limpia === "") return IP_DESCONOCIDA;
   return limpia.slice(0, IP_MAXIMA);
 }

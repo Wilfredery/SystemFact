@@ -17,9 +17,15 @@ import type { AlmacenIntentosLogin } from "../application/verificar-throttle-log
 
 export const almacenIntentosPrisma: AlmacenIntentosLogin = {
   async registrar(ip, nombreUsuarioNormalizado, momento) {
-    await prisma.loginIntento.create({
+    const fila = await prisma.loginIntento.create({
       data: { ip, nombreUsuarioNormalizado, creadoEn: momento },
+      select: { id: true },
     });
+    return fila.id;
+  },
+
+  async descartar(id) {
+    await prisma.loginIntento.deleteMany({ where: { id } });
   },
 
   async listar(ip, nombreUsuarioNormalizado, desde) {
@@ -27,7 +33,9 @@ export const almacenIntentosPrisma: AlmacenIntentosLogin = {
       where: { ip, nombreUsuarioNormalizado, creadoEn: { gte: desde } },
       select: { creadoEn: true },
       // Bounded by construction: the window is short and a pair that keeps failing is
-      // delayed by the policy long before this list could grow without limit.
+      // delayed by the policy long before this list could grow without limit. Truncation
+      // cannot make the verdict too permissive — the delay is already at its cap by the
+      // tenth attempt, so any 500 rows inside the window are far past the threshold.
       take: 500,
     });
     return filas.map((fila) => fila.creadoEn.getTime());

@@ -18,8 +18,9 @@ import {
 } from "@/modules/auth/domain/errors";
 import { normalizarIp } from "@/modules/auth/domain/login-throttle";
 import {
+  descartarIntentoDeLogin,
   registrarExitoDeLogin,
-  registrarFalloDeLogin,
+  registrarIntentoDeLogin,
   verificarThrottleLogin,
 } from "@/modules/auth/application/verificar-throttle-login";
 import { almacenIntentosPrisma } from "@/modules/auth/infrastructure/login-attempt-repository";
@@ -81,17 +82,26 @@ export async function login(
     return { error: messageFor(AUTH_INTENTOS_EXCEDIDOS) };
   }
 
+  // The attempt is recorded BEFORE the guess reaches the provider, and it is what the
+  // NEXT attempt counts. Checking and inserting afterwards would leave the provider
+  // round-trip as a window in which a concurrent burst all passes the same check — the
+  // exact shape of the attack. It is deleted again below when the refusal turns out not
+  // to be a password guess, and cleared with the whole pair on success.
+  const intentoId = await registrarIntentoDeLogin(nombreUsuario, ip, ahora, almacenIntentosPrisma);
+
   const supabase = await createClient();
   const result = await loginWithCredenciales(supabase, nombreUsuario, password);
 
   if (!result.ok) {
-    // Only a rejected PASSWORD counts as a failed attempt. `AUTH_USUARIO_INACTIVO`, the
-    // identity-link failures and `AUTH_PASSWORD_POLICY` are reached with credentials
-    // that Auth already accepted, so counting them would let anyone who knows a valid
-    // password lock that account out. `AUTH_AUTENTICACION_NO_DISPONIBLE` is a provider
-    // outage: nobody guessed anything.
-    if (result.code === AUTH_CREDENCIALES_INVALIDAS) {
-      await registrarFalloDeLogin(nombreUsuario, ip, Date.now(), almacenIntentosPrisma);
+    // The attempt row was already written BEFORE the provider call (see below), so here
+    // we only decide whether it survives. It survives exactly one case: a rejected
+    // PASSWORD, which is the only refusal that is a guess at the credential.
+    // `AUTH_USUARIO_INACTIVO`, the identity-link failures, `AUTH_PASSWORD_POLICY` and
+    // `AUTH_AUTENTICACION_NO_DISPONIBLE` are all reached with credentials Auth already
+    // accepted (or not evaluated at all), so counting them would let anyone who knows a
+    // valid password — or anyone at all during a provider outage — lock an account out.
+    if (result.code !== AUTH_CREDENCIALES_INVALIDAS) {
+      await descartarIntentoDeLogin(intentoId, almacenIntentosPrisma);
     }
     return { error: result.message };
   }

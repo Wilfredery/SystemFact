@@ -18,7 +18,8 @@ jest.mock("next/headers", () => ({
 
 jest.mock("@/modules/auth/application/verificar-throttle-login", () => ({
   verificarThrottleLogin: jest.fn(),
-  registrarFalloDeLogin: jest.fn(),
+  registrarIntentoDeLogin: jest.fn(),
+  descartarIntentoDeLogin: jest.fn(),
   registrarExitoDeLogin: jest.fn(),
 }));
 
@@ -32,12 +33,14 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { loginWithCredenciales } from "@/modules/auth/infrastructure/auth-service";
 import {
+  descartarIntentoDeLogin,
   registrarExitoDeLogin,
-  registrarFalloDeLogin,
+  registrarIntentoDeLogin,
   verificarThrottleLogin,
 } from "@/modules/auth/application/verificar-throttle-login";
 import { almacenIntentosPrisma } from "@/modules/auth/infrastructure/login-attempt-repository";
 import {
+  AUTH_AUTENTICACION_NO_DISPONIBLE,
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_INTENTOS_EXCEDIDOS,
   messageFor,
@@ -47,7 +50,8 @@ const loginWithCredencialesMock = loginWithCredenciales as unknown as jest.Mock;
 const redirectMock = redirect as unknown as jest.Mock;
 const headersMock = headers as unknown as jest.Mock;
 const verificarThrottleMock = verificarThrottleLogin as unknown as jest.Mock;
-const registrarFalloMock = registrarFalloDeLogin as unknown as jest.Mock;
+const registrarIntentoMock = registrarIntentoDeLogin as unknown as jest.Mock;
+const descartarIntentoMock = descartarIntentoDeLogin as unknown as jest.Mock;
 const registrarExitoMock = registrarExitoDeLogin as unknown as jest.Mock;
 
 function formData(usuario: string, password: string): FormData {
@@ -67,6 +71,7 @@ describe("login — post-login landing branch (design D2)", () => {
       new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" }),
     );
     verificarThrottleMock.mockResolvedValue({ permitido: true });
+    registrarIntentoMock.mockResolvedValue(11);
   });
 
   it("TEN landing: multi-branch admin goes to /selector-empresa-sucursal", async () => {
@@ -127,6 +132,7 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
       new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" }),
     );
     verificarThrottleMock.mockResolvedValue({ permitido: true });
+    registrarIntentoMock.mockResolvedValue(11);
   });
 
   it("refuses before touching Supabase when that pair is throttled", async () => {
@@ -137,10 +143,26 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
     // S4 posture: the typed message, not the provider's, and not "invalid credentials".
     expect(result).toEqual({ error: messageFor(AUTH_INTENTOS_EXCEDIDOS) });
     expect(loginWithCredencialesMock).not.toHaveBeenCalled();
-    // No failed attempt is recorded for a refused attempt: the delay must expire, and
-    // counting the refusal itself would make it self-sustaining.
-    expect(registrarFalloMock).not.toHaveBeenCalled();
+    // A refused attempt is not recorded either: the delay must expire on its own, and
+    // counting refusals would keep the pair blocked forever.
+    expect(registrarIntentoMock).not.toHaveBeenCalled();
     expect(redirectMock).not.toHaveBeenCalled();
+  });
+
+  it("records the attempt BEFORE the guess reaches the provider", async () => {
+    // R3-throttle-race-window: counting first and inserting afterwards leaves the whole
+    // provider round-trip as a window where a concurrent burst passes the same check.
+    loginWithCredencialesMock.mockResolvedValue({
+      ok: false,
+      code: AUTH_CREDENCIALES_INVALIDAS,
+      message: "Credenciales inválidas",
+    });
+
+    await login({ error: null }, formData("admin", "mala"));
+
+    expect(registrarIntentoMock.mock.invocationCallOrder[0]).toBeLessThan(
+      loginWithCredencialesMock.mock.invocationCallOrder[0] as number,
+    );
   });
 
   it("checks the pair built from the forwarded hop and the submitted username", async () => {
@@ -180,7 +202,7 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
     );
   });
 
-  it("counts a rejected credential as one failed attempt", async () => {
+  it("keeps the recorded attempt when the credential is rejected", async () => {
     loginWithCredencialesMock.mockResolvedValue({
       ok: false,
       code: AUTH_CREDENCIALES_INVALIDAS,
@@ -189,16 +211,17 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
 
     await login({ error: null }, formData("admin", "mala"));
 
-    expect(registrarFalloMock).toHaveBeenCalledWith(
+    expect(registrarIntentoMock).toHaveBeenCalledWith(
       "admin",
       "203.0.113.7",
       expect.any(Number),
       almacenIntentosPrisma,
     );
+    expect(descartarIntentoMock).not.toHaveBeenCalled();
     expect(registrarExitoMock).not.toHaveBeenCalled();
   });
 
-  it("does not count a refusal that was not a password guess", async () => {
+  it("undoes the recorded attempt when the refusal was not a password guess", async () => {
     // The credentials were CORRECT here; the account is disabled. Counting it would let
     // anyone lock out a named user by replaying that user's valid password.
     loginWithCredencialesMock.mockResolvedValue({
@@ -209,7 +232,19 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
 
     await login({ error: null }, formData("admin", "correcta"));
 
-    expect(registrarFalloMock).not.toHaveBeenCalled();
+    expect(descartarIntentoMock).toHaveBeenCalledWith(11, almacenIntentosPrisma);
+  });
+
+  it("undoes the recorded attempt during a provider outage too — nobody guessed anything", async () => {
+    loginWithCredencialesMock.mockResolvedValue({
+      ok: false,
+      code: AUTH_AUTENTICACION_NO_DISPONIBLE,
+      message: "no disponible",
+    });
+
+    await login({ error: null }, formData("admin", "cualquiera"));
+
+    expect(descartarIntentoMock).toHaveBeenCalledWith(11, almacenIntentosPrisma);
   });
 
   it("clears the pair on a successful sign-in", async () => {
@@ -222,6 +257,6 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
     await login({ error: null }, formData("admin", "buena"));
 
     expect(registrarExitoMock).toHaveBeenCalledWith("admin", "203.0.113.7", almacenIntentosPrisma);
-    expect(registrarFalloMock).not.toHaveBeenCalled();
+    expect(descartarIntentoMock).not.toHaveBeenCalled();
   });
 });

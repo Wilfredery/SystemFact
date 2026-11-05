@@ -100,6 +100,33 @@ describe("evaluarThrottle — sliding window (S6)", () => {
       esperarMs: ESPERA_BASE_MS,
     });
   });
+
+  it("lets the attempt through once the delay elapsed, even with the count over the threshold", () => {
+    // BLOCKER R3-throttle-delay-not-enforced: without this comparison the pair stays
+    // refused until the attempts age out of the window — a 15-minute lockout, which the
+    // policy forbids and which five honest typos would trigger.
+    const intentos = Array.from(
+      { length: UMBRAL_INTENTOS },
+      (_, i) => ahora - ESPERA_BASE_MS - 1_000 - i * 1_000,
+    );
+    expect(evaluarThrottle(intentos, ahora)).toEqual({
+      bloqueado: false,
+      intentosFallidos: UMBRAL_INTENTOS,
+    });
+  });
+
+  it("reports the REMAINING wait while the delay runs out, not the whole delay", () => {
+    const transcurrido = 10_000;
+    const intentos = Array.from(
+      { length: UMBRAL_INTENTOS },
+      (_, i) => ahora - transcurrido - i * 1_000,
+    );
+    expect(evaluarThrottle(intentos, ahora)).toEqual({
+      bloqueado: true,
+      intentosFallidos: UMBRAL_INTENTOS,
+      esperarMs: ESPERA_BASE_MS - transcurrido,
+    });
+  });
 });
 
 describe("normalizarClaveUsuario — the counter cannot be reset by typing", () => {
@@ -121,6 +148,20 @@ describe("normalizarIp — x-forwarded-for is attacker-controlled text", () => {
 
   it("keeps an IPv6 address and strips its brackets", () => {
     expect(normalizarIp("[2001:db8::1]:443")).toBe("2001:db8::1");
+  });
+
+  it("preserves a bare IPv6 address instead of cutting it at the first colon", () => {
+    // CRITICAL R4-002: splitting a non-bracketed address on ':' turned 2001:db8::1 into
+    // "2001", so every IPv6 client in one hextet shared a throttle bucket.
+    expect(normalizarIp("2001:db8::1")).toBe("2001:db8::1");
+  });
+
+  it("keeps two IPv6 clients in the same hextet apart", () => {
+    expect(normalizarIp("2001:db8::1")).not.toBe(normalizarIp("2001:db8::2"));
+  });
+
+  it("still strips the port from an IPv4 address", () => {
+    expect(normalizarIp("203.0.113.7:51234")).toBe("203.0.113.7");
   });
 
   it("falls back to a sentinel instead of inserting an unbounded value", () => {

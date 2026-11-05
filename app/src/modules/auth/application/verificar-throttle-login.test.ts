@@ -1,6 +1,7 @@
 import {
+  descartarIntentoDeLogin,
   registrarExitoDeLogin,
-  registrarFalloDeLogin,
+  registrarIntentoDeLogin,
   verificarThrottleLogin,
   type AlmacenIntentosLogin,
 } from "./verificar-throttle-login";
@@ -20,27 +21,37 @@ import {
  * this is a decision seam, and the Prisma query it hides is one indexed read.
  */
 function crearAlmacenFalso() {
-  const filas = new Map<string, number[]>();
+  const filas = new Map<number, { clave: string; momento: number }>();
+  let siguienteId = 1;
   const clave = (ip: string, usuario: string) => `${ip}|${usuario}`;
-  const almacen: AlmacenIntentosLogin & { filas: Map<string, number[]> } = {
+  const almacen: AlmacenIntentosLogin & { filas: Map<number, { clave: string; momento: number }> } = {
     filas,
     async registrar(ip, usuario, momento) {
-      const k = clave(ip, usuario);
-      filas.set(k, [...(filas.get(k) ?? []), momento.getTime()]);
+      const id = siguienteId;
+      siguienteId += 1;
+      filas.set(id, { clave: clave(ip, usuario), momento: momento.getTime() });
+      return id;
+    },
+    async descartar(id) {
+      filas.delete(id);
     },
     async listar(ip, usuario, desde) {
-      return (filas.get(clave(ip, usuario)) ?? []).filter((m) => m >= desde.getTime());
+      const k = clave(ip, usuario);
+      return [...filas.values()]
+        .filter((fila) => fila.clave === k && fila.momento >= desde.getTime())
+        .map((fila) => fila.momento);
     },
     async limpiar(ip, usuario) {
-      filas.delete(clave(ip, usuario));
+      const k = clave(ip, usuario);
+      for (const [id, fila] of filas) if (fila.clave === k) filas.delete(id);
     },
     async barrer(corte) {
       let borradas = 0;
-      for (const [k, momentos] of filas) {
-        const vivas = momentos.filter((m) => m >= corte.getTime());
-        borradas += momentos.length - vivas.length;
-        if (vivas.length === 0) filas.delete(k);
-        else filas.set(k, vivas);
+      for (const [id, fila] of filas) {
+        if (fila.momento < corte.getTime()) {
+          filas.delete(id);
+          borradas += 1;
+        }
       }
       return borradas;
     },
@@ -51,7 +62,7 @@ function crearAlmacenFalso() {
 const ahora = 1_800_000_000_000;
 const IP = "203.0.113.7";
 
-async function fallarVeces(
+async function intentarVeces(
   almacen: AlmacenIntentosLogin,
   veces: number,
   usuario: string,
@@ -59,15 +70,16 @@ async function fallarVeces(
   desde = ahora,
 ) {
   for (let i = 0; i < veces; i += 1) {
-    // Every failure is one millisecond apart, all inside the window.
-    await registrarFalloDeLogin(usuario, ip, desde - i, almacen);
+    // Every attempt is one millisecond apart, all inside the window. Each recorded attempt
+    // is what the NEXT check counts — that ordering is the throttle (R3-throttle-race).
+    await registrarIntentoDeLogin(usuario, ip, desde - i, almacen);
   }
 }
 
 describe("login throttle — the pair is the unit of protection (S3)", () => {
   it("delays that (ip, username) pair once it reaches the threshold", async () => {
     const almacen = crearAlmacenFalso();
-    await fallarVeces(almacen, UMBRAL_INTENTOS, "admin", IP);
+    await intentarVeces(almacen, UMBRAL_INTENTOS, "admin", IP);
 
     expect(await verificarThrottleLogin("admin", IP, ahora, almacen)).toEqual({
       permitido: false,
@@ -77,7 +89,7 @@ describe("login throttle — the pair is the unit of protection (S3)", () => {
 
   it("leaves the same user from another IP unaffected", async () => {
     const almacen = crearAlmacenFalso();
-    await fallarVeces(almacen, UMBRAL_INTENTOS, "admin", IP);
+    await intentarVeces(almacen, UMBRAL_INTENTOS, "admin", IP);
 
     expect(await verificarThrottleLogin("admin", "198.51.100.9", ahora, almacen)).toEqual({
       permitido: true,
@@ -86,7 +98,7 @@ describe("login throttle — the pair is the unit of protection (S3)", () => {
 
   it("leaves another user on the same IP unaffected — the whole point of not being per-IP", async () => {
     const almacen = crearAlmacenFalso();
-    await fallarVeces(almacen, UMBRAL_INTENTOS, "admin", IP);
+    await intentarVeces(almacen, UMBRAL_INTENTOS, "admin", IP);
 
     expect(await verificarThrottleLogin("vendedor", IP, ahora, almacen)).toEqual({
       permitido: true,
@@ -95,14 +107,14 @@ describe("login throttle — the pair is the unit of protection (S3)", () => {
 
   it("does not delay below the threshold", async () => {
     const almacen = crearAlmacenFalso();
-    await fallarVeces(almacen, UMBRAL_INTENTOS - 1, "admin", IP);
+    await intentarVeces(almacen, UMBRAL_INTENTOS - 1, "admin", IP);
 
     expect(await verificarThrottleLogin("admin", IP, ahora, almacen)).toEqual({ permitido: true });
   });
 
   it("cannot be reset by changing case or surrounding spaces", async () => {
     const almacen = crearAlmacenFalso();
-    await fallarVeces(almacen, UMBRAL_INTENTOS, "Admin", IP);
+    await intentarVeces(almacen, UMBRAL_INTENTOS, "Admin", IP);
 
     expect(await verificarThrottleLogin("  ADMIN  ", IP, ahora, almacen)).toEqual({
       permitido: false,
@@ -110,9 +122,20 @@ describe("login throttle — the pair is the unit of protection (S3)", () => {
     });
   });
 
-  it("expires once the attempts leave the window — a delay, never a lockout", async () => {
+  it("lets the pair through again once the delay elapsed, without waiting for the window", async () => {
     const almacen = crearAlmacenFalso();
-    await fallarVeces(almacen, UMBRAL_INTENTOS, "admin", IP);
+    await intentarVeces(almacen, UMBRAL_INTENTOS, "admin", IP);
+
+    // 1 s past the base delay: a delay, not a lockout, and not a 15-minute wait.
+    const trasLaEspera = ahora + ESPERA_BASE_MS + 1_000;
+    expect(await verificarThrottleLogin("admin", IP, trasLaEspera, almacen)).toEqual({
+      permitido: true,
+    });
+  });
+
+  it("expires once the attempts leave the window", async () => {
+    const almacen = crearAlmacenFalso();
+    await intentarVeces(almacen, UMBRAL_INTENTOS, "admin", IP);
 
     const masTarde = ahora + VENTANA_INTENTOS_MS + 1;
     expect(await verificarThrottleLogin("admin", IP, masTarde, almacen)).toEqual({
@@ -120,9 +143,9 @@ describe("login throttle — the pair is the unit of protection (S3)", () => {
     });
   });
 
-  it("clears the pair on a successful sign-in", async () => {
+  it("clears the whole pair on a successful sign-in", async () => {
     const almacen = crearAlmacenFalso();
-    await fallarVeces(almacen, UMBRAL_INTENTOS, "admin", IP);
+    await intentarVeces(almacen, UMBRAL_INTENTOS, "admin", IP);
     expect((await verificarThrottleLogin("admin", IP, ahora, almacen)).permitido).toBe(false);
 
     await registrarExitoDeLogin("admin", IP, almacen);
@@ -130,21 +153,46 @@ describe("login throttle — the pair is the unit of protection (S3)", () => {
     expect(await verificarThrottleLogin("admin", IP, ahora, almacen)).toEqual({ permitido: true });
   });
 
-  it("sweeps attempts that left the window when it records a failure", async () => {
+  it("sweeps attempts that left the window when it records one", async () => {
     const almacen = crearAlmacenFalso();
-    await fallarVeces(almacen, 2, "admin", IP, ahora - VENTANA_INTENTOS_MS - 60_000);
+    await intentarVeces(almacen, 2, "admin", IP, ahora - VENTANA_INTENTOS_MS - 60_000);
 
-    await registrarFalloDeLogin("admin", IP, ahora, almacen);
+    await registrarIntentoDeLogin("admin", IP, ahora, almacen);
 
-    // Only the fresh failure survives; the expired pair history is gone from storage,
-    // not merely ignored by the policy.
-    expect([...almacen.filas.values()].flat()).toEqual([ahora]);
+    expect([...almacen.filas.values()].map((fila) => fila.momento)).toEqual([ahora]);
+  });
+});
+
+describe("login throttle — undoing an attempt that was not a guess", () => {
+  it("returns the row id so the caller can undo exactly that attempt", async () => {
+    const almacen = crearAlmacenFalso();
+
+    const id = await registrarIntentoDeLogin("admin", IP, ahora, almacen);
+    await registrarIntentoDeLogin("admin", IP, ahora, almacen);
+
+    expect(id).not.toBeNull();
+    expect(almacen.filas.size).toBe(2);
+
+    await descartarIntentoDeLogin(id, almacen);
+
+    // Only the discarded one is gone: an inactive-account refusal must not erase the
+    // guesses that came before it.
+    expect(almacen.filas.size).toBe(1);
+    expect([...almacen.filas.keys()]).not.toContain(id);
+  });
+
+  it("does nothing when there was no id to undo", async () => {
+    const almacen = crearAlmacenFalso();
+    await expect(descartarIntentoDeLogin(null, almacen)).resolves.toBeUndefined();
   });
 });
 
 describe("login throttle — an unhealthy counter never becomes a login outage", () => {
   const roto: AlmacenIntentosLogin = {
     async registrar() {
+      throw new Error("db caída");
+    },
+    async descartar() {
       throw new Error("db caída");
     },
     async listar() {
@@ -162,8 +210,12 @@ describe("login throttle — an unhealthy counter never becomes a login outage",
     expect(await verificarThrottleLogin("admin", IP, ahora, roto)).toEqual({ permitido: true });
   });
 
-  it("does not surface a storage error from the recording paths", async () => {
-    await expect(registrarFalloDeLogin("admin", IP, ahora, roto)).resolves.toBeUndefined();
+  it("returns no id instead of throwing when the attempt cannot be recorded", async () => {
+    expect(await registrarIntentoDeLogin("admin", IP, ahora, roto)).toBeNull();
+  });
+
+  it("does not surface a storage error from the undo path", async () => {
+    await expect(descartarIntentoDeLogin(7, roto)).resolves.toBeUndefined();
     await expect(registrarExitoDeLogin("admin", IP, roto)).resolves.toBeUndefined();
   });
 
@@ -175,13 +227,15 @@ describe("login throttle — an unhealthy counter never becomes a login outage",
     const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     try {
       await verificarThrottleLogin("admin", IP, ahora, roto);
-      await registrarFalloDeLogin("admin", IP, ahora, roto);
+      await registrarIntentoDeLogin("admin", IP, ahora, roto);
+      await descartarIntentoDeLogin(7, roto);
       await registrarExitoDeLogin("admin", IP, roto);
 
-      expect(errorSpy).toHaveBeenCalledTimes(3);
+      expect(errorSpy).toHaveBeenCalledTimes(4);
       expect(errorSpy.mock.calls.map(([linea]) => String(linea))).toEqual([
         expect.stringContaining("verificar"),
         expect.stringContaining("registrar"),
+        expect.stringContaining("descartar"),
         expect.stringContaining("limpiar"),
       ]);
     } finally {
