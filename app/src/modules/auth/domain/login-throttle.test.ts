@@ -142,8 +142,11 @@ describe("normalizarClaveUsuario — the counter cannot be reset by typing", () 
 });
 
 describe("normalizarIp — x-forwarded-for is attacker-controlled text", () => {
-  it("takes the first hop and drops the port", () => {
-    expect(normalizarIp("203.0.113.7:51234, 10.0.0.1")).toBe("203.0.113.7");
+  it("trusts the LAST hop, because the leftmost entries are client-supplied", () => {
+    // The attacker writes everything to the left of the hop their request came from. Behind a
+    // proxy that appends, the rightmost entry is the one added by the platform; behind one
+    // that overwrites, there is only one entry and last == first.
+    expect(normalizarIp("203.0.113.7:51234, 10.0.0.1")).toBe("10.0.0.1");
   });
 
   it("keeps an IPv6 address and strips its brackets", () => {

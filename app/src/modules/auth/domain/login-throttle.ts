@@ -104,10 +104,13 @@ export function normalizarClaveUsuario(nombreUsuario: string): string {
 /**
  * Extracts one bounded, storable IP from the header text.
  *
- * `x-forwarded-for` is client-supplied unless a trusted proxy rewrites it, so its
- * first hop is the best available signal, not proof: the control that matters is the
- * pair, and the pair survives a forged header because the username half is real.
- * Whatever arrives, the result is a single value that fits the column — an unbounded
+ * `x-forwarded-for` is client-supplied text: everything to the LEFT of the hop the request
+ * actually arrived from is whatever the client typed. So the value here is a signal, not
+ * proof, and the honest statement of the control is that it is best-effort per-IP — what
+ * still holds if it is forged is the username half of the pair, and the provider's own
+ * per-IP limit on top. Behind a proxy that appends, the rightmost hop is the trusted one.
+ *
+ * Whatever arrives, the result is a single bounded value that fits the column: an unbounded
  * provider string must never become a database error on the login path.
  *
  * The parsing distinguishes the three shapes that actually appear, because collapsing
@@ -117,7 +120,14 @@ export function normalizarClaveUsuario(nombreUsuario: string): string {
  * every client in that hextet into one bucket.
  */
 export function normalizarIp(cabecera: string | null | undefined): string {
-  const primero = (cabecera ?? "").split(",")[0]?.trim() ?? "";
+  const saltos = (cabecera ?? "")
+    .split(",")
+    .map((salto) => salto.trim())
+    .filter((salto) => salto !== "");
+  // LAST hop, not first: a client controls everything it sends, so the leftmost entries are
+  // whatever it typed. Behind a proxy that APPENDS, the rightmost entry is the one the
+  // platform added; behind one that overwrites, there is a single entry and last == first.
+  const primero = saltos[saltos.length - 1] ?? "";
   if (primero === "") return IP_DESCONOCIDA;
 
   let direccion = primero;

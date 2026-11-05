@@ -578,6 +578,44 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
   });
 
+  it("treats a provider that could not be reached as unavailable, never as a bad password", async () => {
+    // R3-network-errors-counted-as-password-failures: a network failure arrives as an error
+    // with status 0 and no code, which used to fall through to AUTH_CREDENCIALES_INVALIDAS —
+    // so the login action counted an AUTH OUTAGE as a guess and could throttle a user who
+    // typed the right password. Collapsing it that way also tells every user at once that
+    // their credentials are wrong during a provider incident.
+    const supabase = supabaseWithUser(null);
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { name: "AuthRetryableFetchError", message: "fetch failed", status: 0 },
+    });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "correcta");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_AUTENTICACION_NO_DISPONIBLE,
+      message: messageFor(AUTH_AUTENTICACION_NO_DISPONIBLE),
+    });
+    expect(usuario.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("treats a provider 5xx the same way", async () => {
+    const supabase = supabaseWithUser(null);
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { name: "AuthApiError", message: "Internal error", status: 503 },
+    });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "correcta");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_AUTENTICACION_NO_DISPONIBLE,
+      message: messageFor(AUTH_AUTENTICACION_NO_DISPONIBLE),
+    });
+  });
+
   it("maps a provider 429 to 'auth unavailable' instead of blaming the password", async () => {
     // docs/22 T3 / S4. Because the login is a Server Action, Supabase's password bucket
     // is keyed on the SERVER's IP, so this 429 is app-wide: it happens to users who typed

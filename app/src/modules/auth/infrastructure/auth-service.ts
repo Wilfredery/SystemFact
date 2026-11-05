@@ -172,20 +172,31 @@ async function resolverUsuarioDeSesion(
  * Maps an Auth provider rejection onto the app's catalog.
  *
  * The provider is the only layer that knows WHY it refused; the client never sees its
- * words or its status. Order matters: a 429 means the request was never evaluated, so it
- * outranks every content-based reason below it.
+ * words or its status. Order matters: "nothing was evaluated" outranks every content-based
+ * reason below it.
  *
- * - `429` / `over_request_rate_limit` → auth unavailable. Project-wide by construction
- *   here (the bucket is keyed on the server's IP), so it must not read as "your password
- *   is wrong".
+ * - `429` / `over_request_rate_limit` / `5xx` / transport failure → auth unavailable.
+ *   Project-wide by construction here (the bucket is keyed on the server's IP) or a
+ *   genuine outage, so it must not read as "your password is wrong".
  * - `weak_password` → the stored password no longer meets the current policy (docs/22 T7).
  * - everything else → the uniform credential rejection, which is what keeps the stranger
  *   reachable path free of enumeration oracles.
  */
 function codigoDeRechazoDeAuth(
-  error: { code?: string | null; status?: number | null } | null,
+  error: { code?: string | null; name?: string | null; status?: number | null } | null,
 ): AuthErrorCode {
-  if (error?.status === 429 || error?.code === "over_request_rate_limit") {
+  // Nothing was evaluated: the request never produced a verdict about the credential. That
+  // covers the project-wide 429 bucket, a 5xx, and a transport failure (status 0 / the
+  // retryable fetch error). Treating these as `AUTH_CREDENCIALES_INVALIDAS` told every user
+  // their password was wrong during an incident AND made the throttle count an OUTAGE as a
+  // guess, throttling people who typed the right password.
+  if (
+    error?.status === 429 ||
+    error?.status === 0 ||
+    (typeof error?.status === "number" && error.status >= 500) ||
+    error?.code === "over_request_rate_limit" ||
+    error?.name === "AuthRetryableFetchError"
+  ) {
     return AUTH_AUTENTICACION_NO_DISPONIBLE;
   }
   if (error?.code === "weak_password") {

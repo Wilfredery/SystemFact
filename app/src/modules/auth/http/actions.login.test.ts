@@ -68,7 +68,7 @@ describe("login — post-login landing branch (design D2)", () => {
     // Default: the throttle lets the attempt through, so the pre-existing landing
     // cases keep testing the landing decision and nothing else.
     headersMock.mockResolvedValue(
-      new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" }),
+      new Headers({ "x-forwarded-for": "203.0.113.7" }),
     );
     verificarThrottleMock.mockResolvedValue({ permitido: true });
     registrarIntentoMock.mockResolvedValue(11);
@@ -129,7 +129,7 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
     jest.resetAllMocks();
     redirectMock.mockImplementation(() => undefined);
     headersMock.mockResolvedValue(
-      new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" }),
+      new Headers({ "x-forwarded-for": "203.0.113.7" }),
     );
     verificarThrottleMock.mockResolvedValue({ permitido: true });
     registrarIntentoMock.mockResolvedValue(11);
