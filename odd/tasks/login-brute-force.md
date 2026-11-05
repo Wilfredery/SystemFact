@@ -1,0 +1,44 @@
+# login-brute-force — docs/22 T3 (app-side login throttle)
+
+Objective: build the login brute-force throttle exactly as `docs/22` T3 decided it (Option B, Postgres-backed, keyed by `(ip, nombreUsuario)`), so a distributed or single-origin attacker cannot grind passwords and a legitimate user is never told their credentials are wrong because of an unrelated lockout.
+Branch: `feature/security-t3-login-throttle` · Delivery: owner-run PR (push/PR/merge are never agent decisions).
+
+## Specs
+
+Verbatim from `docs/22-security-hardening-plan.md` §T3 (decided 2026-11-03; owner re-confirmed Option B 2026-11-05).
+
+- **S1 (values read, not assumed)** — "Chosen option recorded here, with the project's actual rate-limit values read from `GET /v1/projects/{ref}/config/auth` (not assumed)."
+- **S2 (app-wide lockout)** — "The app-wide-lockout consequence above is either accepted in writing or mitigated by A/B."
+- **S3 (the limiter test)** — "If an app-side limiter is added: a test proving N failures lock out that `(ip, username)` pair and that other users/IPs are unaffected."
+- **S4 (429 mapped)** — "A 429 from Supabase is mapped to a typed domain error (never a raw provider error reaching the client)."
+- **S5 (storage shape)** — "A dedicated **ops table** (e.g. `LOGIN_INTENTO`) owned by the `auth` module, written through Prisma from `infrastructure/` — **not** through PostgREST, so `anon` gets no credential and no RPC surface to spam. This is a documented **exception** to the tenant-wrapper rule and needs its own ADR note: the table holds no tenant data and login runs before any `empresaId` exists."
+- **S6 (key + policy)** — "Keyed by **`(ip, nombreUsuario)`**, counted over a sliding window, with **exponential delay, never a permanent lockout** — a hard per-username lockout is itself a denial-of-service lever against a known user. Successful sign-in clears the counter; a `429`-equivalent maps to a typed domain error; old rows are swept."
+- **S7 (ADR note)** — the exception above is recorded, not implied: a short ADR/architecture note stating that this one table is non-tenant on purpose, why login cannot enter `withTenantTransaction`, and what keeps it safe (no tenant data, no PostgREST grant, bounded row lifetime).
+
+Non-goals (explicit): no CAPTCHA/Turnstile (recorded as the **go-public** follow-up), no `Sb-Forwarded-For` / `sb_secret` posture change, no permanent account lockout, no admin unlock UI, no CAPTCHA in the E2E lane.
+
+## Tasks
+
+| ID | S# | Route | Status | Commit |
+|----|----|-------|--------|--------|
+| T1 migration + model + ADR note | S5, S6, S7 | inline | done | `81edcf8` (logical); ADR-020 is local-only (`docs/` is gitignored) — see L6 |
+| T2 pure domain limiter | S6 | inline | done | `6eed55d` |
+| T3 repository + pre-auth wiring | S5, S6 | inline | done | `6eed55d` |
+| T4 typed errors (throttle + Supabase 429) | S2, S4 | inline | done | `6eed55d` |
+| T5 behavioral tests | S3 | inline | done | `6eed55d` |
+| T6 rate-limit values + lockout acceptance | S1, S2 | **owner** | pending | needs a Management-API read; see L8 |
+
+Routing note: every task is one module, dependent on the previous one (domain shape → repository → wiring → error mapping), so the Writer rule did not fire; work was inline. The migration is **high-risk item 1** (schema) and got its own commit, plus independent verification.
+
+**Slice boundary**: 2 commits / 937 authored lines, deliberately past the ~400-line slice because the migration cannot ship alone (the feature code is what makes it meaningful) and the feature cannot ship without it. Delivery is therefore one feature PR with the migration isolated in its own commit, which is what the repository rule asks for.
+
+## Log
+
+- L1 (2026-11-05): "Check in context. Where we left, we need to continue with t3, right?" — plus the follow-up selection recorded as L2.
+- L2 (2026-11-05, owner): selected **"Option B as decided (app-side limiter)"** — "Proceed with the recorded decision: ops table keyed by (ip, nombreUsuario), exponential delay, no permanent lockout. I also fix the stale line 317 and need your PAT for the rate-limit read." That is the authorization for this slice, and it is also the **S2 written acceptance**: the owner chose B knowing the documented residual (Supabase's IP bucket is the server's IP, so a 429 is app-wide); the mitigation is per-account throttling plus S4's honest typed message instead of "wrong credentials".
+- L3 (2026-11-05): the stale `docs/22` "Remaining" list (still showing T2/T4/T5/T7 as pending, and "T3 option A first") was corrected before any code was written, because it contradicted the T3 decision block and would have re-litigated a settled choice.
+- L4 (2026-11-05): **what was built.** `LOGIN_INTENTO` (schema + `20261105120000_login_intento_throttle`) with RLS on and a deny-all RESTRICTIVE policy; `domain/login-throttle.ts` (15-min window, 5 failures, 30 s → 15 min exponential delay, capped so it always expires; `normalizarClaveUsuario` case-folds the counter key while the ADR-014 row lookup stays byte-exact; `normalizarIp` takes one bounded hop and never returns an empty string); `application/verificar-throttle-login.ts` (port declared in the application layer, **fail-open** when the counter is unreadable); `infrastructure/login-attempt-repository.ts` (the documented non-tenant exception); `http/actions.login.ts` (checks the pair before the provider call, records only `AUTH_CREDENCIALES_INVALIDAS`, clears on success); `codigoDeRechazoDeAuth` in `auth-service.ts` (429 → `AUTH_AUTENTICACION_NO_DISPONIBLE`, `weak_password` → `AUTH_PASSWORD_POLICY`, else the uniform rejection).
+- L5 (2026-11-05): **test-first, with RED observed twice.** (a) The throttle wiring: 5 new action tests failed (`registrarFallo`/`registrarExito` "Number of calls: 0") before the action called the application layer. (b) The 429 mapping: `maps a provider 429 …` failed before `codigoDeRechazoDeAuth` existed. Domain policy 12/12 and application 10/10 written against a fake store, no database. Gate: `tsc` clean · `eslint` 0 errors (3 pre-existing unused-import warnings in `actions.login.ts`, untouched by this slice) · jest **143/143 suites, 1352/1352 tests** (was 141/1321).
+- L6 (2026-11-05): **S7 tension, resolved the way this repo actually works: `docs/` is gitignored by design** (L4 in `security-hardening.md`), so **ADR-020** was written into `docs/12-decisiones_de_arquitectura.md` (local source of record) with the full skeleton, and the committed traceability lives where a reviewer will see it: the migration docblock, the schema comments, the code comments and this document. That is not a downgrade of S7 — the alternative would be publishing the security inventory of a PUBLIC repo — but the honest statement is that the ADR itself is not in git.
+- L7 (2026-11-05): **deviation from the plan's "every entry point takes the store with a Prisma default".** The application layer was importing `infrastructure/login-attempt-repository`, which dragged `@/lib/prisma` → `@/lib/env` into a pure test and failed it (`DATABASE_URL … received undefined`). The port now lives in `application/`, `infrastructure` implements it, and the http adapter injects it. Same behavior, correct dependency direction, and the test no longer needs env. This is the fix, not a workaround for the test.
+- L8 (2026-11-05): **what could not be proven locally, stated plainly.** Docker is not running on this machine, so `prisma migrate deploy` against a real Postgres, `pnpm rls:verify` and the integration suite were **not** executed here — CI proves them, and the migration's SQL was reviewed line by line against `20261104230000_prisma_migrations_enable_rls` and against `tools/scripts/verify-rls.ts` (which enumerates `pg_class` dynamically, so the new table is covered with no hardcoded list to update). S1 remains open and is **owner-only**: no PAT exists in `app/.env`/`app/.env.local` and the Supabase MCP exposes no Management-API config route (`execute_sql`/`get_project` only), while the values are not readable from SQL (`auth.instances` is empty).
