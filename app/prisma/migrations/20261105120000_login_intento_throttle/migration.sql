@@ -27,11 +27,11 @@
 --   Nothing irreplaceable is lost: a dropped counter only forgets one window of
 --   failed attempts, and the throttle rebuilds its state from the next failures.
 
-CREATE TABLE public."LOGIN_INTENTO" (
+CREATE TABLE "LOGIN_INTENTO" (
     "id" SERIAL NOT NULL,
     "ip" VARCHAR(45) NOT NULL,
     "nombreUsuarioNormalizado" VARCHAR(255) NOT NULL,
-    "creadoEn" TIMESTAMPTZ(6) NOT NULL DEFAULT now(),
+    "creadoEn" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "LOGIN_INTENTO_pkey" PRIMARY KEY ("id")
 );
@@ -39,7 +39,7 @@ CREATE TABLE public."LOGIN_INTENTO" (
 -- The throttle's only query shape: count one (ip, username) pair inside a
 -- window, then delete that pair's rows on a successful sign-in.
 CREATE INDEX "LOGIN_INTENTO_ip_nombreUsuarioNormalizado_creadoEn_idx"
-    ON public."LOGIN_INTENTO" ("ip", "nombreUsuarioNormalizado", "creadoEn");
+    ON "LOGIN_INTENTO"("ip", "nombreUsuarioNormalizado", "creadoEn");
 
 ALTER TABLE public."LOGIN_INTENTO" ENABLE ROW LEVEL SECURITY;
 
