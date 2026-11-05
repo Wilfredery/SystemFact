@@ -24,7 +24,7 @@ Sourced verbatim from `docs/22-security-hardening-plan.md` (T0/T7, owner-approve
 | T1 stage 1 headers | DONE 2026-11-03 | v0.18.1, verified in production |
 | T1 stage 2 CSP nonce | open | belongs in `app/src/proxy.ts`, report-only first |
 | T2 supply chain | DONE | v0.18.5, audit 37 → 0, 12 action refs SHA-pinned |
-| T3 login brute force | **BUILT 2026-11-05** (Option B), awaiting review/PR | `feature/security-t3-login-throttle`: `81edcf8` (migration) + `6eed55d` (feature); ADR-020 is local; tracker `odd/tasks/login-brute-force.md` |
+| T3 login brute force | **SHIPPED 2026-11-05 — v0.19.0, in production** | PR #166 (squash `d96f213`), tag `v0.19.0`, prod-smoke 4/4; ADR-020 is local; tracker `odd/tasks/login-brute-force.md` |
 | T4 admin password reset | **not built — decided 2026-11-04: operator-side** | `app/USER-PROVISIONING.md` is the only path; the revisit trigger lives there |
 | T5 RLS coverage guard | DONE | v0.18.6, found `_prisma_migrations` RLS off |
 | T6 session/cookie config | open | `httpOnly:false` is intentional, do not force |
