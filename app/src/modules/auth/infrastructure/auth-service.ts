@@ -30,6 +30,8 @@ import { prisma } from "@/lib/prisma";
 import { setLoginFlow } from "@/modules/tenant/infrastructure/login-flow";
 import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import {
+  AUTH_AUTENTICACION_NO_DISPONIBLE,
+  AUTH_CREDENCIAL_NO_CONFIRMADA,
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_PASSWORD_POLICY,
   AUTH_USUARIO_INACTIVO,
@@ -62,7 +64,7 @@ export type AuthResult =
        */
       activeBranchCount: number;
     }
-  | { ok: false; code: AuthErrorCode; message: string };
+  | { ok: false; code: AuthErrorCode; message: string; cuentaComoIntento: boolean };
 
 /**
  * Appends a LOGIN or LOGOUT audit row on the STANDALONE (pre-`TenantCtx`) path
@@ -167,6 +169,58 @@ async function resolverUsuarioDeSesion(
  * Deliberately framework agnostic: receives the session-aware Supabase client
  * (carrying the request cookies) from the http layer.
  */
+/**
+ * Maps an Auth provider rejection onto the app's catalog.
+ *
+ * The provider is the only layer that knows WHY it refused; the client never sees its
+ * words or its status. Order matters: "nothing was evaluated" outranks every content-based
+ * reason below it.
+ *
+ * - `429` / `over_request_rate_limit` / `5xx` / transport failure → auth unavailable.
+ *   Project-wide by construction here (the bucket is keyed on the server's IP) or a
+ *   genuine outage, so it must not read as "your password is wrong".
+ * - `weak_password` → the stored password no longer meets the current policy (docs/22 T7).
+ * - everything else → the uniform credential rejection, which is what keeps the stranger
+ *   reachable path free of enumeration oracles.
+ */
+/**
+ * Classifies an Auth provider rejection.
+ *
+ * Two facts travel together and must not be conflated: the CODE is a message choice for the user,
+ * while `cuentaComoIntento` answers "was this a guess at the password?". Deriving the second from
+ * the first is exactly what let an unconfirmed account and an unusable identity be throttled
+ * (review findings R3-catchall and F3), because several distinct refusals share the uniform
+ * `AUTH_CREDENCIALES_INVALIDAS` message on purpose.
+ *
+ * Only the default branch counts: the password was evaluated and refused. Everything else means
+ * nothing was evaluated (unavailable) or the password was accepted (policy, unconfirmed, banned).
+ */
+function clasificarRechazoDeAuth(
+  error: { code?: string | null; name?: string | null; status?: number | null } | null,
+): { codigo: AuthErrorCode; cuentaComoIntento: boolean } {
+  if (
+    error?.status === 429 ||
+    error?.status === 0 ||
+    (typeof error?.status === "number" && error.status >= 500) ||
+    error?.code === "over_request_rate_limit" ||
+    error?.name === "AuthRetryableFetchError"
+  ) {
+    return { codigo: AUTH_AUTENTICACION_NO_DISPONIBLE, cuentaComoIntento: false };
+  }
+  if (error?.code === "weak_password") {
+    return { codigo: AUTH_PASSWORD_POLICY, cuentaComoIntento: false };
+  }
+  if (error?.code === "email_not_confirmed") {
+    return { codigo: AUTH_CREDENCIAL_NO_CONFIRMADA, cuentaComoIntento: false };
+  }
+  if (error?.code === "user_banned") {
+    // Deliberately NOT a distinct message: a "banned" answer before authentication would tell an
+    // unauthenticated caller that the account exists and its state (review finding F4).
+    return { codigo: AUTH_CREDENCIALES_INVALIDAS, cuentaComoIntento: false };
+  }
+  return { codigo: AUTH_CREDENCIALES_INVALIDAS, cuentaComoIntento: true };
+}
+
 export async function loginWithCredenciales(
   supabase: SupabaseClient,
   nombreUsuario: string,
@@ -198,14 +252,17 @@ export async function loginWithCredenciales(
     //
     // No tenant read or write happens on this branch — same posture as the generic
     // rejection below.
-    const codigo: AuthErrorCode =
-      error?.code === "weak_password"
-        ? AUTH_PASSWORD_POLICY
-        : AUTH_CREDENCIALES_INVALIDAS;
+    //
+    // A 429 gets its own outcome too (docs/22 T3, S4): Supabase's password bucket is
+    // keyed on the SERVER's IP because this runs in a Server Action, so a 429 is an
+    // app-wide condition that says nothing about the person typing. Reporting it as
+    // invalid credentials would be false for every user at once.
+    const { codigo, cuentaComoIntento } = clasificarRechazoDeAuth(error);
     return {
       ok: false,
       code: codigo,
       message: messageFor(codigo),
+      cuentaComoIntento,
     };
   }
 
@@ -240,6 +297,8 @@ export async function loginWithCredenciales(
       ok: false,
       code: AUTH_USUARIO_INACTIVO,
       message: messageFor(AUTH_USUARIO_INACTIVO),
+      // Auth accepted the credentials; the account is refused for a different reason.
+      cuentaComoIntento: false,
     };
   }
 
@@ -269,6 +328,10 @@ export async function loginWithCredenciales(
       ok: false,
       code: AUTH_CREDENCIALES_INVALIDAS,
       message: messageFor(AUTH_CREDENCIALES_INVALIDAS),
+      // The password was RIGHT (Auth returned a session); the account's identity is unusable.
+      // Never counted: throttling a user for an internal invariant they cannot fix would be the
+      // falsehood this slice exists to avoid (review finding F3).
+      cuentaComoIntento: false,
     };
   }
 
@@ -279,7 +342,7 @@ export async function loginWithCredenciales(
   });
   if (!enlace.ok) {
     await supabase.auth.signOut();
-    return { ok: false, code: enlace.code, message: enlace.message };
+    return { ok: false, code: enlace.code, message: enlace.message, cuentaComoIntento: false };
   }
 
   // REQ-AUTH-AUD-001: a FULLY successful login (session established, the mapped
@@ -301,7 +364,7 @@ export async function loginWithCredenciales(
     // Cannot happen with `sucursalesActivasDeEmpresa: true`; the guard keeps
     // the payload construction explicit instead of relying on the non-null
     // assertion and the TS narrowing.
-    return { ok: false, code: AUTH_CREDENCIALES_INVALIDAS, message: messageFor(AUTH_CREDENCIALES_INVALIDAS) };
+    return { ok: false, code: AUTH_CREDENCIALES_INVALIDAS, message: messageFor(AUTH_CREDENCIALES_INVALIDAS), cuentaComoIntento: false };
   }
 
   const esAdmin = usuario.roles.some((r) => r.rol.nombre === "Administrador");

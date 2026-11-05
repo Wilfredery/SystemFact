@@ -13,7 +13,16 @@ type RoleRow = { current_user: string; rolbypassrls: boolean };
 type OwnerRow = { tableowner: string };
 type IndexRow = { indexname: string; indexdef: string };
 type TriggerRow = { tgname: string };
-type TableRlsRow = { relname: string; relrowsecurity: boolean; policies: number };
+type TableRlsRow = { relname: string; relrowsecurity: boolean; policies: number; permisivas: number };
+
+/**
+ * Tables the application never queries, so a restrictive-only posture is enough for them.
+ * Anything NOT listed here must give the runtime role a PERMISSIVE policy, because
+ * `systemfact_app` is NOSUPERUSER NOBYPASSRLS and does not own the tables — restrictive
+ * policies are ANDed, so a restrictive-only table is invisible to the app while `rls:verify`
+ * still reported it green. That false green is how `LOGIN_INTENTO` shipped inert.
+ */
+const TABLAS_SIN_ROL_APP = new Set(["_prisma_migrations"]);
 
 async function main() {
   const [role] = await prisma.$queryRaw<RoleRow[]>`
@@ -131,14 +140,31 @@ async function verifyV2r01IdentityControls(): Promise<void> {
  * other (enabled but nobody wrote a rule = still wide open).
  */
 async function verifyEveryTableHasRls(): Promise<void> {
+  // The runtime role's own oid. "A permissive policy exists" is NOT the property we need —
+  // "a permissive policy APPLIES TO THIS ROLE" is. A policy written `TO authenticated` (the
+  // shape a Supabase habit produces, and the one that would silently disable the throttle
+  // again) matches no app role while `permisivas > 0` still read green.
+  // PUBLIC is the pseudo-role oid 0 inside `polroles` (`{0}`), NOT an empty array — treating it
+  // as empty rejected the 25 tables whose policies are legitimately `TO PUBLIC`.
+  const [rol] = await prisma.$queryRaw<{ oid: number; name: string }[]>`
+    SELECT oid::int AS oid, rolname::text AS name FROM pg_roles WHERE rolname = current_user`;
+  if (rol === undefined) throw new Error("could not resolve current_user oid");
+
   const tables = await prisma.$queryRaw<TableRlsRow[]>`
     SELECT c.relname,
            c.relrowsecurity,
-           COALESCE(p.n, 0)::int AS policies
+           COALESCE(p.n, 0)::int AS policies,
+           COALESCE(p.pn, 0)::int AS permisivas
     FROM pg_class c
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
     LEFT JOIN (
-      SELECT polrelid, COUNT(*) AS n FROM pg_policy GROUP BY polrelid
+      SELECT polrelid,
+             COUNT(*) AS n,
+             COUNT(*) FILTER (
+               WHERE polpermissive
+                 AND (0 = ANY (polroles) OR ${rol.oid}::oid = ANY (polroles))
+             ) AS pn
+      FROM pg_policy GROUP BY polrelid
     ) p ON p.polrelid = c.oid
     WHERE ns.nspname = current_schema()
       AND c.relkind = 'r'
@@ -152,19 +178,32 @@ async function verifyEveryTableHasRls(): Promise<void> {
 
   const sinRls = tables.filter((t) => !t.relrowsecurity).map((t) => t.relname);
   const sinPolitica = tables.filter((t) => t.policies === 0).map((t) => t.relname);
+  const soloRestrictiva = tables
+    .filter((t) => t.policies > 0 && t.permisivas === 0 && !TABLAS_SIN_ROL_APP.has(t.relname))
+    .map((t) => t.relname);
 
-  if (sinRls.length > 0 || sinPolitica.length > 0) {
+  if (sinRls.length > 0 || sinPolitica.length > 0 || soloRestrictiva.length > 0) {
     const partes: string[] = [];
     if (sinRls.length > 0) partes.push(`RLS disabled on: ${sinRls.join(", ")}`);
     if (sinPolitica.length > 0) partes.push(`no policy at all on: ${sinPolitica.join(", ")}`);
+    if (soloRestrictiva.length > 0) {
+      partes.push(
+        `no PERMISSIVE policy that applies to this role on: ${soloRestrictiva.join(", ")} — a ` +
+          "restrictive-only table (or a policy naming some other role) leaves the app with no " +
+          "permission at all, and a fail-open caller turns that into a silently disabled control",
+      );
+    }
     throw new Error(
       `RLS coverage incomplete — ${partes.join(" | ")}. ` +
-        "Every table in the schema needs ENABLE ROW LEVEL SECURITY and at least one policy; " +
-        "without them, any connection using the app role can read or write another tenant's rows.",
+        "Every table in the schema needs ENABLE ROW LEVEL SECURITY and at least one PERMISSIVE " +
+        "policy for the runtime role; without them, any connection using the app role can read or " +
+        "write another tenant's rows — or, with a restrictive-only table, cannot use it at all.",
     );
   }
 
-  console.log(`OK: all ${tables.length} tables have RLS enabled and at least one policy`);
+  console.log(
+    `OK: all ${tables.length} tables have RLS enabled and a permissive policy that applies to "${rol.name}"`,
+  );
 }
 
 main()

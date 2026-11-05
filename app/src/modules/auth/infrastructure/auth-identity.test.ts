@@ -24,6 +24,8 @@ import {
 } from "@/modules/auth/infrastructure/auth-service";
 import { enlazarAuthSub } from "@/modules/auth/infrastructure/auth-identity";
 import {
+  AUTH_AUTENTICACION_NO_DISPONIBLE,
+  AUTH_CREDENCIAL_NO_CONFIRMADA,
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_ENLACE_CONFLICTO,
   AUTH_ENLACE_DUPLICADO,
@@ -428,6 +430,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toEqual({
       ok: false,
       code: AUTH_ENLACE_CONFLICTO,
+      cuentaComoIntento: false,
       message: expect.any(String),
     });
     // Never overwrite an existing link.
@@ -454,6 +457,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toEqual({
       ok: false,
       code: AUTH_ENLACE_DUPLICADO,
+      cuentaComoIntento: false,
       message: expect.any(String),
     });
     // Translated, never leaked as a raw 500 / P2002 string to the caller.
@@ -494,6 +498,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toEqual({
       ok: false,
       code: AUTH_USUARIO_INACTIVO,
+      cuentaComoIntento: false,
       message: expect.any(String),
     });
     expect(usuario.updateMany).not.toHaveBeenCalled();
@@ -533,6 +538,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toEqual({
       ok: false,
       code: AUTH_CREDENCIALES_INVALIDAS,
+      cuentaComoIntento: true,
       message: expect.any(String),
     });
     // No enumeration side channel: nothing is read or written on failure.
@@ -566,6 +572,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toStrictEqual({
       ok: false,
       code: AUTH_PASSWORD_POLICY,
+      cuentaComoIntento: false,
       message: messageFor(AUTH_PASSWORD_POLICY),
     });
     // The catalog owns the text: no provider message, no policy number leaked.
@@ -576,6 +583,131 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(usuario.findUnique).not.toHaveBeenCalled();
     expect(usuario.updateMany).not.toHaveBeenCalled();
     expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
+  });
+
+  it("gives an unconfirmed account its own code so it is never counted as a guess", async () => {
+    // R3-catchall: the password was RIGHT. Counting this as AUTH_CREDENCIALES_INVALIDAS made
+    // the login action throttle a user who typed nothing wrong.
+    const supabase = supabaseWithUser(null);
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { name: "AuthApiError", message: "Email not confirmed", status: 400, code: "email_not_confirmed" },
+    });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "correcta");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_CREDENCIAL_NO_CONFIRMADA,
+      cuentaComoIntento: false,
+      message: messageFor(AUTH_CREDENCIAL_NO_CONFIRMADA),
+    });
+  });
+
+  it("treats a banned account like any other rejection, so it is neither counted nor an oracle", async () => {
+    // F4: a distinct "your account is banned" message before authentication would tell an
+    // unauthenticated caller that the account exists and its state. The uniform rejection is used
+    // instead, and `cuentaComoIntento` keeps it out of the throttle counter.
+    const supabase = supabaseWithUser(null);
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { name: "AuthApiError", message: "User is banned", status: 400, code: "user_banned" },
+    });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "correcta");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_CREDENCIALES_INVALIDAS,
+      cuentaComoIntento: false,
+      message: messageFor(AUTH_CREDENCIALES_INVALIDAS),
+    });
+  });
+
+  it("treats a provider that could not be reached as unavailable, never as a bad password", async () => {
+    // R3-network-errors-counted-as-password-failures: a network failure arrives as an error
+    // with status 0 and no code, which used to fall through to AUTH_CREDENCIALES_INVALIDAS —
+    // so the login action counted an AUTH OUTAGE as a guess and could throttle a user who
+    // typed the right password. Collapsing it that way also tells every user at once that
+    // their credentials are wrong during a provider incident.
+    const supabase = supabaseWithUser(null);
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { name: "AuthRetryableFetchError", message: "fetch failed", status: 0 },
+    });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "correcta");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_AUTENTICACION_NO_DISPONIBLE,
+      cuentaComoIntento: false,
+      message: messageFor(AUTH_AUTENTICACION_NO_DISPONIBLE),
+    });
+    expect(usuario.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("treats a provider 5xx the same way", async () => {
+    const supabase = supabaseWithUser(null);
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { name: "AuthApiError", message: "Internal error", status: 503 },
+    });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "correcta");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_AUTENTICACION_NO_DISPONIBLE,
+      cuentaComoIntento: false,
+      message: messageFor(AUTH_AUTENTICACION_NO_DISPONIBLE),
+    });
+  });
+
+  it("maps a provider 429 to 'auth unavailable' instead of blaming the password", async () => {
+    // docs/22 T3 / S4. Because the login is a Server Action, Supabase's password bucket
+    // is keyed on the SERVER's IP, so this 429 is app-wide: it happens to users who typed
+    // nothing wrong. Reporting it as AUTH_CREDENCIALES_INVALIDAS would state a falsehood
+    // about their credentials and send them retrying a correct password.
+    const supabase = supabaseWithUser(null);
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: {
+        name: "AuthApiError",
+        message: "Too many requests",
+        status: 429,
+        code: "over_request_rate_limit",
+      },
+    });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "correcta");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_AUTENTICACION_NO_DISPONIBLE,
+      cuentaComoIntento: false,
+      message: messageFor(AUTH_AUTENTICACION_NO_DISPONIBLE),
+    });
+    // The provider's text and the raw status never reach the client.
+    const message = res.ok ? null : res.message;
+    expect(message).not.toContain("Too many requests");
+    expect(message).not.toContain("429");
+    // Same no-enumeration posture as every other rejection: nothing read, nothing written.
+    expect(usuario.findUnique).not.toHaveBeenCalled();
+    expect(usuario.updateMany).not.toHaveBeenCalled();
+    expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
+  });
+
+  it("never counts an unusable identity as a failed password", async () => {
+    // F3: Auth returned a session, so the password was RIGHT; the sub is unusable. Without this
+    // pin, reverting the action to code-based counting stays green.
+    const supabase = supabaseWithUser({ id: "not-a-uuid", email: "ana@users.systemfact.internal" });
+    usuario.findUnique.mockResolvedValueOnce(fila).mockResolvedValueOnce({ authUserId: null });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "pw");
+
+    expect(res.ok).toBe(false);
+    expect(res.ok ? null : res.cuentaComoIntento).toBe(false);
   });
 
   it("rejects a successful Auth sign-in whose sub is unusable (never binds '')", async () => {
