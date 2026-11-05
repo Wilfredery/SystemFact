@@ -49,9 +49,16 @@ everybody) and cannot tell one attacker from one user. The pair is the smallest 
   DELETE/INSERT/SELECT/UPDATE.
 - `src/integration/login-throttle-rls.integration.test.ts` — **3/3**, driving the repository through
   the app role.
-- Full integration suite — **54 suites / 248 tests** green.
-- `pnpm rls:verify` — "all 27 tables have RLS enabled and a permissive policy for the app role",
-  `systemfact_app` with `rolbypassrls=false`.
+- Full integration suite — **55 suites / 251 tests** green.
+- `pnpm rls:verify` — "all 27 tables have RLS enabled and a permissive policy that applies to
+  \"systemfact_app\"", with `rolbypassrls=false`. The guard is **role-aware**: a permissive policy
+  naming a different role fails it (proven).
+- New `login-throttle-policy-shape.integration.test.ts` pins what the guard cannot read: one
+  policy, permissive, `USING (true)`, the four DML grants, none naming anon/authenticated.
+- **Local harness caveat:** the integration lane needs `DIRECT_URL` to be the **superuser**
+  (as CI writes it), because `LOGIN_INTENTO` is owned by `postgres` while the other 26 tables are
+  owned by `it_migrator`; with the migrator role the harness cannot `TRUNCATE` it (`42501`). CI is
+  unaffected.
 - **Negative controls** (reverted immediately): the old RESTRICTIVE policy makes the three
   integration tests fail, and makes `rls:verify` fail with
   `only RESTRICTIVE policies on: LOGIN_INTENTO`. Neither the test nor the guard is vacuous.
