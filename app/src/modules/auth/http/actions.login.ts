@@ -112,7 +112,12 @@ export async function login(
     // `AUTH_AUTENTICACION_NO_DISPONIBLE` are all reached with credentials Auth already
     // accepted (or not evaluated at all), so counting them would let anyone who knows a
     // valid password — or anyone at all during a provider outage — lock an account out.
-    if (result.code !== AUTH_CREDENCIALES_INVALIDAS) {
+    if (result.cuentaComoIntento) {
+      // Keep the attempt: the provider rejected the password, which is the only refusal that is a
+      // guess at the credential. The decision comes from the service, not from the code — several
+      // refusals share `AUTH_CREDENCIALES_INVALIDAS` for message purposes while having nothing to
+      // do with the password (review findings R3-catchall and F3).
+    } else {
       await descartarIntentoDeLogin(intentoId, almacenIntentosPrisma);
     }
     return { error: result.message };

@@ -430,6 +430,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toEqual({
       ok: false,
       code: AUTH_ENLACE_CONFLICTO,
+      cuentaComoIntento: false,
       message: expect.any(String),
     });
     // Never overwrite an existing link.
@@ -456,6 +457,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toEqual({
       ok: false,
       code: AUTH_ENLACE_DUPLICADO,
+      cuentaComoIntento: false,
       message: expect.any(String),
     });
     // Translated, never leaked as a raw 500 / P2002 string to the caller.
@@ -496,6 +498,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toEqual({
       ok: false,
       code: AUTH_USUARIO_INACTIVO,
+      cuentaComoIntento: false,
       message: expect.any(String),
     });
     expect(usuario.updateMany).not.toHaveBeenCalled();
@@ -535,6 +538,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toEqual({
       ok: false,
       code: AUTH_CREDENCIALES_INVALIDAS,
+      cuentaComoIntento: true,
       message: expect.any(String),
     });
     // No enumeration side channel: nothing is read or written on failure.
@@ -567,6 +571,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toStrictEqual({
       ok: false,
       code: AUTH_PASSWORD_POLICY,
+      cuentaComoIntento: false,
       message: messageFor(AUTH_PASSWORD_POLICY),
     });
     // The catalog owns the text: no provider message, no policy number leaked.
@@ -593,11 +598,15 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toStrictEqual({
       ok: false,
       code: AUTH_CREDENCIAL_NO_CONFIRMADA,
+      cuentaComoIntento: false,
       message: messageFor(AUTH_CREDENCIAL_NO_CONFIRMADA),
     });
   });
 
-  it("treats a banned account like a disabled one, not like a bad password", async () => {
+  it("treats a banned account like any other rejection, so it is neither counted nor an oracle", async () => {
+    // F4: a distinct "your account is banned" message before authentication would tell an
+    // unauthenticated caller that the account exists and its state. The uniform rejection is used
+    // instead, and `cuentaComoIntento` keeps it out of the throttle counter.
     const supabase = supabaseWithUser(null);
     supabase.auth.signInWithPassword.mockResolvedValue({
       data: { session: null, user: null },
@@ -608,8 +617,9 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
 
     expect(res).toStrictEqual({
       ok: false,
-      code: AUTH_USUARIO_INACTIVO,
-      message: messageFor(AUTH_USUARIO_INACTIVO),
+      code: AUTH_CREDENCIALES_INVALIDAS,
+      cuentaComoIntento: false,
+      message: messageFor(AUTH_CREDENCIALES_INVALIDAS),
     });
   });
 
@@ -630,6 +640,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toStrictEqual({
       ok: false,
       code: AUTH_AUTENTICACION_NO_DISPONIBLE,
+      cuentaComoIntento: false,
       message: messageFor(AUTH_AUTENTICACION_NO_DISPONIBLE),
     });
     expect(usuario.findUnique).not.toHaveBeenCalled();
@@ -647,6 +658,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toStrictEqual({
       ok: false,
       code: AUTH_AUTENTICACION_NO_DISPONIBLE,
+      cuentaComoIntento: false,
       message: messageFor(AUTH_AUTENTICACION_NO_DISPONIBLE),
     });
   });
@@ -672,6 +684,7 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(res).toStrictEqual({
       ok: false,
       code: AUTH_AUTENTICACION_NO_DISPONIBLE,
+      cuentaComoIntento: false,
       message: messageFor(AUTH_AUTENTICACION_NO_DISPONIBLE),
     });
     // The provider's text and the raw status never reach the client.

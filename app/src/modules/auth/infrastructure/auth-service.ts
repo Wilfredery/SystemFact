@@ -64,7 +64,7 @@ export type AuthResult =
        */
       activeBranchCount: number;
     }
-  | { ok: false; code: AuthErrorCode; message: string };
+  | { ok: false; code: AuthErrorCode; message: string; cuentaComoIntento: boolean };
 
 /**
  * Appends a LOGIN or LOGOUT audit row on the STANDALONE (pre-`TenantCtx`) path
@@ -183,14 +183,21 @@ async function resolverUsuarioDeSesion(
  * - everything else → the uniform credential rejection, which is what keeps the stranger
  *   reachable path free of enumeration oracles.
  */
-function codigoDeRechazoDeAuth(
+/**
+ * Classifies an Auth provider rejection.
+ *
+ * Two facts travel together and must not be conflated: the CODE is a message choice for the user,
+ * while `cuentaComoIntento` answers "was this a guess at the password?". Deriving the second from
+ * the first is exactly what let an unconfirmed account and an unusable identity be throttled
+ * (review findings R3-catchall and F3), because several distinct refusals share the uniform
+ * `AUTH_CREDENCIALES_INVALIDAS` message on purpose.
+ *
+ * Only the default branch counts: the password was evaluated and refused. Everything else means
+ * nothing was evaluated (unavailable) or the password was accepted (policy, unconfirmed, banned).
+ */
+function clasificarRechazoDeAuth(
   error: { code?: string | null; name?: string | null; status?: number | null } | null,
-): AuthErrorCode {
-  // Nothing was evaluated: the request never produced a verdict about the credential. That
-  // covers the project-wide 429 bucket, a 5xx, and a transport failure (status 0 / the
-  // retryable fetch error). Treating these as `AUTH_CREDENCIALES_INVALIDAS` told every user
-  // their password was wrong during an incident AND made the throttle count an OUTAGE as a
-  // guess, throttling people who typed the right password.
+): { codigo: AuthErrorCode; cuentaComoIntento: boolean } {
   if (
     error?.status === 429 ||
     error?.status === 0 ||
@@ -198,21 +205,20 @@ function codigoDeRechazoDeAuth(
     error?.code === "over_request_rate_limit" ||
     error?.name === "AuthRetryableFetchError"
   ) {
-    return AUTH_AUTENTICACION_NO_DISPONIBLE;
+    return { codigo: AUTH_AUTENTICACION_NO_DISPONIBLE, cuentaComoIntento: false };
   }
   if (error?.code === "weak_password") {
-    return AUTH_PASSWORD_POLICY;
+    return { codigo: AUTH_PASSWORD_POLICY, cuentaComoIntento: false };
   }
-  // Non-password refusals must not share the credential catch-all, because the login action
-  // treats that code as "someone guessed wrong" and counts it. R3-catchall: an account whose
-  // email is not confirmed has the RIGHT password and was still throttled.
   if (error?.code === "email_not_confirmed") {
-    return AUTH_CREDENCIAL_NO_CONFIRMADA;
+    return { codigo: AUTH_CREDENCIAL_NO_CONFIRMADA, cuentaComoIntento: false };
   }
   if (error?.code === "user_banned") {
-    return AUTH_USUARIO_INACTIVO;
+    // Deliberately NOT a distinct message: a "banned" answer before authentication would tell an
+    // unauthenticated caller that the account exists and its state (review finding F4).
+    return { codigo: AUTH_CREDENCIALES_INVALIDAS, cuentaComoIntento: false };
   }
-  return AUTH_CREDENCIALES_INVALIDAS;
+  return { codigo: AUTH_CREDENCIALES_INVALIDAS, cuentaComoIntento: true };
 }
 
 export async function loginWithCredenciales(
@@ -251,11 +257,12 @@ export async function loginWithCredenciales(
     // keyed on the SERVER's IP because this runs in a Server Action, so a 429 is an
     // app-wide condition that says nothing about the person typing. Reporting it as
     // invalid credentials would be false for every user at once.
-    const codigo: AuthErrorCode = codigoDeRechazoDeAuth(error);
+    const { codigo, cuentaComoIntento } = clasificarRechazoDeAuth(error);
     return {
       ok: false,
       code: codigo,
       message: messageFor(codigo),
+      cuentaComoIntento,
     };
   }
 
@@ -290,6 +297,8 @@ export async function loginWithCredenciales(
       ok: false,
       code: AUTH_USUARIO_INACTIVO,
       message: messageFor(AUTH_USUARIO_INACTIVO),
+      // Auth accepted the credentials; the account is refused for a different reason.
+      cuentaComoIntento: false,
     };
   }
 
@@ -319,6 +328,10 @@ export async function loginWithCredenciales(
       ok: false,
       code: AUTH_CREDENCIALES_INVALIDAS,
       message: messageFor(AUTH_CREDENCIALES_INVALIDAS),
+      // The password was RIGHT (Auth returned a session); the account's identity is unusable.
+      // Never counted: throttling a user for an internal invariant they cannot fix would be the
+      // falsehood this slice exists to avoid (review finding F3).
+      cuentaComoIntento: false,
     };
   }
 
@@ -329,7 +342,7 @@ export async function loginWithCredenciales(
   });
   if (!enlace.ok) {
     await supabase.auth.signOut();
-    return { ok: false, code: enlace.code, message: enlace.message };
+    return { ok: false, code: enlace.code, message: enlace.message, cuentaComoIntento: false };
   }
 
   // REQ-AUTH-AUD-001: a FULLY successful login (session established, the mapped
@@ -351,7 +364,7 @@ export async function loginWithCredenciales(
     // Cannot happen with `sucursalesActivasDeEmpresa: true`; the guard keeps
     // the payload construction explicit instead of relying on the non-null
     // assertion and the TS narrowing.
-    return { ok: false, code: AUTH_CREDENCIALES_INVALIDAS, message: messageFor(AUTH_CREDENCIALES_INVALIDAS) };
+    return { ok: false, code: AUTH_CREDENCIALES_INVALIDAS, message: messageFor(AUTH_CREDENCIALES_INVALIDAS), cuentaComoIntento: false };
   }
 
   const esAdmin = usuario.roles.some((r) => r.rol.nombre === "Administrador");

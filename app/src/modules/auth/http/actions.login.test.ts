@@ -115,6 +115,7 @@ describe("login — post-login landing branch (design D2)", () => {
       ok: false,
       code: "AUTH_CREDENCIALES_INVALIDAS",
       message: "Credenciales inválidas",
+      cuentaComoIntento: true,
     });
 
     const result = await login({ error: null }, formData("ana", "bad"));
@@ -156,6 +157,7 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
       ok: false,
       code: AUTH_CREDENCIALES_INVALIDAS,
       message: "Credenciales inválidas",
+      cuentaComoIntento: true,
     });
 
     await login({ error: null }, formData("admin", "mala"));
@@ -237,6 +239,7 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
       ok: false,
       code: AUTH_CREDENCIALES_INVALIDAS,
       message: "Credenciales inválidas",
+      cuentaComoIntento: true,
     });
 
     await login({ error: null }, formData("admin", "mala"));
@@ -258,6 +261,7 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
       ok: false,
       code: "AUTH_USUARIO_INACTIVO",
       message: "inactivo",
+      cuentaComoIntento: false,
     });
 
     await login({ error: null }, formData("admin", "correcta"));
@@ -270,6 +274,7 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
       ok: false,
       code: AUTH_AUTENTICACION_NO_DISPONIBLE,
       message: "no disponible",
+      cuentaComoIntento: false,
     });
 
     await login({ error: null }, formData("admin", "cualquiera"));
