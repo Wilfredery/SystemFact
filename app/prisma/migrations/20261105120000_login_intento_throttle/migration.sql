@@ -13,15 +13,18 @@
 --   tenant data at all: an IP, a normalized username, and a timestamp, swept
 --   once the window closes. It is a counter, not a record of people.
 --
--- WHY RLS + A DENY-ALL RESTRICTIVE POLICY ON A TABLE ONLY THE APP WRITES:
---   `pnpm rls:verify` fails CI when any table has RLS disabled OR zero policies,
---   and that guard earns its keep — it is how `_prisma_migrations` was caught.
---   The deny-all policy means PostgREST roles (`anon`, `authenticated`) can
---   neither read nor write this table even if a grant were added by mistake,
---   so the counter cannot be spammed or harvested through the data API. Prisma
---   connects as the table owner, which bypasses RLS because FORCE is
---   deliberately NOT set — the same posture, and the same reasoning, as
---   `20261104230000_prisma_migrations_enable_rls`.
+-- WHY RLS HERE IS A PERMISSIVE POLICY FOR THE APP ROLE, NOT A DENY-ALL:
+--   The runtime connects as `systemfact_app`, which is NOSUPERUSER NOBYPASSRLS and does NOT own
+--   this table (migrations run as the superuser; `tools/scripts/verify-rls.ts` asserts the app
+--   role must not own tables). RLS therefore really does apply to the app.
+--   A RESTRICTIVE `USING (false)` is ANDed with every permissive policy, so it denies EVERY
+--   role, `systemfact_app` included — the first version of this migration did exactly that and
+--   the throttle was inert: reads returned zero rows and inserts raised an RLS violation that
+--   the fail-open path swallowed. The deny-all posture of `_prisma_migrations` is NOT a
+--   precedent here, because the application never queries that table.
+--   `anon`/`authenticated` are denied by default: with RLS enabled and no permissive policy
+--   matching them, they match nothing. That is the deny-all we want, without a lever that also
+--   denies the app.
 --
 -- REVERSA: DROP TABLE public."LOGIN_INTENTO";
 --   Nothing irreplaceable is lost: a dropped counter only forgets one window of
@@ -49,12 +52,12 @@ CREATE INDEX "LOGIN_INTENTO_creadoEn_idx" ON "LOGIN_INTENTO"("creadoEn");
 
 ALTER TABLE public."LOGIN_INTENTO" ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "login_intento_deny_all" ON public."LOGIN_INTENTO";
-
-CREATE POLICY "login_intento_deny_all"
+-- One PERMISSIVE policy, scoped to the runtime role. `anon`/`authenticated` match no policy
+-- and are therefore denied without needing a restrictive denominator (see the header).
+CREATE POLICY "login_intento_app_role"
   ON public."LOGIN_INTENTO"
-  AS RESTRICTIVE
+  AS PERMISSIVE
   FOR ALL
-  TO PUBLIC
-  USING (false)
-  WITH CHECK (false);
+  TO systemfact_app
+  USING (true)
+  WITH CHECK (true);

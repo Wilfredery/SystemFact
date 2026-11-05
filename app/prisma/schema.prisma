@@ -812,10 +812,11 @@ model MovimientoAuditoria {
 /// timestamp, swept once the window closes.
 ///
 /// Written exclusively through Prisma from `infrastructure/` — never through
-/// PostgREST, so `anon`/`authenticated` get no surface to spam. RLS is enabled
-/// with a deny-all RESTRICTIVE policy (`rls:verify` fails CI on a table with RLS
-/// off or with zero policies); the owner role Prisma connects as bypasses it,
-/// FORCE is deliberately not set — same posture as `_prisma_migrations`.
+/// PostgREST, so `anon`/`authenticated` get no surface to spam. RLS is enabled with a
+/// PERMISSIVE policy scoped to `systemfact_app` (the runtime role: NOSUPERUSER,
+/// NOBYPASSRLS, not the owner), so RLS genuinely applies to the app and still allows it;
+/// `anon`/`authenticated` match no policy and are denied. A RESTRICTIVE deny-all must not
+/// be used here: restrictive policies are ANDed, so they deny the app too.
 ///
 /// Tracked in `odd/tasks/login-brute-force.md` (S5-S7).
 model LoginIntento {
