@@ -32,10 +32,12 @@ export const almacenIntentosPrisma: AlmacenIntentosLogin = {
     const filas = await prisma.loginIntento.findMany({
       where: { ip, nombreUsuarioNormalizado, creadoEn: { gte: desde } },
       select: { creadoEn: true },
-      // Bounded by construction: the window is short and a pair that keeps failing is
-      // delayed by the policy long before this list could grow without limit. Truncation
-      // cannot make the verdict too permissive — the delay is already at its cap by the
-      // tenth attempt, so any 500 rows inside the window are far past the threshold.
+      // NEWEST FIRST, and that is load-bearing, not cosmetic: the policy derives the
+      // remaining delay from the most recent attempt, so an unordered `take` that drops the
+      // newest rows would compute a delay of zero and let the attack through. Truncation is
+      // then harmless in the other direction too — the delay is already at its cap by the
+      // tenth attempt, so any 500 rows are far past the threshold.
+      orderBy: { creadoEn: "desc" },
       take: 500,
     });
     return filas.map((fila) => fila.creadoEn.getTime());
@@ -47,6 +49,15 @@ export const almacenIntentosPrisma: AlmacenIntentosLogin = {
     });
   },
 
+  /**
+   * Drops every row older than `corte`. Returns how many rows went away.
+   *
+   * The predicate is on `creadoEn` ALONE, which is why the table needs a standalone index
+   * on that column and not only the `(ip, username, creadoEn)` compound: a compound index
+   * cannot serve a predicate that does not constrain its leading columns, so this delete
+   * used to scan the whole table once per attempt — a denial-of-service lever an attacker
+   * controls by submitting unique usernames.
+   */
   async barrer(corte) {
     const { count } = await prisma.loginIntento.deleteMany({
       where: { creadoEn: { lt: corte } },

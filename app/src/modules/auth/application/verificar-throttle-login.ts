@@ -43,7 +43,7 @@ export type VeredictoLogin = { permitido: true } | { permitido: false; esperarMs
  * action that failed as the first token, so it is greppable and attributable.
  */
 function avisarContadorNoDisponible(
-  accion: "verificar" | "registrar" | "descartar" | "limpiar",
+  accion: "verificar" | "registrar" | "barrer" | "descartar" | "limpiar",
   error: unknown,
 ): void {
   console.error(`[auth.throttle] attempt counter unavailable (${accion}); continuing without it`, error);
@@ -109,14 +109,25 @@ export async function registrarIntentoDeLogin(
   almacen: AlmacenIntentosLogin,
 ): Promise<number | null> {
   const clave = normalizarClaveUsuario(nombreUsuario);
+
+  // The insert and the sweep are separated on purpose: once the row is committed the caller
+  // MUST receive its id, or it cannot undo an attempt that turns out not to be a guess. A
+  // shared try would return null for a committed row whenever the sweep failed.
+  let id: number;
   try {
-    const id = await almacen.registrar(ip, clave, new Date(ahora));
-    await almacen.barrer(new Date(ahora - VENTANA_INTENTOS_MS));
-    return id;
+    id = await almacen.registrar(ip, clave, new Date(ahora));
   } catch (error) {
     avisarContadorNoDisponible("registrar", error);
     return null;
   }
+
+  try {
+    await almacen.barrer(new Date(ahora - VENTANA_INTENTOS_MS));
+  } catch (error) {
+    avisarContadorNoDisponible("barrer", error);
+  }
+
+  return id;
 }
 
 /**

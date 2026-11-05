@@ -41,6 +41,12 @@ CREATE TABLE "LOGIN_INTENTO" (
 CREATE INDEX "LOGIN_INTENTO_ip_nombreUsuarioNormalizado_creadoEn_idx"
     ON "LOGIN_INTENTO"("ip", "nombreUsuarioNormalizado", "creadoEn");
 
+-- The sweep's predicate is on `creadoEn` ALONE. A compound index cannot serve a query that
+-- does not constrain its leading columns, so without this one every login attempt ran an
+-- unindexed delete over a growing table — work an attacker could force at will by
+-- submitting unique usernames.
+CREATE INDEX "LOGIN_INTENTO_creadoEn_idx" ON "LOGIN_INTENTO"("creadoEn");
+
 ALTER TABLE public."LOGIN_INTENTO" ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "login_intento_deny_all" ON public."LOGIN_INTENTO";

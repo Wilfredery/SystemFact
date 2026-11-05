@@ -219,6 +219,35 @@ describe("login throttle — an unhealthy counter never becomes a login outage",
     await expect(registrarExitoDeLogin("admin", IP, roto)).resolves.toBeUndefined();
   });
 
+  it("keeps the new id when only the sweep fails", async () => {
+    // R4-001: insert and sweep used to share one try, so a sweep failure returned null for
+    // a row that WAS committed — and the caller cannot undo what it has no id for, leaving
+    // a provider 429 or an inactive-account refusal counted against the user.
+    const almacen: AlmacenIntentosLogin = {
+      async registrar() {
+        return 7;
+      },
+      async descartar() {
+        /* noop */
+      },
+      async listar() {
+        return [];
+      },
+      async limpiar() {
+        /* noop */
+      },
+      async barrer() {
+        throw new Error("sweep caído");
+      },
+    };
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(registrarIntentoDeLogin("admin", IP, ahora, almacen)).resolves.toBe(7);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("never fails open silently: each swallowed error is reported", async () => {
     // A security control that is silently OFF is worse than one that is visibly off.
     // Failing open is the right trade (see ADR-020); doing it without a trace is not,

@@ -824,7 +824,11 @@ model LoginIntento {
   nombreUsuarioNormalizado String   @db.VarChar(255)
   creadoEn                 DateTime @default(now()) @db.Timestamptz(6)
 
-  // The only query shape the throttle uses: count one pair inside a window.
+  // The only query shape the throttle uses: count one pair inside a window. NEWEST FIRST
+  // is part of that shape, so the policy's `Math.max` always sees the latest attempt.
   @@index([ip, nombreUsuarioNormalizado, creadoEn])
+  // Standalone index for the sweep, whose predicate is on `creadoEn` alone; the compound
+  // index above cannot serve it, and an unindexed delete per attempt is a DoS lever.
+  @@index([creadoEn])
   @@map("LOGIN_INTENTO")
 }
