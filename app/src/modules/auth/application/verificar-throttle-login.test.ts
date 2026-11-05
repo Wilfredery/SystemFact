@@ -166,4 +166,26 @@ describe("login throttle — an unhealthy counter never becomes a login outage",
     await expect(registrarFalloDeLogin("admin", IP, ahora, roto)).resolves.toBeUndefined();
     await expect(registrarExitoDeLogin("admin", IP, roto)).resolves.toBeUndefined();
   });
+
+  it("never fails open silently: each swallowed error is reported", async () => {
+    // A security control that is silently OFF is worse than one that is visibly off.
+    // Failing open is the right trade (see ADR-020); doing it without a trace is not,
+    // because then a dropped table or a permissions mistake removes the throttle and
+    // nobody — including the operator reading the logs — can tell.
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await verificarThrottleLogin("admin", IP, ahora, roto);
+      await registrarFalloDeLogin("admin", IP, ahora, roto);
+      await registrarExitoDeLogin("admin", IP, roto);
+
+      expect(errorSpy).toHaveBeenCalledTimes(3);
+      expect(errorSpy.mock.calls.map(([linea]) => String(linea))).toEqual([
+        expect.stringContaining("verificar"),
+        expect.stringContaining("registrar"),
+        expect.stringContaining("limpiar"),
+      ]);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });

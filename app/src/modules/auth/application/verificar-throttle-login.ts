@@ -33,6 +33,19 @@ export interface AlmacenIntentosLogin {
 export type VeredictoLogin = { permitido: true } | { permitido: false; esperarMs: number };
 
 /**
+ * Fail-open must never be silent.
+ *
+ * A security control that is quietly OFF is worse than one that is visibly off: a dropped
+ * table, a revoked grant or a migration that never ran would remove the throttle and the
+ * only people who could notice are reading logs. There is no logger contract in this
+ * module, so this uses the one channel a deployment actually collects — stderr — with the
+ * action that failed as the first token, so it is greppable and attributable.
+ */
+function avisarContadorNoDisponible(accion: "verificar" | "registrar" | "limpiar", error: unknown): void {
+  console.error(`[auth.throttle] attempt counter unavailable (${accion}); continuing without it`, error);
+}
+
+/**
  * THE FAIL-OPEN DECISION, recorded here because it is a security trade, not an
  * implementation detail.
  *
@@ -43,9 +56,10 @@ export type VeredictoLogin = { permitido: true } | { permitido: false; esperarMs
  * database that cannot answer the counter cannot complete a login either — failing open
  * here does not open a path that was otherwise closed.
  *
- * The error is swallowed rather than logged: there is no logger contract in this
- * module, and inventing a partially-applied one is out of scope. The observable signal
- * is the typed behavior, and the counter rebuilding itself on the next failure.
+ * The error itself is never swallowed: `avisarContadorNoDisponible` writes it to stderr
+ * with the failing action as the first token, so a counter that is quietly OFF is visible
+ * to whoever reads logs. What is swallowed here is the FAILURE, not the evidence — the
+ * caller gets a typed verdict instead of an exception it cannot act on.
  */
 export async function verificarThrottleLogin(
   nombreUsuario: string,
@@ -60,7 +74,8 @@ export async function verificarThrottleLogin(
     return veredicto.bloqueado
       ? { permitido: false, esperarMs: veredicto.esperarMs }
       : { permitido: true };
-  } catch {
+  } catch (error) {
+    avisarContadorNoDisponible("verificar", error);
     return { permitido: true };
   }
 }
@@ -83,9 +98,10 @@ export async function registrarFalloDeLogin(
   try {
     await almacen.registrar(ip, clave, new Date(ahora));
     await almacen.barrer(new Date(ahora - VENTANA_INTENTOS_MS));
-  } catch {
+  } catch (error) {
     // Same reasoning as the fail-open above: an unhealthy counter must not turn a
     // rejected login into a 500 the user cannot act on. The sign-in outcome stands.
+    avisarContadorNoDisponible("registrar", error);
     return;
   }
 }
@@ -102,7 +118,8 @@ export async function registrarExitoDeLogin(
   const clave = normalizarClaveUsuario(nombreUsuario);
   try {
     await almacen.limpiar(ip, clave);
-  } catch {
+  } catch (error) {
+    avisarContadorNoDisponible("limpiar", error);
     return;
   }
 }
