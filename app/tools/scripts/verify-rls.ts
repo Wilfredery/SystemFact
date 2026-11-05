@@ -140,6 +140,16 @@ async function verifyV2r01IdentityControls(): Promise<void> {
  * other (enabled but nobody wrote a rule = still wide open).
  */
 async function verifyEveryTableHasRls(): Promise<void> {
+  // The runtime role's own oid. "A permissive policy exists" is NOT the property we need —
+  // "a permissive policy APPLIES TO THIS ROLE" is. A policy written `TO authenticated` (the
+  // shape a Supabase habit produces, and the one that would silently disable the throttle
+  // again) matches no app role while `permisivas > 0` still read green.
+  // PUBLIC is the pseudo-role oid 0 inside `polroles` (`{0}`), NOT an empty array — treating it
+  // as empty rejected the 25 tables whose policies are legitimately `TO PUBLIC`.
+  const [rol] = await prisma.$queryRaw<{ oid: number; name: string }[]>`
+    SELECT oid::int AS oid, rolname::text AS name FROM pg_roles WHERE rolname = current_user`;
+  if (rol === undefined) throw new Error("could not resolve current_user oid");
+
   const tables = await prisma.$queryRaw<TableRlsRow[]>`
     SELECT c.relname,
            c.relrowsecurity,
@@ -150,7 +160,10 @@ async function verifyEveryTableHasRls(): Promise<void> {
     LEFT JOIN (
       SELECT polrelid,
              COUNT(*) AS n,
-             COUNT(*) FILTER (WHERE polpermissive) AS pn
+             COUNT(*) FILTER (
+               WHERE polpermissive
+                 AND (0 = ANY (polroles) OR ${rol.oid}::oid = ANY (polroles))
+             ) AS pn
       FROM pg_policy GROUP BY polrelid
     ) p ON p.polrelid = c.oid
     WHERE ns.nspname = current_schema()
@@ -175,8 +188,9 @@ async function verifyEveryTableHasRls(): Promise<void> {
     if (sinPolitica.length > 0) partes.push(`no policy at all on: ${sinPolitica.join(", ")}`);
     if (soloRestrictiva.length > 0) {
       partes.push(
-        `only RESTRICTIVE policies on: ${soloRestrictiva.join(", ")} — the app role has no ` +
-          "policy that permits it, and a fail-open caller turns that into a silently disabled control",
+        `no PERMISSIVE policy that applies to this role on: ${soloRestrictiva.join(", ")} — a ` +
+          "restrictive-only table (or a policy naming some other role) leaves the app with no " +
+          "permission at all, and a fail-open caller turns that into a silently disabled control",
       );
     }
     throw new Error(
@@ -188,7 +202,7 @@ async function verifyEveryTableHasRls(): Promise<void> {
   }
 
   console.log(
-    `OK: all ${tables.length} tables have RLS enabled and a permissive policy for the app role`,
+    `OK: all ${tables.length} tables have RLS enabled and a permissive policy that applies to "${rol.name}"`,
   );
 }
 
