@@ -1,3 +1,9 @@
+## [0.19.1](https://github.com/Wilfredery/SystemFact/compare/v0.19.0...v0.19.1) (2026-11-05)
+
+### Bug Fixes
+
+* **auth:** the throttle's count and insert are now **one locked decision** (docs/22 T3, finding `R4-002`). They used to be two statements, so a concurrent burst for one pair could all read the same count and all proceed — the provider's 150/5 min bucket bounded the damage, but the control did not do what it claimed under concurrency. The port is now a single `intentar(ip, clave, ahoraMs)` that takes `pg_advisory_xact_lock(hashtext(pair))`, reads the window newest-first, applies the policy and only then inserts, all inside one transaction; the lock is `xact`, so it cannot leak on a throw, and it serializes only the same pair. The policy decision moved into the repository because it has to run inside the lock to mean anything, while the application keeps the counter key, the loud fail-open path, the undo and the clear. `R4-003` becomes structurally impossible rather than handled, since there is no window between "recorded" and "verdict" left to throw in. **Verified in both directions on real Postgres:** with the lock, 8 concurrent attempts for one pair yield exactly the threshold; with the lock temporarily removed, the same test lets 8 of 8 through — so the test is not vacuous and the lock, not the connection pool, is what does the work.
+
 ## [0.19.0](https://github.com/Wilfredery/SystemFact/compare/v0.18.8...v0.19.0) (2026-11-05)
 
 ### Features
