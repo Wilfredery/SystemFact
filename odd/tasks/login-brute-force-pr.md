@@ -42,11 +42,22 @@ everybody) and cannot tell one attacker from one user. The pair is the smallest 
 
 ## Gates
 
-`prisma validate` + `generate` OK · `tsc --noEmit` clean · ESLint 0 errors (3 pre-existing
-unused-import warnings in `actions.login.ts`, untouched here) · **144 suites / 1377 tests**
-green. Docker was not running on the authoring machine, so `prisma migrate deploy`,
-`pnpm rls:verify` and the integration suite are proven by CI, not locally — the new table is
-covered by `rls:verify` automatically because that guard enumerates `pg_class`.
+**Verified locally on real Postgres 17.6** (`systemfact_test`, migrations applied by `prisma migrate deploy`):
+
+- `prisma migrate deploy` applied both pending migrations without error — the hand-written SQL executes.
+- Catalogs: one policy, `polpermissive = true`, `TO systemfact_app`, `USING (true)`; the role holds
+  DELETE/INSERT/SELECT/UPDATE.
+- `src/integration/login-throttle-rls.integration.test.ts` — **3/3**, driving the repository through
+  the app role.
+- Full integration suite — **54 suites / 248 tests** green.
+- `pnpm rls:verify` — "all 27 tables have RLS enabled and a permissive policy for the app role",
+  `systemfact_app` with `rolbypassrls=false`.
+- **Negative controls** (reverted immediately): the old RESTRICTIVE policy makes the three
+  integration tests fail, and makes `rls:verify` fail with
+  `only RESTRICTIVE policies on: LOGIN_INTENTO`. Neither the test nor the guard is vacuous.
+
+Unit gate on the final tip: `tsc` clean, ESLint 3 pre-existing warnings, **144 suites / 1379
+tests**, `prisma validate` valid.
 
 Test-first: RED was observed for the throttle wiring, the 429/transport/email mappings, the
 elapsed-delay rule, the IPv6 rule, the repository query shape and the sweep/id separation.
