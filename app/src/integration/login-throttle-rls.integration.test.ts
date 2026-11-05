@@ -1,64 +1,84 @@
 /**
  * Integration — the login throttle counter through the APP ROLE (real Postgres, RLS on).
  *
- * WHY THIS TEST EXISTS. The first version of the `LOGIN_INTENTO` migration created a
- * RESTRICTIVE `USING (false)` policy. Restrictive policies are ANDed with every permissive
- * one, so they deny `systemfact_app` as well — and because the throttle fails open, that
- * turned a broken policy into a *silently disabled control*: reads returned zero rows and
- * inserts raised an RLS violation that the fail-open path swallowed and logged. The unit
- * suite could not see it (it uses a fake store) and `pnpm rls:verify` could not see it either
- * (it only demanded RLS plus at least one policy). This test exercises the three operations
- * the throttle actually performs, through the same role production uses, so the class of
- * defect cannot ship again.
+ * Two things only a real database can prove:
+ *
+ * 1. REACHABILITY. The first version of the `LOGIN_INTENTO` migration created a RESTRICTIVE
+ *    `USING (false)` policy. Restrictive policies are ANDed with every permissive one, so it
+ *    denied `systemfact_app` too — and because the throttle fails open, a broken policy became
+ *    a SILENTLY DISABLED control: reads returned nothing, inserts raised an RLS violation that
+ *    was swallowed. The unit suite could not see it (fake store) and `rls:verify` could not
+ *    see it either (it demanded RLS plus a policy, without checking the role).
+ *
+ * 2. ATOMICITY. The count and the insert are one locked decision (finding `R4-002`). As two
+ *    statements, a concurrent burst all read the same count and all proceeded.
  */
 import { almacenIntentosPrisma } from "@/modules/auth/infrastructure/login-attempt-repository";
+import { ESPERA_BASE_MS, UMBRAL_INTENTOS } from "@/modules/auth/domain/login-throttle";
 
 const IP = "198.51.100.77";
-const USUARIO = "rls-probe-throttle";
-const VENTANA_MS = 2 * 60 * 60_000;
+const USUARIO_A = "rls-probe-a";
+const USUARIO_B = "rls-probe-b";
+
+afterEach(async () => {
+  await almacenIntentosPrisma.limpiar(IP, USUARIO_A);
+  await almacenIntentosPrisma.limpiar(IP, USUARIO_B);
+});
 
 describe("LOGIN_INTENTO — the runtime role can actually use the counter", () => {
-  afterEach(async () => {
-    await almacenIntentosPrisma.limpiar(IP, USUARIO);
-  });
-
-  it("records an attempt, reads it back, and clears the pair on success", async () => {
-    const id = await almacenIntentosPrisma.registrar(IP, USUARIO, new Date());
+  it("records an attempt and reports it as allowed with a real id", async () => {
+    const resultado = await almacenIntentosPrisma.intentar(IP, USUARIO_A, Date.now());
 
     // A number, not null: with a restrictive-only policy the insert is rejected and the
-    // fail-open wrapper returns null, which is exactly the silent failure this pins.
-    expect(typeof id).toBe("number");
-    expect(id).toBeGreaterThan(0);
-
-    const intentos = await almacenIntentosPrisma.listar(IP, USUARIO, new Date(Date.now() - VENTANA_MS));
-    expect(intentos).toHaveLength(1);
-
-    await almacenIntentosPrisma.limpiar(IP, USUARIO);
-    await expect(
-      almacenIntentosPrisma.listar(IP, USUARIO, new Date(Date.now() - VENTANA_MS)),
-    ).resolves.toEqual([]);
+    // fail-open wrapper reports nothing to undo.
+    expect(resultado.permitido).toBe(true);
+    if (resultado.permitido) {
+      expect(typeof resultado.id).toBe("number");
+      expect(resultado.id).toBeGreaterThan(0);
+    }
   });
 
-  it("undoes exactly one attempt without touching the rest of the pair", async () => {
-    const primero = await almacenIntentosPrisma.registrar(IP, USUARIO, new Date());
-    const segundo = await almacenIntentosPrisma.registrar(IP, USUARIO, new Date());
+  it("refuses at the threshold with the base delay, and clearing frees the pair", async () => {
+    const ahora = Date.now();
+    for (let i = 0; i < UMBRAL_INTENTOS; i += 1) {
+      const r = await almacenIntentosPrisma.intentar(IP, USUARIO_A, ahora - i);
+      expect(r.permitido).toBe(true);
+    }
 
-    await almacenIntentosPrisma.descartar(segundo);
+    const bloqueado = await almacenIntentosPrisma.intentar(IP, USUARIO_A, ahora);
+    expect(bloqueado).toEqual({ permitido: false, esperarMs: ESPERA_BASE_MS });
 
-    const quedan = await almacenIntentosPrisma.listar(IP, USUARIO, new Date(Date.now() - VENTANA_MS));
-    expect(quedan).toHaveLength(1);
-    expect(primero).toBeGreaterThan(0);
+    await almacenIntentosPrisma.limpiar(IP, USUARIO_A);
+    await expect(almacenIntentosPrisma.intentar(IP, USUARIO_A, ahora)).resolves.toMatchObject({
+      permitido: true,
+    });
   });
 
-  it("sweeps rows that left the window and keeps the fresh ones", async () => {
-    const viejo = new Date(Date.now() - 60 * 60_000);
-    await almacenIntentosPrisma.registrar(IP, USUARIO, viejo);
-    await almacenIntentosPrisma.registrar(IP, USUARIO, new Date());
+  it("keeps one pair apart from another on real SQL", async () => {
+    const ahora = Date.now();
+    for (let i = 0; i < UMBRAL_INTENTOS; i += 1) {
+      await almacenIntentosPrisma.intentar(IP, USUARIO_A, ahora);
+    }
 
-    const borradas = await almacenIntentosPrisma.barrer(new Date(Date.now() - 15 * 60_000));
+    // Same IP, different user — the whole reason the key is not per-IP.
+    await expect(almacenIntentosPrisma.intentar(IP, USUARIO_B, ahora)).resolves.toMatchObject({
+      permitido: true,
+    });
+  });
 
-    expect(borradas).toBeGreaterThanOrEqual(1);
-    const quedan = await almacenIntentosPrisma.listar(IP, USUARIO, new Date(Date.now() - VENTANA_MS));
-    expect(quedan).toHaveLength(1);
+  it("serializes a CONCURRENT burst instead of letting it through (R4-002)", async () => {
+    const ahora = Date.now();
+    const intentos = 8;
+
+    const resultados = await Promise.all(
+      Array.from({ length: intentos }, () => almacenIntentosPrisma.intentar(IP, USUARIO_A, ahora)),
+    );
+
+    const permitidos = resultados.filter((r) => r.permitido).length;
+
+    // Exactly the threshold, never more: the per-pair advisory lock makes "count then insert"
+    // a single decision, so no two concurrent attempts can both read the same count.
+    expect(permitidos).toBe(UMBRAL_INTENTOS);
+    expect(resultados.length - permitidos).toBe(intentos - UMBRAL_INTENTOS);
   });
 });

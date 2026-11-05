@@ -18,9 +18,8 @@ import {
 import { normalizarIp } from "@/modules/auth/domain/login-throttle";
 import {
   descartarIntentoDeLogin,
+  intentarAccesoDeLogin,
   registrarExitoDeLogin,
-  registrarIntentoDeLogin,
-  verificarThrottleLogin,
 } from "@/modules/auth/application/verificar-throttle-login";
 import { almacenIntentosPrisma } from "@/modules/auth/infrastructure/login-attempt-repository";
 
@@ -79,17 +78,15 @@ export async function login(
   // by everyone (review finding R4-001). `x-real-ip` is set by the platform as one value.
   const ip = normalizarIp(cabeceras.get("x-real-ip") ?? cabeceras.get("x-forwarded-for"));
   const ahora = Date.now();
-  const throttle = await verificarThrottleLogin(nombreUsuario, ip, ahora, almacenIntentosPrisma);
-  if (!throttle.permitido) {
+  // One call, one decision: the counter checks AND records this attempt inside a single
+  // locked transaction (finding R4-002). Two statements — read, then insert — left the gap
+  // between them as a window in which a concurrent burst all read the same count and all
+  // proceeded, which is precisely the shape of a brute-force attempt.
+  const intento = await intentarAccesoDeLogin(nombreUsuario, ip, ahora, almacenIntentosPrisma);
+  if (!intento.permitido) {
     return { error: messageFor(AUTH_INTENTOS_EXCEDIDOS) };
   }
-
-  // The attempt is recorded BEFORE the guess reaches the provider, and it is what the
-  // NEXT attempt counts. Checking and inserting afterwards would leave the provider
-  // round-trip as a window in which a concurrent burst all passes the same check — the
-  // exact shape of the attack. It is deleted again below when the refusal turns out not
-  // to be a password guess, and cleared with the whole pair on success.
-  const intentoId = await registrarIntentoDeLogin(nombreUsuario, ip, ahora, almacenIntentosPrisma);
+  const intentoId = intento.intentoId;
 
   const supabase = await createClient();
   let result: Awaited<ReturnType<typeof loginWithCredenciales>>;

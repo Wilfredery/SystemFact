@@ -17,7 +17,7 @@ jest.mock("next/headers", () => ({
 }));
 
 jest.mock("@/modules/auth/application/verificar-throttle-login", () => ({
-  verificarThrottleLogin: jest.fn(),
+  intentarAccesoDeLogin: jest.fn(),
   registrarIntentoDeLogin: jest.fn(),
   descartarIntentoDeLogin: jest.fn(),
   registrarExitoDeLogin: jest.fn(),
@@ -35,8 +35,7 @@ import { loginWithCredenciales } from "@/modules/auth/infrastructure/auth-servic
 import {
   descartarIntentoDeLogin,
   registrarExitoDeLogin,
-  registrarIntentoDeLogin,
-  verificarThrottleLogin,
+  intentarAccesoDeLogin,
 } from "@/modules/auth/application/verificar-throttle-login";
 import { almacenIntentosPrisma } from "@/modules/auth/infrastructure/login-attempt-repository";
 import {
@@ -49,8 +48,7 @@ import {
 const loginWithCredencialesMock = loginWithCredenciales as unknown as jest.Mock;
 const redirectMock = redirect as unknown as jest.Mock;
 const headersMock = headers as unknown as jest.Mock;
-const verificarThrottleMock = verificarThrottleLogin as unknown as jest.Mock;
-const registrarIntentoMock = registrarIntentoDeLogin as unknown as jest.Mock;
+const intentarAccesoMock = intentarAccesoDeLogin as unknown as jest.Mock;
 const descartarIntentoMock = descartarIntentoDeLogin as unknown as jest.Mock;
 const registrarExitoMock = registrarExitoDeLogin as unknown as jest.Mock;
 
@@ -70,8 +68,7 @@ describe("login — post-login landing branch (design D2)", () => {
     headersMock.mockResolvedValue(
       new Headers({ "x-forwarded-for": "203.0.113.7" }),
     );
-    verificarThrottleMock.mockResolvedValue({ permitido: true });
-    registrarIntentoMock.mockResolvedValue(11);
+    intentarAccesoMock.mockResolvedValue({ permitido: true, intentoId: 11 });
   });
 
   it("TEN landing: multi-branch admin goes to /selector-empresa-sucursal", async () => {
@@ -132,12 +129,11 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
     headersMock.mockResolvedValue(
       new Headers({ "x-forwarded-for": "203.0.113.7" }),
     );
-    verificarThrottleMock.mockResolvedValue({ permitido: true });
-    registrarIntentoMock.mockResolvedValue(11);
+    intentarAccesoMock.mockResolvedValue({ permitido: true, intentoId: 11 });
   });
 
   it("refuses before touching Supabase when that pair is throttled", async () => {
-    verificarThrottleMock.mockResolvedValue({ permitido: false, esperarMs: 30_000 });
+    intentarAccesoMock.mockResolvedValue({ permitido: false, esperarMs: 30_000 });
 
     const result = await login({ error: null }, formData("admin", "guess"));
 
@@ -146,7 +142,6 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
     expect(loginWithCredencialesMock).not.toHaveBeenCalled();
     // A refused attempt is not recorded either: the delay must expire on its own, and
     // counting refusals would keep the pair blocked forever.
-    expect(registrarIntentoMock).not.toHaveBeenCalled();
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
@@ -162,7 +157,7 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
 
     await login({ error: null }, formData("admin", "mala"));
 
-    expect(registrarIntentoMock.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(intentarAccesoMock.mock.invocationCallOrder[0]).toBeLessThan(
       loginWithCredencialesMock.mock.invocationCallOrder[0] as number,
     );
   });
@@ -178,7 +173,7 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
 
     // The zod schema trims first, so the action hands the adapter the trimmed value and
     // the application layer folds case — two different jobs, both observable here.
-    expect(verificarThrottleMock).toHaveBeenCalledWith(
+    expect(intentarAccesoMock).toHaveBeenCalledWith(
       "Admin",
       "203.0.113.7",
       expect.any(Number),
@@ -198,7 +193,7 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
 
     await login({ error: null }, formData("admin", "buena"));
 
-    expect(verificarThrottleMock).toHaveBeenCalledWith(
+    expect(intentarAccesoMock).toHaveBeenCalledWith(
       "admin",
       "198.51.100.9",
       expect.any(Number),
@@ -226,7 +221,7 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
 
     await login({ error: null }, formData("admin", "buena"));
 
-    expect(verificarThrottleMock).toHaveBeenCalledWith(
+    expect(intentarAccesoMock).toHaveBeenCalledWith(
       "admin",
       "198.51.100.9",
       expect.any(Number),
@@ -244,7 +239,7 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
 
     await login({ error: null }, formData("admin", "mala"));
 
-    expect(registrarIntentoMock).toHaveBeenCalledWith(
+    expect(intentarAccesoMock).toHaveBeenCalledWith(
       "admin",
       "203.0.113.7",
       expect.any(Number),
