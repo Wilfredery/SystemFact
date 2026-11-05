@@ -75,7 +75,10 @@ export async function login(
   // throttle every user. A refusal here is NOT recorded as a failed attempt — the delay
   // has to expire, and counting refusals would make it self-sustaining.
   const cabeceras = await headers();
-  const ip = normalizarIp(cabeceras.get("x-forwarded-for") ?? cabeceras.get("x-real-ip"));
+  // A SINGLE-VALUE platform header first: `x-forwarded-for` is a list the client can prepend
+  // to, and with more than one appending proxy its last hop is another proxy's address shared
+  // by everyone (review finding R4-001). `x-real-ip` is set by the platform as one value.
+  const ip = normalizarIp(cabeceras.get("x-real-ip") ?? cabeceras.get("x-forwarded-for"));
   const ahora = Date.now();
   const throttle = await verificarThrottleLogin(nombreUsuario, ip, ahora, almacenIntentosPrisma);
   if (!throttle.permitido) {
@@ -90,7 +93,16 @@ export async function login(
   const intentoId = await registrarIntentoDeLogin(nombreUsuario, ip, ahora, almacenIntentosPrisma);
 
   const supabase = await createClient();
-  const result = await loginWithCredenciales(supabase, nombreUsuario, password);
+  let result: Awaited<ReturnType<typeof loginWithCredenciales>>;
+  try {
+    result = await loginWithCredenciales(supabase, nombreUsuario, password);
+  } catch (error) {
+    // The attempt is already committed, so a THROW between here and the verdict would leave a
+    // row counted forever as a wrong password the user never typed (R4-003). Undo it and let
+    // the failure surface.
+    await descartarIntentoDeLogin(intentoId, almacenIntentosPrisma);
+    throw error;
+  }
 
   if (!result.ok) {
     // The attempt row was already written BEFORE the provider call (see below), so here

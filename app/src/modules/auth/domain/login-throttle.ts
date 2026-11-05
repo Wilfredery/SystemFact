@@ -127,6 +127,13 @@ export function normalizarIp(cabecera: string | null | undefined): string {
   // LAST hop, not first: a client controls everything it sends, so the leftmost entries are
   // whatever it typed. Behind a proxy that APPENDS, the rightmost entry is the one the
   // platform added; behind one that overwrites, there is a single entry and last == first.
+  //
+  // THE ASSUMPTION IS EXPLICIT AND BOUNDED: exactly ONE trusted proxy appends. With two or
+  // more appending proxies the last hop is another proxy's address — shared by every request —
+  // and the pair collapses to username-only, which would let five bad guesses delay a known
+  // user. That is why the caller prefers a SINGLE-VALUE platform header (`x-real-ip`) and only
+  // falls back to this list. If a second proxy is ever introduced, this function is the thing
+  // to revisit (review finding R4-001).
   const primero = saltos[saltos.length - 1] ?? "";
   if (primero === "") return IP_DESCONOCIDA;
 

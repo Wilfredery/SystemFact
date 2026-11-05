@@ -184,6 +184,36 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
     );
   });
 
+  it("prefers x-real-ip over the forwarded list, which a client can prepend to", async () => {
+    headersMock.mockResolvedValue(
+      new Headers({ "x-real-ip": "198.51.100.9", "x-forwarded-for": "1.2.3.4, 203.0.113.7" }),
+    );
+    loginWithCredencialesMock.mockResolvedValue({
+      ok: true,
+      esAdmin: false,
+      activeBranchCount: 1,
+    });
+
+    await login({ error: null }, formData("admin", "buena"));
+
+    expect(verificarThrottleMock).toHaveBeenCalledWith(
+      "admin",
+      "198.51.100.9",
+      expect.any(Number),
+      almacenIntentosPrisma,
+    );
+  });
+
+  it("undoes the recorded attempt when the provider call throws", async () => {
+    // R4-003: without this, a throw between the insert and the verdict leaves a row counted
+    // forever as a wrong password the user never typed.
+    loginWithCredencialesMock.mockRejectedValue(new Error("fetch failed"));
+
+    await expect(login({ error: null }, formData("admin", "buena"))).rejects.toThrow("fetch failed");
+
+    expect(descartarIntentoMock).toHaveBeenCalledWith(11, almacenIntentosPrisma);
+  });
+
   it("falls back to x-real-ip when there is no forwarded list", async () => {
     headersMock.mockResolvedValue(new Headers({ "x-real-ip": "198.51.100.9" }));
     loginWithCredencialesMock.mockResolvedValue({

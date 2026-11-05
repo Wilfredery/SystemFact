@@ -31,6 +31,7 @@ import { setLoginFlow } from "@/modules/tenant/infrastructure/login-flow";
 import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import {
   AUTH_AUTENTICACION_NO_DISPONIBLE,
+  AUTH_CREDENCIAL_NO_CONFIRMADA,
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_PASSWORD_POLICY,
   AUTH_USUARIO_INACTIVO,
@@ -201,6 +202,15 @@ function codigoDeRechazoDeAuth(
   }
   if (error?.code === "weak_password") {
     return AUTH_PASSWORD_POLICY;
+  }
+  // Non-password refusals must not share the credential catch-all, because the login action
+  // treats that code as "someone guessed wrong" and counts it. R3-catchall: an account whose
+  // email is not confirmed has the RIGHT password and was still throttled.
+  if (error?.code === "email_not_confirmed") {
+    return AUTH_CREDENCIAL_NO_CONFIRMADA;
+  }
+  if (error?.code === "user_banned") {
+    return AUTH_USUARIO_INACTIVO;
   }
   return AUTH_CREDENCIALES_INVALIDAS;
 }

@@ -25,6 +25,7 @@ import {
 import { enlazarAuthSub } from "@/modules/auth/infrastructure/auth-identity";
 import {
   AUTH_AUTENTICACION_NO_DISPONIBLE,
+  AUTH_CREDENCIAL_NO_CONFIRMADA,
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_ENLACE_CONFLICTO,
   AUTH_ENLACE_DUPLICADO,
@@ -576,6 +577,40 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     expect(usuario.findUnique).not.toHaveBeenCalled();
     expect(usuario.updateMany).not.toHaveBeenCalled();
     expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
+  });
+
+  it("gives an unconfirmed account its own code so it is never counted as a guess", async () => {
+    // R3-catchall: the password was RIGHT. Counting this as AUTH_CREDENCIALES_INVALIDAS made
+    // the login action throttle a user who typed nothing wrong.
+    const supabase = supabaseWithUser(null);
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { name: "AuthApiError", message: "Email not confirmed", status: 400, code: "email_not_confirmed" },
+    });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "correcta");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_CREDENCIAL_NO_CONFIRMADA,
+      message: messageFor(AUTH_CREDENCIAL_NO_CONFIRMADA),
+    });
+  });
+
+  it("treats a banned account like a disabled one, not like a bad password", async () => {
+    const supabase = supabaseWithUser(null);
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { name: "AuthApiError", message: "User is banned", status: 400, code: "user_banned" },
+    });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "correcta");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_USUARIO_INACTIVO,
+      message: messageFor(AUTH_USUARIO_INACTIVO),
+    });
   });
 
   it("treats a provider that could not be reached as unavailable, never as a bad password", async () => {
