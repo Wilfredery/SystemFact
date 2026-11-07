@@ -1,3 +1,9 @@
+## [0.19.4](https://github.com/Wilfredery/SystemFact/compare/v0.19.3...v0.19.4) (2026-11-07)
+
+### Features
+
+* **security:** the proxy now sends a nonce-based `Content-Security-Policy-Report-Only` (docs/22 T1 stage 2, owner decisions S1-S4 in `odd/tasks/csp-nonce.md`). **Nothing is blocked**: the browser only reports. A fresh nonce is generated per request (Web Crypto, 16 random bytes) and passed to the app as `x-nonce` plus the request CSP, which is how Next stamps its own inline scripts; the header is also on the auth gate's 307 redirects, whose targets are unchanged. Scripts are nonce-only (`'self' 'nonce-…' 'strict-dynamic'`, per the Next 16 CSP guide; never `'unsafe-inline'` or `'unsafe-eval'`), styles keep `'unsafe-inline'` by owner decision, and `connect-src` takes the Supabase origin from `NEXT_PUBLIC_SUPABASE_URL` (an invalid URL fails loudly). The five static headers stay in `next.config.ts`, untouched. The production smoke (`e2e-prod/`) now fails on any `securitypolicyviolation` on `/login` and on the login-to-dashboard journey, logging directives and hosts only. **Known and measured**: `/login` is still prerendered, so Next cannot put the nonce on its inline scripts; a local `next start` run reports 13 violations on `/login`, and the new smoke check will say so until `/login` renders dynamically (T4b in `odd/tasks/csp-nonce.md`). Enforcing is a separate, later release.
+
 ## [0.19.3](https://github.com/Wilfredery/SystemFact/compare/v0.19.2...v0.19.3) (2026-11-07)
 
 ### Bug Fixes
