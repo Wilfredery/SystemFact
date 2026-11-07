@@ -1,3 +1,9 @@
+## [0.19.2](https://github.com/Wilfredery/SystemFact/compare/v0.19.1...v0.19.2) (2026-11-07)
+
+### Bug Fixes
+
+* **auth:** removed the unused browser-side Supabase client (`client-component.ts`, imported by nothing) and pinned with a test that none comes back. Only the proxy refreshes the session, which is what makes the Supabase inactivity timeout mean what it says once the project is on Pro. Also documented in `client.ts` why the auth cookies keep `httpOnly: false` (docs/22 T6). No behaviour change at runtime.
+
 ## [0.19.1](https://github.com/Wilfredery/SystemFact/compare/v0.19.0...v0.19.1) (2026-11-05)
 
 ### Bug Fixes
