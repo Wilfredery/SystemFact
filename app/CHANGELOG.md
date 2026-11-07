@@ -1,3 +1,9 @@
+## [0.19.3](https://github.com/Wilfredery/SystemFact/compare/v0.19.2...v0.19.3) (2026-11-07)
+
+### Bug Fixes
+
+* **auth:** the production auth cookies were missing the `Secure` flag, proven by the prod smoke (`e2e-prod/session-smoke.spec.ts`: "must be Secure. Expected true, Received false"; docs/22 T6). `@supabase/ssr` and Next never set it on their own, so it is now set explicitly when the request is HTTPS (first `x-forwarded-proto` token, via the pure `withSecureOnHttps` helper) in both cookie-writing paths, `client.ts` and the proxy. Plain http (local and E2E) behaves exactly as before, and `httpOnly: false` / `sameSite: "lax"` are unchanged on purpose. To be re-proven by the prod smoke after the next manual deploy.
+
 ## [0.19.2](https://github.com/Wilfredery/SystemFact/compare/v0.19.1...v0.19.2) (2026-11-07)
 
 ### Bug Fixes
