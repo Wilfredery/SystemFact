@@ -20,6 +20,7 @@
 
 import { test, expect } from "@playwright/test";
 import { login } from "../e2e/utils/login";
+import { expectNoCspViolations, watchCspViolations } from "./csp-violations";
 
 const MISSING_CREDENTIALS =
   "PROD_USER and PROD_PASSWORD are required for the production session smoke. " +
@@ -56,6 +57,10 @@ test.describe("production session smoke", () => {
   test("a single-branch Operador logs in through the real form and lands on the dashboard rendered as a denied report role", async ({
     page,
   }) => {
+    // Watch from before the login page loads, so the whole login -> dashboard
+    // journey is covered (S4/S5: zero CSP violations on login and dashboard).
+    const violations = await watchCspViolations(page);
+
     await login(page, readCredentials());
     await expect(page).toHaveURL(/\/dashboard/);
 
@@ -89,6 +94,9 @@ test.describe("production session smoke", () => {
         `an Operador must not see the "${label}" KPI tile`,
       ).toHaveCount(0);
     }
+
+    await page.waitForLoadState("networkidle");
+    expectNoCspViolations(violations, "the login -> dashboard journey");
   });
 
   // docs/22 T6: @supabase/ssr and Next never set `Secure` on the sb-* auth

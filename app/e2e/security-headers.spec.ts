@@ -80,3 +80,70 @@ test.describe("cabeceras de seguridad (T1 stage 1)", () => {
     }
   });
 });
+
+// docs/22 T1 stage 2: the CSP is report-only (nothing is blocked), lives alone in
+// the proxy, and carries a per-request nonce. The five headers above stay in
+// next.config.ts and must not change.
+test.describe("Content-Security-Policy-Report-Only (T1 stage 2)", () => {
+  function nonceOf(policy: string | undefined): string {
+    const match = policy?.match(/script-src[^;]*'nonce-([A-Za-z0-9+/]+={0,2})'/);
+    expect(match, "script-src must carry a nonce").not.toBeNull();
+    return match![1];
+  }
+
+  test("la página de login lleva el CSP report-only con nonce y las cinco intactas", async ({
+    request,
+  }) => {
+    const response = await request.get("/login", { maxRedirects: 0 });
+    const headers = response.headers();
+
+    expect(headers["content-security-policy"], "no debe ser enforcing").toBeUndefined();
+    const policy = headers["content-security-policy-report-only"];
+    expect(policy, "falta content-security-policy-report-only").toBeTruthy();
+    expect(nonceOf(policy)).toBeTruthy();
+    expect(policy).not.toContain("unsafe-eval");
+    for (const [nombre, valor] of Object.entries(CABECERAS_REQUERIDAS)) {
+      expect(headers[nombre], `cabecera ${nombre}`).toBe(valor);
+    }
+  });
+
+  test("el nonce cambia en cada petición", async ({ request }) => {
+    const first = await request.get("/login", { maxRedirects: 0 });
+    const second = await request.get("/login", { maxRedirects: 0 });
+
+    expect(nonceOf(first.headers()["content-security-policy-report-only"])).not.toBe(
+      nonceOf(second.headers()["content-security-policy-report-only"]),
+    );
+  });
+
+  // Trap 4 of odd/tasks/csp-nonce.md: Next can only stamp the nonce while it
+  // renders a request. A prerendered /login ships the CSP header with a fresh
+  // nonce and inline scripts with none, so enforcing would break the page.
+  test("/login se renderiza por petición y sus scripts inline llevan el nonce de ESA petición", async ({
+    request,
+  }) => {
+    const response = await request.get("/login", { maxRedirects: 0 });
+    const headers = response.headers();
+
+    expect(headers["x-nextjs-prerender"], "/login no debe estar prerenderizada").toBeUndefined();
+    expect(headers["cache-control"] ?? "", "/login no debe servirse cacheada").not.toContain(
+      "s-maxage=31536000",
+    );
+
+    const nonce = nonceOf(headers["content-security-policy-report-only"]);
+    const html = await response.text();
+    const inline = [...html.matchAll(/<script(?![^>]*ssrc=)([^>]*)>/g)];
+    expect(inline.length, "se esperan scripts inline de Next").toBeGreaterThan(0);
+    for (const [, attrs] of inline) {
+      expect(attrs, "script inline sin el nonce de la petición").toContain(`nonce="${nonce}"`);
+    }
+  });
+
+  test("el redirect del gate también lleva el CSP report-only", async ({ request }) => {
+    const response = await request.get("/dashboard", { maxRedirects: 0 });
+
+    expect(response.status()).toBe(307);
+    expect(response.headers()["location"]).toContain("/login");
+    expect(response.headers()["content-security-policy-report-only"]).toBeTruthy();
+  });
+});

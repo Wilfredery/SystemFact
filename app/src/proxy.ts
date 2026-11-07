@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { serverEnv } from "@/lib/env";
+import { buildContentSecurityPolicy, generateNonce } from "@/lib/security/csp";
 import { createProxyClient } from "@/lib/supabase/proxy";
 
 /**
@@ -6,6 +8,8 @@ import { createProxyClient } from "@/lib/supabase/proxy";
  * Everything else is protected by default.
  */
 const PUBLIC_PATHS = ["/login"];
+
+const CSP_REPORT_ONLY_HEADER = "Content-Security-Policy-Report-Only";
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(
@@ -15,11 +19,26 @@ function isPublicPath(pathname: string): boolean {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Report-only CSP (docs/22 T1 stage 2): a fresh nonce per request. Next reads
+  // the nonce from the CSP header of the REQUEST (report-only is accepted) and
+  // stamps its own inline scripts; `x-nonce` is the guide's way to read it in
+  // Server Components. Nothing is blocked: the browser only reports.
+  const nonce = generateNonce();
+  const csp = buildContentSecurityPolicy({
+    nonce,
+    supabaseUrl: serverEnv.NEXT_PUBLIC_SUPABASE_URL,
+  });
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set(CSP_REPORT_ONLY_HEADER, csp);
+
   const response = NextResponse.next({
     request: {
-      headers: request.headers,
+      headers: requestHeaders,
     },
   });
+  response.headers.set(CSP_REPORT_ONLY_HEADER, csp);
 
   const supabase = createProxyClient(request, response);
 
@@ -36,7 +55,9 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";
-    return NextResponse.redirect(url);
+    const redirect = NextResponse.redirect(url);
+    redirect.headers.set(CSP_REPORT_ONLY_HEADER, csp);
+    return redirect;
   }
 
   // Unauthenticated user visiting a protected route -> go to login.
@@ -44,7 +65,9 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
-    return NextResponse.redirect(url);
+    const redirect = NextResponse.redirect(url);
+    redirect.headers.set(CSP_REPORT_ONLY_HEADER, csp);
+    return redirect;
   }
 
   return response;
