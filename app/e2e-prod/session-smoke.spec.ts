@@ -90,4 +90,39 @@ test.describe("production session smoke", () => {
       ).toHaveCount(0);
     }
   });
+
+  // docs/22 T6: @supabase/ssr and Next never set `Secure` on the sb-* auth
+  // cookies, so production is PROVEN here, never assumed. HttpOnly is recorded
+  // as deliberately false (see the comment in src/lib/supabase/client.ts).
+  // Messages name cookies and flags only — NEVER values: this lane logs into
+  // live production.
+  test("the sb-* auth cookies carry Secure and SameSite=Lax and are deliberately not HttpOnly", async ({
+    page,
+  }) => {
+    await login(page, readCredentials());
+    await expect(page).toHaveURL(/\/dashboard/);
+
+    const authCookies = (await page.context().cookies()).filter((cookie) =>
+      cookie.name.startsWith("sb-"),
+    );
+    expect(
+      authCookies.length,
+      "login must leave at least one sb-* auth cookie",
+    ).toBeGreaterThan(0);
+
+    for (const cookie of authCookies) {
+      expect(
+        cookie.secure,
+        `auth cookie ${cookie.name} must be Secure`,
+      ).toBe(true);
+      expect(
+        cookie.sameSite,
+        `auth cookie ${cookie.name} must be SameSite=Lax`,
+      ).toBe("Lax");
+      expect(
+        cookie.httpOnly,
+        `auth cookie ${cookie.name} is deliberately not HttpOnly`,
+      ).toBe(false);
+    }
+  });
 });
