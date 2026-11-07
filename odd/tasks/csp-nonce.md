@@ -4,7 +4,7 @@ Objective: take the app from "5 static security headers" to a **nonce-based Cont
 report-only first, then enforce. This file is the inventory and the trap list; specs and tasks land
 here when the work is actually taken up.
 
-Status: **specs recorded 2026-11-07, implementation in progress (report-only first).** Inventory prepared 2026-11-05 so the implementation starts from
+Status: **report-only SHIPPED 2026-11-07 (v0.19.4, production smoke 6 passed / 0 failed / 0 skipped); enforcing is T6, pending a few clean days.** Inventory prepared 2026-11-05 so the implementation starts from
 facts instead of guesses.
 
 ## What exists today
@@ -146,7 +146,7 @@ page*, not a decision — it must be re-measured on an authenticated page before
 | T3 smoke asserts zero CSP violations on `/login` + dashboard | S4, S5 | worker | done (not run against production: no PROD_USER/PROD_PASSWORD) | 611eec9 |
 | T4 measure on `next build` + `next start`, record violations in this file | S5 | worker | done, found a blocker (T4b) | this commit |
 | T4b make `/login` render dynamically so Next stamps the nonce on its inline scripts (trap 4) | S3, S5 | worker | done (owner: include in 0.19.4); see Measurement 3 | the `fix(login)` commit of this branch |
-| T5 bump, PR, deploy approval, prod smoke | S4 | parent | pending | |
+| T5 bump, PR, deploy approval, prod smoke | S4 | parent | done: PR #178 (squash `efe9346`), owner-approved manual deploy, prod smoke run 42405218222 = 6 passed, 0 CSP violations on `/login` and login -> dashboard | `efe9346` |
 | T6 enforce (separate release, after clean days) | S5 | parent | not started | |
 
 ## Measurement 2 (report-only wired) — 2026-11-07
@@ -227,3 +227,4 @@ Still NOT measured, same gap as before: authenticated routes (no local session; 
 ## Log
 
 - L1 (2026-11-07): owner decisions, verbatim: "1. yes. 2. Go ahead. 3. wdym about the report only, i dont understand this." After the explanation of report-only mode (browser blocks nothing, only notes what would have been blocked), the owner picked "Smoke check + a few days (recommended)" for decision 3.
+- L2 (2026-11-07): **shipped and proven in production.** Owner chose "Merge, deploy, run smoke (recommended)" for PR #178. Merged as `efe9346`, deployed by hand (`vercel deploy --prod`), then the production smoke (run 42405218222) reported **6 passed / 0 failed / 0 skipped**: `/login` loads in a real browser with **zero CSP violations**, the logged-in Operador journey login -> dashboard also reports none (the session smoke watches `securitypolicyviolation` from before the login), and the `sb-*` cookie flags from 0.19.3 still hold. The live `/login` carries `content-security-policy-report-only` with a per-request nonce, the five static headers unchanged, `cache-control: private, no-cache, no-store` (dynamic). Native review of the branch: approved, 5 non-blocking advisories (no reporting endpoint: real-user violations are not collected, only the smoke sees them; a throw in the builder would fail every request, mitigated by startup env validation; one redirect branch covered only by e2e; two test-hygiene suggestions). **Next (T6, separate release):** enforce after a few clean days, S5. Pages the smoke does not visit (venta, cobros, reportes, ...) are NOT proven violation-free yet: widen the smoke's journey, or browse them with the console open on the report-only build, before flipping to enforce.
