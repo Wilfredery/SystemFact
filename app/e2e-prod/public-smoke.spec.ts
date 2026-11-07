@@ -14,6 +14,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { expectNoCspViolations, watchCspViolations } from "./csp-violations";
 
 const BASELINE_HEADERS = [
   "strict-transport-security",
@@ -51,6 +52,19 @@ test.describe("production public smoke", () => {
         `the login page must carry the ${name} header`,
       ).toBeTruthy();
     }
+  });
+
+  // The CSP ships report-only, so a violation blocks nothing: only a real browser
+  // can see one. Zero violations on /login is the S5 exit criterion.
+  test("the login page loads in a browser without a single CSP violation", async ({
+    page,
+  }) => {
+    const violations = await watchCspViolations(page);
+
+    await page.goto("/login");
+    await page.waitForLoadState("networkidle");
+
+    expectNoCspViolations(violations, "the login page");
   });
 
   test("an unauthenticated request to the dashboard redirects to the login page", async ({
