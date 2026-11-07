@@ -8,6 +8,17 @@ import { serverEnv } from "@/lib/env";
  * Reads the auth cookies via `next/headers` and exposes a typed client.
  * This is shared infrastructure utility (exception to the module layout —
  * see AGENTS.md / auth module docs).
+ *
+ * Cookie flags: the auth cookies keep the @supabase/ssr defaults on purpose
+ * (`httpOnly: false`, `sameSite: "lax"`, `path: "/"`, no explicit `secure`;
+ * whether `Secure` reaches production is verified, never assumed — docs/22
+ * T6). Do NOT force
+ * `httpOnly: true` here or in `proxy.ts`: that is a session-lifecycle change,
+ * not a one-line hardening, and it must be tested against refresh before it
+ * ships. There is also deliberately no browser-side Supabase client in this
+ * app (pinned by `tools/config/supabase-session-model.test.ts`): only the proxy
+ * refreshes the session, which is what makes the inactivity timeout mean what
+ * it says. See docs/22 T6.
  */
 export async function createClient() {
   const cookieStore = await cookies();

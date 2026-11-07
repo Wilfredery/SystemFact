@@ -24,8 +24,11 @@ Los clientes de Supabase viven en `src/lib/supabase/*` como utilidad de
 infraestructura compartida (excepción documentada en AGENTS.md):
 
 - `client.ts` — cliente SSR para Server Components / Server Actions.
-- `middleware.ts` — cliente SSR para el middleware (refresco de sesión).
-- `client-component.ts` — cliente browser para componentes cliente.
+- `proxy.ts` — cliente SSR para el proxy de Next 16 (refresco de sesión).
+
+No hay cliente browser de Supabase a propósito: sólo el proxy refresca la sesión, y
+eso es lo que hace que el timeout de inactividad signifique lo que dice. Un test lo
+fija (`tools/config/supabase-session-model.test.ts`).
 
 ## Modelo de identidad (ADR-014, hallazgo de auditoría v2r-01)
 
