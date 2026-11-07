@@ -8,6 +8,13 @@ These rules derive from the canonical engineering constitution in the project do
 - **Always answer the owner in English.** Give short, easy and practical answers. If the owner does not understand something, they will ask.
 - This overrides any persona or tool default about reply language. It applies to every session, forever.
 
+## Standing orders and reminders (owner, 2026-11-07, binding)
+- **Production demo lane: the agent runs it itself** after a production deploy that touches sales, payments, returns or login (owner: "keep in mind to do it by yourself"): `gh workflow run prod-demo.yml --ref master -f confirm=WRITE-DEMO-DATA`. Read the real log lines and check the database counters before reporting. Each run consumes one B01, one B02 and one B04 for good, so run it once per relevant deploy, never on a schedule. Deploys themselves still need the owner's explicit approval. Details: `odd/tasks/prod-demo-lane.md`.
+- **Remind the owner** in the first reply of a session once the date is reached (owner: "Keep me in mind close to that date"):
+  - **From 2027-12-01:** renew the demo invoice-number expiry, which ends 2027-12-31, unless it is already done. Extend `rangoFin` earlier if a type passes 90% used. Procedure and rollback: `odd/tasks/prod-demo-lane.md` L5. Never edit validity like this for a real company.
+  - **From 2027-05-07:** offer to rotate the demo user's password (about every 6 months).
+- Engram holds a pinned copy under topic `ops/owner-reminders-and-standing-orders`; this section is the one that is always read.
+
 ## Stack
 - **Next.js 16** (App Router) fullstack monolith, **TypeScript** strict, **Tailwind CSS 4**, **pnpm**.
 - **Supabase** (PostgreSQL + Auth). **Prisma ORM** as the only data access layer.
