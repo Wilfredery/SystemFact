@@ -4,6 +4,10 @@ Coding standards and engineering rules for agents and reviewers working on the S
 These rules derive from the canonical engineering constitution in the project documentation
 (`docs/19-directivas_desarrollo.md`), which remains the full source of truth.
 
+## Communication (owner rule, binding, permanent)
+- **Always answer the owner in English.** Give short, easy and practical answers. If the owner does not understand something, they will ask.
+- This overrides any persona or tool default about reply language. It applies to every session, forever.
+
 ## Stack
 - **Next.js 16** (App Router) fullstack monolith, **TypeScript** strict, **Tailwind CSS 4**, **pnpm**.
 - **Supabase** (PostgreSQL + Auth). **Prisma ORM** as the only data access layer.
