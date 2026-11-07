@@ -9,7 +9,7 @@ import { createProxyClient } from "@/lib/supabase/proxy";
  */
 const PUBLIC_PATHS = ["/login"];
 
-const CSP_REPORT_ONLY_HEADER = "Content-Security-Policy-Report-Only";
+const CSP_HEADER = "Content-Security-Policy";
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(
@@ -20,10 +20,12 @@ function isPublicPath(pathname: string): boolean {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Report-only CSP (docs/22 T1 stage 2): a fresh nonce per request. Next reads
-  // the nonce from the CSP header of the REQUEST (report-only is accepted) and
-  // stamps its own inline scripts; `x-nonce` is the guide's way to read it in
-  // Server Components. Nothing is blocked: the browser only reports.
+  // Enforcing CSP (docs/22 T1 stage 2): a fresh nonce per request. Next reads
+  // the nonce from the CSP header of the REQUEST and stamps its own inline
+  // scripts; `x-nonce` is the guide's way to read it in Server Components. The
+  // browser BLOCKS what the policy does not allow. Rollback is one word: this
+  // constant back to "Content-Security-Policy-Report-Only" (Next reads the
+  // nonce from either header).
   const nonce = generateNonce();
   const csp = buildContentSecurityPolicy({
     nonce,
@@ -31,14 +33,14 @@ export async function proxy(request: NextRequest) {
   });
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
-  requestHeaders.set(CSP_REPORT_ONLY_HEADER, csp);
+  requestHeaders.set(CSP_HEADER, csp);
 
   const response = NextResponse.next({
     request: {
       headers: requestHeaders,
     },
   });
-  response.headers.set(CSP_REPORT_ONLY_HEADER, csp);
+  response.headers.set(CSP_HEADER, csp);
 
   const supabase = createProxyClient(request, response);
 
@@ -56,7 +58,7 @@ export async function proxy(request: NextRequest) {
     url.pathname = "/dashboard";
     url.search = "";
     const redirect = NextResponse.redirect(url);
-    redirect.headers.set(CSP_REPORT_ONLY_HEADER, csp);
+    redirect.headers.set(CSP_HEADER, csp);
     return redirect;
   }
 
@@ -66,7 +68,7 @@ export async function proxy(request: NextRequest) {
     url.pathname = "/login";
     url.search = "";
     const redirect = NextResponse.redirect(url);
-    redirect.headers.set(CSP_REPORT_ONLY_HEADER, csp);
+    redirect.headers.set(CSP_HEADER, csp);
     return redirect;
   }
 

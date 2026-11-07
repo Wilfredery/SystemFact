@@ -8,9 +8,10 @@
  * so a new page is covered — or fails loudly — without editing this file),
  * collecting `securitypolicyviolation` events from before the login.
  *
- * It fails on ANY violation and lists page + directive + host. The event fires
- * under both `Content-Security-Policy-Report-Only` and the enforcing header, so
- * the same spec measures before the flip and guards after it.
+ * It fails on ANY violation and lists page + directive + host. The app now sends
+ * the ENFORCING `Content-Security-Policy`, so a violation here is a page the
+ * browser actually blocks. The event fires under both the enforcing and the
+ * report-only header, which is how the same spec measured before the flip.
  *
  * Read-only by design: navigation only — no sale, no payment, no void. The only
  * writes are the ones the app makes itself on login (session cookies).

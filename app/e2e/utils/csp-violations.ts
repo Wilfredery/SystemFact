@@ -5,7 +5,7 @@
  * each other): it listens for the DOM `securitypolicyviolation` event in every
  * document of the page. An init script survives navigations; the binding keeps
  * the findings on the Node side. It works the same whether the policy is
- * report-only or enforcing, because the event fires in both modes.
+ * enforcing or report-only, because the event fires in both modes.
  *
  * Findings keep directive + blocked/source HOST only — never a full URL, query
  * string, cookie or token.

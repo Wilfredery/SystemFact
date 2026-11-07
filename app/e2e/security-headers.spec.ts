@@ -81,27 +81,31 @@ test.describe("cabeceras de seguridad (T1 stage 1)", () => {
   });
 });
 
-// docs/22 T1 stage 2: the CSP is report-only (nothing is blocked), lives alone in
-// the proxy, and carries a per-request nonce. The five headers above stay in
-// next.config.ts and must not change.
-test.describe("Content-Security-Policy-Report-Only (T1 stage 2)", () => {
+// docs/22 T1 stage 2: the CSP is ENFORCING (S7), lives alone in the proxy, and
+// carries a per-request nonce. No `Content-Security-Policy-Report-Only` header is
+// sent anymore. The five headers above stay in next.config.ts and must not change.
+test.describe("Content-Security-Policy enforcing (T1 stage 2)", () => {
   function nonceOf(policy: string | undefined): string {
     const match = policy?.match(/script-src[^;]*'nonce-([A-Za-z0-9+/]+={0,2})'/);
     expect(match, "script-src must carry a nonce").not.toBeNull();
     return match![1];
   }
 
-  test("la página de login lleva el CSP report-only con nonce y las cinco intactas", async ({
+  test("la página de login lleva el CSP enforcing con nonce, sin report-only y con las cinco intactas", async ({
     request,
   }) => {
     const response = await request.get("/login", { maxRedirects: 0 });
     const headers = response.headers();
 
-    expect(headers["content-security-policy"], "no debe ser enforcing").toBeUndefined();
-    const policy = headers["content-security-policy-report-only"];
-    expect(policy, "falta content-security-policy-report-only").toBeTruthy();
+    expect(
+      headers["content-security-policy-report-only"],
+      "no debe quedar ninguna cabecera report-only",
+    ).toBeUndefined();
+    const policy = headers["content-security-policy"];
+    expect(policy, "falta content-security-policy (enforcing)").toBeTruthy();
     expect(nonceOf(policy)).toBeTruthy();
     expect(policy).not.toContain("unsafe-eval");
+    expect(policy).not.toMatch(/script-src[^;]*'unsafe-inline'/);
     for (const [nombre, valor] of Object.entries(CABECERAS_REQUERIDAS)) {
       expect(headers[nombre], `cabecera ${nombre}`).toBe(valor);
     }
@@ -111,8 +115,8 @@ test.describe("Content-Security-Policy-Report-Only (T1 stage 2)", () => {
     const first = await request.get("/login", { maxRedirects: 0 });
     const second = await request.get("/login", { maxRedirects: 0 });
 
-    expect(nonceOf(first.headers()["content-security-policy-report-only"])).not.toBe(
-      nonceOf(second.headers()["content-security-policy-report-only"]),
+    expect(nonceOf(first.headers()["content-security-policy"])).not.toBe(
+      nonceOf(second.headers()["content-security-policy"]),
     );
   });
 
@@ -130,7 +134,7 @@ test.describe("Content-Security-Policy-Report-Only (T1 stage 2)", () => {
       "s-maxage=31536000",
     );
 
-    const nonce = nonceOf(headers["content-security-policy-report-only"]);
+    const nonce = nonceOf(headers["content-security-policy"]);
     const html = await response.text();
     const inline = [...html.matchAll(/<script(?![^>]*ssrc=)([^>]*)>/g)];
     expect(inline.length, "se esperan scripts inline de Next").toBeGreaterThan(0);
@@ -139,11 +143,14 @@ test.describe("Content-Security-Policy-Report-Only (T1 stage 2)", () => {
     }
   });
 
-  test("el redirect del gate también lleva el CSP report-only", async ({ request }) => {
+  test("el redirect del gate también lleva el CSP enforcing, sin report-only", async ({
+    request,
+  }) => {
     const response = await request.get("/dashboard", { maxRedirects: 0 });
 
     expect(response.status()).toBe(307);
     expect(response.headers()["location"]).toContain("/login");
-    expect(response.headers()["content-security-policy-report-only"]).toBeTruthy();
+    expect(response.headers()["content-security-policy"]).toBeTruthy();
+    expect(response.headers()["content-security-policy-report-only"]).toBeUndefined();
   });
 });
