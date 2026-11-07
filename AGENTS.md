@@ -100,7 +100,8 @@ These rules derive from the canonical engineering constitution in the project do
   after the merge: ESLint, strict typecheck, `prisma validate`, unit tests, integration tests
   against a real Postgres 17.6 (same engine as the Supabase project; RLS enforced via the `systemfact_app` role), production build,
   a **prod-scope dependency audit** (`pnpm audit --prod --audit-level high`, in `ci-gate`) and a Conventional Commits guard.
-  Third-party actions are pinned to **commit SHAs** and Dependabot moves them: a moved tag is code execution in CI. The aggregate
+  Third-party actions are pinned to **commit SHAs**: a moved tag is code execution in CI. Nothing moves those SHAs
+  automatically (Dependabot removed, owner 2026-11-07), so bumping one is a deliberate, reviewed change. The aggregate
   job **CI gate** is the single required status check.
 - E2E (Playwright) runs on every PR against a **local, ephemeral Supabase stack**
   (`supabase start`, config in `supabase/config.toml`), provisioned inside the runner by
@@ -136,16 +137,17 @@ These rules derive from the canonical engineering constitution in the project do
   only place the missing auth gate showed.
 
 ### Dependencies (2026-11-04, maintainer-approved — binding)
-- **Nothing updates itself.** Dependabot opens **no npm version PRs** (`open-pull-requests-limit: 0`
-  in `.github/dependabot.yml`); the `github-actions` half stays on, because a pinned SHA that never
-  moves becomes the vulnerability. Upgrades are manual and deliberate.
+- **Nothing updates itself.** Dependabot was **removed entirely** (owner decision, 2026-11-07: dependency
+  upgrades are manual and deliberate; there is no `.github/dependabot.yml`). The pinned action SHAs are
+  therefore ours to move: re-check them when CI breaks or at least once a quarter, and bump them in a
+  reviewed PR that quotes the upstream release notes. A pin that never moves becomes the vulnerability.
 - **Every upgrade quotes its upstream release notes in the PR**, next to the audit output. The
   audit only says a version is *patched*; the release notes say what else changed. A bump without
   both is not reviewable — that miss happened with `next` 16.4.5 (it was correct: the November 2026
   security release, but the PR showed only the audit's patched range).
 - **`@types/node` tracks the runtime major — Node 24 — never ahead of it.** Typing against another
   major's API is how imports compile and then fail at runtime. Same rule for any `@types/*` bound to
-  a platform major. (Dependabot proposed 26.6.6 for a Node 24 project; that is why version PRs are off.)
+  a platform major. (Dependabot once proposed 26.6.6 for a Node 24 project; that is why automatic version PRs are gone.)
 - **A transitive advisory is lifted with a patch-level override** in `app/pnpm-workspace.yaml`, with
   the advisory id in the comment — never by rewriting a direct dependency's range to dodge it, and
   never by deleting the dependency from `package.json` to make the audit quiet.
