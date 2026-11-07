@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 export const zCrearProductoInput = z.object({
   categoriaId: z.number().int().positive(),

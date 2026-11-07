@@ -16,7 +16,7 @@
  * kept out of the fiscal business rules.
  */
 
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { DESCUENTO_TIPO } from "../domain/venta";
 
 /** Stable HTTP/transport codes (not part of the domain business catalog). */

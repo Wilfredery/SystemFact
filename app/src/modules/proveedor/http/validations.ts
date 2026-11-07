@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { TIPO_PROVEEDOR, TIPO_PERSONA } from "../domain/proveedor";
 
 // The fiscal classifications travel as their frozen literal values; the zod

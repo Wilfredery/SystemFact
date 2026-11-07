@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 export const zCrearCategoriaInput = z.object({
   nombre: z.string().trim().min(1).max(255),
