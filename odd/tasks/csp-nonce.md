@@ -4,7 +4,7 @@ Objective: take the app from "5 static security headers" to a **nonce-based Cont
 report-only first, then enforce. This file is the inventory and the trap list; specs and tasks land
 here when the work is actually taken up.
 
-Status: **inventory only, no code changed.** Prepared 2026-11-05 so the implementation starts from
+Status: **specs recorded 2026-11-07, implementation in progress (report-only first).** Inventory prepared 2026-11-05 so the implementation starts from
 facts instead of guesses.
 
 ## What exists today
@@ -125,3 +125,29 @@ page*, not a decision — it must be re-measured on an authenticated page before
 - Whether `style-src` may keep `'unsafe-inline'` (common, and much cheaper) or must be nonce-only.
 - How long report-only runs before enforce, and which routes exercise it (needs the authenticated
   surface, i.e. an E2E identity — which the owner banned unless a new one is created).
+
+---
+
+## Specs (owner decisions, 2026-11-07 — quoted verbatim, do not paraphrase)
+
+- **S1 (decision 1)** — owner answered "**1. yes**" to: "Where do the headers live? All six in `proxy.ts`, or only the CSP there and the other five where they are now. My recommendation is CSP alone in `proxy.ts`." → the CSP lives **alone** in `app/src/proxy.ts` (per-request nonce); the 5 static headers stay in `next.config.ts`, untouched.
+- **S2 (decision 2)** — owner answered "**2. Go ahead.**" to: "Can styles keep `'unsafe-inline'`? ... I'd allow it for styles, since scripts are the real XSS risk." → `style-src 'self' 'unsafe-inline'`; **scripts are nonce-only**: no `'unsafe-inline'` and no `'unsafe-eval'` in `script-src` on a production build.
+- **S3 (mode)** — "report-only first, then enforce": stage 2 ships **`Content-Security-Policy-Report-Only`** only. Nothing is blocked. Enforcing is a separate, later release (S5).
+- **S4 (decision 3)** — owner chose "**Smoke check + a few days (recommended)**": "Ship report-only. The existing smoke Operador visits login and dashboard and fails on any CSP violation. After a few clean days I enforce in a second small release. No new account."
+- **S5 (exit criterion, trap 6 of this file)** — "zero violations on the routes we exercise, not 'header sent'." Enforce only after the production smoke reports zero violations on `/login` and the authenticated dashboard for a few days.
+- **S6 (do no harm)** — the 5 existing headers stay byte-identical, the auth gate behaviour in `proxy.ts` (307 to `/login`, deny-by-default) does not change, `connect-src` takes the Supabase origin from `NEXT_PUBLIC_SUPABASE_URL` (never hardcoded), and the local E2E suite and the production smoke stay green.
+
+## Tasks
+
+| ID | S# | Route | Status | Commit |
+|----|----|-------|--------|--------|
+| T1 pure policy builder + tests (nonce, directives, env-derived origin) | S2, S3, S6 | worker | pending | |
+| T2 wire `proxy.ts`: nonce request header + report-only response header | S1, S3, S6 | worker | pending | |
+| T3 smoke asserts zero CSP violations on `/login` + dashboard | S4, S5 | worker | pending | |
+| T4 measure on `next build` + `next start`, record violations in this file | S5 | worker | pending | |
+| T5 bump, PR, deploy approval, prod smoke | S4 | parent | pending | |
+| T6 enforce (separate release, after clean days) | S5 | parent | not started | |
+
+## Log
+
+- L1 (2026-11-07): owner decisions, verbatim: "1. yes. 2. Go ahead. 3. wdym about the report only, i dont understand this." After the explanation of report-only mode (browser blocks nothing, only notes what would have been blocked), the owner picked "Smoke check + a few days (recommended)" for decision 3.
