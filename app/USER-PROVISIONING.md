@@ -30,6 +30,37 @@ Insert the row with `nombreUsuario` (identical to the email prefix from step 1),
 
 If a user reports "Credenciales inválidas" right after provisioning, the cause is almost always step 1 vs step 2 disagreeing on the username's **case**.
 
+## Demo user for the production demo lane
+
+Only needed for the **production demo lane** (`.github/workflows/prod-demo.yml`, `odd/tasks/prod-demo-lane.md`), which writes demo sales, a cobro and a return into the demo company (id 5, "SistemaFact Demo") and nowhere else. This is **not** the smoke identity: the smoke (`prod-smoke` environment) never writes; the demo lane has its own user, its own environment and its own secrets. Everything below is an owner step (S9): the agent never creates this user and never holds its password.
+
+**Role: `Operador`, and nothing else.** It is the smallest role that can run every flow (sale, credit sale, cobro, return); the matrix with code evidence is in `odd/tasks/prod-demo-lane.md` ("Role matrix (T1)"). Do not give it `Administrador`.
+
+1. **Supabase Auth.** Follow *Step 1* above: create the Auth user `<nombreUsuario>@users.systemfact.internal` (exact case), password of at least 12 characters that **you** generate, auto-confirmed. Choose a `nombreUsuario` that is clearly the demo one (for example `demo.operador`).
+2. **Database rows.** Run this in the SQL editor, replacing the three placeholders. It contains no password: `passwordHash` is vestigial (nothing reads it) and the real credential lives only in Supabase Auth. `authUserId` stays NULL on purpose.
+
+   ```sql
+   -- 1) The company name the UI shows (copy it EXACTLY into DEMO_EMPRESA_NAME, step 5).
+   select id, "nombreComercial" from "EMPRESA" where id = <EMPRESA_ID>;
+
+   -- 2) The business identity, bound to company <EMPRESA_ID> and ONE of its branches.
+   insert into "USUARIO" ("empresaId", "sucursalId", "nombre", "nombreUsuario", "passwordHash", "activo", "updatedAt")
+   values (<EMPRESA_ID>, <SUCURSAL_ID>, '<NOMBRE_VISIBLE>', '<NOMBRE_USUARIO>', 'managed-by-supabase-auth', true, now());
+
+   -- 3) The ONE role.
+   insert into "USUARIO_ROL" ("usuarioId", "rolId")
+   select u.id, r.id
+     from "USUARIO" u, "ROL" r
+    where u."nombreUsuario" = '<NOMBRE_USUARIO>' and r."nombre" = 'Operador';
+   ```
+
+3. **First login binds `authUserId`.** Log in once from the app as that user, then check `select "authUserId" from "USUARIO" where "nombreUsuario" = '<NOMBRE_USUARIO>';` is a UUID (*Step 3* above). Check that the header shows the demo company name, and that the branch has at least 2 units of one product in stock (the lane fails with a clear message otherwise).
+4. **GitHub environment.** Repository → Settings → Environments → **New environment** named exactly `prod-demo`. Add the secrets `DEMO_USER` (the `nombreUsuario`) and `DEMO_PASSWORD` (the Auth password).
+5. **Environment variables** (same environment): `DEMO_EMPRESA_NAME` = the `nombreComercial` from query 1, character for character; the lane aborts before any write when the UI shows a different name. Optional: `DEMO_BASE_URL` (default `https://systemfact.vercel.app`).
+6. **First run** is a manual dispatch with the confirmation `WRITE-DEMO-DATA`; each run consumes one B01, one B02 and one B04 NCF for good (see the lane doc).
+
+**Retire it** before company 5 is ever used for real invoices: delete the `prod-demo` environment secrets and variables, and deactivate the user (`update "USUARIO" set activo = false where "nombreUsuario" = '<NOMBRE_USUARIO>';`). Master entities are never deleted, so the row stays with `activo = false`.
+
 ## Changing a password
 
 Dashboard → **Authentication → Users** → the user → **update password**.
