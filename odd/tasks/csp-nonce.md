@@ -137,6 +137,8 @@ page*, not a decision — it must be re-measured on an authenticated page before
 - **S5 (exit criterion, trap 6 of this file)** — "zero violations on the routes we exercise, not 'header sent'." Enforce only after the production smoke reports zero violations on `/login` and the authenticated dashboard for a few days.
 - **S6 (do no harm)** — the 5 existing headers stay byte-identical, the auth gate behaviour in `proxy.ts` (307 to `/login`, deny-by-default) does not change, `connect-src` takes the Supabase origin from `NEXT_PUBLIC_SUPABASE_URL` (never hardcoded), and the local E2E suite and the production smoke stay green.
 
+- **S7 (decision 4, owner 2026-11-07)** — verbatim: "So its a good idea if u active the CSP, check it through local first and if everythings correct process to the production." → enforce the CSP, but only after the logged-in pages are measured clean locally (Docker/local Supabase), then production through the normal flow (PR, CI, owner-approved manual deploy, smoke). Rollback is one word: `Content-Security-Policy` back to `Content-Security-Policy-Report-Only`.
+
 ## Tasks
 
 | ID | S# | Route | Status | Commit |
@@ -147,7 +149,10 @@ page*, not a decision — it must be re-measured on an authenticated page before
 | T4 measure on `next build` + `next start`, record violations in this file | S5 | worker | done, found a blocker (T4b) | this commit |
 | T4b make `/login` render dynamically so Next stamps the nonce on its inline scripts (trap 4) | S3, S5 | worker | done (owner: include in 0.19.4); see Measurement 3 | the `fix(login)` commit of this branch |
 | T5 bump, PR, deploy approval, prod smoke | S4 | parent | done: PR #178 (squash `efe9346`), owner-approved manual deploy, prod smoke run 42405218222 = 6 passed, 0 CSP violations on `/login` and login -> dashboard | `efe9346` |
-| T6 enforce (separate release, after clean days) | S5 | parent | not started | |
+| T6a local E2E guard: log in with the seeded local users and visit the authenticated pages (dashboard, venta, cobros, reportes, ...) failing on any CSP violation | S7, S5 | worker | pending | |
+| T6b run it under report-only against the local Supabase stack; fix the policy only from measured violations | S7, S5 | worker | pending | |
+| T6c flip to enforcing `Content-Security-Policy` in `proxy.ts` and the tests; full local E2E suite must stay green under enforcement | S7 | worker | pending | |
+| T6d PR, native review, CI, owner-approved manual deploy, prod smoke | S7 | parent | pending | |
 
 ## Measurement 2 (report-only wired) — 2026-11-07
 
@@ -228,3 +233,4 @@ Still NOT measured, same gap as before: authenticated routes (no local session; 
 
 - L1 (2026-11-07): owner decisions, verbatim: "1. yes. 2. Go ahead. 3. wdym about the report only, i dont understand this." After the explanation of report-only mode (browser blocks nothing, only notes what would have been blocked), the owner picked "Smoke check + a few days (recommended)" for decision 3.
 - L2 (2026-11-07): **shipped and proven in production.** Owner chose "Merge, deploy, run smoke (recommended)" for PR #178. Merged as `efe9346`, deployed by hand (`vercel deploy --prod`), then the production smoke (run 42405218222) reported **6 passed / 0 failed / 0 skipped**: `/login` loads in a real browser with **zero CSP violations**, the logged-in Operador journey login -> dashboard also reports none (the session smoke watches `securitypolicyviolation` from before the login), and the `sb-*` cookie flags from 0.19.3 still hold. The live `/login` carries `content-security-policy-report-only` with a per-request nonce, the five static headers unchanged, `cache-control: private, no-cache, no-store` (dynamic). Native review of the branch: approved, 5 non-blocking advisories (no reporting endpoint: real-user violations are not collected, only the smoke sees them; a throw in the builder would fail every request, mitigated by startup env validation; one redirect branch covered only by e2e; two test-hygiene suggestions). **Next (T6, separate release):** enforce after a few clean days, S5. Pages the smoke does not visit (venta, cobros, reportes, ...) are NOT proven violation-free yet: widen the smoke's journey, or browse them with the console open on the report-only build, before flipping to enforce.
+- L3 (2026-11-07): owner, verbatim: "So its a good idea if u active the CSP, check it through local first and if everythings correct process to the production. As i see, we're doing a great job focus and have an aggresive security to get the less bugs and vulnerabilities possible ... the most important part for me its to have an solid system for sales to ppl." Docker was opened by the owner (local Supabase containers running). Sales must keep working under enforcement: T6c's full local E2E, which includes the sales flows, is the gate. This is spec S7.
