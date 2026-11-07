@@ -1,6 +1,7 @@
 import { createServerClient, parseCookieHeader } from "@supabase/ssr";
 import type { NextRequest, NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env";
+import { withSecureOnHttps } from "./cookie-options";
 
 /**
  * Supabase client for the Next.js proxy (`app/proxy.ts`).
@@ -16,6 +17,10 @@ export function createProxyClient(
   request: NextRequest,
   response: NextResponse,
 ) {
+  const forwardedProto =
+    request.headers.get("x-forwarded-proto") ??
+    request.nextUrl.protocol.replace(":", "");
+
   return createServerClient(
     serverEnv.NEXT_PUBLIC_SUPABASE_URL,
     serverEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -26,7 +31,11 @@ export function createProxyClient(
         },
         setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
+            response.cookies.set(
+              name,
+              value,
+              withSecureOnHttps(options, forwardedProto),
+            );
           });
           // Set headers (Cache-Control, Expires, Pragma) that must accompany
           // auth cookies so no CDN/reverse-proxy caches the response.

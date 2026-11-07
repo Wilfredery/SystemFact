@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { serverEnv } from "@/lib/env";
+import { withSecureOnHttps } from "./cookie-options";
 
 /**
  * Supabase client for Server Components and Server Actions.
@@ -10,9 +11,10 @@ import { serverEnv } from "@/lib/env";
  * see AGENTS.md / auth module docs).
  *
  * Cookie flags: the auth cookies keep the @supabase/ssr defaults on purpose
- * (`httpOnly: false`, `sameSite: "lax"`, `path: "/"`, no explicit `secure`;
- * whether `Secure` reaches production is verified, never assumed — docs/22
- * T6). Do NOT force
+ * (`httpOnly: false`, `sameSite: "lax"`, `path: "/"`). `Secure` is NOT among
+ * the defaults, so it is set explicitly on HTTPS (`withSecureOnHttps`) and
+ * proven in production by the prod smoke (`e2e-prod/session-smoke.spec.ts`;
+ * docs/22 T6). Do NOT force
  * `httpOnly: true` here or in `proxy.ts`: that is a session-lifecycle change,
  * not a one-line hardening, and it must be tested against refresh before it
  * ships. There is also deliberately no browser-side Supabase client in this
@@ -22,6 +24,7 @@ import { serverEnv } from "@/lib/env";
  */
 export async function createClient() {
   const cookieStore = await cookies();
+  const forwardedProto = (await headers()).get("x-forwarded-proto");
 
   return createServerClient(
     serverEnv.NEXT_PUBLIC_SUPABASE_URL,
@@ -37,7 +40,11 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
+              cookieStore.set(
+                name,
+                value,
+                withSecureOnHttps(options, forwardedProto),
+              ),
             );
           } catch {
             // Called from a Server Component: cookies() is read-only there.
