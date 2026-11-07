@@ -116,6 +116,29 @@ test.describe("Content-Security-Policy-Report-Only (T1 stage 2)", () => {
     );
   });
 
+  // Trap 4 of odd/tasks/csp-nonce.md: Next can only stamp the nonce while it
+  // renders a request. A prerendered /login ships the CSP header with a fresh
+  // nonce and inline scripts with none, so enforcing would break the page.
+  test("/login se renderiza por petición y sus scripts inline llevan el nonce de ESA petición", async ({
+    request,
+  }) => {
+    const response = await request.get("/login", { maxRedirects: 0 });
+    const headers = response.headers();
+
+    expect(headers["x-nextjs-prerender"], "/login no debe estar prerenderizada").toBeUndefined();
+    expect(headers["cache-control"] ?? "", "/login no debe servirse cacheada").not.toContain(
+      "s-maxage=31536000",
+    );
+
+    const nonce = nonceOf(headers["content-security-policy-report-only"]);
+    const html = await response.text();
+    const inline = [...html.matchAll(/<script(?![^>]*ssrc=)([^>]*)>/g)];
+    expect(inline.length, "se esperan scripts inline de Next").toBeGreaterThan(0);
+    for (const [, attrs] of inline) {
+      expect(attrs, "script inline sin el nonce de la petición").toContain(`nonce="${nonce}"`);
+    }
+  });
+
   test("el redirect del gate también lleva el CSP report-only", async ({ request }) => {
     const response = await request.get("/dashboard", { maxRedirects: 0 });
 

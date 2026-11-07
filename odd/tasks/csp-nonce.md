@@ -145,7 +145,7 @@ page*, not a decision — it must be re-measured on an authenticated page before
 | T2 wire `proxy.ts`: nonce request header + report-only response header | S1, S3, S6 | worker | done | 95a04e8 |
 | T3 smoke asserts zero CSP violations on `/login` + dashboard | S4, S5 | worker | done (not run against production: no PROD_USER/PROD_PASSWORD) | 611eec9 |
 | T4 measure on `next build` + `next start`, record violations in this file | S5 | worker | done, found a blocker (T4b) | this commit |
-| T4b make `/login` render dynamically so Next stamps the nonce on its inline scripts (trap 4) | S3, S5 | parent | **open, blocks enforce** | |
+| T4b make `/login` render dynamically so Next stamps the nonce on its inline scripts (trap 4) | S3, S5 | worker | done (owner: include in 0.19.4); see Measurement 3 | the `fix(login)` commit of this branch |
 | T5 bump, PR, deploy approval, prod smoke | S4 | parent | pending | |
 | T6 enforce (separate release, after clean days) | S5 | parent | not started | |
 
@@ -195,6 +195,34 @@ result is 3/3 nonced inline scripts and 0 violations.
 
 The production smoke will report the same violations on `/login` until T4b ships. That is correct: S5 says "zero
 violations on the routes we exercise, not 'header sent'".
+
+## Measurement 3 (login dynamic) — 2026-11-07
+
+Change (T4b): `app/src/app/login/layout.tsx` is now an async server component that does `await connection()` from
+`next/server`, the guide's own way to opt a route into per-request rendering. The login page, its Server Action, the
+form and the auth gate are untouched (the page is a client component and cannot await; the layout is the server
+boundary above it). Same method as Measurement 2: `pnpm exec next build`, `next start -p 3100`, env from `.env.local`.
+
+| check | Measurement 2 (before) | Measurement 3 (after) |
+|---|---|---|
+| `next build` route table, `/login` | `○ (Static)` | `ƒ (Dynamic)` |
+| `x-nextjs-prerender` / `x-nextjs-cache` on `/login` | `1` / `HIT` | both absent |
+| `cache-control` on `/login` | `s-maxage=31536000` | `private, no-cache, no-store, max-age=0, must-revalidate` |
+| inline `<script>` blocks | 3 | 3 |
+| inline scripts carrying the nonce | **0 of 3** | **3 of 3**, equal to the nonce in that response's header |
+| Chromium `securitypolicyviolation` events on `/login` | 13 | **0** |
+| `e2e/security-headers.spec.ts` against the local server | 7/7 | 8/8 (new guard: not prerendered, not cached, every inline script has the request's nonce) |
+| `e2e-prod/public-smoke.spec.ts` against the local server | CSP check failed (13) | 4/4 passed, CSP check green |
+
+Guard test: RED observed first against the previous build (`x-nextjs-prerender` received `"1, 1"`), GREEN after the
+layout change. It is an e2e assertion because the prerender header only exists on a built server.
+
+Trade-off (per the guide, accepted by the owner): `/login` no longer has a static, cacheable response. It renders on
+every request and answers with `no-store`, so it costs one server render per visit. The page is small and the app has
+no CDN caching to lose; `/` stays static only because the proxy redirects it before it renders.
+
+Still NOT measured, same gap as before: authenticated routes (no local session; Docker off). They were already dynamic
+(`ƒ`), so Next stamps their nonce, but only the production smoke (login → dashboard) can prove zero violations there.
 
 ## Log
 
