@@ -55,7 +55,7 @@ Only needed for the **production demo lane** (`.github/workflows/prod-demo.yml`,
    ```
 
 3. **First login binds `authUserId`.** Log in once from the app as that user, then check `select "authUserId" from "USUARIO" where "nombreUsuario" = '<NOMBRE_USUARIO>';` is a UUID (*Step 3* above). Check that the header shows the demo company name, and that the branch has at least 2 units of one product in stock (the lane fails with a clear message otherwise).
-4. **GitHub environment.** Repository → Settings → Environments → **New environment** named exactly `prod-demo`. Add the secrets `DEMO_USER` (the `nombreUsuario`) and `DEMO_PASSWORD` (the Auth password).
+4. **GitHub environment.** Repository → Settings → Environments → **New environment** named exactly `prod-demo`, then under **Deployment branches and tags** choose **Selected branches and tags** and add `master`, so no other branch can read the demo login (a native-review recommendation). Add the secrets `DEMO_USER` (the `nombreUsuario`) and `DEMO_PASSWORD` (the Auth password).
 5. **Environment variables** (same environment): `DEMO_EMPRESA_NAME` = the `nombreComercial` from query 1, character for character; the lane aborts before any write when the UI shows a different name. Optional: `DEMO_BASE_URL` (default `https://systemfact.vercel.app`).
 6. **First run** is a manual dispatch with the confirmation `WRITE-DEMO-DATA`; each run consumes one B01, one B02 and one B04 NCF for good (see the lane doc).
 
