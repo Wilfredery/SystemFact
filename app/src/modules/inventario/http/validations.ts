@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 // Pagination for the stock listing (spec: default 25, max 100). Coercion lets
 // the action accept the string params a client may send.

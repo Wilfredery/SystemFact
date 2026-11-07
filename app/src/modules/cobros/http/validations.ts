@@ -14,7 +14,7 @@
  * the whole cobros error surface stays inside the single versioned catalog.
  */
 
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 /** Stable transport codes (not part of the domain business catalog). */
 export const VALIDATION_ERROR = "VALIDATION_ERROR";

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { TIPO_CLIENTE } from "../domain/cliente";
 
 // Fiscal classification travels as its frozen literal; the zod enum mirrors the

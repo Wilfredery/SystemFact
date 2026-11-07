@@ -4,8 +4,10 @@
  * Pure and Edge-safe: it runs inside `src/proxy.ts`, so it uses Web Crypto and
  * `btoa` only — no Node imports.
  *
- * Scripts are nonce-only (S2): no `'unsafe-inline'`, and `'unsafe-eval'` is never
- * emitted. `'strict-dynamic'` follows the Next.js CSP guide, which pairs it with
+ * The proxy sends this as the ENFORCING `Content-Security-Policy` (S7). Scripts are
+ * nonce-only (S2): no `'unsafe-inline'`, and `'unsafe-eval'` is never emitted.
+ * (zod's `new Function` probe is silenced by `src/lib/zod.ts`, never by loosening
+ * this policy.) `'strict-dynamic'` follows the Next.js CSP guide, which pairs it with
  * the nonce so the scripts Next loads from its own bootstrap are trusted.
  * Styles keep `'unsafe-inline'` by owner decision (S2).
  */

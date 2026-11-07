@@ -5,7 +5,7 @@
  * TRANSPORT contract only (the payload SHAPE), never authorization.
  */
 
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 /** Stable transport codes (NOT part of the tenant business catalog). */
 export const VALIDATION_ERROR = "VALIDATION_ERROR";

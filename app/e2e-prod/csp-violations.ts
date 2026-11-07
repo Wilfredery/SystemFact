@@ -1,9 +1,10 @@
 /**
  * CSP violation watcher for the production smoke (odd/tasks/csp-nonce.md S4/S5).
  *
- * The app ships `Content-Security-Policy-Report-Only`, so nothing is blocked and
- * a violation never fails a page on its own: this watcher is what turns "the
- * browser noted a violation" into a red smoke. It listens for the DOM
+ * The app ships the ENFORCING `Content-Security-Policy`: the browser blocks what
+ * the policy forbids, but a blocked resource does not fail a page on its own
+ * (the page just renders broken): this watcher is what turns "the browser
+ * blocked something" into a red smoke. It listens for the DOM
  * `securitypolicyviolation` event in every document of the page (an init script
  * survives navigations; the binding keeps the findings on the Node side).
  *

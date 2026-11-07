@@ -54,8 +54,26 @@ test.describe("production public smoke", () => {
     }
   });
 
-  // The CSP ships report-only, so a violation blocks nothing: only a real browser
-  // can see one. Zero violations on /login is the S5 exit criterion.
+  // docs/22 T1 stage 2 (S7): the policy is ENFORCING and no report-only header is
+  // left. A deployment older than 0.19.5 still sends report-only: that failure is
+  // the finding, never a reason to weaken the assertion.
+  test("the login page carries the enforcing Content-Security-Policy and no report-only one", async ({
+    request,
+  }) => {
+    const response = await request.get("/login", { maxRedirects: 0 });
+
+    expect(
+      response.headers()["content-security-policy"],
+      "the login page must carry the enforcing content-security-policy header",
+    ).toBeTruthy();
+    expect(
+      response.headers()["content-security-policy-report-only"],
+      "no content-security-policy-report-only header may remain",
+    ).toBeUndefined();
+  });
+
+  // The CSP is enforcing: a violation is a resource the browser blocked, and only
+  // a real browser can see one. Zero violations on /login is the S5 exit criterion.
   test("the login page loads in a browser without a single CSP violation", async ({
     page,
   }) => {

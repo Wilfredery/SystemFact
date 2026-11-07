@@ -1,3 +1,13 @@
+## [0.19.5](https://github.com/Wilfredery/SystemFact/compare/v0.19.4...v0.19.5) (2026-11-07)
+
+### Features
+
+* **security:** the Content-Security-Policy is now **enforced** (docs/22 T1 stage 2, owner decision S7 in `odd/tasks/csp-nonce.md`: "check it through local first and if everythings correct process to the production"). `proxy.ts` sends `Content-Security-Policy` instead of `Content-Security-Policy-Report-Only` on the request (so Next still stamps its inline scripts with the nonce), on the response and on both auth-gate redirects; the policy itself is unchanged (`script-src 'self' 'nonce-…' 'strict-dynamic'`, no `'unsafe-inline'` or `'unsafe-eval'` for scripts, styles keep `'unsafe-inline'`, `connect-src` from `NEXT_PUBLIC_SUPABASE_URL`) and no report-only header is sent anymore. Measured locally before flipping, on `next build` + `next start` against the local Supabase stack: a new E2E guard (`e2e/csp-authenticated.spec.ts`) logs in and visits all 8 authenticated pages under `app/(app)` (dashboard, venta, cobros board, estado de cuenta, recibo, reportes, auditoria, selector) and fails on any `securitypolicyviolation`, and it reports 0; the full local E2E suite then passes under enforcement, sales, collections and returns included (19 passed, 0 skipped). The headers E2E and the production smoke now assert the enforcing header and that no report-only one remains (the smoke will fail against a deployment older than this release, by design). Rollback is one word in `proxy.ts`: `CSP_HEADER` back to `"Content-Security-Policy-Report-Only"`.
+
+### Bug Fixes
+
+* **security:** zod no longer probes `new Function` in the browser. Zod 4 tries `new Function("")` in a try/catch to decide whether to JIT its schemas; the throw is swallowed and nothing broke, but a strict CSP reports it as a violation, and venta, cobros board and estado de cuenta loaded it (3 `script-src` `eval` violations in the first authenticated measurement). `src/lib/zod.ts` now sets `z.config({ jitless: true })` before any schema is built and the 14 modules that imported "zod" import it from there; jitless only turns off zod's speed shortcut, so validation results are identical. Pinned by `tools/config/zod-wrapper.test.ts` (no other file under `src/` may import a runtime value from "zod") and `src/lib/zod.test.ts` (parsing makes 0 `new Function` calls). The CSP was NOT loosened: `'unsafe-eval'` stays out of `script-src`.
+
 ## [0.19.4](https://github.com/Wilfredery/SystemFact/compare/v0.19.3...v0.19.4) (2026-11-07)
 
 ### Features

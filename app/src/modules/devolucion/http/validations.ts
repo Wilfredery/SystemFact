@@ -15,7 +15,7 @@
  * at the boundary, mirroring the venta convention.
  */
 
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { TIPO_REPOSICION } from "../domain/devolucion";
 
 /** Stable HTTP/transport codes (not part of the domain business catalog). */

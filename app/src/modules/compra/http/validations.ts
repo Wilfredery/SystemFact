@@ -15,7 +15,7 @@
  * `VarChar(255)`) and did not constrain the value's shape.
  */
 
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import {
   NCF_COMPRA_REGEX,
   TIPO_COMPRA,

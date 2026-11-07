@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { createClient } from "@/lib/supabase/client";
 import {
   loginWithCredenciales,

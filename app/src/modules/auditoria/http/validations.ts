@@ -15,7 +15,7 @@
  * rejecting it here would contradict the spec. The clamp lives downstream, never here.
  */
 
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 /** Stable transport codes (NOT part of the audit business catalog). */
 export const VALIDATION_ERROR = "VALIDATION_ERROR";
