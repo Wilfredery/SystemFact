@@ -63,6 +63,10 @@ jobs:
     environment: prod-demo
     steps:
       - name: Require the write confirmation
+        # `defaults.run.working-directory: app` applies to every run step, and `app/`
+        # does not exist before the checkout: without this override the step would
+        # fail on every dispatch, even with the right phrase.
+        working-directory: .
         # Primer paso, antes del checkout y de cualquier instalación: sin la
         # frase exacta el job falla acá y no corre ningún test. El input viaja por
         # una variable de entorno, nunca interpolado en el script.

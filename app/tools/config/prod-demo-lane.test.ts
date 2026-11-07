@@ -65,6 +65,20 @@ describe("prod-demo.yml — sólo manual y con confirmación", () => {
     expect(confirmar).toBeLessThan(pasos.indexOf("playwright test"));
   });
 
+  it("la confirmación no depende de que exista `app/` (corre antes del checkout)", () => {
+    // `defaults.run.working-directory: app` aplica a TODO paso `run`. Antes del
+    // checkout ese directorio no existe y el runner falla el paso, así que la
+    // confirmación mataría cada dispatch, también el que trae la frase correcta
+    // (hallazgo R3-confirm-step-workdir-before-checkout de la revisión nativa).
+    const pasos = texto.slice(texto.indexOf("steps:"));
+    const bloque = pasos.slice(
+      pasos.indexOf("- name: Require the write confirmation"),
+      pasos.indexOf("actions/checkout@"),
+    );
+    expect(texto).toMatch(/working-directory: app/);
+    expect(bloque).toMatch(/working-directory: \.\s*$/m);
+  });
+
   it("permisos mínimos y environment propio, no el del smoke", () => {
     expect(clavesDelBloque(lineas, "permissions", 2)).toEqual(["contents"]);
     expect(texto).toMatch(/permissions:\n {2}contents: read\n/);
