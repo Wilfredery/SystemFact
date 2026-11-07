@@ -52,7 +52,18 @@ describe("prod-demo.yml — sólo manual y con confirmación", () => {
 
   it("exige el input `confirm` y lo compara con la frase literal WRITE-DEMO-DATA", () => {
     expect(clavesDelBloque(lineas, "on", 2)).toContain("workflow_dispatch");
-    expect(texto).toMatch(/inputs:\n\s+confirm:\n(?:\s+.*\n)*?\s+required: true/);
+    // Línea por línea y no con una regex: `(?:\s+.*\n)*?` anida cuantificadores
+    // y CodeQL lo marca como retroceso ineficiente.
+    const sangria = (linea: string) => linea.length - linea.trimStart().length;
+    const iInputs = lineas.findIndex((l) => l.trim() === "inputs:");
+    const iConfirm = lineas.findIndex((l, i) => i > iInputs && l.trim() === "confirm:");
+    expect(iInputs).toBeGreaterThan(-1);
+    expect(iConfirm).toBeGreaterThan(iInputs);
+    const hijos: string[] = [];
+    for (let i = iConfirm + 1; i < lineas.length && sangria(lineas[i]) > sangria(lineas[iConfirm]); i++) {
+      hijos.push(lineas[i].trim());
+    }
+    expect(hijos).toContain("required: true");
     expect(texto).toContain("CONFIRM: ${{ inputs.confirm }}");
     expect(texto).toContain('if [ "${CONFIRM}" != "WRITE-DEMO-DATA" ]; then');
   });
