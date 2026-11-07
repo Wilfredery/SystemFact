@@ -1,6 +1,6 @@
 {
   "name": "systemfact",
-  "version": "0.19.5",
+  "version": "0.19.6",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -25,6 +25,7 @@
     "seed:e2e-automation": "tsx tools/scripts/seed-e2e-automation.ts",
     "e2e": "playwright test",
     "e2e:prod": "playwright test -c playwright.prod.config.ts",
+    "e2e:prod-demo": "playwright test -c playwright.prod-demo.config.ts",
     "rls:diagnose": "tsx scripts/diagnose-rls.ts",
     "rls:deep-check": "tsx scripts/deep-check-rls.ts",
     "rls:inspect-columns": "tsx scripts/inspect-columns.ts"

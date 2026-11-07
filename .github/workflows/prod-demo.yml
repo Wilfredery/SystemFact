@@ -1,0 +1,103 @@
+# ============================================================
+# Production DEMO lane — SystemFact
+#
+# A diferencia del smoke de producción (prod-smoke.yml, SOLO LECTURA), este lane
+# ESCRIBE datos demo en el despliegue real (`https://systemfact.vercel.app`):
+# una venta de contado (B02), una venta a crédito (B01) con un cobro parcial y
+# una devolución (B04), más un recorrido de CSP por las páginas autenticadas.
+# Prueba que backend, frontend, Supabase y Vercel funcionan juntos con los mismos
+# flujos que prueba el E2E local (odd/tasks/prod-demo-lane.md S1).
+#
+# Es un lane APARTE del smoke (S3): workflow propio, environment propio
+# (`prod-demo`, no `prod-smoke`), identidad propia (un Operador atado a la empresa
+# demo) y secrets propios. La regla "el smoke jamás escribe" sigue
+# siendo verdad para prod-smoke.yml; no se fusionan (R1-workflow-env-conflation).
+#
+# SOLO MANUAL (workflow_dispatch) y con una confirmación explícita: cada corrida
+# consume números de NCF para siempre (B01 + B02 + B04, uno de cada uno; los
+# rangos de la empresa demo son acotados y vencen), así que no hay schedule, ni
+# push, ni pull_request, y el input `confirm` debe valer `WRITE-DEMO-DATA` o el
+# job termina ANTES de levantar nada. Nunca forma parte de `ci-gate`.
+#
+# Los ÚNICOS secrets son DEMO_USER y DEMO_PASSWORD (environment `prod-demo`). Las
+# variables DEMO_BASE_URL (opcional) y DEMO_EMPRESA_NAME (la empresa que la UI
+# debe mostrar antes de la primera escritura; si no coincide, la corrida aborta)
+# viven en el mismo environment. Sin bypass de Vercel, sin trace/screenshot/video
+# y SIN subir artefactos: el repo es público y un artefacto de una corrida con
+# login real podría filtrar una credencial (ver app/playwright.prod-demo.config.ts).
+#
+# Retiro (S8): antes de usar la empresa demo para facturas reales, borrar los
+# secrets del environment `prod-demo` y desactivar el usuario demo.
+# ============================================================
+name: Production demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Esta corrida ESCRIBE datos demo en producción y consume NCF (B01, B02, B04). Escribí WRITE-DEMO-DATA para continuar."
+        required: true
+        type: string
+
+# Un solo grupo fijo: dos corridas nunca se pisan (la segunda espera).
+concurrency:
+  group: prod-demo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# El código Next.js vive en app/ (el root del repo no es un paquete Node).
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  prod-demo:
+    name: Production demo
+    runs-on: ubuntu-latest
+    # El environment acota los secrets de la identidad demo (sólo este job lee
+    # DEMO_USER / DEMO_PASSWORD) y deja un registro por corrida en Deployments.
+    # Sin `url` y sin reglas de protección, igual que prod-smoke: la confirmación
+    # es el input, no un click.
+    environment: prod-demo
+    steps:
+      - name: Require the write confirmation
+        # `defaults.run.working-directory: app` applies to every run step, and `app/`
+        # does not exist before the checkout: without this override the step would
+        # fail on every dispatch, even with the right phrase.
+        working-directory: .
+        # Primer paso, antes del checkout y de cualquier instalación: sin la
+        # frase exacta el job falla acá y no corre ningún test. El input viaja por
+        # una variable de entorno, nunca interpolado en el script.
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "${CONFIRM}" != "WRITE-DEMO-DATA" ]; then
+            echo "Esta corrida escribe datos demo en producción y consume NCF. El input 'confirm' debe valer exactamente WRITE-DEMO-DATA." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: ./.github/actions/setup-project
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run the production demo lane
+        # El reporte JSON es el insumo del guard de skips de abajo; `list` queda
+        # para que el log se lea igual que el job e2e de ci.yml.
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: prod-demo-results.json
+          DEMO_BASE_URL: ${{ vars.DEMO_BASE_URL || 'https://systemfact.vercel.app' }}
+          DEMO_EMPRESA_NAME: ${{ vars.DEMO_EMPRESA_NAME }}
+          # Únicos secrets del workflow (environment prod-demo).
+          DEMO_USER: ${{ secrets.DEMO_USER }}
+          DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
+        run: pnpm exec playwright test -c playwright.prod-demo.config.ts --reporter=list,json
+
+      - name: Fail when a test is skipped
+        # Un job verde con skips lee como cobertura aunque no la haya. Mismo guard
+        # que el job e2e de ci.yml y que prod-smoke.yml.
+        run: node e2e/assert-no-skips.mjs prod-demo-results.json

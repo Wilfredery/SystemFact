@@ -11,6 +11,7 @@ Branch: `feature/prod-smoke` · Delivery: single PR (version bump included).
 - S2 (owner, 2026-11-04, verbatim): "Reads of the existing tenant" — an automation identity may read the hosted tenant (1 empresa, 29 invoices); it must never write: no sale confirmation, no NCF consumption, no void.
 - S3 (owner, 2026-11-04, **superseded by L5**): daily cadence with a deduplicated issue on failure — a check nobody sees is decoration. Superseded: see the deployment model below.
 - S4 (carried from Engram 1404, do not re-litigate): separate workflow, never in `ci-gate`; its own `prod-smoke` environment; `Operador` or read-only, never admin; skips fail the run exactly like `app/e2e/assert-no-skips.mjs`.
+- Related, separate lane (2026-11-07): writing demo data to production is the **production demo lane** (`odd/tasks/prod-demo-lane.md`, own workflow, environment `prod-demo` and identity). **S2 above is unchanged and still true for this smoke**: it never writes.
 
 ## Tasks
 

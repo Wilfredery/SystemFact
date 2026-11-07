@@ -1,0 +1,88 @@
+# prod-demo-lane — the local E2E checks, run against production, writing only into the demo company
+
+Objective: prove, on the deployed system (Vercel + Supabase + backend + frontend), that the same flows
+the local E2E suite proves (cash sale, credit sale + payment, return with B04, the authenticated pages
+under the enforced CSP) also work in production, by writing demo data into the demo company only.
+Branch: `feature/prod-demo-lane` · Delivery: one PR (version bump included, `.github/workflows/**` changes).
+
+Status: **built and proven locally 2026-11-07 (T1-T4 done, review and PR pending); nothing run against production; the first production run waits for T6 and a manual dispatch.**
+
+## Specs (owner decisions, 2026-11-07 — quoted verbatim, do not paraphrase)
+
+- **S1** — owner: "Get the same test as u focus local same in production, I give u the permison to create demo examples just to make sure the production(backend, frontend, supabase and vercel works well)."
+- **S2** — owner chose "Separate demo company (recommended)" for where demo sales are created, then answered the follow-up "Production has one company: "SistemaFact Demo" (id 5, RNC 131000002). Is that company just test/demo data, or will it become your real company?" with "**It is only test/demo data**". → company 5 **is** the demo company: demo writes are allowed there and **nowhere else**. If company 5 ever becomes a real company, this lane must be retired first (see S8).
+- **S3 (relation to the existing smoke)** — `odd/tasks/prod-smoke.md` S2 ("it must never write: no sale confirmation, no NCF consumption, no void") and the `HARD RULE — NO FISCAL WRITES` header of `app/e2e-prod/session-smoke.spec.ts` stay **unchanged and true for that lane**. The demo lane is a **separate** one: its own workflow, its own GitHub environment (`prod-demo`, not `prod-smoke`), its own identity, `workflow_dispatch` only, never in `ci-gate`, never scheduled. Do not merge the two (R1-workflow-env-conflation).
+- **S4 (isolation is structural, not just a check)** — the lane logs in with a **demo identity bound to company 5 only**; RLS and server-side authorization mean it cannot read or write another empresa. Before any write the spec also asserts the empresa name shown in the UI equals the expected demo name from the environment, and aborts otherwise. No hardcoded ids: everything is derived at runtime.
+- **S5 (no credential leak, same policy as the smoke)** — traces, screenshots and videos stay **off** (`playwright.prod.config.ts` explains why: the repo is public and a trace can capture a password). No credentials, tokens or cookie values in logs or messages.
+- **S6 (bounded fiscal numbering)** — fiscal documents are never deleted (`Cancelada` vs `Anulada`), so every run consumes invoice numbers for good. Measured 2026-11-07 (read-only aggregates, company 5): B01 `secuenciaActual` 12 of 1-100, B02 117 of 101-200, B04 207 of 201-300, all valid only until **2026-12-31**; the app warns at 90% and blocks when exhausted or expired. The lane must be run deliberately (dispatch only), and each run's consumption must be stated in its report.
+- **S7 (least privilege)** — the demo identity gets the **smallest role** that can run the flows. Worker must determine it from the role matrix in code and report it; the owner provisions the user (passwords stay operator-side, `app/USER-PROVISIONING.md`, T4 withdrawn). Restocking uses an `AJUSTE` movement through the app, never a direct update.
+- **S8 (retirement)** — before this company is ever used for real invoices, the owner retires the lane (delete the `prod-demo` environment secrets and ban or deactivate the demo user: master entities are never deleted, `activo=false`).
+- **S9 (agent boundary)** — the agent writes code and docs; it does **not** touch production data to prepare the lane. The first production run happens only by workflow dispatch, after the owner has provisioned the demo user and the environment secrets.
+
+## Production state measured by the agent (read-only SELECT aggregates through the Supabase tool, 2026-11-07, no names or personal data)
+
+1 empresa (id 5, `facturaAutomatica` true) · 1 sucursal · 1 producto · 2 clientes · 3 usuarios (2 Administrador, 1 Operador) · 29 ventas / 29 facturas · NCF ranges as in S6.
+
+## Tasks
+
+| ID | S# | Route | Status | Commit |
+|----|----|-------|--------|--------|
+| T1 minimum role per flow (read the role matrix) + provisioning instructions for the demo user (owner step) | S4, S7, S9 | worker | done | docs commit |
+| T2 make the sales / cobros / devolucion / authenticated-pages specs production-capable: env-driven base URL and credentials, ids and names derived at runtime, empresa-name guard before any write | S1, S4 | worker | done | `a25c932` |
+| T3 separate lane: `playwright.prod-demo.config.ts`, `.github/workflows/prod-demo.yml` (dispatch only, environment `prod-demo`, traces/screenshots off, fails on skips like the other lanes) | S3, S5 | worker | done | `f65b745` |
+| T4 docs: README of the lane, note in `odd/tasks/prod-smoke.md` pointing here (S2 there unchanged), `app/USER-PROVISIONING.md` demo-user section | S3, S7, S8 | worker | done | docs commit |
+| T5 bump, review, PR, CI, merge | — | parent | pending | |
+| T6 owner: create the demo user + `prod-demo` environment secrets | S7, S9 | owner | pending | |
+| T7 first dispatch against production, report counts and the invoice numbers consumed | S1, S6 | parent | pending | |
+
+## Role matrix (T1) — the smallest role that can run each flow
+
+Source of truth is the server-side role gate of each action (`tieneRolPermitidoEnTx(..., ROLES_*)`), not the UI. Roles in the catalog: `Administrador`, `Operador`, `Cobrador`, `Despachador` (`app/src/modules/reportes/domain/roles.ts:21-26`). Deny-by-default: a role not listed in a gate is refused.
+
+| Flow (what the lane does) | Administrador | Operador | Cobrador | Despachador | Evidence |
+|---|---|---|---|---|---|
+| Log in and browse the `(app)` shell (header, POS, cobros pages) | yes | yes | yes | yes | `app/src/app/(app)/layout.tsx:20-22` only requires an active `USUARIO` (no role) |
+| Cash sale to Consumidor Final: list products and clients, save draft, confirm (B02) | yes | **yes** | no | no | `ROLES_VENTA = ["Administrador","Operador"]` `app/src/modules/venta/http/shared.ts:9`, used by `crearVentaAction` `.../actions.escritura.ts:37` and `confirmarVentaAction` `:120`; client list `ROLES_GESTION_CLIENTES` `app/src/modules/cliente/http/shared.ts:10` (gate at `actions.lectura.ts:72`); product list `ROLES_GESTION_PRODUCTOS` `app/src/modules/producto/http/shared.ts:10` (gate at `actions.lectura.ts:52`) |
+| Credit sale to a CREDITO client (B01) | yes | **yes** | no | no | same gates as above; confirm has no extra role check (the only Administrador-only branches in the sale use case are discounts `app/src/modules/venta/application/preparar-lineas-venta.ts:165-169` and voiding a CONFIRMADA sale `app/src/modules/venta/application/venta-service.ts:353`; the lane uses neither) |
+| Stock probe draft: save and cancel a BORRADOR | yes | **yes** | no | no | `cancelarVentaAction` gate `app/src/modules/venta/http/actions.escritura.ts:77`; the draft path of the use case needs no Administrador (`venta-service.ts:331-349`) |
+| Cobro (partial payment) and estado de cuenta / board / receipt reads | yes | **yes** | no | no | `ROLES_COBROS = ["Administrador","Operador"]` `app/src/modules/cobros/http/shared.ts:32`; `registrarCobroAction` `.../actions.escritura.ts:44`; reads `.../actions.lectura.ts:53,87,119`. A refund is Administrador-only (`shared.ts:34`) and the lane never refunds |
+| Return with B04 credit note | yes | **yes** | no | no | `ROLES_DEVOLUCION = ["Administrador","Operador"]` `app/src/modules/devolucion/http/actions.shared.ts:49`, gate at `actions.devolver.ts:21` |
+| `/dashboard` KPIs | yes | denied in-page (no redirect) | CxC tiles only | denied in-page | `tilesPermitidos`/`alcanceDashboard` `roles.ts:107-125`; message "Su rol no incluye paneles de reporte." `app/src/app/(app)/dashboard/page.tsx:70-75` |
+| `/reportes` | yes | access message | CxC report only | access message | `ROLES_POR_REPORTE` `roles.ts:37-53` |
+| `/auditoria` | yes | access message | access message | access message | `ROLES_AUDITORIA = ["Administrador"]` `app/src/modules/auditoria/http/actions.ts:46` (gate `:106`) |
+| `/selector-empresa-sucursal` | yes | **redirects to `/dashboard`** | redirect | redirect | `app/src/app/(app)/selector-empresa-sucursal/data.ts:38-39` |
+
+**The demo user needs ONE role: `Operador`.** It is the only non-admin role that covers every write flow (sale, credit sale, cobro, return) and it is also the role of the production smoke identity. `Cobrador` and `Despachador` are refused by the sale, cobro and return gates, so no combination of non-admin roles is needed: `Operador` alone is enough. `Administrador` is NOT needed and must not be used: it adds only things the lane never does (discounts, voiding, refunds, selector, audit, KPIs).
+
+What the Operador cannot see is part of the assertion, not a gap: the page walk expects `/selector-empresa-sucursal` to redirect to `/dashboard` (`DENIED_REDIRECTS` in `app/e2e-prod-demo/demo-flow.spec.ts`), and `/dashboard`, `/reportes`, `/auditoria` render their in-page access messages without CSP violations. Limitation: an Operador cannot read stock on any page (the inventory nav entry is disabled and the inventory report is Administrador-only), so the lane reads the branch stock from the app's own "requested X, available Y" insufficient-stock warning on a probe draft that is cancelled at once.
+
+Proven, not just read: the whole lane passed locally with a user holding only the `Operador` role (see Local proof below).
+
+## How to run, what it consumes, how to retire (T4)
+
+**Run (production, only after the owner provisioned the demo user and the `prod-demo` environment, S9).** Actions → "Production demo" → Run workflow → type `WRITE-DEMO-DATA` in `confirm`. Any other value fails the first step and nothing runs. There is no schedule and no push/PR trigger (pinned by `app/tools/config/prod-demo-lane.test.ts`). Environment `prod-demo`: secrets `DEMO_USER`, `DEMO_PASSWORD`; variables `DEMO_EMPRESA_NAME` (the exact `nombreComercial` the demo company shows in the app header) and optional `DEMO_BASE_URL` (default `https://systemfact.vercel.app`). Locally: `DEMO_BASE_URL=http://localhost:3000 DEMO_USER=… DEMO_PASSWORD=… DEMO_EMPRESA_NAME=… pnpm e2e:prod-demo` against `next build` + `next start` over the local Supabase stack, never against production from a developer machine.
+
+**Guards.** The `page` fixture logs in and compares the empresa shown in the header with `DEMO_EMPRESA_NAME` before any spec touches a page; a mismatch throws (names neither value) and `maxFailures: 1` stops the run with nothing written. Missing credentials or empresa name fail, never skip. No trace, screenshot, video or artifact upload (public repo, real login). The lane never reads the database.
+
+**What ONE run consumes** (fiscal numbering is never given back; ranges and validity in S6):
+
+| Consumed | Per run |
+|---|---|
+| B02 NCF (cash sale to Consumidor Final) | 1 |
+| B01 NCF (credit sale to the first CREDITO client) | 1 |
+| B04 NCF (return of that credit sale) | 1 |
+| Stock | 2 units sold, 1 restocked by the return (net 1) |
+| Cobro | 1 partial cobro (half of the invoice, receipt number is non-fiscal) |
+| Probe drafts | 4 `VENTA` rows saved and cancelled at once (CANCELADA, no NCF, no stock effect) |
+| Left behind | 1 B01 invoice that stays partially paid (credit sale less a payment, then a full-amount credit note) |
+
+With the ranges measured on 2026-11-07 (B01 88 left, B02 83, B04 93) the tightest limit is B02: 83 runs, and all ranges expire on 2026-12-31 whichever comes first. The app warns at 90% and blocks when exhausted or expired. The lane needs at least 2 units of stock in the demo branch and fails with a clear message otherwise; restocking is an `AJUSTE` movement through the app (S7), never done by the lane.
+
+**Retire (S8)** before company 5 is ever used for real invoices: delete the `prod-demo` environment secrets (and variables), set the demo user `activo = false` (master entities are never deleted), and remove the workflow if the lane will not return. Nothing else depends on it.
+
+**Local proof (2026-11-07).** `next build` + `next start -p 3000` over the local Supabase stack, a local user with only the `Operador` role, `DEMO_EMPRESA_NAME` = the local empresa name: 5 passed, 0 failed, 0 skipped (`assert-no-skips.mjs` OK). The empresa guard was proven with a wrong `DEMO_EMPRESA_NAME`: the run aborted on the first test and the local `VENTA` count did not change. One run consumed 1 B01, 1 B02 and 1 B04 locally. The CSP walk visited 8 pages (7 rendered, `/selector-empresa-sucursal` redirected to `/dashboard` as the matrix says) with 0 violations.
+
+## Log
+
+- L1 (2026-11-07): owner, verbatim: "1. Get the same test as u focus local same in production, I give u the permison to create demo examples just to make sure the production(backend, frontend, supabase and vercel works well)." Safeguard proposed by the agent and accepted: writes only into a demo company; the owner then answered that company 5 is "only test/demo data". The agent mapped the seed, provisioning and isolation facts with a read-only explorer and measured the production state with read-only aggregates (see above); no production data was written.
+- L2 (2026-11-07): worker built T1-T4. Role matrix: one role, `Operador` (section above). Specs `app/e2e-prod-demo/` (UI only, no DATABASE_URL), config `app/playwright.prod-demo.config.ts`, workflow `.github/workflows/prod-demo.yml`, pnpm script `e2e:prod-demo`, guard tests `app/tools/config/prod-demo-guard.test.ts` and `prod-demo-lane.test.ts`. Proven only locally (Docker + local Supabase, user with the `Operador` role): 5 passed / 0 failed / 0 skipped. A flow that cannot be shown through the UI: **stock for an Operador** (no inventory page, the inventory report is Administrador-only), solved by reading the app's own insufficient-stock warning on a probe draft that is cancelled at once; this is why a run also creates 4 CANCELADA drafts. Nothing touched production (S9).
