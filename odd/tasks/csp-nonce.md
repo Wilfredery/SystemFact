@@ -141,12 +141,60 @@ page*, not a decision — it must be re-measured on an authenticated page before
 
 | ID | S# | Route | Status | Commit |
 |----|----|-------|--------|--------|
-| T1 pure policy builder + tests (nonce, directives, env-derived origin) | S2, S3, S6 | worker | pending | |
-| T2 wire `proxy.ts`: nonce request header + report-only response header | S1, S3, S6 | worker | pending | |
-| T3 smoke asserts zero CSP violations on `/login` + dashboard | S4, S5 | worker | pending | |
-| T4 measure on `next build` + `next start`, record violations in this file | S5 | worker | pending | |
+| T1 pure policy builder + tests (nonce, directives, env-derived origin) | S2, S3, S6 | worker | done | d59c2d9 |
+| T2 wire `proxy.ts`: nonce request header + report-only response header | S1, S3, S6 | worker | done | 95a04e8 |
+| T3 smoke asserts zero CSP violations on `/login` + dashboard | S4, S5 | worker | done (not run against production: no PROD_USER/PROD_PASSWORD) | 611eec9 |
+| T4 measure on `next build` + `next start`, record violations in this file | S5 | worker | done, found a blocker (T4b) | this commit |
+| T4b make `/login` render dynamically so Next stamps the nonce on its inline scripts (trap 4) | S3, S5 | parent | **open, blocks enforce** | |
 | T5 bump, PR, deploy approval, prod smoke | S4 | parent | pending | |
 | T6 enforce (separate release, after clean days) | S5 | parent | not started | |
+
+## Measurement 2 (report-only wired) — 2026-11-07
+
+Setup: `pnpm build` then `pnpm exec next start -p 3100` (Next 16.4.5, Turbopack, production mode), env from the
+developer `.env.local` (hosted Supabase project; nothing printed, nothing written). Authenticated routes were NOT
+measured: Docker is not running, so there is no local session. **That gap stands**; the production smoke (T3) covers
+the dashboard after the deploy.
+
+What the bundled Next 16 CSP guide says, and what the code follows: the proxy sets `x-nonce` and the CSP on the
+REQUEST headers; Next parses the nonce from the request CSP (it accepts `content-security-policy-report-only` too, see
+`next/dist/server/app-render/get-script-nonce-from-header.js`) and stamps its inline scripts during server-side
+rendering; the guide recommends `'strict-dynamic'` next to the nonce (so the policy carries it), and says plainly that
+**a nonce only works on dynamically rendered pages**.
+
+Exact header measured on `GET /login` (the nonce changes on every request):
+
+```
+content-security-policy-report-only: default-src 'self'; script-src 'self' 'nonce-xhCtcVoub0zfEXx4A8ewMQ==' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://tcyxwkcrmontkrtbyxfm.supabase.co; frame-ancestors 'none'; frame-src 'none'; form-action 'self'; base-uri 'none'; object-src 'none'
+```
+
+| check | measured |
+|---|---|
+| the 5 static headers on `/login` | present and unchanged |
+| `content-security-policy` (enforcing) | absent — report-only only |
+| header on the auth-gate redirects (`/`, `/dashboard` → 307 `/login`) | present, `location: /login` unchanged |
+| nonce differs between requests | yes (header level) |
+| inline `<script>` blocks in the `/login` HTML | 3 (same as Measurement 1) |
+| inline scripts carrying `nonce="…"` | **0 of 3** |
+| `x-nextjs-prerender` / `x-nextjs-cache` / `cache-control` on `/login` | `1` / `HIT` / `s-maxage=31536000` — **still statically prerendered** |
+| `next build` route table | `/login` and `/` are `○ (Static)`; every other route is already `ƒ (Dynamic)` |
+| Chromium `securitypolicyviolation` events on `/login` (`next start`, headless) | **13**, all `script-src-elem`, disposition `report`: 10 same-origin `/_next/static/chunks/*.js` loads (9 distinct files, one loaded twice) + 3 `inline` scripts |
+| violations of any other directive | 0 (no style, img, font, connect, frame or form violation) |
+| `e2e/security-headers.spec.ts` against that server | 7/7 passed (4 existing + 3 new) |
+| `e2e-prod/public-smoke.spec.ts` pointed at that local server (`PROD_BASE_URL=http://localhost:3100`) | 3 passed; **the new CSP check failed with 13 violations** (directives and hosts listed, no URLs) — the gate works |
+
+**Finding (trap 4 confirmed, blocks enforce): the nonce never reaches the page.** `/login` is prerendered at build
+time, so Next cannot stamp the nonce on its scripts: the header carries a fresh nonce, the inline scripts carry none.
+Because the policy has `'strict-dynamic'`, the same-origin chunk loads are reported too (`'self'` is ignored when
+`'strict-dynamic'` is present, and the chunks are only trusted through a nonced bootstrap). Enforcing today would
+break the login page entirely. The fix is to render `/login` dynamically (the guide's way: `await connection()` from
+`next/server` in the page, or an equivalent dynamic opt-in). That edit lives in `app/src/app/login/`, outside the
+surface this task was allowed to touch, so it is recorded as T4b and NOT done here. Expected cost, per the guide:
+`/login` loses its static `s-maxage` cache and renders per request. After T4b, re-run this measurement; the expected
+result is 3/3 nonced inline scripts and 0 violations.
+
+The production smoke will report the same violations on `/login` until T4b ships. That is correct: S5 says "zero
+violations on the routes we exercise, not 'header sent'".
 
 ## Log
 
