@@ -149,9 +149,9 @@ page*, not a decision — it must be re-measured on an authenticated page before
 | T4 measure on `next build` + `next start`, record violations in this file | S5 | worker | done, found a blocker (T4b) | this commit |
 | T4b make `/login` render dynamically so Next stamps the nonce on its inline scripts (trap 4) | S3, S5 | worker | done (owner: include in 0.19.4); see Measurement 3 | the `fix(login)` commit of this branch |
 | T5 bump, PR, deploy approval, prod smoke | S4 | parent | done: PR #178 (squash `efe9346`), owner-approved manual deploy, prod smoke run 42405218222 = 6 passed, 0 CSP violations on `/login` and login -> dashboard | `efe9346` |
-| T6a local E2E guard: log in with the seeded local users and visit the authenticated pages (dashboard, venta, cobros, reportes, ...) failing on any CSP violation | S7, S5 | worker | pending | |
-| T6b run it under report-only against the local Supabase stack; fix the policy only from measured violations | S7, S5 | worker | pending | |
-| T6c flip to enforcing `Content-Security-Policy` in `proxy.ts` and the tests; full local E2E suite must stay green under enforcement | S7 | worker | pending | |
+| T6a local E2E guard: log in with the seeded local users and visit the authenticated pages (dashboard, venta, cobros, reportes, ...) failing on any CSP violation | S7, S5 | worker | done (`app/e2e/csp-authenticated.spec.ts`); RED seen on `next dev`, red on the production build too (see Measurement 4) | 8e51ef5 |
+| T6b run it under report-only against the local Supabase stack; fix the policy only from measured violations | S7, S5 | worker | **BLOCKED, not clean**: 3 violations, one root cause (zod's `new Function("")` probe). No narrow policy fix exists; see Measurement 4 | this commit |
+| T6c flip to enforcing `Content-Security-Policy` in `proxy.ts` and the tests; full local E2E suite must stay green under enforcement | S7 | worker | **not started** (S7: only after T6b is clean); a throwaway local experiment is recorded in Measurement 5 | |
 | T6d PR, native review, CI, owner-approved manual deploy, prod smoke | S7 | parent | pending | |
 
 ## Measurement 2 (report-only wired) — 2026-11-07
@@ -229,8 +229,73 @@ no CDN caching to lose; `/` stays static only because the proxy redirects it bef
 Still NOT measured, same gap as before: authenticated routes (no local session; Docker off). They were already dynamic
 (`ƒ`), so Next stamps their nonce, but only the production smoke (login → dashboard) can prove zero violations there.
 
+## Measurement 4 (authenticated pages, report-only) — 2026-11-07
+
+Setup: local Supabase stack (containers `supabase_*_SystemFact`, DB on `127.0.0.1:54322`), env from the gitignored
+`app/.env.e2e.stack` (nothing printed), `pnpm exec next build` + `pnpm exec next start -p 3000` (production mode,
+Next 16.4.5; never `next dev`), policy = the shipped report-only one (`connect-src 'self' http://127.0.0.1:54321`
+locally). Spec: `app/e2e/csp-authenticated.spec.ts` (commit 8e51ef5). It logs in as the seeded `e2e-automation`
+admin (Administrador, single branch "Principal"; the local seed has **no** Operador, so none was measured) and
+visits every `page.tsx` under `src/app/(app)/**`, derived from the filesystem. Dynamic segments use seeded ids
+(read-only SELECT): cliente 1 and receipt correlativo 1 exist, so those pages render their real UI. Navigation only:
+no sale, payment or void.
+
+Pages visited (8): `/auditoria`, `/cobros/cxc-board`, `/cobros/estado-cuenta/1`, `/cobros/recibo/1`, `/dashboard`,
+`/reportes`, `/selector-empresa-sucursal`, `/venta`. `/login` is visited by the login step itself (0 violations).
+Not page routes, not visited: `/reportes/exportar`, `/reportes/exportar-txt` (route handlers, they download files).
+
+RED: the same spec against `next dev` (the playwright default webServer) fails at the login with a long list of
+`script-src (blocked: eval, source: localhost:3000)`: dev needs `'unsafe-eval'`, which is trap 3. That proves the
+guard fails on a violation and that it must be measured on the production build.
+
+Violations on the production build, report-only (3, one root cause):
+
+| page | directive | blocked | source host |
+|---|---|---|---|
+| `/cobros/cxc-board` | `script-src` | `eval` | `localhost:3000` (own origin) |
+| `/cobros/estado-cuenta/1` | `script-src` | `eval` | `localhost:3000` |
+| `/venta` | `script-src` | `eval` | `localhost:3000` |
+
+The other five pages and the login: 0 violations. No `style-src`, `img-src`, `font-src`, `connect-src`,
+`frame-src`, `form-action` violation anywhere, and no inline-script violation (the nonce works on every page).
+
+Root cause (diagnosed with a throwaway Playwright probe, deleted): the event comes from the same chunk on all three
+pages, `/_next/static/chunks/392-*.js`, which bundles zod 4. Its `allowsEval` probe runs `new Function("")` inside a
+`try/catch` to decide whether it may JIT-compile schemas. The throw is swallowed and zod falls back to its normal
+path, so nothing breaks, but a strict CSP still **reports** the attempt as a `securitypolicyviolation`. Zod's own
+source says so: "Skip the probe under `jitless`: strict CSPs report the caught `new Function` as a
+`securitypolicyviolation` even though the throw is swallowed." (`node_modules/zod/v4/core/util.js`). Client
+components of venta and cobros import the `http/validations.ts` schemas, which is why those three pages load it.
+
+Why the POLICY cannot fix it narrowly: the only way to allow `new Function` is `'unsafe-eval'` in `script-src`, which
+S2 forbids ("no `'unsafe-eval'` in `script-src` on a production build") and which would also weaken the XSS
+protection the nonce gives. No scoped alternative exists (no hash or nonce can authorise `eval`). The narrow fix is
+in the APP, outside the T6 surfaces: `z.config({ jitless: true })` (zod's documented switch, it skips the probe) in a
+module that every client bundle loads. That is a code change, not a policy change, so it is **not done here and
+needs the parent's decision**. T6c was NOT committed because T6b is not clean (S7).
+
+## Measurement 5 (throwaway experiment under enforcement, NOT shipped) — 2026-11-07
+
+To know whether the zod finding is cosmetic or breaks sales, `Content-Security-Policy-Report-Only` was temporarily
+renamed to `Content-Security-Policy` in the working tree of `app/src/proxy.ts` only (no commit; reverted, `git diff`
+on that file is empty), rebuilt, `next start -p 3000`, and the whole local E2E suite was run. Measured header on
+`/login` (enforcing):
+
+```
+content-security-policy: default-src 'self'; script-src 'self' 'nonce-0FmI+inRmyw2CWR+6gm9Hg==' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://127.0.0.1:54321; frame-ancestors 'none'; frame-src 'none'; form-action 'self'; base-uri 'none'; object-src 'none'
+```
+
+Result: **14 passed, 5 failed, 0 skipped**. The sales flows all passed under enforcement: confirm-venta (2),
+cobros (2), devolucion (1), selector-sucursal (3), auth-gate (2), the 4 static-header tests. The 5 failures: the
+guard spec (the 3 zod `eval` violations above; under enforcement the page still renders, the probe is blocked and
+caught) and the 4 `security-headers.spec.ts` assertions that name the report-only header (expected: T6c would update
+them). Conclusion: the zod probe is cosmetic for behaviour (a console "Refused to
+evaluate a string as JavaScript" and an event) but the spec stays red until zod stops probing or the owner accepts
+`'unsafe-eval'`, which S2 rules out.
+
 ## Log
 
 - L1 (2026-11-07): owner decisions, verbatim: "1. yes. 2. Go ahead. 3. wdym about the report only, i dont understand this." After the explanation of report-only mode (browser blocks nothing, only notes what would have been blocked), the owner picked "Smoke check + a few days (recommended)" for decision 3.
 - L2 (2026-11-07): **shipped and proven in production.** Owner chose "Merge, deploy, run smoke (recommended)" for PR #178. Merged as `efe9346`, deployed by hand (`vercel deploy --prod`), then the production smoke (run 42405218222) reported **6 passed / 0 failed / 0 skipped**: `/login` loads in a real browser with **zero CSP violations**, the logged-in Operador journey login -> dashboard also reports none (the session smoke watches `securitypolicyviolation` from before the login), and the `sb-*` cookie flags from 0.19.3 still hold. The live `/login` carries `content-security-policy-report-only` with a per-request nonce, the five static headers unchanged, `cache-control: private, no-cache, no-store` (dynamic). Native review of the branch: approved, 5 non-blocking advisories (no reporting endpoint: real-user violations are not collected, only the smoke sees them; a throw in the builder would fail every request, mitigated by startup env validation; one redirect branch covered only by e2e; two test-hygiene suggestions). **Next (T6, separate release):** enforce after a few clean days, S5. Pages the smoke does not visit (venta, cobros, reportes, ...) are NOT proven violation-free yet: widen the smoke's journey, or browse them with the console open on the report-only build, before flipping to enforce.
 - L3 (2026-11-07): owner, verbatim: "So its a good idea if u active the CSP, check it through local first and if everythings correct process to the production. As i see, we're doing a great job focus and have an aggresive security to get the less bugs and vulnerabilities possible ... the most important part for me its to have an solid system for sales to ppl." Docker was opened by the owner (local Supabase containers running). Sales must keep working under enforcement: T6c's full local E2E, which includes the sales flows, is the gate. This is spec S7.
+- L4 (2026-11-07): T6 worker run. Spec `app/e2e/csp-authenticated.spec.ts` (8e51ef5) visits the 8 authenticated pages under report-only on the local stack: **3 violations, one root cause** (zod 4's `new Function("")` probe, `script-src` blocked `eval`, on `/cobros/cxc-board`, `/cobros/estado-cuenta/[clienteId]` and `/venta`). The policy cannot absorb it without `'unsafe-eval'` (forbidden by S2), so T6b is NOT clean and T6c was **not committed**. A throwaway enforcing build passed every sales, cobros, devolucion and selector flow (Measurement 5), so the finding is cosmetic for behaviour, but the guard stays red. Decision needed: `z.config({ jitless: true })` in the app (outside the T6 surfaces). No release bump: nothing in `app/src` changed.
