@@ -27,7 +27,7 @@ Sourced verbatim from `docs/22-security-hardening-plan.md` (T0/T7, owner-approve
 | T3 login brute force | **SHIPPED 2026-11-05 — v0.19.0, in production** | PR #166 (squash `d96f213`), tag `v0.19.0`, prod-smoke 4/4; ADR-020 is local; tracker `odd/tasks/login-brute-force.md` |
 | T4 admin password reset | **not built — decided 2026-11-04: operator-side** | `app/USER-PROVISIONING.md` is the only path; the revisit trigger lives there |
 | T5 RLS coverage guard | DONE | v0.18.6, found `_prisma_migrations` RLS off |
-| T6 session/cookie config | open | `httpOnly:false` is intentional, do not force |
+| T6 session/cookie config | **in-repo part DONE (0.19.2)**: dead `client-component.ts` deleted + guard test, `httpOnly:false` reason documented. **Open:** production `Set-Cookie` check (`Secure` is never set by `@supabase/ssr` or Next, so it may be missing in production), and the Pro-gated `sessions_*` values | `httpOnly:false` is intentional, do not force |
 | T7 password policy | decided; **code half DONE** (v0.18.8) | `AUTH_PASSWORD_POLICY` + `weak_password` mapping, RED→GREEN |
 | T8 admin MFA | **deferred to a post-release update** (owner 2026-11-04) | `docs/11` §6 owns the timing, `docs/22` the spec |
 
