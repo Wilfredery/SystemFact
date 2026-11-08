@@ -68,6 +68,7 @@ describe("consultarInventario", () => {
   });
 
   it("forwards the filters to the listing and the count, and the summary ignores them", async () => {
+    (contarConsultaInventarioEnTx as jest.Mock).mockResolvedValue(25);
     (consultarInventarioEnTx as jest.Mock).mockResolvedValue([]);
     const query = { page: 2, limit: 10, busqueda: "arroz", categoriaId: 7, estado: "agotado" as const };
 
@@ -76,6 +77,26 @@ describe("consultarInventario", () => {
     expect(consultarInventarioEnTx).toHaveBeenCalledWith(tx, ctx, query);
     expect(contarConsultaInventarioEnTx).toHaveBeenCalledWith(tx, ctx, query);
     expect(resumenInventarioEnTx).toHaveBeenCalledWith(tx, ctx);
+  });
+
+  it("clamps a page past the end to the last page and returns the page it served", async () => {
+    (contarConsultaInventarioEnTx as jest.Mock).mockResolvedValue(30);
+    (consultarInventarioEnTx as jest.Mock).mockResolvedValue([row("P001", "5", 1)]);
+
+    const result = await consultarInventario(tx, ctx, { page: 99, limit: 25 });
+
+    expect(consultarInventarioEnTx).toHaveBeenCalledWith(tx, ctx, { page: 2, limit: 25 });
+    expect(result.ok && result.data.page).toBe(2);
+  });
+
+  it("serves page 1 when nothing matches, whatever page was asked", async () => {
+    (contarConsultaInventarioEnTx as jest.Mock).mockResolvedValue(0);
+    (consultarInventarioEnTx as jest.Mock).mockResolvedValue([]);
+
+    const result = await consultarInventario(tx, ctx, { page: 7, limit: 25 });
+
+    expect(consultarInventarioEnTx).toHaveBeenCalledWith(tx, ctx, { page: 1, limit: 25 });
+    expect(result.ok && result.data.page).toBe(1);
   });
 
   it.each([0, 101])("rejects limit %s without touching the repository", async (limit) => {

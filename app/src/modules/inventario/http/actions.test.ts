@@ -247,6 +247,14 @@ describe("consultarInventarioAction", () => {
     });
   });
 
+  it("rejects a category id beyond the database integer range with VALIDATION_ERROR", async () => {
+    const result = await consultarInventarioAction({ categoriaId: 3000000000 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(VALIDATION_ERROR);
+    expect(consultarInventario).not.toHaveBeenCalled();
+  });
+
   it("rejects an unknown status filter with VALIDATION_ERROR before any session read", async () => {
     const result = await consultarInventarioAction({ estado: "roto" });
 

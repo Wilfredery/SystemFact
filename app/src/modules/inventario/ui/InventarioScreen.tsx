@@ -19,6 +19,7 @@ import { formatearMonto } from "@/shared/ui/format";
 import { TAMANO_PAGINA } from "./paginacion";
 
 const DEBOUNCE_BUSQUEDA_MS = 300;
+const MENSAJE_FALLO_CARGA = "No se pudo cargar el inventario. Intente de nuevo.";
 
 export type InventarioInicial =
   | { readonly ok: true; readonly data: ConsultarInventarioOutput }
@@ -81,13 +82,19 @@ export function InventarioScreen({
     const solicitud = ++ultimaSolicitud.current;
     setFiltros(next);
     setCargando(true);
-    const r = await consultarInventarioAction(construirQuery(next, page));
-    if (solicitud !== ultimaSolicitud.current) return;
-    if (r.ok) {
-      setData(r.data);
-      setError(null);
-    } else {
-      setError(r.error.message);
+    try {
+      const r = await consultarInventarioAction(construirQuery(next, page));
+      if (solicitud !== ultimaSolicitud.current) return;
+      if (r.ok) {
+        setData(r.data);
+        setError(null);
+      } else {
+        setError(r.error.message);
+      }
+    } catch {
+      // The action itself rejected (timeout, network, expired session).
+      if (solicitud !== ultimaSolicitud.current) return;
+      setError(MENSAJE_FALLO_CARGA);
     }
     setCargando(false);
   }, []);
@@ -110,6 +117,7 @@ export function InventarioScreen({
   }
 
   const totalPaginas = Math.max(1, Math.ceil(data.total / data.limit));
+  const busquedaPendiente = texto !== filtros.busqueda;
 
   return (
     <div className="flex flex-col gap-4">
@@ -229,7 +237,7 @@ export function InventarioScreen({
         <button
           type="button"
           onClick={() => void consultar(filtros, data.page - 1)}
-          disabled={cargando || data.page <= 1}
+          disabled={cargando || busquedaPendiente || data.page <= 1}
           aria-label="Página anterior"
           className={CLASE_BOTON}
         >
@@ -241,7 +249,7 @@ export function InventarioScreen({
         <button
           type="button"
           onClick={() => void consultar(filtros, data.page + 1)}
-          disabled={cargando || data.page >= totalPaginas}
+          disabled={cargando || busquedaPendiente || data.page >= totalPaginas}
           aria-label="Página siguiente"
           className={CLASE_BOTON}
         >

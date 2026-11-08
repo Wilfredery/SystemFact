@@ -77,9 +77,12 @@ export async function consultarInventario(
     return buildError(PAGINA_INVALIDA);
   }
 
-  const [rows, total, resumen, categorias] = await Promise.all([
-    consultarInventarioEnTx(tx, ctx, query),
-    contarConsultaInventarioEnTx(tx, ctx, query),
+  // A page past the end (stale link, or the result shrank between loads) is
+  // clamped to the last page instead of rendering an empty table.
+  const total = await contarConsultaInventarioEnTx(tx, ctx, query);
+  const page = Math.min(query.page, Math.max(1, Math.ceil(total / query.limit)));
+  const [rows, resumen, categorias] = await Promise.all([
+    consultarInventarioEnTx(tx, ctx, { ...query, page }),
     resumenInventarioEnTx(tx, ctx),
     listarCategoriasFiltroEnTx(tx, ctx),
   ]);
@@ -91,6 +94,6 @@ export async function consultarInventario(
 
   return {
     ok: true,
-    data: { items, total, page: query.page, limit: query.limit, resumen, categorias },
+    data: { items, total, page, limit: query.limit, resumen, categorias },
   };
 }

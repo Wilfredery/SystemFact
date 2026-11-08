@@ -162,6 +162,43 @@ describe("consultarInventario (real DB)", () => {
     expect(filtrado.data.resumen.valorInventario).toBe("852.50");
   });
 
+  it("treats minimum 0 with stock 0 as agotado, and ignores stock held in another branch", async () => {
+    const db = getHarnessDb();
+    const cero = await crearProducto("Z-MIN0", "Minimo cero", {
+      categoriaId,
+      stockMinimo: 0,
+      cantidad: "0",
+    });
+    const enOtraSucursal = await crearProducto("Z-OTRASUC", "Stock en otra sucursal", {
+      categoriaId,
+      stockMinimo: 5,
+    });
+    await db.inventario.create({
+      data: {
+        sucursalId: fixture.sucursalA2.id,
+        productoId: enOtraSucursal.id,
+        cantidad: new Prisma.Decimal("50.000"),
+      },
+    });
+
+    const result = await consultar({ page: 1, limit: 100, estado: "agotado" });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const porCodigo = new Map(result.data.items.map((i) => [i.codigo, i]));
+    expect(porCodigo.get("Z-MIN0")).toMatchObject({ productoId: cero.id, cantidad: "0", estado: "agotado" });
+    expect(porCodigo.get("Z-OTRASUC")).toMatchObject({ cantidad: "0", estado: "agotado" });
+  });
+
+  it("clamps a page past the end and still returns the last page's rows", async () => {
+    const result = await consultar({ page: 99, limit: 2 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.page).toBe(Math.ceil(result.data.total / 2));
+    expect(result.data.items.length).toBeGreaterThan(0);
+  });
+
   it("offers the active categories of the company only", async () => {
     const result = await consultar({ page: 1, limit: 25 });
 

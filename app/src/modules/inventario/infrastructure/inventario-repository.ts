@@ -269,7 +269,7 @@ export async function resumenInventarioEnTx(
     SELECT COUNT(*)::int AS "totalProductos",
            COUNT(*) FILTER (WHERE "estado" = 'bajo_stock')::int AS "bajoStock",
            COUNT(*) FILTER (WHERE "estado" = 'agotado')::int AS "agotados",
-           COALESCE(SUM("cantidad" * "costoPromedio"), 0)::numeric(14,2)::text AS "valorInventario"
+           ROUND(COALESCE(SUM("cantidad" * "costoPromedio"), 0), 2)::text AS "valorInventario"
     FROM (${consultaBaseSql(ctx)}) base`);
   return (
     rows[0] ?? {

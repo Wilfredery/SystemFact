@@ -34,7 +34,7 @@ export const zConsultarInventarioQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   busqueda: z.preprocess(vacioAUndefined, z.string().trim().max(100).optional()),
-  categoriaId: z.preprocess(vacioAUndefined, z.coerce.number().int().positive().optional()),
+  categoriaId: z.preprocess(vacioAUndefined, z.coerce.number().int().positive().max(2147483647).optional()),
   estado: z.preprocess(
     vacioAUndefined,
     z.enum(["normal", "bajo_stock", "agotado"]).optional(),

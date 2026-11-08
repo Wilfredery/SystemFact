@@ -166,6 +166,21 @@ describe("InventarioScreen — errors", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("No tiene permisos para consultar inventario");
     expect(screen.getByTestId("inventario-fila-7")).toBeInTheDocument();
   });
+
+  it("recovers when the action itself rejects: message shown, controls usable again", async () => {
+    montar();
+    mockConsultar.mockRejectedValueOnce(new Error("timeout"));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Página siguiente" }));
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "No se pudo cargar el inventario. Intente de nuevo.",
+    );
+    expect(screen.getByTestId("inventario-fila-7")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Página siguiente" })).toBeEnabled();
+  });
 });
 
 describe("InventarioScreen — querying", () => {
@@ -237,6 +252,22 @@ describe("InventarioScreen — querying", () => {
       fireEvent.click(screen.getByRole("button", { name: "Página anterior" }));
     });
     expect(mockConsultar).toHaveBeenLastCalledWith({ page: 1, limit: 25 });
+  });
+
+  it("keeps pagination disabled while a typed search is still waiting for its debounce", async () => {
+    jest.useFakeTimers();
+    montar();
+
+    fireEvent.change(screen.getByLabelText("Buscar producto"), { target: { value: "arr" } });
+    expect(screen.getByRole("button", { name: "Página siguiente" })).toBeDisabled();
+
+    await resolver(salida());
+    await act(async () => {
+      jest.advanceTimersByTime(300);
+    });
+    expect(mockConsultar).toHaveBeenCalledTimes(1);
+    expect(mockConsultar).toHaveBeenCalledWith({ page: 1, limit: 25, busqueda: "arr" });
+    expect(screen.getByRole("button", { name: "Página siguiente" })).toBeEnabled();
   });
 
   it("disables the next button on the last page", () => {

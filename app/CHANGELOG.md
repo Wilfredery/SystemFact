@@ -2,7 +2,7 @@
 
 ### ⚠ BREAKING CHANGES
 
-* **producto, inventario:** `Operador` and `Despachador` are now **view-only** on products and inventory; only `Administrador` creates or edits products and adjusts stock. Before, `Operador` could. Owner decision, 2026-11-08: "Operador and Despachador view-only for both, with the Administrador managing." Each capability reads one named role group in the module's `http/shared.ts` (`ROLES_VER_PRODUCTOS`, `ROLES_GESTION_PRODUCTOS`, `ROLES_VER_INVENTARIO`, `ROLES_GESTION_INVENTARIO`), so changing who may do what later is a one-line edit. The product list also feeds the sales product search, so a `Despachador` can now search products when selling.
+* **producto, inventario:** `Operador` and `Despachador` are now **view-only** on products and inventory; only `Administrador` creates or edits products and adjusts stock. Before, `Operador` could. Owner decision, 2026-11-08: "Operador and Despachador view-only for both, with the Administrador managing." Each capability reads one named role group in the module's `http/shared.ts` (`ROLES_VER_PRODUCTOS`, `ROLES_GESTION_PRODUCTOS`, `ROLES_VER_INVENTARIO`, `ROLES_GESTION_INVENTARIO`), so changing who may do what later is a one-line edit. The product list also feeds the sales product search, which `Operador` and `Administrador` already use; `Despachador` still cannot sell.
 
 ### Features
 
