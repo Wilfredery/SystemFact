@@ -713,6 +713,7 @@ model MovimientoInventario {
   cantidadNueva    Decimal        @db.Decimal(12, 3)
   usuarioId        Int
   fecha            DateTime       @db.Timestamptz(6)
+  idempotencyKey   String?        @db.VarChar(255) // ajuste manual: clave del cliente; NULL en el resto de movimientos
 
   inventario  Inventario   @relation(fields: [inventarioId], references: [id], onDelete: Restrict)
   venta       Venta?       @relation(fields: [ventaId], references: [id], onDelete: Restrict)
@@ -720,6 +721,7 @@ model MovimientoInventario {
   notaCredito NotaCredito? @relation(fields: [notaCreditoId], references: [id], onDelete: Restrict)
   usuario     Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
 
+  @@unique([inventarioId, idempotencyKey]) // idempotencia del ajuste manual (nullable → múltiples NULL permitidos)
   @@map("MOVIMIENTO_INVENTARIO")
 }
 
