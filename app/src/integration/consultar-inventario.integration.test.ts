@@ -190,6 +190,27 @@ describe("consultarInventario (real DB)", () => {
     expect(porCodigo.get("Z-OTRASUC")).toMatchObject({ cantidad: "0", estado: "agotado" });
   });
 
+  it("keeps the value card exact when the sum is far beyond the old numeric(14,2) cap", async () => {
+    // Largest values the columns allow: Decimal(12,3) stock x Decimal(12,2) cost
+    // is ~1e19, which the old `::numeric(14,2)` cast rejected ("numeric field overflow").
+    await crearProducto("Z-ENORME", "Valor enorme", {
+      categoriaId,
+      stockMinimo: 1,
+      cantidad: "999999999.000",
+      costo: "9999999999.99",
+    });
+
+    const result = await consultar({ page: 1, limit: 25 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Exact by hand, not with a library: 999999999 x 9999999999.99
+    //   = 9999999999990000000 - 9999999999.99 = 9999999989990000000.01,
+    // plus the 852.50 the seed matrix already holds (see the KPI test above).
+    // (decimal.js defaults to 20 significant digits and would round this.)
+    expect(result.data.resumen.valorInventario).toBe("9999999989990000852.51");
+  });
+
   it("clamps a page past the end and still returns the last page's rows", async () => {
     const result = await consultar({ page: 99, limit: 2 });
 
