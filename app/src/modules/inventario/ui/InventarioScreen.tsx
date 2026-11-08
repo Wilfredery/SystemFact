@@ -16,8 +16,8 @@ import { consultarInventarioAction } from "@/modules/inventario/http/actions";
 import type { ConsultarInventarioOutput } from "@/modules/inventario/application/consultar-inventario";
 import type { StockKpi } from "@/modules/inventario/domain/inventario";
 import { formatearMonto } from "@/shared/ui/format";
+import { TAMANO_PAGINA } from "./paginacion";
 
-export const TAMANO_PAGINA = 25;
 const DEBOUNCE_BUSQUEDA_MS = 300;
 
 export type InventarioInicial =

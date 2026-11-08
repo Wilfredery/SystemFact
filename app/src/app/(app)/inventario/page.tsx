@@ -12,10 +12,10 @@ import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-
 import { consultarInventarioAction } from "@/modules/inventario/http/actions";
 import {
   InventarioScreen,
-  TAMANO_PAGINA,
   type FiltrosInventario,
   type InventarioInicial,
 } from "@/modules/inventario/ui/InventarioScreen";
+import { TAMANO_PAGINA } from "@/modules/inventario/ui/paginacion";
 
 type Param = string | string[] | undefined;
 
