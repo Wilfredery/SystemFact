@@ -144,7 +144,25 @@ CSP is enforced, so new screens must not need inline scripts or `eval` (the loca
 3. **Administración and users.** The owner withdrew in-app password/user creation (`T4`: it would need the service-role key on the server). So the first version of that screen should only show users, assign roles and branches to **existing** accounts, and activate/deactivate. Agree, or is creating users in the app wanted anyway (with the risk that implies)?
 4. **Priorities and dates.** The roadmap lists dates, owners and priorities as undefined. Is there a business priority that should move purchases, inventory or the daily close earlier than proposed?
 
+## Owner answers (2026-11-07, quoted verbatim) and how they are read
+
+| Q | Owner's words | Reading (agent) | Status |
+|---|---|---|---|
+| Q1 design source | "I do have a wireframe of the project the name is: Factura.penpot, can u check it out?" | The wireframe is the design source. **Readable:** `Factura.penpot` is at the repo root (git-ignored, local only, ~10 MB zip, 3,061 files). Pages: `01-Raíz`, `02-Venta`, `03-Cobros`, `04-Inventario`, `05-Compras`, `06-Caja`, `07-Reportes`, `08-Administración`, `09-Auditoría`. There are no pages named Productos, Categorías, Clientes or Proveedores, so **finding F5 must be re-checked against `04-Inventario` and `05-Compras`** (the acceptance criteria put products under Inventario and suppliers under Compras). | confirmed readable; layouts not yet read |
+| Q1 roles | "The roles operador and the despatcher will be good idea to add when u do the test local and in production." | Tests (the local end-to-end lane **and** the production demo lane) should exercise **Operador and Despachador**, besides Administrador, not one role only. Proposed default until told otherwise: follow `docs/04` (Despachador **views** products and inventory; Administrador manages; Cobrador none) and deny by default for anything else. A Despachador demo user in production needs its own owner approval and the same safeguards as `demo-operador` (company 5 only). | assumption, confirm product-view rule |
+| Q3 administration | "Ye, the admin will get a lot of permissions." | Agreed with the proposed scope: broad Administrador permissions, and the Administración screen shows users, assigns roles and branches to **existing** accounts and activates/deactivates them. **Assumption:** creating Auth users or setting passwords inside the app stays out (T4 withdrawn) unless the owner says otherwise. | assumption, confirm |
+| Q4 priorities | "Yeah I think will be get a filters." | Unclear; read as: list screens need **filters** (search plus status/active and similar) besides pagination. Which filters per screen to be taken from the wireframe. The build order is unchanged. | unclear, confirm |
+
+The owner also asked to keep these in this file because the session budget is nearly used up: **this file is the hand-off.**
+
+## Next action when resuming
+
+1. Confirm the three assumptions above with the owner in one short message (product-view rule for Despachador; no in-app user/password creation; what "filters" means).
+2. Read the wireframe page for the next screen before coding it: extract `Factura.penpot` into a **new empty directory outside the repo** (or read single files with `unzip -p`); never commit it.
+3. Step 0 (fix the dead `/cobros` link, agree role names), then Step 1 (Categorías). One screen per PR, tests as in the definition of done, and add the new roles to the local end-to-end tests (the local seed has only an admin and an `Operador` today).
+
 ## Log
 
 - L1 (2026-11-07): owner request, verbatim in S1. The agent first told the owner the biggest gap is screens (verified by `find`), offered a plan, and the owner chose "Missing-screens plan (recommended)".
 - L2 (2026-11-07): a read-only explorer audited roadmap, docs, backend modules and reusable UI; the agent then verified the load-bearing findings F1-F4 directly (menu file, folder listing, role gate lines, read-only SELECT of role names and counts in production). Nothing else in production was read or changed.
+- L3 (2026-11-07): the owner answered Q1-Q4 (verbatim in "Owner answers") and said the budget is nearly used up, so the answers and the next action are recorded here. The agent confirmed `Factura.penpot` is readable (valid Penpot export, 9 pages named like the wireframe plan) by listing the zip and reading page names only; nothing was extracted or modified. Layouts were NOT read yet.
