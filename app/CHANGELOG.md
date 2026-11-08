@@ -1,3 +1,17 @@
+## [0.20.0](https://github.com/Wilfredery/SystemFact/compare/v0.19.7...v0.20.0) (2026-11-08)
+
+### ⚠ BREAKING CHANGES
+
+* **producto, inventario:** `Operador` and `Despachador` are now **view-only** on products and inventory; only `Administrador` creates or edits products and adjusts stock. Before, `Operador` could. Owner decision, 2026-11-08: "Operador and Despachador view-only for both, with the Administrador managing." Each capability reads one named role group in the module's `http/shared.ts` (`ROLES_VER_PRODUCTOS`, `ROLES_GESTION_PRODUCTOS`, `ROLES_VER_INVENTARIO`, `ROLES_GESTION_INVENTARIO`), so changing who may do what later is a one-line edit. The product list also feeds the sales product search, which `Operador` and `Administrador` already use; `Despachador` still cannot sell.
+
+### Features
+
+* **inventario:** the **Inventario** screen (`/inventario`), built as drawn in wireframe `04-Inventario-Consulta`: four KPI cards (Total productos, Bajo stock, Agotados, Valor de inventario), search by name or code, category and status filters, the stock table with Disponible / Bajo stock / Agotado badges, and pagination (25 per page, 100 max). The KPI cards count the whole branch, never just the filtered page; the value is the sum of stock x average cost, kept as a decimal string. Products without an inventory row in the branch show as stock 0 (Agotado). Read-only: the adjust form and row actions (`04-Inventario-Ajuste`, Administrador only) are the next step. The menu entry is enabled in the same release.
+
+### Tests
+
+* **e2e:** the local E2E fixture seeds the `Operador` and `Despachador` roles and one user each, and the new `inventario.spec.ts` opens the screen as Administrador, Operador and Despachador (KPIs, seeded product, search, empty state, status filter, no adjust control). Real-database integration tests cover the consulta query (filters, literal `%` and `_` search, status rule shared with the domain, KPI scope, tenant isolation).
+
 ## [0.19.7](https://github.com/Wilfredery/SystemFact/compare/v0.19.6...v0.19.7) (2026-11-08)
 
 ### Bug Fixes

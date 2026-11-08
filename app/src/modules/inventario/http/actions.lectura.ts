@@ -5,8 +5,13 @@ import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenan
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
 import type { InventarioListItem } from "../application/listar-inventario";
 import { listarInventario } from "../application/listar-inventario";
+import {
+  consultarInventario,
+  type ConsultarInventarioOutput,
+} from "../application/consultar-inventario";
 import { tieneRolPermitidoEnTx } from "../infrastructure/inventario-repository";
 import {
+  zConsultarInventarioQuery,
   zListarInventarioQuery,
 } from "./validations";
 import {
@@ -19,7 +24,7 @@ import {
   type ActionResult,
   ok,
   error,
-  ROLES_GESTION_INVENTARIO,
+  ROLES_VER_INVENTARIO,
 } from "./shared";
 
 /**
@@ -57,7 +62,7 @@ export async function listarInventarioAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_GESTION_INVENTARIO,
+      ROLES_VER_INVENTARIO,
     );
     if (!permitido) {
       return error(NO_AUTORIZADO, "No tiene permisos para listar inventario");
@@ -74,5 +79,43 @@ export async function listarInventarioAction(
       page: result.data.page,
       limit: result.data.limit,
     });
+  });
+}
+
+/**
+ * Inventario consulta screen: products with branch stock, status filters, KPI
+ * cards and category options. Same tenant/role conventions as the listing above
+ * (view group: Administrador, Operador, Despachador).
+ */
+export async function consultarInventarioAction(
+  query: unknown,
+): Promise<ActionResult<ConsultarInventarioOutput>> {
+  const parseResult = zConsultarInventarioQuery.safeParse(query);
+  if (!parseResult.success) {
+    return error(VALIDATION_ERROR, messageFor(VALIDATION_ERROR));
+  }
+
+  const supabase = await createClient();
+  const ctx = await getCurrentTenantContext(supabase);
+  if (ctx === null) {
+    return error(SESION_INVALIDA, messageFor(SESION_INVALIDA));
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const permitido = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_VER_INVENTARIO,
+    );
+    if (!permitido) {
+      return error(NO_AUTORIZADO, "No tiene permisos para consultar inventario");
+    }
+
+    const result = await consultarInventario(tx, ctx, parseResult.data);
+    if (!result.ok) {
+      return error(result.code, result.message);
+    }
+    return ok(result.data);
   });
 }

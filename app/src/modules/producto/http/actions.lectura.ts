@@ -18,7 +18,7 @@ import {
   type ActionResult,
   ok,
   error,
-  ROLES_GESTION_PRODUCTOS,
+  ROLES_VER_PRODUCTOS,
 } from "./shared";
 
 // Same setup as crearProductoAction: the tenant context is resolved from the
@@ -49,7 +49,7 @@ export async function listarProductosAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_GESTION_PRODUCTOS,
+      ROLES_VER_PRODUCTOS,
     );
     if (!permitido) {
       return error(NO_AUTORIZADO, "No tiene permisos para listar productos");

@@ -10,11 +10,14 @@
 
 import {
   listarInventarioAction,
+  consultarInventarioAction,
   ajustarInventarioAction,
 } from "./actions";
+import { consultarInventario } from "../application/consultar-inventario";
 import { listarInventario } from "../application/listar-inventario";
 import { ajustarInventario } from "../application/ajustar-inventario";
 import { tieneRolPermitidoEnTx } from "../infrastructure/inventario-repository";
+import { ROLES_GESTION_INVENTARIO, ROLES_VER_INVENTARIO } from "./shared";
 import {
   NO_AUTORIZADO,
   SESION_INVALIDA,
@@ -39,6 +42,10 @@ jest.mock("@/modules/tenant/infrastructure/withTenantTransaction", () => ({
 
 jest.mock("../application/listar-inventario", () => ({
   listarInventario: jest.fn(),
+}));
+
+jest.mock("../application/consultar-inventario", () => ({
+  consultarInventario: jest.fn(),
 }));
 
 jest.mock("../application/ajustar-inventario", () => ({
@@ -82,6 +89,13 @@ describe("listarInventarioAction", () => {
 
     expect(result.ok).toBe(true);
     expect(withTenantTransaction).toHaveBeenCalledTimes(1);
+    // Listing uses the view group (Administrador, Operador, Despachador).
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      1,
+      ROLES_VER_INVENTARIO,
+    );
   });
 
   it("rejects an unauthorized role with NO_AUTORIZADO without delegating", async () => {
@@ -129,12 +143,12 @@ describe("ajustarInventarioAction", () => {
       expect(result.data.cantidadNueva).toBe("8.000");
     }
     expect(withTenantTransaction).toHaveBeenCalledTimes(1);
-    // Adjusting stock is Admin + Operador (spec authorized roles).
+    // Adjusting stock uses the manage group (Administrador only; owner 2026-11-08).
     expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
       expect.anything(),
       1,
       1,
-      ["Administrador", "Operador"],
+      ROLES_GESTION_INVENTARIO,
     );
   });
 
@@ -188,5 +202,85 @@ describe("ajustarInventarioAction", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe(STOCK_INSUFICIENTE);
+  });
+});
+
+describe("consultarInventarioAction", () => {
+  it("authorizes against the view group and returns the use case data", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    const data = {
+      items: [],
+      total: 0,
+      page: 1,
+      limit: 25,
+      resumen: { totalProductos: 0, bajoStock: 0, agotados: 0, valorInventario: "0.00" },
+      categorias: [],
+    };
+    (consultarInventario as jest.Mock).mockResolvedValue({ ok: true, data });
+
+    const result = await consultarInventarioAction({ page: 1, limit: 25 });
+
+    expect(result).toEqual({ ok: true, data });
+    expect(withTenantTransaction).toHaveBeenCalledTimes(1);
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      1,
+      ROLES_VER_INVENTARIO,
+    );
+  });
+
+  it("treats cleared filter fields as no filter", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (consultarInventario as jest.Mock).mockResolvedValue({ ok: false, code: VALIDATION_ERROR, message: "x" });
+
+    await consultarInventarioAction({ busqueda: "", categoriaId: "", estado: "" });
+
+    expect(consultarInventario).toHaveBeenCalledWith(expect.anything(), mockCtx, {
+      page: 1,
+      limit: 25,
+      busqueda: undefined,
+      categoriaId: undefined,
+      estado: undefined,
+    });
+  });
+
+  it("rejects a category id beyond the database integer range with VALIDATION_ERROR", async () => {
+    const result = await consultarInventarioAction({ categoriaId: 3000000000 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(VALIDATION_ERROR);
+    expect(consultarInventario).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown status filter with VALIDATION_ERROR before any session read", async () => {
+    const result = await consultarInventarioAction({ estado: "roto" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(VALIDATION_ERROR);
+    expect(consultarInventario).not.toHaveBeenCalled();
+  });
+
+  it("rejects a role outside the view group without delegating", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+
+    const result = await consultarInventarioAction({ page: 1, limit: 25 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(NO_AUTORIZADO);
+    expect(consultarInventario).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing session with SESION_INVALIDA", async () => {
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
+
+    const result = await consultarInventarioAction({ page: 1, limit: 25 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(SESION_INVALIDA);
+    expect(withTenantTransaction).not.toHaveBeenCalled();
   });
 });

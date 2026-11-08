@@ -9,11 +9,12 @@
 #      the `disable_rls_bypass` migration would fail under it).
 #   3. Gives the `systemfact_app` role a password (the migration creates it
 #      WITHOUT one, out-of-band by design) so the app can connect under RLS.
-#   4. Loads .github/ci/e2e-fixture.sql (empresa/sucursal/rol/usuario/producto).
+#   4. Loads .github/ci/e2e-fixture.sql (empresa/sucursal/roles/usuarios/producto).
 #   5. Runs the business seeds the app needs (seed:venta, seed:ncf, seed:cliente)
 #      and the configuration integrity check.
-#   6. Creates/updates the GoTrue auth user for E2E_USER through the admin API and
-#      VERIFIES the password grant, so a broken identity fails here with a clear
+#   6. Creates/updates the GoTrue auth users for E2E_USER (Administrador),
+#      E2E_OPERADOR_USER and E2E_DESPACHADOR_USER through the admin API and
+#      VERIFIES each password grant, so a broken identity fails here with a clear
 #      message instead of surfacing as a mystery login timeout in Playwright.
 #   7. Writes the env file the app, the seeds and the specs read.
 #
@@ -36,9 +37,13 @@
 #   ENV_FILE          where to write DATABASE_URL/DIRECT_URL/NEXT_PUBLIC_*/E2E_*
 #                     (default: app/.env.e2e.stack — gitignored, never app/.env,
 #                     so a local run cannot clobber a developer's cloud .env)
-#   E2E_USER          nombreUsuario of the E2E identity (default: e2e-automation)
+#   E2E_USER          nombreUsuario of the E2E identity, rol Administrador (default: e2e-automation)
+#   E2E_OPERADOR_USER nombreUsuario of the rol Operador identity (default: e2e-operador)
+#   E2E_DESPACHADOR_USER nombreUsuario of the rol Despachador identity (default: e2e-despachador)
 #   E2E_PRODUCT       product the POS smoke adds to the cart (default: Arroz)
-#   E2E_PASSWORD      reuse a known password instead of generating one
+#   E2E_PASSWORD      reuse a known password instead of generating one; the Operador and
+#                     Despachador identities share it (ephemeral local stack, one
+#                     throwaway credential per run is enough)
 #   APP_PASSWORD      reuse a known app-role password instead of generating one
 #   PSQL              psql binary (default: psql)
 #   SUPABASE_CLI      Supabase CLI invocation (default: npx --yes supabase@3.0.0)
@@ -55,6 +60,8 @@ PSQL="${PSQL:-psql}"
 SUPABASE_CLI="${SUPABASE_CLI:-npx --yes supabase@3.0.0}"
 
 E2E_USER="${E2E_USER:-e2e-automation}"
+E2E_OPERADOR_USER="${E2E_OPERADOR_USER:-e2e-operador}"
+E2E_DESPACHADOR_USER="${E2E_DESPACHADOR_USER:-e2e-despachador}"
 E2E_PRODUCT="${E2E_PRODUCT:-Arroz}"
 ENV_FILE="${ENV_FILE:-$APP_DIR/.env.e2e.stack}"
 
@@ -76,9 +83,14 @@ random_hex() {
 }
 
 # The nombreUsuario is interpolated into SQL below; keep it to a safe charset.
-case "$E2E_USER" in
-  *[!a-zA-Z0-9._-]*) fail "E2E_USER must match [a-zA-Z0-9._-]+ (got: $E2E_USER)" ;;
-esac
+for var in E2E_USER E2E_OPERADOR_USER E2E_DESPACHADOR_USER; do
+  case "${!var}" in
+    *[!a-zA-Z0-9._-]*) fail "$var must match [a-zA-Z0-9._-]+ (got: ${!var})" ;;
+  esac
+done
+[[ "$E2E_USER" != "$E2E_OPERADOR_USER" && "$E2E_USER" != "$E2E_DESPACHADOR_USER" &&
+   "$E2E_OPERADOR_USER" != "$E2E_DESPACHADOR_USER" ]] ||
+  fail "E2E_USER, E2E_OPERADOR_USER and E2E_DESPACHADOR_USER must be three different nombreUsuario."
 
 [[ -f "$REPO_ROOT/supabase/config.toml" ]] ||
   fail "supabase/config.toml not found — run this from a checkout of the repository."
@@ -149,7 +161,7 @@ log "Setting a per-run password on systemfact_app"
 # ------------------------------------------------------------
 log "Loading .github/ci/e2e-fixture.sql"
 "$PSQL" "$SUPER_URL" -v ON_ERROR_STOP=1 -q \
-  -v e2e_user="$E2E_USER" \
+  -v e2e_user="$E2E_USER"   -v e2e_operador_user="$E2E_OPERADOR_USER"   -v e2e_despachador_user="$E2E_DESPACHADOR_USER" \
   -v e2e_product="$E2E_PRODUCT" \
   -f "$(as_native_path "$REPO_ROOT/.github/ci/e2e-fixture.sql")"
 
@@ -170,19 +182,23 @@ log "Running the business seeds"
 )
 
 # ------------------------------------------------------------
-# 6. The acting identity: a GoTrue user bound to the fixture's USUARIO row
+# 6. The acting identities: GoTrue users bound to the fixture's USUARIO rows
 # ------------------------------------------------------------
-log "Creating/updating the E2E auth user through the GoTrue admin API"
-"$PSQL" "$SUPER_URL" -tAc \
-  "select count(*) from \"USUARIO\" u where u.\"nombreUsuario\" = '${E2E_USER}' and u.activo" |
-  grep -qx '1' || fail "the fixture did not produce an active USUARIO row for '${E2E_USER}'."
+# Administrador, Operador and Despachador share E2E_PASSWORD: the stack is local
+# and ephemeral, so the password protects nothing beyond this run.
+log "Creating/updating the E2E auth users through the GoTrue admin API"
+for nombre_usuario in "$E2E_USER" "$E2E_OPERADOR_USER" "$E2E_DESPACHADOR_USER"; do
+  "$PSQL" "$SUPER_URL" -tAc \
+    "select count(*) from \"USUARIO\" u where u.\"nombreUsuario\" = '${nombre_usuario}' and u.activo" |
+    grep -qx '1' || fail "the fixture did not produce an active USUARIO row for '${nombre_usuario}'."
 
-SUPABASE_URL="$API_URL" \
-SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" \
-ANON_KEY="$ANON_KEY" \
-E2E_USER="$E2E_USER" \
-E2E_AUTH_PASSWORD="$E2E_PASSWORD" \
-  node "$REPO_ROOT/.github/ci/upsert-e2e-auth-user.mjs"
+  SUPABASE_URL="$API_URL" \
+  SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" \
+  ANON_KEY="$ANON_KEY" \
+  E2E_USER="$nombre_usuario" \
+  E2E_AUTH_PASSWORD="$E2E_PASSWORD" \
+    node "$REPO_ROOT/.github/ci/upsert-e2e-auth-user.mjs"
+done
 
 # ------------------------------------------------------------
 # 7. Env file consumed by Next.js, the specs and `pnpm e2e`
@@ -198,6 +214,8 @@ DIRECT_URL="$SUPER_URL"
 NEXT_PUBLIC_SUPABASE_URL="$API_URL"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="$ANON_KEY"
 E2E_USER="$E2E_USER"
+E2E_OPERADOR_USER="$E2E_OPERADOR_USER"
+E2E_DESPACHADOR_USER="$E2E_DESPACHADOR_USER"
 E2E_PASSWORD="$E2E_PASSWORD"
 E2E_PRODUCT="$E2E_PRODUCT"
 EOF

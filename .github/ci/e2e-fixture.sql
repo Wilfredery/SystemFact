@@ -17,6 +17,8 @@
 --
 -- Parámetros (psql -v):
 --   e2e_user     → nombreUsuario del usuario E2E (coincide con el Auth de Supabase)
+--   e2e_operador_user      → nombreUsuario del usuario con rol Operador
+--   e2e_despachador_user   → nombreUsuario del usuario con rol Despachador
 --   e2e_product  → nombre del producto que el smoke agrega al carrito
 -- ============================================================
 
@@ -50,18 +52,33 @@ INSERT INTO "ROL" ("nombre", "descripcion")
 SELECT 'Administrador', 'Rol del fixture E2E de CI'
 WHERE NOT EXISTS (SELECT 1 FROM "ROL" WHERE "nombre" = 'Administrador');
 
+-- Roles de solo consulta que el spec de /inventario recorre junto al Administrador
+-- (docs: odd/tasks/inventario-consulta.md T4). Mismo patron idempotente.
+INSERT INTO "ROL" ("nombre", "descripcion")
+SELECT 'Operador', 'Rol del fixture E2E de CI'
+WHERE NOT EXISTS (SELECT 1 FROM "ROL" WHERE "nombre" = 'Operador');
+
+INSERT INTO "ROL" ("nombre", "descripcion")
+SELECT 'Despachador', 'Rol del fixture E2E de CI'
+WHERE NOT EXISTS (SELECT 1 FROM "ROL" WHERE "nombre" = 'Despachador');
+
 INSERT INTO "USUARIO" (
   "empresaId", "sucursalId", "nombre", "nombreUsuario", "passwordHash", "activo", "updatedAt"
 )
-SELECT e.id, s.id, :'e2e_user', :'e2e_user', 'ci-e2e-supabase-auth', true, now()
+SELECT e.id, s.id, u.nombre, u.nombre, 'ci-e2e-supabase-auth', true, now()
 FROM "EMPRESA" e
 JOIN "SUCURSAL" s ON s."empresaId" = e.id
+CROSS JOIN (VALUES (:'e2e_user'), (:'e2e_operador_user'), (:'e2e_despachador_user')) AS u(nombre)
 WHERE e."rnc" = '131000001';
 
 INSERT INTO "USUARIO_ROL" ("usuarioId", "rolId")
 SELECT u.id, r.id
-FROM "USUARIO" u, "ROL" r
-WHERE u."nombreUsuario" = :'e2e_user' AND r."nombre" = 'Administrador';
+FROM "USUARIO" u
+JOIN "ROL" r ON (
+  (u."nombreUsuario" = :'e2e_user' AND r."nombre" = 'Administrador') OR
+  (u."nombreUsuario" = :'e2e_operador_user' AND r."nombre" = 'Operador') OR
+  (u."nombreUsuario" = :'e2e_despachador_user' AND r."nombre" = 'Despachador')
+);
 
 -- Cliente CREDITO demo. Tres specs lo buscan por nombre + tipoCliente +
 -- creditoHabilitado + activo (e2e/utils/venta-pos.ts idClienteCreditoDemo) y se
