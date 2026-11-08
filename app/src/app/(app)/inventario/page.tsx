@@ -6,10 +6,14 @@
  * the action, not here; a refusal is handed to the island as a visible message.
  */
 
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
-import { consultarInventarioAction } from "@/modules/inventario/http/actions";
+import {
+  consultarInventarioAction,
+  obtenerPermisosInventarioAction,
+} from "@/modules/inventario/http/actions";
 import {
   InventarioScreen,
   type FiltrosInventario,
@@ -49,6 +53,11 @@ export default async function InventarioPage({
     estado: ESTADOS.find((e) => e === primero(params.estado)) ?? null,
   };
 
+  // Only the manage group sees the adjust link; hiding it is a courtesy, the
+  // adjust page and the action both re-check on the server.
+  const permisos = await obtenerPermisosInventarioAction();
+  const puedeAjustar = permisos.ok && permisos.data.puedeAjustar;
+
   const resultado = await consultarInventarioAction({
     page,
     limit: TAMANO_PAGINA,
@@ -62,7 +71,17 @@ export default async function InventarioPage({
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
-      <h1 className="mb-6 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Inventario</h1>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Inventario</h1>
+        {puedeAjustar && (
+          <Link
+            href="/inventario/ajuste"
+            className="inline-flex min-h-12 items-center rounded-md bg-zinc-900 px-5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900"
+          >
+            + Ajustar
+          </Link>
+        )}
+      </div>
       <InventarioScreen inicial={inicial} filtrosIniciales={filtros} />
     </main>
   );

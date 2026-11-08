@@ -24,6 +24,7 @@ import {
   type ActionResult,
   ok,
   error,
+  ROLES_GESTION_INVENTARIO,
   ROLES_VER_INVENTARIO,
 } from "./shared";
 
@@ -117,5 +118,31 @@ export async function consultarInventarioAction(
       return error(result.code, result.message);
     }
     return ok(result.data);
+  });
+}
+
+/**
+ * Whether the caller may adjust stock, answered from the manage role group so
+ * screens never name a role. It is only a question for the UI (show the
+ * `+ Ajustar` link, gate the form page); the real gate stays inside
+ * `ajustarInventarioAction`, which re-checks on every call.
+ */
+export async function obtenerPermisosInventarioAction(): Promise<
+  ActionResult<{ puedeAjustar: boolean }>
+> {
+  const supabase = await createClient();
+  const ctx = await getCurrentTenantContext(supabase);
+  if (ctx === null) {
+    return error(SESION_INVALIDA, messageFor(SESION_INVALIDA));
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const puedeAjustar = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_GESTION_INVENTARIO,
+    );
+    return ok({ puedeAjustar });
   });
 }

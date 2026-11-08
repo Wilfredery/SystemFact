@@ -12,6 +12,7 @@ import {
   listarInventarioAction,
   consultarInventarioAction,
   ajustarInventarioAction,
+  obtenerPermisosInventarioAction,
 } from "./actions";
 import { consultarInventario } from "../application/consultar-inventario";
 import { listarInventario } from "../application/listar-inventario";
@@ -278,6 +279,43 @@ describe("consultarInventarioAction", () => {
     (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
 
     const result = await consultarInventarioAction({ page: 1, limit: 25 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(SESION_INVALIDA);
+    expect(withTenantTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("obtenerPermisosInventarioAction", () => {
+  it("says puedeAjustar=true when the caller is in the manage group", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+
+    const result = await obtenerPermisosInventarioAction();
+
+    expect(result).toEqual({ ok: true, data: { puedeAjustar: true } });
+    expect(withTenantTransaction).toHaveBeenCalledTimes(1);
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      1,
+      ROLES_GESTION_INVENTARIO,
+    );
+  });
+
+  it("says puedeAjustar=false (not an error) when the caller is outside the manage group", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+
+    const result = await obtenerPermisosInventarioAction();
+
+    expect(result).toEqual({ ok: true, data: { puedeAjustar: false } });
+  });
+
+  it("rejects a missing session with SESION_INVALIDA before opening a tx", async () => {
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
+
+    const result = await obtenerPermisosInventarioAction();
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe(SESION_INVALIDA);
