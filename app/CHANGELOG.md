@@ -1,3 +1,9 @@
+## [0.19.7](https://github.com/Wilfredery/SystemFact/compare/v0.19.6...v0.19.7) (2026-11-08)
+
+### Bug Fixes
+
+* **nav:** the "Cobros" menu entry led to a page that did not exist (404). `/cobros` now serves the receivables board, which is the wireframe's `03-Cobros` page, and a guard test (`tools/config/nav-routes.test.ts`) fails whenever an enabled menu link has no page behind it. No behaviour change elsewhere.
+
 ## [0.19.6](https://github.com/Wilfredery/SystemFact/compare/v0.19.5...v0.19.6) (2026-11-07)
 
 ### Features
