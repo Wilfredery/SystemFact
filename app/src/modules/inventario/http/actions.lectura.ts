@@ -19,7 +19,7 @@ import {
   type ActionResult,
   ok,
   error,
-  ROLES_GESTION_INVENTARIO,
+  ROLES_VER_INVENTARIO,
 } from "./shared";
 
 /**
@@ -57,7 +57,7 @@ export async function listarInventarioAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_GESTION_INVENTARIO,
+      ROLES_VER_INVENTARIO,
     );
     if (!permitido) {
       return error(NO_AUTORIZADO, "No tiene permisos para listar inventario");

@@ -10,6 +10,7 @@ import {
   type CrearProductoResult,
 } from "../application/crear-producto";
 import { listarProductos } from "../application/listar-productos";
+import { ROLES_GESTION_PRODUCTOS, ROLES_VER_PRODUCTOS } from "./shared";
 import { actualizarProducto } from "../application/actualizar-producto";
 import { desactivarProducto } from "../application/desactivar-producto";
 import { tieneRolPermitidoEnTx } from "../infrastructure/producto-repository";
@@ -205,6 +206,23 @@ describe("crearProductoAction", () => {
 });
 
 describe("listarProductosAction", () => {
+  it("authorizes against the view group (Administrador, Operador, Despachador)", async () => {
+    mockSupabase();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (listarProductos as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: { items: [], total: 0, page: 1 },
+    });
+
+    await listarProductosAction({ page: 1, limit: 25 });
+
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      1,
+      ROLES_VER_PRODUCTOS,
+    );
+  });
 
   it("PROD-008-A: happy path returns items, total, page", async () => {
     mockSupabase();
@@ -321,12 +339,12 @@ describe("actualizarProductoAction", () => {
     const passed = (actualizarProducto as jest.Mock).mock.calls[0][2];
     expect(passed.precioVenta.toString()).toBe("55000");
     expect(withTenantTransaction).toHaveBeenCalled();
-    // Edit allows Admin + Operador (REQ-PROD-013).
+    // Edit uses the manage group (Administrador only; owner 2026-11-08).
     expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
       expect.anything(),
       1,
       1,
-      ["Administrador", "Operador"],
+      ROLES_GESTION_PRODUCTOS,
     );
   });
 

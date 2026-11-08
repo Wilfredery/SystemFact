@@ -15,6 +15,7 @@ import {
 import { listarInventario } from "../application/listar-inventario";
 import { ajustarInventario } from "../application/ajustar-inventario";
 import { tieneRolPermitidoEnTx } from "../infrastructure/inventario-repository";
+import { ROLES_GESTION_INVENTARIO, ROLES_VER_INVENTARIO } from "./shared";
 import {
   NO_AUTORIZADO,
   SESION_INVALIDA,
@@ -82,6 +83,13 @@ describe("listarInventarioAction", () => {
 
     expect(result.ok).toBe(true);
     expect(withTenantTransaction).toHaveBeenCalledTimes(1);
+    // Listing uses the view group (Administrador, Operador, Despachador).
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      1,
+      ROLES_VER_INVENTARIO,
+    );
   });
 
   it("rejects an unauthorized role with NO_AUTORIZADO without delegating", async () => {
@@ -129,12 +137,12 @@ describe("ajustarInventarioAction", () => {
       expect(result.data.cantidadNueva).toBe("8.000");
     }
     expect(withTenantTransaction).toHaveBeenCalledTimes(1);
-    // Adjusting stock is Admin + Operador (spec authorized roles).
+    // Adjusting stock uses the manage group (Administrador only; owner 2026-11-08).
     expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
       expect.anything(),
       1,
       1,
-      ["Administrador", "Operador"],
+      ROLES_GESTION_INVENTARIO,
     );
   });
 
