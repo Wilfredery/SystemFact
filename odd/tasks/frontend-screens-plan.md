@@ -127,7 +127,7 @@ CSP is enforced, so new screens must not need inline scripts or `eval` (the loca
 
 | Step | Screen | State | PR / evidence |
 |---|---|---|---|
-| 0 | Housekeeping | not started | |
+| 0 | Housekeeping | **dead `/cobros` link DONE** (PR #192, v0.19.7, deployed, prod-smoke 7 passed); role names half-decided: Despachador views products (yes), the meaning of `Operador` is not explicitly confirmed (the code treats it as the sales operator) | `787d13f`, `tools/config/nav-routes.test.ts` |
 | 1 | Categorías | not started | |
 | 2 | Productos | not started | |
 | 3 | Clientes | not started | |
@@ -190,3 +190,4 @@ The owner also asked to keep these in this file because the session budget is ne
 - L3 (2026-11-07): the owner answered Q1-Q4 (verbatim in "Owner answers") and said the budget is nearly used up, so the answers and the next action are recorded here. The agent confirmed `Factura.penpot` is readable (valid Penpot export, 9 pages named like the wireframe plan) by listing the zip and reading page names only; nothing was extracted or modified. Layouts were NOT read yet.
 - L4 (2026-11-07): owner follow-up recorded under "Follow-up answers". Decided for now: no user/password creation in the app (admin may get it in the future, trigger noted). Still open: Despachador view-only on products (recommended yes) and filters on growing lists (recommended search + active switch, none on categories).
 - L5 (2026-11-07): third round. Decided: Despachador views products (yes). Filters: the owner pointed to the wireframe; the agent read pages 03, 04, 05, 08 (labels only) and recorded the filters per screen. Found that the wireframe has no stand-alone Categorías/Clientes/Proveedores pages (products are inside 04-Inventario), so the proposed Step 1 is now the Inventario/Productos list; the owner must reconfirm this change. Wireframe user "Alta" is deferred per the owner's earlier decision.
+- L6 (2026-11-08): Step 0 shipped. The dead `/cobros` menu link is fixed (a real page serving the receivables board, plus a guard test that fails when an enabled menu link has no page): PR #192 (`787d13f`), deployed by hand with the owner's approval, production smoke 7 passed / 0 failed / 0 skipped on that commit, tag and release `v0.19.7`. The guard that visits every page under `(app)` covers `/cobros` in CI; the production smoke does not open it. **Still waiting for the owner:** reconfirm that Step 1 is the Inventario/Productos list (the wireframe has no stand-alone Categorías page). No Step 1 code before that.
