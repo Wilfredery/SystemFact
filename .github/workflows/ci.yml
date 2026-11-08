@@ -241,6 +241,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       E2E_USER: e2e-automation
+      # Same names the provisioning script defaults to; spelled out so the job
+      # reads as what it covers (Administrador + the two view-only roles).
+      E2E_OPERADOR_USER: e2e-operador
+      E2E_DESPACHADOR_USER: e2e-despachador
       # Optional repo variable; the default is what every spec and the fixture
       # were written against. It is a product name, not a credential.
       E2E_PRODUCT: ${{ vars.E2E_PRODUCT || 'Arroz' }}
