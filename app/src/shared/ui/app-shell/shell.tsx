@@ -20,7 +20,7 @@ const NAV_ITEMS: readonly SidebarItemDef[] = [
   // The eight ratified modules in order (app-shell spec).
   { label: "Venta", href: "/venta" },
   { label: "Cobros", href: "/cobros" },
-  { label: "Inventario", disabled: true },
+  { label: "Inventario", href: "/inventario" },
   { label: "Compras", disabled: true },
   { label: "Caja", disabled: true },
   { label: "Reportes", href: "/reportes" },
