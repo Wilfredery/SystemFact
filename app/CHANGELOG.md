@@ -1,3 +1,13 @@
+## [0.21.0](https://github.com/Wilfredery/SystemFact/compare/v0.20.0...v0.21.0) (2026-11-08)
+
+### Features
+
+* **inventario:** the stock **adjust form** (`/inventario/ajuste`), built as drawn in wireframe `04-Inventario-Ajuste` and reachable from a new `+ Ajustar` link on the Inventario screen. **Administrador only**: the link is shown only to the manage role group, and anyone else who opens the URL gets an access message instead of the form (the adjust action re-checks on every call). Fields: product search, Entrada or Salida, one of six motivos (Conteo físico, Merma, Producto dañado, Producto vencido, Corrección de error, Otro), the amount to add or remove (owner decision, 2026-11-08: "Amount to add or remove"; the label "Nueva cantidad" is kept as drawn, with a live line `Existencia actual 150 → quedará 160` so it cannot be mistaken for the new total), and optional observaciones (200 characters). A Salida larger than the stock is stopped in the form ("Stock insuficiente") and, as always, by the server. Every adjustment writes its `AJUSTE` movement and audit row, with the motivo and observaciones in the movement. **Known gap, by design for now:** the adjust action is not idempotent, so the confirm button stays disabled after the first click and, when the outcome is unknown (timeout, network), the form tells the user to check the Inventario list before retrying; an idempotency key needs a backend change and is a follow-up.
+
+### Tests
+
+* **e2e:** `inventario-ajuste.spec.ts` adjusts stock as Administrador (Entrada 5, then Salida 5 to restore it) and asserts the database, not only the page: the `INVENTARIO` quantity and the `AJUSTE` movement with its motivo, previous and new quantity. Operador and Despachador get no `+ Ajustar` link and an access message on the direct URL. `inventario.spec.ts` now expects the link for Administrador only.
+
 ## [0.20.0](https://github.com/Wilfredery/SystemFact/compare/v0.19.7...v0.20.0) (2026-11-08)
 
 ### ⚠ BREAKING CHANGES
