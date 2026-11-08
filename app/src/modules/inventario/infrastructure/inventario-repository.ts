@@ -37,6 +37,7 @@ import { calcularNuevoCostoPromedioPorValor } from "../domain/costo-promedio";
 import type {
   InventarioStockRow,
   InventorySource,
+  StockKpi,
 } from "../domain/inventario";
 
 export interface ListarInventarioQuery {
@@ -120,6 +121,177 @@ export async function contarInventarioEnTx(
   ctx: TenantCtx,
 ): Promise<number> {
   return tx.inventario.count({ where: inventarioTenantWhere(ctx) });
+}
+
+/** Filters of the consulta screen (all optional; AND-combined). */
+export interface ConsultaInventarioFiltros {
+  readonly busqueda?: string;
+  readonly categoriaId?: number;
+  readonly estado?: StockKpi;
+}
+
+export interface ConsultaInventarioQuery extends ConsultaInventarioFiltros {
+  readonly page: number;
+  readonly limit: number;
+}
+
+export interface ConsultaInventarioRow {
+  readonly productoId: number;
+  readonly codigo: string;
+  readonly nombre: string;
+  readonly categoria: string;
+  readonly unidadMedida: string;
+  readonly cantidad: string;
+  readonly stockMinimo: number;
+}
+
+export interface ResumenInventarioRow {
+  readonly totalProductos: number;
+  readonly bajoStock: number;
+  readonly agotados: number;
+  /** Sum of stock x costoPromedio over the branch, Decimal(12,2)-compatible string. */
+  readonly valorInventario: string;
+}
+
+/**
+ * One row per ACTIVE product of the company, with the stock of the caller's
+ * branch (0 when the branch has no inventory row yet) and the derived stock
+ * status. The status rule mirrors `classifyStockKpi` (agotado: qty <= 0;
+ * bajo_stock: qty <= stockMinimo; normal otherwise); an integration test pins
+ * both to the same answers. Tenant anchors: PRODUCTO.empresaId, and the
+ * INVENTARIO row only counts when its branch is the caller's AND belongs to
+ * the caller's company.
+ */
+function consultaBaseSql(ctx: TenantCtx): Prisma.Sql {
+  return Prisma.sql`
+    SELECT p."id" AS "productoId", p."codigo", p."nombre",
+           c."id" AS "categoriaId", c."nombre" AS "categoria",
+           p."unidadMedida", p."stockMinimo", p."costoPromedio",
+           COALESCE(i."cantidad", 0) AS "cantidad",
+           CASE
+             WHEN COALESCE(i."cantidad", 0) <= 0 THEN 'agotado'
+             WHEN COALESCE(i."cantidad", 0) <= p."stockMinimo" THEN 'bajo_stock'
+             ELSE 'normal'
+           END AS "estado"
+    FROM "PRODUCTO" p
+    JOIN "CATEGORIA" c ON c."id" = p."categoriaId" AND c."empresaId" = p."empresaId"
+    LEFT JOIN "INVENTARIO" i
+      ON i."productoId" = p."id"
+     AND i."sucursalId" = ${ctx.sucursalId}
+     AND EXISTS (
+       SELECT 1 FROM "SUCURSAL" s
+       WHERE s."id" = i."sucursalId" AND s."empresaId" = ${ctx.empresaId}
+     )
+    WHERE p."empresaId" = ${ctx.empresaId}
+      AND p."activo" = true`;
+}
+
+/** Escapes LIKE wildcards so the search box matches text literally. */
+function escaparLike(termino: string): string {
+  return termino.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+function consultaFiltrosSql(filtros: ConsultaInventarioFiltros): Prisma.Sql {
+  const condiciones: Prisma.Sql[] = [];
+  const termino = filtros.busqueda?.trim();
+  if (termino) {
+    const patron = `%${escaparLike(termino)}%`;
+    condiciones.push(
+      Prisma.sql`("nombre" ILIKE ${patron} ESCAPE '\\' OR "codigo" ILIKE ${patron} ESCAPE '\\')`,
+    );
+  }
+  if (filtros.categoriaId !== undefined) {
+    condiciones.push(Prisma.sql`"categoriaId" = ${filtros.categoriaId}`);
+  }
+  if (filtros.estado !== undefined) {
+    condiciones.push(Prisma.sql`"estado" = ${filtros.estado}`);
+  }
+  return condiciones.length === 0
+    ? Prisma.empty
+    : Prisma.sql`WHERE ${Prisma.join(condiciones, " AND ")}`;
+}
+
+/** Paginated product rows for the consulta screen (stable order: code, id). */
+export async function consultarInventarioEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  query: ConsultaInventarioQuery,
+): Promise<ConsultaInventarioRow[]> {
+  const rows = await tx.$queryRaw<
+    {
+      productoId: number;
+      codigo: string;
+      nombre: string;
+      categoria: string;
+      unidadMedida: string;
+      cantidad: string;
+      stockMinimo: number;
+    }[]
+  >(Prisma.sql`
+    SELECT "productoId", "codigo", "nombre", "categoria", "unidadMedida",
+           "cantidad"::text AS "cantidad", "stockMinimo"
+    FROM (${consultaBaseSql(ctx)}) base
+    ${consultaFiltrosSql(query)}
+    ORDER BY "codigo" ASC, "productoId" ASC
+    LIMIT ${query.limit} OFFSET ${(query.page - 1) * query.limit}`);
+  return rows.map((row) => ({
+    ...row,
+    cantidad: new Prisma.Decimal(row.cantidad).toString(),
+  }));
+}
+
+/** Total rows matching the same filters (pagination footer). */
+export async function contarConsultaInventarioEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  filtros: ConsultaInventarioFiltros,
+): Promise<number> {
+  const rows = await tx.$queryRaw<{ total: number }[]>(Prisma.sql`
+    SELECT COUNT(*)::int AS "total"
+    FROM (${consultaBaseSql(ctx)}) base
+    ${consultaFiltrosSql(filtros)}`);
+  return rows[0]?.total ?? 0;
+}
+
+/** KPI cards: computed over the whole branch scope, never over the filtered page. */
+export async function resumenInventarioEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+): Promise<ResumenInventarioRow> {
+  const rows = await tx.$queryRaw<
+    {
+      totalProductos: number;
+      bajoStock: number;
+      agotados: number;
+      valorInventario: string;
+    }[]
+  >(Prisma.sql`
+    SELECT COUNT(*)::int AS "totalProductos",
+           COUNT(*) FILTER (WHERE "estado" = 'bajo_stock')::int AS "bajoStock",
+           COUNT(*) FILTER (WHERE "estado" = 'agotado')::int AS "agotados",
+           COALESCE(SUM("cantidad" * "costoPromedio"), 0)::numeric(14,2)::text AS "valorInventario"
+    FROM (${consultaBaseSql(ctx)}) base`);
+  return (
+    rows[0] ?? {
+      totalProductos: 0,
+      bajoStock: 0,
+      agotados: 0,
+      valorInventario: "0.00",
+    }
+  );
+}
+
+/** Active categories of the company for the filter selector (short list, capped). */
+export async function listarCategoriasFiltroEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+): Promise<{ id: number; nombre: string }[]> {
+  return tx.categoria.findMany({
+    where: { empresaId: ctx.empresaId, activa: true },
+    select: { id: true, nombre: true },
+    orderBy: [{ nombre: "asc" }, { id: "asc" }],
+    take: 200,
+  });
 }
 
 /**
