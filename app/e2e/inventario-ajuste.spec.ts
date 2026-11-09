@@ -122,7 +122,29 @@ async function confirmarAjuste(
   await page.waitForURL("**/inventario", { timeout: 20_000 });
 }
 
+/**
+ * After the redirect the consulta must show the new stock (wireframe: "Confirmar
+ * Ajuste -> Consulta (stock actualizado)"): search the product and read its
+ * Existencia cell (5th column: Código, Nombre, Categoría, Und., Existencia).
+ */
+async function esperarExistenciaEnConsulta(page: Page, codigo: string, esperada: number): Promise<void> {
+  await page.getByLabel("Buscar producto").fill(codigo);
+  const fila = page.locator('[data-testid^="inventario-fila-"]').filter({ hasText: codigo }).first();
+  await expect(fila.locator("td").nth(4), `Existencia of ${codigo} on /inventario`).toHaveText(String(esperada));
+}
+
+// If the test dies between the Entrada and the Salida, put the stock back so the
+// specs that sell this product keep their expectations. Direct SQL is acceptable
+// here only because this is test cleanup on the ephemeral local stack.
+let restaurarStock: (() => Promise<void>) | null = null;
+
 test.describe("/inventario/ajuste (inventario-ajuste T3)", () => {
+  test.afterEach(async () => {
+    const restaurar = restaurarStock;
+    restaurarStock = null;
+    if (restaurar !== null) await restaurar();
+  });
+
   test("Administrador adjusts stock (Entrada 5, then Salida 5) and the database reflects it", async ({ page }) => {
     const nombreUsuario = requireEnv("E2E_USER");
     const password = requireEnv("E2E_PASSWORD");
@@ -140,6 +162,12 @@ test.describe("/inventario/ajuste (inventario-ajuste T3)", () => {
     const antes = await stockEnDb(sucursalId, empresaId, codigo);
     expect(antes.cantidad, "stock shown in the option equals INVENTARIO").toBe(x);
     const movimientoBase = await ultimoMovimientoId(antes.inventarioId);
+    restaurarStock = async () => {
+      await pool.query(`update "INVENTARIO" set cantidad = $2 where id = $1 and cantidad <> $2`, [
+        antes.inventarioId,
+        x,
+      ]);
+    };
 
     // A Salida above the stock is refused in the form: message and disabled button.
     await page.getByRole("button", { name: "Salida", exact: true }).click();
@@ -161,6 +189,7 @@ test.describe("/inventario/ajuste (inventario-ajuste T3)", () => {
       observaciones: "e2e ajuste",
     });
 
+    await esperarExistenciaEnConsulta(page, codigo, x + 5);
     const despuesEntrada = await stockEnDb(sucursalId, empresaId, codigo);
     expect(despuesEntrada.cantidad, "INVENTARIO after Entrada 5").toBe(x + 5);
     const movimientosEntrada = await movimientosNuevos(antes.inventarioId, movimientoBase);
@@ -189,6 +218,7 @@ test.describe("/inventario/ajuste (inventario-ajuste T3)", () => {
       observaciones: "e2e ajuste restore",
     });
 
+    await esperarExistenciaEnConsulta(page, codigo, x);
     const despuesSalida = await stockEnDb(sucursalId, empresaId, codigo);
     expect(despuesSalida.cantidad, "INVENTARIO restored after Salida 5").toBe(x);
     const movimientosTotales = await movimientosNuevos(antes.inventarioId, movimientoBase);

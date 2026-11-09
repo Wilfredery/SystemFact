@@ -31,9 +31,12 @@ import {
   INVENTARIO_NO_ENCONTRADO,
   STOCK_INSUFICIENTE,
   STOCK_INSUFICIENTE_BLOQUEO,
+  STOCK_MAXIMO_EXCEDIDO,
+  IDEMPOTENCIA_CONFLICTO,
   InventarioDomainError,
 } from "../domain/errors";
 import { calcularNuevoCostoPromedioPorValor } from "../domain/costo-promedio";
+import { STOCK_MAXIMO } from "../domain/inventario";
 import type {
   InventarioStockRow,
   InventorySource,
@@ -52,6 +55,8 @@ export interface AjustarStockEnTxInput {
   readonly delta: string;
   readonly motivo: string;
   readonly source: InventorySource;
+  /** Idempotency key of the request, unique per inventory row (NULL for other movements). */
+  readonly claveIdempotencia: string;
 }
 
 /** Authoritative before/after snapshot after a movement commits. */
@@ -437,12 +442,52 @@ export async function ajustarStockEnTx(
 
   const anterior = new Decimal(locked[0].cantidad.toString());
   const delta = new Decimal(input.delta);
+
+  // Idempotency: this runs AFTER the row lock, so two concurrent requests with the
+  // same key are serialized and the second one sees the first one's movement. A
+  // repeat of the same request returns the first result and writes NOTHING (no
+  // stock change, no second movement, no second audit row). The unique index on
+  // (inventarioId, idempotencyKey) is the durable backstop.
+  const previo = await tx.movimientoInventario.findUnique({
+    where: {
+      inventarioId_idempotencyKey: {
+        inventarioId: ensured.id,
+        idempotencyKey: input.claveIdempotencia,
+      },
+    },
+    select: { cantidadMovida: true, cantidadAnterior: true, cantidadNueva: true },
+  });
+  if (previo !== null) {
+    if (!new Decimal(previo.cantidadMovida.toString()).eq(delta)) {
+      throw new InventarioDomainError(IDEMPOTENCIA_CONFLICTO, {
+        inventarioId: ensured.id,
+        registrada: new Decimal(previo.cantidadMovida.toString()).toString(),
+        pretendida: delta.toString(),
+      });
+    }
+    return {
+      inventoryId: ensured.id,
+      previousQuantity: new Decimal(previo.cantidadAnterior.toString()).toFixed(3),
+      newQuantity: new Decimal(previo.cantidadNueva.toString()).toFixed(3),
+    };
+  }
+
   const nueva = anterior.plus(delta);
 
   // Non-negative invariant — reject the exit WITHOUT writing anything; the
   // surrounding transaction rolls back the upsert of a freshly-created row too.
   if (nueva.isNegative()) {
     throw new InventarioDomainError(STOCK_INSUFICIENTE, {
+      inventarioId: ensured.id,
+      disponible: anterior.toFixed(3),
+      pretendida: delta.toString(),
+    });
+  }
+
+  // Ceiling of the Decimal(12,3) column: reject before writing, so the user
+  // gets a stable error instead of a database numeric overflow.
+  if (nueva.gt(STOCK_MAXIMO)) {
+    throw new InventarioDomainError(STOCK_MAXIMO_EXCEDIDO, {
       inventarioId: ensured.id,
       disponible: anterior.toFixed(3),
       pretendida: delta.toString(),
@@ -464,6 +509,7 @@ export async function ajustarStockEnTx(
       cantidadNueva: new Prisma.Decimal(nueva),
       usuarioId: ctx.usuarioId,
       fecha: new Date(),
+      idempotencyKey: input.claveIdempotencia,
     },
   });
 

@@ -70,6 +70,9 @@ export interface InventoryExitPort {
   applyExit(input: InventoryMovementInput): Promise<InventoryMovementResult>;
 }
 
+/** Largest stock the `Decimal(12,3)` column holds, as a decimal string. */
+export const STOCK_MAXIMO = "999999999.999";
+
 /** Minimum-stock indicator exposed on every row of the stock listing. */
 export type StockKpi = "normal" | "bajo_stock" | "agotado";
 

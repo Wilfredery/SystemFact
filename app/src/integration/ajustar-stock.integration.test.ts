@@ -32,6 +32,7 @@ describe("ajustarInventario (real DB)", () => {
         productoId: fixture.productos.prodA1.id,
         cantidad: "-3.500",
         motivo: "Correccion de conteo fisico",
+        claveIdempotencia: "k-rationtestts-31",
       }),
     );
 
@@ -79,6 +80,7 @@ describe("ajustarInventario (real DB)", () => {
         productoId: fixture.productos.prodA1.id,
         cantidad: "-10.001",
         motivo: "Salida mayor al stock",
+        claveIdempotencia: "k-rationtestts-78",
       }),
     );
 
@@ -100,6 +102,147 @@ describe("ajustarInventario (real DB)", () => {
     expect(movimientos).toBe(0);
   });
 
+  it("accepts an entry that lands exactly on the column ceiling and rejects one thousandth more, rolling back", async () => {
+    const ctx = ctxFor(fixture, fixture.usuarios.adminA.id);
+    const db = getHarnessDb();
+
+    // Stock is 10.000; +999999989.999 lands exactly on 999999999.999 (Decimal(12,3) max).
+    const enElTecho = await withTenantTransaction(ctx, (tx) =>
+      ajustarInventario(tx, ctx, {
+        productoId: fixture.productos.prodA1.id,
+        cantidad: "999999989.999",
+        motivo: "Entrada hasta el techo",
+        claveIdempotencia: "k-rationtestts-109",
+      }),
+    );
+    expect(enElTecho.ok).toBe(true);
+
+    const pasado = await withTenantTransaction(ctx, (tx) =>
+      ajustarInventario(tx, ctx, {
+        productoId: fixture.productos.prodA1.id,
+        cantidad: "0.001",
+        motivo: "Una milesima de mas",
+        claveIdempotencia: "k-rationtestts-118",
+      }),
+    );
+    expect(pasado).toEqual({
+      ok: false,
+      code: "STOCK_MAXIMO_EXCEDIDO",
+      message: expect.any(String),
+    });
+
+    const inventario = await db.inventario.findUnique({
+      where: { id: fixture.inventarios.a1ProdA1.id },
+    });
+    expect(inventario?.cantidad.toFixed(3)).toBe("999999999.999");
+    const movimientos = await db.movimientoInventario.count({
+      where: { inventarioId: fixture.inventarios.a1ProdA1.id },
+    });
+    expect(movimientos).toBe(1);
+  });
+
+  it("applies a repeated request once: the replay returns the first result and writes nothing", async () => {
+    const ctx = ctxFor(fixture, fixture.usuarios.adminA.id);
+    const db = getHarnessDb();
+    const input = {
+      productoId: fixture.productos.prodA1.id,
+      cantidad: "4",
+      motivo: "Reintento del mismo clic",
+      claveIdempotencia: "idem-replay-0001",
+    };
+
+    const primero = await withTenantTransaction(ctx, (tx) => ajustarInventario(tx, ctx, input));
+    const repetido = await withTenantTransaction(ctx, (tx) => ajustarInventario(tx, ctx, input));
+
+    expect(primero).toEqual({
+      ok: true,
+      data: {
+        inventarioId: fixture.inventarios.a1ProdA1.id,
+        productoId: fixture.productos.prodA1.id,
+        cantidadAnterior: "10.000",
+        cantidadNueva: "14.000",
+      },
+    });
+    // Same answer as the first call, NOT 14.000 -> 18.000.
+    expect(repetido).toEqual(primero);
+
+    const inventario = await db.inventario.findUnique({
+      where: { id: fixture.inventarios.a1ProdA1.id },
+    });
+    expect(inventario?.cantidad.toFixed(3)).toBe("14.000");
+    const movimientos = await db.movimientoInventario.findMany({
+      where: { inventarioId: fixture.inventarios.a1ProdA1.id },
+    });
+    expect(movimientos).toHaveLength(1);
+    expect(movimientos[0].idempotencyKey).toBe("idem-replay-0001");
+    const auditorias = await db.movimientoAuditoria.count({
+      where: { idEntidad: String(fixture.inventarios.a1ProdA1.id), entidad: "Inventario", accion: "AJUSTAR" },
+    });
+    expect(auditorias).toBe(1);
+  });
+
+  it("refuses the same key with a different amount (IDEMPOTENCIA_CONFLICTO) and changes nothing", async () => {
+    const ctx = ctxFor(fixture, fixture.usuarios.adminA.id);
+    const db = getHarnessDb();
+    const base = {
+      productoId: fixture.productos.prodA1.id,
+      motivo: "Misma clave",
+      claveIdempotencia: "idem-conflict-0002",
+    };
+
+    const primero = await withTenantTransaction(ctx, (tx) =>
+      ajustarInventario(tx, ctx, { ...base, cantidad: "4" }),
+    );
+    const distinto = await withTenantTransaction(ctx, (tx) =>
+      ajustarInventario(tx, ctx, { ...base, cantidad: "5" }),
+    );
+
+    expect(primero.ok).toBe(true);
+    expect(distinto).toEqual({
+      ok: false,
+      code: "IDEMPOTENCIA_CONFLICTO",
+      message: expect.any(String),
+    });
+    const inventario = await db.inventario.findUnique({
+      where: { id: fixture.inventarios.a1ProdA1.id },
+    });
+    expect(inventario?.cantidad.toFixed(3)).toBe("14.000");
+    expect(
+      await db.movimientoInventario.count({ where: { inventarioId: fixture.inventarios.a1ProdA1.id } }),
+    ).toBe(1);
+  });
+
+  it("scopes the key to the inventory row: the same key on another product is a separate adjustment", async () => {
+    const ctx = ctxFor(fixture, fixture.usuarios.adminA.id);
+    const db = getHarnessDb();
+    const clave = "idem-scope-0003";
+
+    const enA1 = await withTenantTransaction(ctx, (tx) =>
+      ajustarInventario(tx, ctx, {
+        productoId: fixture.productos.prodA1.id,
+        cantidad: "1",
+        motivo: "Producto uno",
+        claveIdempotencia: clave,
+      }),
+    );
+    const enOtro = await withTenantTransaction(ctx, (tx) =>
+      ajustarInventario(tx, ctx, {
+        productoId: fixture.productos.prodA2Only.id,
+        cantidad: "1",
+        motivo: "Producto dos",
+        claveIdempotencia: clave,
+      }),
+    );
+
+    expect(enA1.ok).toBe(true);
+    expect(enOtro.ok).toBe(true);
+    const claves = await db.movimientoInventario.findMany({
+      where: { idempotencyKey: clave },
+      select: { inventarioId: true },
+    });
+    expect(new Set(claves.map((c) => c.inventarioId)).size).toBe(2);
+  });
+
   it("rejects an empty motivo with MOTIVO_VACIO without touching the database", async () => {
     const ctx = ctxFor(fixture, fixture.usuarios.adminA.id);
 
@@ -108,6 +251,7 @@ describe("ajustarInventario (real DB)", () => {
         productoId: fixture.productos.prodA1.id,
         cantidad: "-1",
         motivo: "   ",
+        claveIdempotencia: "k-rationtestts-144",
       }),
     );
 
@@ -136,6 +280,7 @@ describe("ajustarInventario (real DB)", () => {
         productoId: fixture.productos.prodB1.id,
         cantidad: "5",
         motivo: "Intento cross-tenant",
+        claveIdempotencia: "k-rationtestts-172",
       }),
     );
 

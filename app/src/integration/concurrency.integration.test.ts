@@ -29,13 +29,42 @@ describe("concurrent adjustments (real DB)", () => {
     };
   });
 
+  it("applies once two concurrent copies of the SAME request: the second is a replay, not a second -8", async () => {
+    const copias = [0, 1].map(() =>
+      withTenantTransaction(ctx, (tx) =>
+        ajustarInventario(tx, ctx, {
+          productoId: fixture.productos.prodA1.id,
+          cantidad: "-4",
+          motivo: "Mismo clic dos veces",
+          claveIdempotencia: "concurrente-misma-0001",
+        }),
+      ),
+    );
+
+    const resultados = await Promise.all(copias);
+
+    // Both callers get the same successful answer (-4 on 10.000), never 10 -> 6 -> 2.
+    expect(resultados[0]).toEqual(resultados[1]);
+    expect(resultados[0].ok).toBe(true);
+    const db = getHarnessDb();
+    const inventario = await db.inventario.findUnique({
+      where: { id: fixture.inventarios.a1ProdA1.id },
+    });
+    expect(inventario?.cantidad.toFixed(3)).toBe("6.000");
+    expect(
+      await db.movimientoInventario.count({ where: { inventarioId: fixture.inventarios.a1ProdA1.id } }),
+    ).toBe(1);
+  });
+
   it("serializes two concurrent -8 deltas on 10.000 stock: one wins, stock stays non-negative", async () => {
-    const attempts = [0, 1].map(() =>
+    // Two DIFFERENT requests (own idempotency key each) racing for the same stock.
+    const attempts = [0, 1].map((i) =>
       withTenantTransaction(ctx, (tx) =>
         ajustarInventario(tx, ctx, {
           productoId: fixture.productos.prodA1.id,
           cantidad: "-8",
           motivo: "Salida concurrente",
+          claveIdempotencia: `concurrente-distinta-${i}`,
         }),
       ),
     );

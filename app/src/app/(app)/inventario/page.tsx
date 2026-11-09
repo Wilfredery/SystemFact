@@ -54,17 +54,19 @@ export default async function InventarioPage({
   };
 
   // Only the manage group sees the adjust link; hiding it is a courtesy, the
-  // adjust page and the action both re-check on the server.
-  const permisos = await obtenerPermisosInventarioAction();
-  const puedeAjustar = permisos.ok && permisos.data.puedeAjustar;
-
-  const resultado = await consultarInventarioAction({
-    page,
-    limit: TAMANO_PAGINA,
-    ...(filtros.busqueda === "" ? {} : { busqueda: filtros.busqueda }),
-    ...(filtros.categoriaId === null ? {} : { categoriaId: filtros.categoriaId }),
-    ...(filtros.estado === null ? {} : { estado: filtros.estado }),
-  });
+  // adjust page and the action both re-check on the server. A failed permission
+  // call must never break the list: it just hides the link (deny by default).
+  const [permisos, resultado] = await Promise.all([
+    obtenerPermisosInventarioAction().catch(() => null),
+    consultarInventarioAction({
+      page,
+      limit: TAMANO_PAGINA,
+      ...(filtros.busqueda === "" ? {} : { busqueda: filtros.busqueda }),
+      ...(filtros.categoriaId === null ? {} : { categoriaId: filtros.categoriaId }),
+      ...(filtros.estado === null ? {} : { estado: filtros.estado }),
+    }),
+  ]);
+  const puedeAjustar = permisos !== null && permisos.ok && permisos.data.puedeAjustar;
   const inicial: InventarioInicial = resultado.ok
     ? { ok: true, data: resultado.data }
     : { ok: false, message: resultado.error.message };

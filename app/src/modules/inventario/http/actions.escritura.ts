@@ -66,6 +66,7 @@ export async function ajustarInventarioAction(
       productoId: parsed.productoId,
       cantidad: parsed.cantidad,
       motivo: parsed.motivo,
+      claveIdempotencia: parsed.requestId,
     });
     if (!result.ok) {
       return error(result.code, result.message);

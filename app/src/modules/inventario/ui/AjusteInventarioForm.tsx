@@ -23,6 +23,7 @@ import {
   ajustarInventarioAction,
   consultarInventarioAction,
 } from "@/modules/inventario/http/actions";
+import { STOCK_MAXIMO } from "@/modules/inventario/domain/inventario";
 
 const DEBOUNCE_BUSQUEDA_MS = 300;
 const LIMITE_BUSQUEDA = 25;
@@ -36,9 +37,12 @@ const MOTIVOS = [
   "Corrección de error",
   "Otro",
 ] as const;
+const MENSAJE_FORMATO_CANTIDAD = "Use punto decimal y hasta 3 decimales (ejemplo: 1.5).";
+const MENSAJE_CANTIDAD_CERO = "La cantidad debe ser mayor que 0.";
+const MENSAJE_STOCK_MAXIMO = "La existencia resultante supera el máximo permitido (999,999,999.999).";
 const MENSAJE_FALLO_BUSQUEDA = "No se pudo buscar productos. Intente de nuevo.";
 const MENSAJE_RESULTADO_DESCONOCIDO =
-  "No se pudo confirmar el ajuste. Revise la existencia en Inventario antes de reintentar.";
+  "No se pudo confirmar el ajuste. Puede reintentar: si el ajuste ya se aplicó, no se aplicará dos veces.";
 
 type TipoAjuste = "ENTRADA" | "SALIDA";
 type EstadoEnvio = "libre" | "enviando" | "desconocido";
@@ -55,6 +59,20 @@ const CLASE_CONTROL =
 const CLASE_ETIQUETA = "text-sm font-medium text-zinc-900 dark:text-zinc-50";
 const CLASE_ALERTA =
   "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+
+/** Why an amount typed by the user is not accepted; null while untouched or valid. */
+function explicarCantidad(texto: string): string | null {
+  const limpio = texto.trim();
+  if (limpio === "" || limpio === "0") return null;
+  if (!CANTIDAD_RE.test(limpio)) return MENSAJE_FORMATO_CANTIDAD;
+  return new Decimal(limpio).gt(0) ? null : MENSAJE_CANTIDAD_CERO;
+}
+
+function nuevaClaveDeSolicitud(): string {
+  const c = globalThis.crypto;
+  if (c !== undefined && typeof c.randomUUID === "function") return c.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
 
 function leerCantidad(texto: string): Decimal | null {
   const limpio = texto.trim();
@@ -76,6 +94,7 @@ export function AjusteInventarioForm() {
   const [envio, setEnvio] = useState<EstadoEnvio>("libre");
   const [errorNegocio, setErrorNegocio] = useState<string | null>(null);
   const ultimaBusqueda = useRef(0);
+  const [requestId] = useState(nuevaClaveDeSolicitud);
 
   // Debounced product search. Only the latest request may settle state: a slow
   // earlier answer must not overwrite the options of a newer text.
@@ -134,9 +153,17 @@ export function AjusteInventarioForm() {
         ? existencia.plus(monto)
         : existencia.minus(monto);
   const stockInsuficiente = quedara !== null && quedara.lt(0);
+  // The column holds 9 integer digits and 3 decimals: stop an Entrada past it here
+  // (the server enforces it too, with its own stable code).
+  const excedeMaximo = quedara !== null && quedara.gt(STOCK_MAXIMO);
+  const avisoCantidad = explicarCantidad(cantidad);
   const completo =
-    producto !== null && tipo !== null && motivo !== "" && monto !== null && !stockInsuficiente;
-  const puedeConfirmar = completo && envio === "libre";
+    producto !== null && tipo !== null && motivo !== "" && monto !== null && !stockInsuficiente && !excedeMaximo;
+  // After an unknown outcome the user may retry: the fields are locked, so the
+  // retry carries the same data and the same requestId, and the server applies
+  // that request at most once.
+  const puedeConfirmar = completo && (envio === "libre" || envio === "desconocido");
+  const camposBloqueados = envio !== "libre";
 
   async function confirmar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -150,6 +177,7 @@ export function AjusteInventarioForm() {
         productoId: producto.productoId,
         cantidad: `${tipo === "SALIDA" ? "-" : ""}${cantidad.trim()}`,
         motivo: detalle === "" ? motivo : `${motivo}: ${detalle}`,
+        requestId,
       });
       if (r.ok) {
         router.push("/inventario");
@@ -159,7 +187,8 @@ export function AjusteInventarioForm() {
       setErrorNegocio(r.error.message);
       setEnvio("libre");
     } catch {
-      // Outcome unknown (timeout, network): never offer a blind retry.
+      // Outcome unknown (timeout, network): the retry is safe because it repeats
+      // the same requestId; the fields stay locked so the data cannot change.
       setEnvio("desconocido");
     }
   }
@@ -177,6 +206,7 @@ export function AjusteInventarioForm() {
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Ajuste de Inventario</h1>
       </div>
 
+      <fieldset disabled={camposBloqueados} className="m-0 flex min-w-0 flex-col gap-6 border-0 p-0">
       <div className="flex flex-col gap-2">
         <label htmlFor="ajuste-producto" className={CLASE_ETIQUETA}>
           Producto *
@@ -281,6 +311,10 @@ export function AjusteInventarioForm() {
         <p id="ajuste-cantidad-detalle" aria-live="polite" className="min-h-5 text-sm">
           {stockInsuficiente ? (
             <span className="text-red-700 dark:text-red-300">Stock insuficiente</span>
+          ) : excedeMaximo ? (
+            <span className="text-red-700 dark:text-red-300">{MENSAJE_STOCK_MAXIMO}</span>
+          ) : avisoCantidad !== null ? (
+            <span className="text-red-700 dark:text-red-300">{avisoCantidad}</span>
           ) : (
             existencia !== null &&
             quedara !== null && (
@@ -306,6 +340,8 @@ export function AjusteInventarioForm() {
           className={`${CLASE_CONTROL} py-2`}
         />
       </div>
+
+      </fieldset>
 
       {errorNegocio !== null && (
         <p role="alert" className={CLASE_ALERTA}>
@@ -333,7 +369,7 @@ export function AjusteInventarioForm() {
           disabled={!puedeConfirmar}
           className="min-h-12 rounded-md bg-zinc-900 px-5 text-sm font-medium text-white disabled:opacity-40 dark:bg-zinc-50 dark:text-zinc-900"
         >
-          Confirmar Ajuste
+          {envio === "desconocido" ? "Reintentar ajuste" : "Confirmar Ajuste"}
         </button>
       </div>
     </form>

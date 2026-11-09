@@ -309,7 +309,7 @@ describe("AjusteInventarioForm — confirm gating and live line (S2)", () => {
     expect(confirmar()).toBeEnabled();
   });
 
-  it.each(["", "0", "0.000", "-5", "+5", "1.2345", "1234567890", "abc", "1,5", "1e3"])(
+  it.each(["", "0", "0.000", "-5", "+5", "1.2345", "1234567890", "abc", "1,5", "1e3", ".5", "5."])(
     "keeps confirm disabled for the invalid amount %p",
     async (valor) => {
       render(<AjusteInventarioForm />);
@@ -323,7 +323,7 @@ describe("AjusteInventarioForm — confirm gating and live line (S2)", () => {
     },
   );
 
-  it.each(["10", "0.001", "999999999", "123456789.123", "5.5"])(
+  it.each(["10", "0.001", "999999849.999", "123456789.123", "5.5"])(
     "accepts the valid amount %p",
     async (valor) => {
       render(<AjusteInventarioForm />);
@@ -332,6 +332,46 @@ describe("AjusteInventarioForm — confirm gating and live line (S2)", () => {
       expect(confirmar()).toBeEnabled();
     },
   );
+
+  it("stops an Entrada that would pass the stock ceiling, and lets the exact ceiling through", async () => {
+    render(<AjusteInventarioForm />);
+    await completar("Entrada", "999999850");
+
+    expect(
+      screen.getByText("La existencia resultante supera el máximo permitido (999,999,999.999)."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/quedará/)).not.toBeInTheDocument();
+    expect(confirmar()).toBeDisabled();
+
+    escribirCantidad("999999849.999");
+    expect(screen.getByText("Existencia actual 150 → quedará 999999999.999")).toBeInTheDocument();
+    expect(confirmar()).toBeEnabled();
+  });
+
+  it.each([
+    ["1,5", "Use punto decimal y hasta 3 decimales (ejemplo: 1.5)."],
+    [".5", "Use punto decimal y hasta 3 decimales (ejemplo: 1.5)."],
+    ["1.2345", "Use punto decimal y hasta 3 decimales (ejemplo: 1.5)."],
+    ["0.000", "La cantidad debe ser mayor que 0."],
+  ])("explains why the amount %p is not accepted", async (valor, mensaje) => {
+    render(<AjusteInventarioForm />);
+    await completar("Entrada", "10");
+
+    escribirCantidad(valor);
+
+    expect(screen.getByText(mensaje)).toBeInTheDocument();
+    expect(confirmar()).toBeDisabled();
+  });
+
+  it("shows no hint for the untouched default 0 or an empty field", async () => {
+    render(<AjusteInventarioForm />);
+    await completar("Entrada", "10");
+
+    escribirCantidad("0");
+    expect(screen.queryByText(/Use punto decimal|mayor que 0/)).not.toBeInTheDocument();
+    escribirCantidad("");
+    expect(screen.queryByText(/Use punto decimal|mayor que 0/)).not.toBeInTheDocument();
+  });
 
   it("shows 'Existencia actual X → quedará Y' for Entrada", async () => {
     render(<AjusteInventarioForm />);
@@ -383,9 +423,37 @@ describe("AjusteInventarioForm — submit", () => {
       productoId: 7,
       cantidad: "10",
       motivo: "Conteo físico",
+      requestId: expect.any(String),
     });
     expect(push).toHaveBeenCalledWith("/inventario");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("sends the trimmed amount when the field has surrounding spaces", async () => {
+    render(<AjusteInventarioForm />);
+    await completar("Entrada", " 5 ", "Merma");
+
+    await enviar();
+
+    expect(mockAjustar).toHaveBeenCalledWith({
+      productoId: 7,
+      cantidad: "5",
+      motivo: "Merma",
+      requestId: expect.any(String),
+    });
+  });
+
+  it("keeps the longest motivo plus the longest observaciones under the backend limit of 255", async () => {
+    render(<AjusteInventarioForm />);
+    await completar("Entrada", "10", "Corrección de error");
+    fireEvent.change(screen.getByLabelText("Observaciones"), { target: { value: "x".repeat(200) } });
+
+    await enviar();
+
+    const enviado = mockAjustar.mock.calls[0][0] as { motivo: string };
+    expect(enviado.motivo).toBe("Corrección de error: " + "x".repeat(200));
+    expect(enviado.motivo.length).toBeLessThanOrEqual(255);
+    expect(screen.getByLabelText("Observaciones")).toHaveAttribute("maxlength", "200");
   });
 
   it("sends a negative amount for Salida and appends the trimmed observaciones to the motivo", async () => {
@@ -401,6 +469,7 @@ describe("AjusteInventarioForm — submit", () => {
       productoId: 7,
       cantidad: "-2.5",
       motivo: "Producto dañado: Saco roto en el almacén",
+      requestId: expect.any(String),
     });
     expect(push).toHaveBeenCalledWith("/inventario");
   });
@@ -412,7 +481,12 @@ describe("AjusteInventarioForm — submit", () => {
 
     await enviar();
 
-    expect(mockAjustar).toHaveBeenCalledWith({ productoId: 7, cantidad: "1", motivo: "Otro" });
+    expect(mockAjustar).toHaveBeenCalledWith({
+      productoId: 7,
+      cantidad: "1",
+      motivo: "Otro",
+      requestId: expect.any(String),
+    });
   });
 
   it("disables confirm from the first click until the result arrives, sending once", async () => {
@@ -470,7 +544,7 @@ describe("AjusteInventarioForm — submit", () => {
     expect(push).toHaveBeenCalledWith("/inventario");
   });
 
-  it("when the action rejects, says the outcome is unknown, links to Inventario and keeps confirm disabled", async () => {
+  it("when the action rejects, says the outcome is unknown, locks the fields and offers a safe retry", async () => {
     mockAjustar.mockRejectedValueOnce(new Error("timeout"));
     render(<AjusteInventarioForm />);
     await completar();
@@ -479,19 +553,71 @@ describe("AjusteInventarioForm — submit", () => {
 
     const alerta = screen.getByRole("alert");
     expect(alerta).toHaveTextContent(
-      "No se pudo confirmar el ajuste. Revise la existencia en Inventario antes de reintentar.",
+      "No se pudo confirmar el ajuste. Puede reintentar: si el ajuste ya se aplicó, no se aplicará dos veces.",
     );
     expect(within(alerta).getByRole("link", { name: "Ir a Inventario" })).toHaveAttribute(
       "href",
       "/inventario",
     );
-    expect(confirmar()).toBeDisabled();
+    // The fields are locked so the retry carries exactly the same data.
+    expect(screen.getByLabelText("Nueva cantidad *")).toBeDisabled();
+    expect(screen.getByLabelText("Motivo *")).toBeDisabled();
+    expect(screen.getByLabelText("Observaciones")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Entrada" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Confirmar Ajuste" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reintentar ajuste" })).toBeEnabled();
     expect(push).not.toHaveBeenCalled();
+  });
 
-    // Editing the fields does not unlock a blind retry.
-    escribirCantidad("11");
-    fireEvent.submit(confirmar().closest("form") as HTMLFormElement);
-    expect(confirmar()).toBeDisabled();
+  it("Reintentar sends exactly the same payload and the same requestId, then goes to /inventario", async () => {
+    mockAjustar.mockRejectedValueOnce(new Error("timeout"));
+    render(<AjusteInventarioForm />);
+    await completar("Salida", "3", "Merma");
+    await enviar();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Reintentar ajuste" }));
+    });
+
+    expect(mockAjustar).toHaveBeenCalledTimes(2);
+    expect(mockAjustar.mock.calls[1][0]).toEqual(mockAjustar.mock.calls[0][0]);
+    expect((mockAjustar.mock.calls[0][0] as { requestId: string }).requestId.length).toBeGreaterThanOrEqual(8);
+    expect(push).toHaveBeenCalledWith("/inventario");
+  });
+
+  it("a second Reintentar after another unknown outcome is still the same request", async () => {
+    mockAjustar.mockRejectedValueOnce(new Error("timeout")).mockRejectedValueOnce(new Error("timeout"));
+    render(<AjusteInventarioForm />);
+    await completar();
+    await enviar();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Reintentar ajuste" }));
+    });
+    expect(screen.getByRole("button", { name: "Reintentar ajuste" })).toBeEnabled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Reintentar ajuste" }));
+    });
+
+    const claves = mockAjustar.mock.calls.map((c) => (c[0] as { requestId: string }).requestId);
+    expect(claves).toHaveLength(3);
+    expect(new Set(claves).size).toBe(1);
+  });
+
+  it("each form instance uses its own requestId", async () => {
+    const primero = render(<AjusteInventarioForm />);
+    await completar();
+    await enviar();
+    primero.unmount();
+
+    mockAjustar.mockClear();
+    render(<AjusteInventarioForm />);
+    await completar();
+    await enviar();
+
+    const [clave1] = [(mockAjustar.mock.calls[0][0] as { requestId: string }).requestId];
+    expect(clave1.length).toBeGreaterThanOrEqual(8);
     expect(mockAjustar).toHaveBeenCalledTimes(1);
   });
+
 });

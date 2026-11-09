@@ -20,6 +20,8 @@ import {
   CANTIDAD_INVALIDA,
   INVENTARIO_NO_ENCONTRADO,
   STOCK_INSUFICIENTE,
+  STOCK_MAXIMO_EXCEDIDO,
+  IDEMPOTENCIA_CONFLICTO,
   messageFor,
   InventarioDomainError,
   type InventarioErrorCode,
@@ -36,6 +38,8 @@ export interface AjustarInventarioInput {
   /** Signed delta as a bounded decimal string, e.g. "5.000" or "-4". */
   readonly cantidad: string;
   readonly motivo: string;
+  /** Client-generated id of this intention; a repeat returns the first result. */
+  readonly claveIdempotencia: string;
 }
 
 export interface AjustarInventarioData {
@@ -92,6 +96,7 @@ export async function ajustarInventario(
       delta: delta.toString(),
       motivo: input.motivo.trim(),
       source: INVENTORY_SOURCE.MANUAL,
+      claveIdempotencia: input.claveIdempotencia,
     });
 
     return {
@@ -109,7 +114,10 @@ export async function ajustarInventario(
     // other error is a defect and must propagate, never be swallowed.
     if (
       err instanceof InventarioDomainError &&
-      (err.code === STOCK_INSUFICIENTE || err.code === INVENTARIO_NO_ENCONTRADO)
+      (err.code === STOCK_INSUFICIENTE ||
+        err.code === STOCK_MAXIMO_EXCEDIDO ||
+        err.code === IDEMPOTENCIA_CONFLICTO ||
+        err.code === INVENTARIO_NO_ENCONTRADO)
     ) {
       return buildError(err.code);
     }

@@ -359,6 +359,7 @@ describe("registrarEntradaCompra (real DB)", () => {
         productoId,
         cantidad: "-1.000",
         motivo: "Ajuste manual de conteo",
+        claveIdempotencia: "k-rationtestts-358",
       }),
     );
 
