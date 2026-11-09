@@ -129,7 +129,7 @@ export async function recibirCompra(
   }));
   const motivo = `Recepción compra ${compra.correlativoInterno}`;
 
-  let movimientos;
+  let movimientos: Awaited<ReturnType<typeof registrarEntradasCompra>>;
   try {
     movimientos = await registrarEntradasCompra(tx, ctx, {
       compraId: input.id,
@@ -164,7 +164,7 @@ export async function recibirCompra(
     data: {
       id: input.id,
       estado: ESTADO_COMPRA.RECIBIDA,
-      movimientosAplicados: lineas.length,
+      movimientosAplicados: movimientos.length,
     },
   };
 }
