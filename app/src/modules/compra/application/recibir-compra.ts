@@ -35,6 +35,7 @@ import {
   COMPRA_INMUTABLE,
   messageFor,
   CompraDomainError,
+  STOCK_MAXIMO_EXCEDIDO,
   type CompraErrorCode,
 } from "../domain/errors";
 import {
@@ -49,7 +50,10 @@ import {
   registrarAuditCompraEnTx,
 } from "../infrastructure/compra-repository";
 import { registrarEntradasCompra } from "@/modules/inventario/application/registrar-entrada-compra";
-import { InventarioDomainError } from "@/modules/inventario/domain/errors";
+import {
+  InventarioDomainError,
+  STOCK_MAXIMO_EXCEDIDO as INVENTARIO_STOCK_MAXIMO_EXCEDIDO,
+} from "@/modules/inventario/domain/errors";
 
 export interface RecibirCompraInput {
   readonly id: number;
@@ -76,8 +80,8 @@ function buildError(
  * movements (carrying `compraId`) + the company-wide cost update, all inside the
  * same transaction, and append one compra audit row.
  *
- * @throws CompraDomainError(INVENTARIO_ENTRADA_RECHAZADA) if the inventario
- *   entry rejects AFTER the state flip — thrown (not returned) so the guarded
+ * @throws CompraDomainError(INVENTARIO_ENTRADA_RECHAZADA | STOCK_MAXIMO_EXCEDIDO)
+ *   if the inventario entry rejects AFTER the state flip — thrown (not returned) so the guarded
  *   update rolls back and the purchase is never left `RECIBIDA` without stock.
  */
 export async function recibirCompra(
@@ -133,12 +137,14 @@ export async function recibirCompra(
       lineas,
     });
   } catch (err) {
-    // Map any inventario domain failure to the stable bridge code; never leak
-    // inventario's internal codes/details into compra's public error catalog.
+    // Map the stock ceiling to compra's receipt-specific code; all other known
+    // inventario failures use the generic bridge. Never leak inventory details.
     if (err instanceof InventarioDomainError) {
-      throw new CompraDomainError(INVENTARIO_ENTRADA_RECHAZADA, {
-        compraId: input.id,
-      });
+      const code =
+        err.code === INVENTARIO_STOCK_MAXIMO_EXCEDIDO
+          ? STOCK_MAXIMO_EXCEDIDO
+          : INVENTARIO_ENTRADA_RECHAZADA;
+      throw new CompraDomainError(code, { compraId: input.id });
     }
     throw err;
   }

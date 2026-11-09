@@ -12,6 +12,8 @@ import { Decimal } from "decimal.js";
 import {
   CANTIDAD_INVALIDA,
   MOTIVO_VACIO,
+  STOCK_MAXIMO_EXCEDIDO,
+  InventarioDomainError,
   type InventarioErrorCode,
 } from "./errors";
 
@@ -72,6 +74,20 @@ export interface InventoryExitPort {
 
 /** Largest stock the `Decimal(12,3)` column holds, as a decimal string. */
 export const STOCK_MAXIMO = "999999999.999";
+
+/**
+ * Reject an additive stock result that cannot fit the persisted quantity column.
+ * Callers use this with a locked or transaction-local resulting quantity before
+ * any business writes, preserving one exact ceiling rule across every path.
+ */
+export function verificarTechoDeStock(
+  nueva: Decimal,
+  contexto: Record<string, unknown>,
+): void {
+  if (nueva.gt(STOCK_MAXIMO)) {
+    throw new InventarioDomainError(STOCK_MAXIMO_EXCEDIDO, contexto);
+  }
+}
 
 /** Minimum-stock indicator exposed on every row of the stock listing. */
 export type StockKpi = "normal" | "bajo_stock" | "agotado";

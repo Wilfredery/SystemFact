@@ -57,20 +57,27 @@ one movement per line.
 
 `registrarEntradaCompra` is the inventario-side realization of the port the
 compra module reserved. It is invoked INSIDE the caller's `PrismaTx` — there is
-no nested transaction. `registrarEntradasCompra` runs a three-phase, all-or-
-nothing batch:
+no nested transaction. `registrarEntradasCompra` runs an all-or-nothing batch with a consistent
+`INVENTARIO → PRODUCTO` lock order:
 
 1. **Ownership guard** — every product must belong to `ctx.empresaId`; the first
    foreign product throws `INVENTARIO_NO_ENCONTRADO` before any write, so a
    cross-tenant batch persists zero changes.
-2. **Cost** — per product in ascending product-id order: `SELECT ... FOR UPDATE`
-   on `PRODUCTO` (serializes concurrent receipts of the same product), read the
-   pre-receipt company-wide stock summed across ALL branches, and write ONE
-   `costoPromedio` using the aggregate received quantity and ITBIS-exclusive
-   value (duplicate lines accumulate into a single, drift-free reweight).
-3. **Stock** — per line: upsert + `SELECT ... FOR UPDATE` the session branch's
-   row, add the positive quantity, append one `ENTRADA_COMPRA` movement
-   (`compraId`, before/after) and the audit row.
+2. **Stock preflight (Phase A2)** — per product in ascending product-id order,
+   lock the session-branch `INVENTARIO` row with `SELECT ... FOR UPDATE` and
+   check the resulting quantity against the `Decimal(12,3)` maximum before any
+   cost or movement write. These locks remain held through commit.
+3. **Cost (Phase B)** — per product in ascending product-id order, lock
+   `PRODUCTO` with `SELECT ... FOR UPDATE`, read company-wide stock across ALL
+   branches, and write ONE `costoPromedio` using the aggregate received quantity
+   and ITBIS-exclusive value (duplicate lines share one drift-free reweight).
+4. **Stock (Phase C)** — per line, reuse the already-locked branch row, add the
+   positive quantity, append one `ENTRADA_COMPRA` movement (`compraId`,
+   before/after), and the audit row.
+
+Other inventory paths lock only `INVENTARIO`; product-edit paths do not lock
+inventory rows. Keep the receipt's `INVENTARIO → PRODUCTO` order if adding a path
+that locks both, so there is no inverse lock-order edge.
 
 The weighted-average cost (frozen by the fase-3-4b spec):
 

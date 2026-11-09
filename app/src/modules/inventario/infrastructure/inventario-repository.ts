@@ -31,12 +31,11 @@ import {
   INVENTARIO_NO_ENCONTRADO,
   STOCK_INSUFICIENTE,
   STOCK_INSUFICIENTE_BLOQUEO,
-  STOCK_MAXIMO_EXCEDIDO,
   IDEMPOTENCIA_CONFLICTO,
   InventarioDomainError,
 } from "../domain/errors";
 import { calcularNuevoCostoPromedioPorValor } from "../domain/costo-promedio";
-import { STOCK_MAXIMO } from "../domain/inventario";
+import { verificarTechoDeStock } from "../domain/inventario";
 import type {
   InventarioStockRow,
   InventorySource,
@@ -402,7 +401,7 @@ export async function registrarAuditoriaStockEnTx(
  *
  * `costoPromedio` is never read or written here (3.4a boundary).
  *
- * @throws InventarioDomainError(STOCK_INSUFICIENTE | INVENTARIO_NO_ENCONTRADO)
+ * @throws InventarioDomainError(STOCK_INSUFICIENTE | STOCK_MAXIMO_EXCEDIDO | INVENTARIO_NO_ENCONTRADO)
  */
 export async function ajustarStockEnTx(
   tx: PrismaTx,
@@ -486,13 +485,11 @@ export async function ajustarStockEnTx(
 
   // Ceiling of the Decimal(12,3) column: reject before writing, so the user
   // gets a stable error instead of a database numeric overflow.
-  if (nueva.gt(STOCK_MAXIMO)) {
-    throw new InventarioDomainError(STOCK_MAXIMO_EXCEDIDO, {
-      inventarioId: ensured.id,
-      disponible: anterior.toFixed(3),
-      pretendida: delta.toString(),
-    });
-  }
+  verificarTechoDeStock(nueva, {
+    inventarioId: ensured.id,
+    disponible: anterior.toFixed(3),
+    pretendida: delta.toString(),
+  });
 
   await tx.inventario.update({
     where: { id: ensured.id },
@@ -719,6 +716,9 @@ async function aplicarEntradaStockLineaEnTx(
  *      (all-branch) pre-receipt stock, and write ONE `costoPromedio` update per
  *      product using the aggregate received quantity + ITBIS-exclusive value
  *      (duplicate lines accumulate into a single, drift-free cost reweight).
+ *   A2. CEILING — the branch quantity after the whole receipt must fit the
+ *      `Decimal(12,3)` column (`STOCK_MAXIMO_EXCEDIDO`), checked per product
+ *      before any cost write.
  *   C. STOCK — per original line, add the positive quantity at the session
  *      branch (row-locked), append one `ENTRADA_COMPRA` movement carrying
  *      `compraId` (before/after), and the audit row. One movement per line.
@@ -764,6 +764,25 @@ export async function registrarEntradasCompraEnTx(
 
   // Phase A: ownership guard for every product BEFORE any write.
   await guardarPertenenciaProductosEnTx(tx, ctx, idsOrdenados);
+
+  // Phase A2: stock ceiling per product BEFORE the cost update, so a rejected
+  // line never runs the weighted-average math. The branch rows are locked here
+  // (ascending id, same order as every other batch) and stay locked to the end
+  // of the transaction, so phase C sees exactly the quantities checked here.
+  for (const productoId of idsOrdenados) {
+    const { inventarioId, cantidad: actual } = await bloquearInventarioSucursalEnTx(
+      tx,
+      ctx,
+      productoId,
+    );
+    const recibida = porProducto.get(productoId)!.cantidad;
+    verificarTechoDeStock(actual.plus(recibida), {
+      productoId,
+      inventarioId,
+      disponible: actual.toFixed(3),
+      pretendida: recibida.toFixed(3),
+    });
+  }
 
   // Phase B: locked, company-wide weighted-average cost — one update per product.
   for (const productoId of idsOrdenados) {
