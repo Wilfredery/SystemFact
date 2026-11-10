@@ -23,6 +23,10 @@ Branch `feature/screens-administracion` · target v0.26.0 · issue-first PR gate
 - T2 (S2,S6,S7) screen with three tabs + nav entry + RTL specs
 - T3 (S8,S9) E2E spec + version bump + tracker log
 
+## Slices
+
+- Slice A (T1, commit b3e51f7): read-only backend (4 actions, repositories, 6 new test suites; gga review PASSED). Gap: Configuración has no ITBIS reader — S2c renders that half as a documented gap.
+
 ## Log
 
 - L1 (2026-11-10): "Go" (owner approval to start Step 7 after Step 6 shipped). Verbatim request chain: "Continue with step 6: compras" → shipped → "Go" (deploy arc) → "Go" (start Step 7).
