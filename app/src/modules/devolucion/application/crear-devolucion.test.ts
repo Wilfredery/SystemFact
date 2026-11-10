@@ -12,17 +12,38 @@
  */
 
 import { Decimal } from "decimal.js";
+import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
+import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import {
   CANTIDAD_EXCEDE_ORIGINAL,
   LINEA_INVALIDA,
+  STOCK_MAXIMO_EXCEDIDO,
+  messageFor,
   VentaDomainError,
 } from "../../venta/domain/errors";
+import {
+  InventarioDomainError,
+  STOCK_INSUFICIENTE_BLOQUEO,
+} from "@/modules/inventario/domain/errors";
 import {
   TIPO_REPOSICION,
   validarCantidadDevuelta,
   type TipoReposicion,
 } from "../domain/devolucion";
+import { leerVentaParaDevolucionEnTx } from "../../venta/infrastructure/venta-repository";
+import { leerPlazoDevolucionEnTx } from "../../venta/infrastructure/config-repository";
+import { consumirNcfEnTx } from "@/modules/ncf/application/consumir-ncf";
+import { registrarDevolucion } from "@/modules/inventario/application/registrar-salidas-venta";
 import {
+  crearDetalleNotaCreditoEnTx,
+  crearNotaCreditoEnTx,
+  existeDevolucionIdenticaEnTx,
+  leerPriorNCsPorFacturaEnTx,
+  leerStockSucursalEnTx,
+  registrarAuditNotaCreditoEnTx,
+} from "../infrastructure/devolucion-repository";
+import {
+  crearDevolucion,
   resolverLineasContraVentaOriginal,
   type LineaDevolucionInput,
 } from "./crear-devolucion";
@@ -220,5 +241,105 @@ describe("resolverLineasContraVentaOriginal (pure frozen-mirror resolver)", () =
         [ventaLinea(1, "5.000", "120.00", "18"), ventaLinea(1, "2.000", "120.00", "16")],
       ),
     ).toThrow(expect.objectContaining({ code: LINEA_INVALIDA, details: { productoId: 1 } }));
+  });
+});
+
+// --- L6 shared stock ceiling: the caller-facing mapping of inventario's guard.
+// The repository rejects a VENDIBLE line past the Decimal(12,3) ceiling with
+// `InventarioDomainError(STOCK_MAXIMO_EXCEDIDO)` AFTER the NC/NCF writes; the
+// use case maps it to venta's OWN stable code/message and re-throws (never
+// returns), so the wrapper rolls back NC + detalles + NCF + audit + stock
+// together — a rejection must leave the B04 sequence and every row untouched.
+describe("crearDevolucion — shared stock-ceiling mapping (L6)", () => {
+  const ctx: TenantCtx = { empresaId: 1, sucursalId: 2, usuarioId: 3, esAdmin: true };
+  const tx = {} as unknown as PrismaTx;
+  const now = new Date("2026-09-05T12:00:00.000Z");
+  const input = {
+    ventaId: 7,
+    motivo: "techo de stock",
+    lineas: [retorno(10, "5")],
+    now,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (leerVentaParaDevolucionEnTx as jest.Mock).mockResolvedValue({
+      estado: "CONFIRMADA",
+      clienteId: 5,
+      ventaFecha: new Date("2026-09-01T15:00:00.000Z"),
+      factura: { estado: "VIGENTE", facturaId: 80 },
+      lineas: [
+        { productoId: 10, cantidad: "5", precioUnitario: "100.00", tasaItbis: "18" },
+      ],
+    });
+    (leerPlazoDevolucionEnTx as jest.Mock).mockResolvedValue(15);
+    (leerStockSucursalEnTx as jest.Mock).mockResolvedValue([
+      { productoId: 10, inventarioId: 5, cantidad: new Decimal("50.000") },
+    ]);
+    (leerPriorNCsPorFacturaEnTx as jest.Mock).mockResolvedValue(new Map());
+    (existeDevolucionIdenticaEnTx as jest.Mock).mockResolvedValue(null);
+    (consumirNcfEnTx as jest.Mock).mockResolvedValue({ ncf: "B0400000001" });
+    (crearNotaCreditoEnTx as jest.Mock).mockResolvedValue({ id: 1 });
+    (crearDetalleNotaCreditoEnTx as jest.Mock).mockResolvedValue(undefined);
+    (registrarAuditNotaCreditoEnTx as jest.Mock).mockResolvedValue(undefined);
+    (registrarDevolucion as jest.Mock).mockResolvedValue([]);
+  });
+
+  it("maps the post-write ceiling rejection to venta's STOCK_MAXIMO_EXCEDIDO (thrown → full rollback, no inventario leak)", async () => {
+    (registrarDevolucion as jest.Mock).mockRejectedValue(
+      new InventarioDomainError(STOCK_MAXIMO_EXCEDIDO, {
+        inventarioId: 5,
+        productoId: 10,
+        disponible: "999999995.000",
+        pretendida: "5.000",
+      }),
+    );
+    const capturado = await crearDevolucion(tx, ctx, input).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(capturado).toBeInstanceOf(VentaDomainError);
+    expect(capturado).not.toBeInstanceOf(InventarioDomainError);
+    expect(capturado).toMatchObject({
+      code: STOCK_MAXIMO_EXCEDIDO,
+      message: messageFor(STOCK_MAXIMO_EXCEDIDO),
+      // Venta-owned locator only — inventario's details are dropped.
+      details: { ventaId: 7 },
+    });
+  });
+
+  it("preflights a VENDIBLE ceiling overflow before consuming B04 or writing the NC", async () => {
+    (leerStockSucursalEnTx as jest.Mock).mockResolvedValue([
+      {
+        productoId: 10,
+        inventarioId: 5,
+        cantidad: new Decimal("999999995.000"),
+      },
+    ]);
+
+    const capturado = await crearDevolucion(tx, ctx, input).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(capturado).toBeInstanceOf(VentaDomainError);
+    expect(capturado).toMatchObject({
+      code: STOCK_MAXIMO_EXCEDIDO,
+      message: messageFor(STOCK_MAXIMO_EXCEDIDO),
+      details: { ventaId: 7 },
+    });
+    expect(consumirNcfEnTx).not.toHaveBeenCalled();
+    expect(crearNotaCreditoEnTx).not.toHaveBeenCalled();
+    expect(crearDetalleNotaCreditoEnTx).not.toHaveBeenCalled();
+    expect(registrarAuditNotaCreditoEnTx).not.toHaveBeenCalled();
+    expect(registrarDevolucion).not.toHaveBeenCalled();
+  });
+
+  it("keeps every OTHER inventario rejection propagating RAW (defect → wrapper rollback, unchanged)", async () => {
+    (registrarDevolucion as jest.Mock).mockRejectedValue(
+      new InventarioDomainError(STOCK_INSUFICIENTE_BLOQUEO, { productoId: 10 }),
+    );
+    await expect(crearDevolucion(tx, ctx, input)).rejects.toBeInstanceOf(
+      InventarioDomainError,
+    );
   });
 });

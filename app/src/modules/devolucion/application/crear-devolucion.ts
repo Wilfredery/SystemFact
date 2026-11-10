@@ -30,12 +30,12 @@
  * catalog; the NCF consume error maps to the NCF codes PINNED in that same
  * catalog (`mapearCodigoNcf`, same as `confirmarVenta`). `VentaConfigError`
  * (`PLAZO_DEVOLUCION_FALTANTE` from task 1.7) and `VentaDomainError` are
- * caught pre-write and returned as typed results. ANY error raised by the
- * post-write inventory mutation (`registrarDevolucion` —
- * `InventarioDomainError`: bad motivo, NaN stock, DANADO loss over balance)
- * INTENTIONALLY propagates: the wrapper aborts the WHOLE transaction (NC +
- * details + NCF + audit + stock), so a failure after the NC exists can never
- * leave a validated NC with a partial stock effect.
+ * caught pre-write and returned as typed results. Errors raised by the
+ * post-write inventory mutation (`registrarDevolucion`) still THROW so the
+ * wrapper aborts the WHOLE transaction (NC + details + NCF + audit + stock).
+ * The stock ceiling is translated to venta's `STOCK_MAXIMO_EXCEDIDO` code before
+ * throwing; other inventory-domain failures propagate unchanged. No failure
+ * after the NC exists can leave a validated NC with a partial stock effect.
  *
  * Concurrency discipline: the serialization point is the INVENTARIO row lock
  * taken BEFORE the cumulative read; the NCF range lock serializes NCF
@@ -53,6 +53,7 @@ import {
   messageFor,
   VENTA_NO_CONFIRMADA,
   VENTA_NO_ENCONTRADO,
+  STOCK_MAXIMO_EXCEDIDO,
   VentaDomainError,
   type VentaErrorCode,
 } from "../../venta/domain/errors";
@@ -70,6 +71,11 @@ import {
 } from "@/modules/ncf/application/consumir-ncf";
 import { NCF_UMBRAL_90 } from "@/modules/ncf/domain/ncf-rules";
 import { registrarDevolucion } from "@/modules/inventario/application/registrar-salidas-venta";
+import {
+  InventarioDomainError,
+  STOCK_MAXIMO_EXCEDIDO as INVENTARIO_STOCK_MAXIMO_EXCEDIDO,
+} from "@/modules/inventario/domain/errors";
+import { verificarTechoDeStock } from "@/modules/inventario/domain/inventario";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import {
@@ -269,7 +275,11 @@ export async function crearDevolucion(
     // CRITICAL: lock ALL inventory rows FIRST (ascending, the same order every
     // inventory seam uses) — this IS the serialization point for R-D3. All
     // cumulative reads below run under those locks.
-    await leerStockSucursalEnTx(tx, ctx, lineas.map((l) => l.productoId));
+    const stockBloqueado = await leerStockSucursalEnTx(
+      tx,
+      ctx,
+      lineas.map((l) => l.productoId),
+    );
 
     // Cumulative cap: prior NCs (ONE batched read for every distinct product,
     // no N+1) PLUS the sibling lines of THIS NC already processed — a product
@@ -320,6 +330,33 @@ export async function crearDevolucion(
       const ya = acumulado.get(linea.productoId) ?? new Decimal(0);
       validarCantidadDevuelta(cantidades[i], originales[i], ya);
       acumulado.set(linea.productoId, ya.plus(cantidades[i]));
+    }
+
+    // Preflight every VENDIBLE stock increase against the locked branch snapshot
+    // before consuming B04 or writing the NC, details, or audit. Simulate lines
+    // in input order so DANADO reductions affect later VENDIBLE lines exactly as
+    // they will in the repository. The repository repeats this shared check as
+    // defense-in-depth immediately before each stock update.
+    const stockPorProducto = new Map(
+      stockBloqueado.map((stock) => [stock.productoId, stock]),
+    );
+    for (let i = 0; i < lineas.length; i++) {
+      const linea = lineas[i];
+      const stock = stockPorProducto.get(linea.productoId)!;
+      const cantidad = cantidades[i];
+      const nueva =
+        linea.tipoReposicion === "VENDIBLE"
+          ? stock.cantidad.plus(cantidad)
+          : stock.cantidad.minus(cantidad);
+      if (linea.tipoReposicion === "VENDIBLE") {
+        verificarTechoDeStock(nueva, {
+          productoId: linea.productoId,
+          inventarioId: stock.inventarioId,
+          disponible: stock.cantidad.toFixed(3),
+          pretendida: cantidad.toFixed(3),
+        });
+      }
+      stockPorProducto.set(linea.productoId, { ...stock, cantidad: nueva });
     }
 
     const totales = calcularTotalesNotaCredito(lineas);
@@ -389,6 +426,16 @@ export async function crearDevolucion(
       ? { ok: true, data: output, warnings: [{ code: NCF_UMBRAL_90 }] }
       : { ok: true, data: output };
   } catch (err) {
+    if (
+      err instanceof InventarioDomainError &&
+      err.code === INVENTARIO_STOCK_MAXIMO_EXCEDIDO
+    ) {
+      // The locked-snapshot preflight catches this before writes; the repository
+      // repeats the guard before each stock update. Keep this mapping as a
+      // defensive fallback and throw so the transaction aborts before the HTTP
+      // adapter turns it into an ActionResult.
+      throw new VentaDomainError(STOCK_MAXIMO_EXCEDIDO, { ventaId: input.ventaId });
+    }
     if (err instanceof NcfConsumoError) {
       return devolucionError(mapearCodigoNcf(err.code));
     }

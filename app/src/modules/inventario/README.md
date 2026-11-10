@@ -23,8 +23,9 @@ and the company-wide weighted-average cost.
 |---|---|
 | Manual adjustment (`ajustar-inventario`) | Authorized signed-delta correction → row-locked stock change + `AJUSTE` movement + audit. **Never touches `costoPromedio`.** |
 | Listing (`listar-inventario`) | Branch-scoped, paginated, KPI-classified stock view. |
-| Purchase entry (`registrar-entrada-compra`) | **Implemented in fase-3-4b.** Realizes the reserved `InventoryEntryPort`: adds stock at the session branch, appends an `ENTRADA_COMPRA` movement carrying `compraId`, and updates the company-wide `costoPromedio`. |
-| Sale exit + reposition (`registrar-salidas-venta`) | **Implemented in fase-5c pr5c3.** Realizes the reserved `InventoryExitPort`: `registrarSalidasVenta` debits branch stock with one `SALIDA_VENTA` movement per line (carrying `ventaId`) and HARD-blocks a shortage; `registrarReposicionCancelacion` reverses a confirmed-sale cancel with one `REPOSICION_CANCELACION` movement. **Neither touches `costoPromedio`.** |
+| Purchase entry (`registrar-entrada-compra`) | **Implemented in fase-3-4b.** Adds stock at the session branch, appends `ENTRADA_COMPRA` movements carrying `compraId`, and updates company-wide `costoPromedio` after a locked-row ceiling preflight. |
+| Sale exit + reposition (`registrar-salidas-venta`) | **Implemented in fase-5c pr5c3.** `registrarSalidasVenta` debits branch stock with one `SALIDA_VENTA` movement per line and HARD-blocks a shortage; `registrarReposicionCancelacion` restores net stock on confirmed-sale cancellation with one `REPOSICION_CANCELACION` movement and checks the ceiling. Neither touches `costoPromedio`. |
+| Return (`registrarDevolucion`) | **Implemented in fase-5d.** VENDIBLE lines add stock and DANADO lines record merma; locked stock and cumulative checks precede fiscal writes, and VENDIBLE additions obey the same stock ceiling. |
 
 ## Sale exit and reposition (fase-5c pr5c3)
 
@@ -102,11 +103,13 @@ purchase-entry path does. Locked by `ajustar-inventario.test.ts` and the
 integration "manual-adjustment never mutates costoPromedio" + "exit/reposition
 never mutates costoPromedio" cases.
 
-## Seams still unimplemented
+## Remaining seam
 
-Return and transfer callers and the `TipoReposicion` (VENDIBLE/DANADO) flows
-remain declared-only typed seams. fase-5c implements the **sale exit** and its
-**cancellation reposition**; the return/transfer consumers land in later fases.
+Transfer callers remain unimplemented. Fase-5d implements the B04 return flow:
+VENDIBLE stock is preflighted from the locked branch snapshot before consuming
+B04 or writing the credit note; the repository repeats the stock-ceiling check
+immediately before each update. DANADO returns remain an inventory exit and
+cannot reduce stock below zero.
 
 ## Tests
 
@@ -121,7 +124,8 @@ remain declared-only typed seams. fase-5c implements the **sale exit** and its
   mid-line rollback, cost boundary),
   `src/integration/salidas-venta.integration.test.ts` (batch debit + `ventaId`,
   mid-batch shortage rollback, concurrent-exit serialization, reposition restore +
-  reason, cross-tenant + cost boundary) and
-  `src/integration/seed-retencion-config.integration.test.ts`.
+  reason, cross-tenant + cost boundary), `src/integration/cancelar-vs-devolucion.integration.test.ts`,
+  and `src/integration/devolucion-cumulative.integration.test.ts` (return cap,
+  B04 rollback, and stock-ceiling boundary checks).
 
 See `openspec/changes/fase-3-4b-compra-inventario/` for the contract and design.

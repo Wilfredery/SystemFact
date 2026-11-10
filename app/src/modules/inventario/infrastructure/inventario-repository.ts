@@ -1210,6 +1210,14 @@ export async function registrarDevolucionEnTx(
         requested: cantidad.toFixed(3),
       });
     }
+    if (!esMerma) {
+      verificarTechoDeStock(nueva, {
+        productoId: linea.productoId,
+        inventarioId: estado.inventarioId,
+        disponible: anterior.toFixed(3),
+        pretendida: cantidad.toFixed(3),
+      });
+    }
     estado.actual = nueva;
 
     await tx.inventario.update({
