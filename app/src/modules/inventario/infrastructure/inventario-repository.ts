@@ -871,8 +871,8 @@ export async function bloquearInventarioSucursalEnTx(
   // instead WAITS on the concurrent uncommitted insert and no-ops once the
   // winner commits, so both transactions proceed to lock the single row below.
   await tx.$executeRaw`
-    INSERT INTO "INVENTARIO" ("sucursalId", "productoId", "cantidad")
-    VALUES (${ctx.sucursalId}, ${productoId}, ${new Prisma.Decimal(0)})
+    INSERT INTO "INVENTARIO" ("sucursalId", "productoId", "cantidad", "updatedAt")
+    VALUES (${ctx.sucursalId}, ${productoId}, ${new Prisma.Decimal(0)}, now())
     ON CONFLICT ("sucursalId", "productoId") DO NOTHING`;
   const ensuredRows = await tx.$queryRaw<{ id: number }[]>`
     SELECT "id" FROM "INVENTARIO"
