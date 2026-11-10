@@ -1,3 +1,19 @@
+## [0.24.0](https://github.com/Wilfredery/SystemFact/compare/v0.23.0...v0.24.0) (2026-11-10)
+
+### ⚠ BREAKING CHANGES
+
+* **proveedor:** `Operador` can no longer create or edit suppliers; only `Administrador` manages them (deactivation was already Administrador-only). Owner decision, screens plan Step 4 with L9: "Operador and Despachador view-only for both, with the Administrador managing." The Proveedores screen needs one named role group per capability in `src/modules/proveedor/http/shared.ts` (`ROLES_VER_PROVEEDORES`, `ROLES_GESTION_PROVEEDORES`, `ROLES_ADMIN_ONLY`), so changing who may do what later is a one-line edit. `Operador` and `Despachador` still READ the supplier list — they receive purchases.
+
+### Features
+
+* **proveedor:** the **Proveedores** screen (`/proveedores`), Step 4 of the screens plan: a paginated list (25 per page) with search by name or RNC and an Activos / Todos los estados filter, the columns name, RNC, contacto, teléfono, tipo de proveedor, tipo de persona and status, and a **create/edit dialog** with nombre o razón social, **RNC validated with the domain's own rule** (separators stripped, 9–11 digits, blank allowed for an informal supplier, so the form stops exactly what the server would refuse), contacto, teléfono and the two frozen fiscal classifications (`tipoProveedor` FORMAL/INFORMAL, `tipoPersona` FISICA/JURIDICA). **Desactivar** asks for confirmation and sets `activo=false`: a supplier is never deleted, so its history, its purchases and its RNC are preserved; the server still refuses while a non-cancelled purchase references it. The edit dialog prefills from a fresh single-supplier read and sends the row `version` back, so a concurrent edit is refused with the fixed conflict message instead of silently overwritten. **Roles (S3/L9):** the Administrador manages; Operador and Despachador are view-only and get no manage markup at all, and the write actions re-check the role group on the server. Menu entry enabled in the same release.
+* **proveedor (backend, additive):** a single-supplier read use case and action (`obtenerProveedor` / `obtenerProveedorAction`) returning the stored `version` for the optimistic lock, a permission seam (`obtenerPermisosProveedorAction`) that answers the screen from the manage role group, and the read actions moved to the named view group (`ROLES_VER_PROVEEDORES`: Administrador, Operador, Despachador). No existing behavior below the new fields changed: the listing DTO, the search translation and the deactivation guard keep their contract.
+
+### Tests
+
+* **unit:** the single-supplier read (stored version, foreign-tenant id indistinguishable from a missing one, invalid id refused without store access), the new actions (view group on list and detail, manage group on create/edit, Admin-only deactivation asserted against a refusal for every write) and the permission seam (manage yes/no, no session). Component tests mirror the clientes-ui/clientes-page specs: list columns and rows, view-only markup with zero manage controls, filters, debounced search, pagination, create (including the RNC the domain refuses and the blank RNC sent as `null`), edit (prefill from the single read, `version` round-trip, conflict message) and deactivation with confirmation; the page test covers the role gate, the query parameters, the deny-by-default permission fallback and the `/login` redirect.
+* **e2e:** `proveedores.spec.ts` has the Administrador create a supplier (unique 9-digit RNC), check it against the database, edit its contact and phone (asserting the version bump), and deactivate it (asserting `activo=false` and that the row still exists), then Operador and Despachador read the list with no manage controls and no screen alert. The CSP guard needs no edit: it derives the routes from the filesystem and now covers `/proveedores`.
+
 ## [0.23.0](https://github.com/Wilfredery/SystemFact/compare/v0.22.0...v0.23.0) (2026-11-10)
 
 ### ⚠ BREAKING CHANGES
