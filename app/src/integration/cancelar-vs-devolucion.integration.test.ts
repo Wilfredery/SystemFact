@@ -37,10 +37,20 @@
  * observe a half-committed return.
  */
 
+jest.mock("@/lib/supabase/client", () => ({ createClient: jest.fn() }));
+jest.mock("@/modules/tenant/infrastructure/tenant-runtime", () => ({
+  ...jest.requireActual("@/modules/tenant/infrastructure/tenant-runtime"),
+  getCurrentTenantContext: jest.fn(),
+}));
+
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { crearVenta, cancelarVenta } from "@/modules/venta/application/venta-service";
 import { confirmarVenta } from "@/modules/venta/application/confirmar-venta";
+import { cancelarVentaAction } from "@/modules/venta/http/actions.escritura";
+import { createClient } from "@/lib/supabase/client";
+import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import { STOCK_MAXIMO_EXCEDIDO, messageFor } from "@/modules/venta/domain/errors";
 import { crearDevolucion } from "@/modules/devolucion/application/crear-devolucion";
 import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 import { crearProductoVenta, fijarStock } from "./setup/venta-helpers";
@@ -193,6 +203,8 @@ describe("cancelarVenta vs VIGENTE devoluciones — reposición neta (real DB, R
   beforeEach(async () => {
     fixture = await seedTenantFixture();
     ctx = ctxA1(fixture);
+    (createClient as jest.Mock).mockResolvedValue({});
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(ctx);
     const db = getHarnessDb();
     catA = (await db.categoria.findFirst({ where: { empresaId: ctx.empresaId } }))!.id;
     await sembrarRango(ctx.empresaId);
@@ -351,5 +363,84 @@ describe("cancelarVenta vs VIGENTE devoluciones — reposición neta (real DB, R
     expect(ncs).toHaveLength(2);
     for (const nc of ncs) expect(nc.estado).toBe("VIGENTE");
     expect((await getHarnessDb().venta.findUnique({ where: { id: ventaId } }))?.estado).toBe("CANCELADA");
+  });
+
+  // --- L6 shared stock ceiling (additive path 2 of 3): the confirmed-cancel
+  // reposition must land within Decimal(12,3), or the whole cancellation is
+  // rejected with the CALLER's stable code and nothing at all is written.
+
+  it("case F (stock ceiling): the reposition lands EXACTLY on the max — cancel completes with stock, movements, annul and audits", async () => {
+    const prod = await productoConStock("cancel-max-exact", 100);
+    const { ventaId } = await crearVentaConfirmada(prod.id, "10"); // 90
+    // 999,999,989.999 + 10.000 = 999,999,999.999 (the column maximum).
+    await fijarStock(ctx.sucursalId, prod.id, "999999989.999");
+
+    const cancel = await withTenantTransaction(ctx, (tx) =>
+      cancelarVenta(tx, ctx, { id: ventaId }),
+    );
+    expect(cancel.ok).toBe(true);
+
+    expect(await leerStock(prod.id)).toBe("999999999.999");
+    const movs = await movimientos(await openerId(prod.id));
+    expect(movs.map((m) => `${m.tipoMovimiento} ${m.cantidadMovida}`)).toEqual([
+      "SALIDA_VENTA -10.000",
+      "REPOSICION_CANCELACION 10.000",
+    ]);
+    expect((await getHarnessDb().venta.findUnique({ where: { id: ventaId } }))?.estado).toBe("CANCELADA");
+    const factura = (await getHarnessDb().factura.findFirst({ where: { ventaId } }))!;
+    expect(factura.estado).toBe("ANULADA");
+    expect(await getHarnessDb().movimientoAuditoria.count({
+      where: { entidad: "Venta", idEntidad: String(ventaId), accion: "CANCELAR" },
+    })).toBe(1);
+    expect(await getHarnessDb().movimientoAuditoria.count({
+      where: { entidad: "Factura", idEntidad: String(factura.id), accion: "ANULAR" },
+    })).toBe(1);
+  });
+
+  it("case G (stock ceiling +0.001): rejects with venta's STOCK_MAXIMO_EXCEDIDO (never inventario's copy) and rolls back the ENTIRE cancellation", async () => {
+    const prod = await productoConStock("cancel-max-over", 100);
+    const { ventaId, facturaId } = await crearVentaConfirmada(prod.id, "10"); // 90
+    // 999,999,990.000 + 10.000 = 1,000,000,000.000 = max + 0.001.
+    await fijarStock(ctx.sucursalId, prod.id, "999999990.000");
+    const db = getHarnessDb();
+    const audVentaAntes = await db.movimientoAuditoria.count({
+      where: { entidad: "Venta", idEntidad: String(ventaId) },
+    });
+    const audFacturaAntes = await db.movimientoAuditoria.count({
+      where: { entidad: "Factura", idEntidad: String(facturaId) },
+    });
+    const movsAntes = await db.movimientoInventario.count();
+
+    const result = await cancelarVentaAction({ id: ventaId, motivo: "stock ceiling rollback" });
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: STOCK_MAXIMO_EXCEDIDO,
+        message: messageFor(STOCK_MAXIMO_EXCEDIDO),
+      },
+    });
+
+    // The flip, the annul, the reposition and both audits rolled back together:
+    // sale still CONFIRMADA, invoice still VIGENTE, stock/ledger/audit untouched.
+    expect((await db.venta.findUnique({ where: { id: ventaId } }))?.estado).toBe("CONFIRMADA");
+    expect((await db.factura.findFirst({ where: { id: facturaId } }))?.estado).toBe("VIGENTE");
+    expect(await leerStock(prod.id)).toBe("999999990.000");
+    expect(await db.movimientoInventario.count()).toBe(movsAntes);
+    expect(
+      await db.movimientoAuditoria.count({
+        where: { entidad: "Venta", idEntidad: String(ventaId) },
+      }),
+    ).toBe(audVentaAntes);
+    expect(
+      await db.movimientoAuditoria.count({
+        where: { entidad: "Factura", idEntidad: String(facturaId) },
+      }),
+    ).toBe(audFacturaAntes);
+    // No REPOSICION_CANCELACION row ever landed for this venta.
+    expect(
+      await db.movimientoInventario.count({
+        where: { ventaId, tipoMovimiento: "REPOSICION_CANCELACION" },
+      }),
+    ).toBe(0);
   });
 });

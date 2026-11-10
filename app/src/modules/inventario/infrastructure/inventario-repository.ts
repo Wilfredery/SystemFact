@@ -31,9 +31,11 @@ import {
   INVENTARIO_NO_ENCONTRADO,
   STOCK_INSUFICIENTE,
   STOCK_INSUFICIENTE_BLOQUEO,
+  IDEMPOTENCIA_CONFLICTO,
   InventarioDomainError,
 } from "../domain/errors";
 import { calcularNuevoCostoPromedioPorValor } from "../domain/costo-promedio";
+import { verificarTechoDeStock } from "../domain/inventario";
 import type {
   InventarioStockRow,
   InventorySource,
@@ -52,6 +54,8 @@ export interface AjustarStockEnTxInput {
   readonly delta: string;
   readonly motivo: string;
   readonly source: InventorySource;
+  /** Idempotency key of the request, unique per inventory row (NULL for other movements). */
+  readonly claveIdempotencia: string;
 }
 
 /** Authoritative before/after snapshot after a movement commits. */
@@ -397,7 +401,7 @@ export async function registrarAuditoriaStockEnTx(
  *
  * `costoPromedio` is never read or written here (3.4a boundary).
  *
- * @throws InventarioDomainError(STOCK_INSUFICIENTE | INVENTARIO_NO_ENCONTRADO)
+ * @throws InventarioDomainError(STOCK_INSUFICIENTE | STOCK_MAXIMO_EXCEDIDO | INVENTARIO_NO_ENCONTRADO)
  */
 export async function ajustarStockEnTx(
   tx: PrismaTx,
@@ -437,6 +441,36 @@ export async function ajustarStockEnTx(
 
   const anterior = new Decimal(locked[0].cantidad.toString());
   const delta = new Decimal(input.delta);
+
+  // Idempotency: this runs AFTER the row lock, so two concurrent requests with the
+  // same key are serialized and the second one sees the first one's movement. A
+  // repeat of the same request returns the first result and writes NOTHING (no
+  // stock change, no second movement, no second audit row). The unique index on
+  // (inventarioId, idempotencyKey) is the durable backstop.
+  const previo = await tx.movimientoInventario.findUnique({
+    where: {
+      inventarioId_idempotencyKey: {
+        inventarioId: ensured.id,
+        idempotencyKey: input.claveIdempotencia,
+      },
+    },
+    select: { cantidadMovida: true, cantidadAnterior: true, cantidadNueva: true },
+  });
+  if (previo !== null) {
+    if (!new Decimal(previo.cantidadMovida.toString()).eq(delta)) {
+      throw new InventarioDomainError(IDEMPOTENCIA_CONFLICTO, {
+        inventarioId: ensured.id,
+        registrada: new Decimal(previo.cantidadMovida.toString()).toString(),
+        pretendida: delta.toString(),
+      });
+    }
+    return {
+      inventoryId: ensured.id,
+      previousQuantity: new Decimal(previo.cantidadAnterior.toString()).toFixed(3),
+      newQuantity: new Decimal(previo.cantidadNueva.toString()).toFixed(3),
+    };
+  }
+
   const nueva = anterior.plus(delta);
 
   // Non-negative invariant — reject the exit WITHOUT writing anything; the
@@ -448,6 +482,14 @@ export async function ajustarStockEnTx(
       pretendida: delta.toString(),
     });
   }
+
+  // Ceiling of the Decimal(12,3) column: reject before writing, so the user
+  // gets a stable error instead of a database numeric overflow.
+  verificarTechoDeStock(nueva, {
+    inventarioId: ensured.id,
+    disponible: anterior.toFixed(3),
+    pretendida: delta.toString(),
+  });
 
   await tx.inventario.update({
     where: { id: ensured.id },
@@ -464,6 +506,7 @@ export async function ajustarStockEnTx(
       cantidadNueva: new Prisma.Decimal(nueva),
       usuarioId: ctx.usuarioId,
       fecha: new Date(),
+      idempotencyKey: input.claveIdempotencia,
     },
   });
 
@@ -673,6 +716,9 @@ async function aplicarEntradaStockLineaEnTx(
  *      (all-branch) pre-receipt stock, and write ONE `costoPromedio` update per
  *      product using the aggregate received quantity + ITBIS-exclusive value
  *      (duplicate lines accumulate into a single, drift-free cost reweight).
+ *   A2. CEILING — the branch quantity after the whole receipt must fit the
+ *      `Decimal(12,3)` column (`STOCK_MAXIMO_EXCEDIDO`), checked per product
+ *      before any cost write.
  *   C. STOCK — per original line, add the positive quantity at the session
  *      branch (row-locked), append one `ENTRADA_COMPRA` movement carrying
  *      `compraId` (before/after), and the audit row. One movement per line.
@@ -718,6 +764,25 @@ export async function registrarEntradasCompraEnTx(
 
   // Phase A: ownership guard for every product BEFORE any write.
   await guardarPertenenciaProductosEnTx(tx, ctx, idsOrdenados);
+
+  // Phase A2: stock ceiling per product BEFORE the cost update, so a rejected
+  // line never runs the weighted-average math. The branch rows are locked here
+  // (ascending id, same order as every other batch) and stay locked to the end
+  // of the transaction, so phase C sees exactly the quantities checked here.
+  for (const productoId of idsOrdenados) {
+    const { inventarioId, cantidad: actual } = await bloquearInventarioSucursalEnTx(
+      tx,
+      ctx,
+      productoId,
+    );
+    const recibida = porProducto.get(productoId)!.cantidad;
+    verificarTechoDeStock(actual.plus(recibida), {
+      productoId,
+      inventarioId,
+      disponible: actual.toFixed(3),
+      pretendida: recibida.toFixed(3),
+    });
+  }
 
   // Phase B: locked, company-wide weighted-average cost — one update per product.
   for (const productoId of idsOrdenados) {
@@ -798,18 +863,27 @@ export async function bloquearInventarioSucursalEnTx(
   ctx: TenantCtx,
   productoId: number,
 ): Promise<{ inventarioId: number; cantidad: Decimal }> {
-  const ensured = await tx.inventario.upsert({
-    where: {
-      sucursalId_productoId: { sucursalId: ctx.sucursalId, productoId },
-    },
-    update: {},
-    create: {
+  // A plain Prisma upsert is find-then-insert, not atomic: when the row does
+  // not exist yet, two concurrent transactions can both take the create path
+  // and the loser hits `INVENTARIO_sucursalId_productoId_key` (P2002). The
+  // violation aborts the loser's whole transaction (25P02), so it cannot be
+  // caught and retried inside it. The atomic INSERT ... ON CONFLICT DO NOTHING
+  // instead WAITS on the concurrent uncommitted insert and no-ops once the
+  // winner commits, so both transactions proceed to lock the single row below.
+  await tx.$executeRaw`
+    INSERT INTO "INVENTARIO" ("sucursalId", "productoId", "cantidad", "updatedAt")
+    VALUES (${ctx.sucursalId}, ${productoId}, ${new Prisma.Decimal(0)}, now())
+    ON CONFLICT ("sucursalId", "productoId") DO NOTHING`;
+  const ensuredRows = await tx.$queryRaw<{ id: number }[]>`
+    SELECT "id" FROM "INVENTARIO"
+    WHERE "sucursalId" = ${ctx.sucursalId} AND "productoId" = ${productoId}`;
+  if (ensuredRows.length === 0) {
+    throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, {
       sucursalId: ctx.sucursalId,
       productoId,
-      cantidad: new Prisma.Decimal(0),
-    },
-    select: { id: true },
-  });
+    });
+  }
+  const ensured = { id: ensuredRows[0].id };
 
   const locked = await tx.$queryRaw<{ cantidad: Prisma.Decimal }[]>`
     SELECT "cantidad" FROM "INVENTARIO" WHERE "id" = ${ensured.id} FOR UPDATE`;
@@ -957,10 +1031,10 @@ export async function registrarSalidasVentaEnTx(
  * concurrent confirm on the same branch), but the delta is POSITIVE: stock is
  * credited and one `REPOSICION_CANCELACION` movement carrying `ventaId`
  * (before/after) is appended per line. There is no availability check — adding
- * stock cannot go negative. Like the exit path it NEVER touches `costoPromedio`
+ * stock cannot go negative — but the ceiling of the column is checked. Like the exit path it NEVER touches `costoPromedio`
  * (replenish only). A reposition with zero lines is a no-op.
  *
- * @throws InventarioDomainError(INVENTARIO_NO_ENCONTRADO | CANTIDAD_INVALIDA)
+ * @throws InventarioDomainError(INVENTARIO_NO_ENCONTRADO | CANTIDAD_INVALIDA | STOCK_MAXIMO_EXCEDIDO)
  */
 export async function registrarReposicionCancelacionEnTx(
   tx: PrismaTx,
@@ -992,6 +1066,12 @@ export async function registrarReposicionCancelacionEnTx(
     const cantidad = new Decimal(linea.cantidad);
     const anterior = estado.actual;
     const nueva = anterior.plus(cantidad);
+    verificarTechoDeStock(nueva, {
+      productoId: linea.productoId,
+      inventarioId: estado.inventarioId,
+      disponible: anterior.toFixed(3),
+      pretendida: cantidad.toFixed(3),
+    });
     estado.actual = nueva;
 
     await tx.inventario.update({
@@ -1087,7 +1167,7 @@ const MOVIMIENTO_POR_REPOSICION: Record<TipoReposicion, TipoMovimiento> = {
  * per-line hard block inside the same transaction yields the same
  * all-or-nothing guarantee (a rejected line rolls back prior writes).
  *
- * @throws InventarioDomainError(INVENTARIO_NO_ENCONTRADO | STOCK_INSUFICIENTE_BLOQUEO | CANTIDAD_INVALIDA)
+ * @throws InventarioDomainError(INVENTARIO_NO_ENCONTRADO | STOCK_INSUFICIENTE_BLOQUEO | STOCK_MAXIMO_EXCEDIDO | CANTIDAD_INVALIDA)
  */
 export async function registrarDevolucionEnTx(
   tx: PrismaTx,
@@ -1137,6 +1217,14 @@ export async function registrarDevolucionEnTx(
         productoId: linea.productoId,
         available: anterior.toFixed(3),
         requested: cantidad.toFixed(3),
+      });
+    }
+    if (!esMerma) {
+      verificarTechoDeStock(nueva, {
+        productoId: linea.productoId,
+        inventarioId: estado.inventarioId,
+        disponible: anterior.toFixed(3),
+        pretendida: cantidad.toFixed(3),
       });
     }
     estado.actual = nueva;

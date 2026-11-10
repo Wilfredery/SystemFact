@@ -22,6 +22,9 @@ export const zAjustarInventarioInput = z.object({
     .string()
     .regex(CANTIDAD_RE, "Cantidad inválida (máx 9 enteros y 3 decimales)"),
   motivo: z.string().trim().min(1).max(255),
+  // One-time id of the user's intention (the form generates a UUID). The server
+  // dedupes on it per inventory row, so a retried request is applied once.
+  requestId: z.string().min(8).max(255),
 });
 
 export type AjustarInventarioInputDto = z.infer<typeof zAjustarInventarioInput>;

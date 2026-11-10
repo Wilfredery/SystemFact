@@ -55,6 +55,7 @@ describe("tenant isolation (real DB)", () => {
         productoId: fixture.productos.prodB1.id,
         cantidad: "100",
         motivo: "Intento cross-tenant",
+        claveIdempotencia: "k-rationtestts-54",
       }),
     );
 

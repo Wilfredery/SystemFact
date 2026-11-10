@@ -20,6 +20,8 @@
  * finding `venta:crear-venta:backdated-fecha-devolucion-window` (v2r-11) adds two
  * more — `FECHA_VENTA_FUTURA` and `FECHA_VENTA_RETROACTIVA_EXCEDIDA`, the two
  * bounds of the sale-date band enforced by `domain/fecha-venta.ts` — for **26**.
+ * L6 adds `STOCK_MAXIMO_EXCEDIDO`, mapped from additive inventory restoration
+ * into venta's own copy, for **27**.
  * `STOCK_INSUFICIENTE` and `NCF_UMBRAL_90` stay WARNING channels, never catalog
  * error codes.
  */
@@ -55,6 +57,8 @@ export const FACTURA_AUTOMATICA_FALTA = "FACTURA_AUTOMATICA_FALTA";
 // WARNING). The authoritative debit lands in 5c Phase 3 (`registrarSalidasVenta`);
 // the early HARD preview in confirm rejects with this same code before any burn.
 export const STOCK_INSUFICIENTE_BLOQUEO = "STOCK_INSUFICIENTE_BLOQUEO";
+// L6: an additive cancellation or VENDIBLE return cannot exceed Decimal(12,3).
+export const STOCK_MAXIMO_EXCEDIDO = "STOCK_MAXIMO_EXCEDIDO";
 // Phase 5d devolucion codes (tasks 1.5, codes 601–604). Four codes for the
 // B04 Nota de Crédito lifecycle: return window, cumulative cap, invoice state
 // and sale state. These live in the SAME frozen venta catalog (single error
@@ -96,6 +100,7 @@ export type VentaErrorCode =
   | typeof NCF_SEC_INEXISTENTE
   | typeof FACTURA_AUTOMATICA_FALTA
   | typeof STOCK_INSUFICIENTE_BLOQUEO
+  | typeof STOCK_MAXIMO_EXCEDIDO
   | typeof DEVOLUCION_FUERA_DE_PLAZO
   | typeof CANTIDAD_EXCEDE_ORIGINAL
   | typeof FACTURA_NO_VIGENTE
@@ -131,6 +136,8 @@ const MESSAGES: Record<VentaErrorCode, string> = {
     "La empresa no tiene facturación automática; active el parámetro para confirmar la venta",
   [STOCK_INSUFICIENTE_BLOQUEO]:
     "No hay suficiente existencias en la sucursal para confirmar la venta",
+  [STOCK_MAXIMO_EXCEDIDO]:
+    "La operación dejaría la existencia por encima del máximo permitido (999,999,999.999)",
   [DEVOLUCION_FUERA_DE_PLAZO]:
     "La devolución excede el plazo máximo permitido desde la fecha de la factura",
   [CANTIDAD_EXCEDE_ORIGINAL]:

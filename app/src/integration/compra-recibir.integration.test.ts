@@ -14,6 +14,12 @@
  * from inventario via the port — here we assert the persisted OUTCOME.
  */
 
+jest.mock("@/lib/supabase/client", () => ({ createClient: jest.fn() }));
+jest.mock("@/modules/tenant/infrastructure/tenant-runtime", () => ({
+  ...jest.requireActual("@/modules/tenant/infrastructure/tenant-runtime"),
+  getCurrentTenantContext: jest.fn(),
+}));
+
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { Prisma } from "@/generated/prisma/client";
@@ -21,11 +27,16 @@ import { crearCompra } from "@/modules/compra/application/crear-compra";
 import { confirmarCompra } from "@/modules/compra/application/confirmar-compra";
 import { cancelarCompra } from "@/modules/compra/application/cancelar-compra";
 import { recibirCompra } from "@/modules/compra/application/recibir-compra";
+import { recibirCompraAction } from "@/modules/compra/http/actions.escritura";
+import { createClient } from "@/lib/supabase/client";
+import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import { STOCK_MAXIMO_EXCEDIDO, messageFor } from "@/modules/compra/domain/errors";
 import {
   getHarnessDb,
   seedTenantFixture,
   type TenantFixture,
 } from "./setup/fixtures";
+import { fijarStock } from "./setup/venta-helpers";
 
 function ctxA(fixture: TenantFixture): TenantCtx {
   return {
@@ -71,10 +82,18 @@ async function crearProductoSinInventario(
  * Create + confirm a MERCANCIA purchase from a FORMAL legal supplier (zero
  * retentions, no config needed) at the session branch. Returns the PENDIENTE id.
  */
+/**
+ * Create + confirm a MERCANCIA purchase from a FORMAL legal supplier (zero
+ * retentions, no config needed) at the session branch. Returns the PENDIENTE id.
+ * `cantidad` defaults to the classic 10.000 line; the stock-ceiling boundary
+ * tests pass a larger magnitude so the Phase-B cost reweight is observable at
+ * 2 dp against a near-ceiling stock.
+ */
 async function crearYConfirmar(
   ctx: TenantCtx,
   fixture: TenantFixture,
   productoIds: readonly number[],
+  cantidad = "10.000",
 ): Promise<number> {
   const id = await withTenantTransaction(ctx, async (tx) => {
     const r = await crearCompra(tx, ctx, {
@@ -84,7 +103,7 @@ async function crearYConfirmar(
       ncf: null,
       lineas: productoIds.map((productoId) => ({
         productoId,
-        cantidad: "10.000",
+        cantidad,
         costoUnitario: "100.00",
       })),
     });
@@ -102,6 +121,8 @@ describe("recibirCompra (real DB)", () => {
   beforeEach(async () => {
     fixture = await seedTenantFixture();
     ctx = ctxA(fixture);
+    (createClient as jest.Mock).mockResolvedValue({});
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(ctx);
   });
 
   it("happy path: RECIBIDA, stock only at session branch, ENTRADA_COMPRA with compraId, one cost update, one audit row", async () => {
@@ -332,5 +353,87 @@ describe("recibirCompra (real DB)", () => {
     expect(a2?.cantidad.toFixed(3)).toBe("40.000"); // NOT touched
     const prod = await db.producto.findUnique({ where: { id: productoId } });
     expect(prod?.costoPromedio.toFixed(2)).toBe("83.33");
+  });
+
+  // --- L6 shared stock ceiling (additive paths): the branch quantity after the
+  // whole receipt must fit Decimal(12,3), or the receipt is rejected with the
+  // CALLER's stable code and nothing at all is written (rollback).
+
+  it("stock ceiling: a receipt landing EXACTLY on the maximum commits (RECIBIDA, stock, movement, cost reweight, audit)", async () => {
+    const db = getHarnessDb();
+    const productoId = await crearProductoSinInventario(fixture, `TECHO-${Date.now()}`);
+    // 998,999,999.999 + 1,000,000.000 = 999,999,999.999 (the column maximum).
+    await fijarStock(fixture.sucursalA1.id, productoId, "998999999.999");
+    const compraId = await crearYConfirmar(ctx, fixture, [productoId], "1000000.000");
+
+    const result = await withTenantTransaction(ctx, (tx) =>
+      recibirCompra(tx, ctx, { id: compraId }),
+    );
+    expect(result.ok).toBe(true);
+
+    expect((await db.compra.findUnique({ where: { id: compraId } }))?.estado).toBe(
+      "RECIBIDA",
+    );
+    const inv = await db.inventario.findFirst({
+      where: { sucursalId: fixture.sucursalA1.id, productoId },
+    });
+    expect(inv?.cantidad.toFixed(3)).toBe("999999999.999");
+    expect(
+      await db.movimientoInventario.count({
+        where: { inventarioId: inv!.id, compraId },
+      }),
+    ).toBe(1);
+    // Phase B reweighted at the ceiling: 0.00 → 100,000,000 / 999,999,999.999 ≈ 0.10.
+    expect(
+      (await db.producto.findUnique({ where: { id: productoId } }))?.costoPromedio.toFixed(2),
+    ).toBe("0.10");
+    const aud = await db.movimientoAuditoria.findMany({
+      where: { entidad: "Compra", idEntidad: String(compraId) },
+    });
+    expect(aud.filter((a) => (a.valorNuevo ?? "").includes("RECIBIDA"))).toHaveLength(1);
+  });
+
+  it("stock ceiling +0.001: rejects with compra's STOCK_MAXIMO_EXCEDIDO (never inventario's copy) and rolls back EVERYTHING", async () => {
+    const db = getHarnessDb();
+    const productoId = await crearProductoSinInventario(fixture, `TECHOX-${Date.now()}`);
+    // 999,000,000.000 + 1,000,000.000 = 1,000,000,000.000 = max + 0.001.
+    await fijarStock(fixture.sucursalA1.id, productoId, "999000000.000");
+    const compraId = await crearYConfirmar(ctx, fixture, [productoId], "1000000.000");
+    const audAntes = await db.movimientoAuditoria.count({
+      where: { entidad: "Compra", idEntidad: String(compraId) },
+    });
+
+    const result = await recibirCompraAction({ id: compraId });
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: STOCK_MAXIMO_EXCEDIDO,
+        message: messageFor(STOCK_MAXIMO_EXCEDIDO),
+      },
+    });
+
+    // Zero persisted side effects: purchase state, stock, movements, cost, audit.
+    expect((await db.compra.findUnique({ where: { id: compraId } }))?.estado).toBe(
+      "PENDIENTE",
+    );
+    const inv = await db.inventario.findFirst({
+      where: { sucursalId: fixture.sucursalA1.id, productoId },
+    });
+    expect(inv?.cantidad.toFixed(3)).toBe("999000000.000");
+    expect(await db.movimientoInventario.count({ where: { inventarioId: inv!.id } })).toBe(0);
+    expect(await db.movimientoInventario.count({ where: { compraId } })).toBe(0);
+    // A Phase-B run would have reweighted to ≈0.10; 0.00 proves it never survived.
+    expect(
+      (await db.producto.findUnique({ where: { id: productoId } }))?.costoPromedio.toFixed(2),
+    ).toBe("0.00");
+    expect(
+      await db.movimientoAuditoria.count({
+        where: { entidad: "Compra", idEntidad: String(compraId) },
+      }),
+    ).toBe(audAntes);
+    const aud = await db.movimientoAuditoria.findMany({
+      where: { entidad: "Compra", idEntidad: String(compraId) },
+    });
+    expect(aud.filter((a) => (a.valorNuevo ?? "").includes("RECIBIDA"))).toHaveLength(0);
   });
 });

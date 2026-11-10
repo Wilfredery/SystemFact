@@ -23,11 +23,21 @@
  * window deterministic regardless of the wall clock.
  */
 
+jest.mock("@/lib/supabase/client", () => ({ createClient: jest.fn() }));
+jest.mock("@/modules/tenant/infrastructure/tenant-runtime", () => ({
+  ...jest.requireActual("@/modules/tenant/infrastructure/tenant-runtime"),
+  getCurrentTenantContext: jest.fn(),
+}));
+
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { crearVenta } from "@/modules/venta/application/venta-service";
 import { confirmarVenta } from "@/modules/venta/application/confirmar-venta";
 import { crearDevolucion } from "@/modules/devolucion/application/crear-devolucion";
+import { devolverVentaAction } from "@/modules/devolucion/http/actions.devolver";
+import { createClient } from "@/lib/supabase/client";
+import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import { STOCK_MAXIMO_EXCEDIDO, messageFor } from "@/modules/venta/domain/errors";
 import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 import { crearProductoVenta, fijarStock } from "./setup/venta-helpers";
 
@@ -98,11 +108,12 @@ async function productoConStock(codigo: string, stock: string): Promise<number> 
 async function crearVentaConfirmada(
   productoId: number,
   cantidad: string,
+  fechaVenta: Date = FECHA_VENTA,
 ): Promise<{ ventaId: number; facturaId: number }> {
   const ventaId = await withTenantTransaction(ctx, async (tx) => {
     const r = await crearVenta(tx, ctx, {
       clienteId: null, // contado → Consumidor Final → B02 factura
-      fecha: FECHA_VENTA,
+      fecha: fechaVenta,
       lineas: [{ productoId, cantidad, precioUnitario: "100.00", descuento: { descuentoTipo: "PORCENTAJE", descuentoValor: "0.00" } }],
     });
     if (!r.ok) throw new Error(`crearVenta falló: ${r.code}`);
@@ -137,6 +148,8 @@ describe("devolucion cumulative cap (real DB, RLS on)", () => {
   beforeEach(async () => {
     fixture = await seedTenantFixture();
     ctx = ctxA1(fixture);
+    (createClient as jest.Mock).mockResolvedValue({});
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(ctx);
     const db = getHarnessDb();
     catA = (await db.categoria.findFirst({ where: { empresaId: ctx.empresaId } }))!.id;
     // Emission gate + factura range + B04 return range + the 15-day window.
@@ -236,5 +249,67 @@ describe("devolucion cumulative cap (real DB, RLS on)", () => {
     expect(await db.movimientoAuditoria.count()).toBe(auditAntes);
     expect(await db.movimientoAuditoria.count({ where: { entidad: "NotaCredito" } })).toBe(2);
     expect(await leerSecuenciaB04(ctx.empresaId)).toBe(202n);
+  });
+
+  it("stock ceiling: VENDIBLE return landing EXACTLY on the maximum commits", async () => {
+    const prod = await productoConStock("return-max-exact", "50.000");
+    const { ventaId, facturaId } = await crearVentaConfirmada(prod, "5");
+    await fijarStock(ctx.sucursalId, prod, "999999994.999");
+
+    const result = await devolver(ventaId, prod, "5");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.estado).toBe("VIGENTE");
+
+    const db = getHarnessDb();
+    const inv = await db.inventario.findFirst({
+      where: { sucursalId: ctx.sucursalId, productoId: prod },
+    });
+    expect(inv?.cantidad.toFixed(3)).toBe("999999999.999");
+    const nc = await db.notaCredito.findFirst({ where: { facturaOriginalId: facturaId } });
+    expect(nc).not.toBeNull();
+    expect(await db.detalleNotaCredito.count({ where: { notaCreditoId: nc!.id } })).toBe(1);
+    expect(
+      await db.movimientoInventario.count({ where: { inventarioId: inv!.id, notaCreditoId: nc!.id } }),
+    ).toBe(1);
+    expect(await db.movimientoAuditoria.count({ where: { entidad: "NotaCredito", idEntidad: String(nc!.id) } })).toBe(1);
+    expect(await leerSecuenciaB04(ctx.empresaId)).toBe(201n);
+  });
+
+  it("stock ceiling +0.001: VENDIBLE return maps to venta's typed error and rolls back NC, movement, audit and B04", async () => {
+    const prod = await productoConStock("return-max-over", "50.000");
+    const fechaVentaReciente = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
+    const { ventaId, facturaId } = await crearVentaConfirmada(prod, "5", fechaVentaReciente);
+    await fijarStock(ctx.sucursalId, prod, "999999995.000");
+
+    const db = getHarnessDb();
+    const invBefore = await db.inventario.findFirst({
+      where: { sucursalId: ctx.sucursalId, productoId: prod },
+    });
+    const movimientosAntes = await db.movimientoInventario.count({ where: { inventarioId: invBefore!.id } });
+    const auditAntes = await db.movimientoAuditoria.count({ where: { entidad: "NotaCredito" } });
+    const secuenciaAntes = await leerSecuenciaB04(ctx.empresaId);
+
+    const result = await devolverVentaAction({
+      ventaId,
+      motivo: "stock ceiling integration",
+      lineas: [{ productoId: prod, cantidad: "5", tipoReposicion: "VENDIBLE" }],
+    });
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: STOCK_MAXIMO_EXCEDIDO,
+        message: messageFor(STOCK_MAXIMO_EXCEDIDO),
+      },
+    });
+
+    expect((await db.venta.findUnique({ where: { id: ventaId } }))?.estado).toBe("CONFIRMADA");
+    expect((await db.factura.findFirst({ where: { ventaId } }))?.estado).toBe("VIGENTE");
+    expect(await db.notaCredito.count({ where: { facturaOriginalId: facturaId } })).toBe(0);
+    expect(await db.detalleNotaCredito.count({ where: { notaCredito: { facturaOriginalId: facturaId } } })).toBe(0);
+    expect((await db.inventario.findUnique({ where: { id: invBefore!.id } }))?.cantidad.toFixed(3)).toBe("999999995.000");
+    expect(await db.movimientoInventario.count({ where: { inventarioId: invBefore!.id } })).toBe(movimientosAntes);
+    expect(await db.movimientoAuditoria.count({ where: { entidad: "NotaCredito" } })).toBe(auditAntes);
+    expect(await leerSecuenciaB04(ctx.empresaId)).toBe(secuenciaAntes);
+    expect(secuenciaAntes).toBe(200n);
   });
 });

@@ -13,6 +13,8 @@ import {
   INVENTARIO_NO_ENCONTRADO,
   MOTIVO_VACIO,
   STOCK_INSUFICIENTE,
+  STOCK_MAXIMO_EXCEDIDO,
+  IDEMPOTENCIA_CONFLICTO,
   InventarioDomainError,
 } from "../domain/errors";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
@@ -50,6 +52,7 @@ describe("ajustarInventario", () => {
       productoId: 5,
       cantidad: "5",
       motivo: "Inventario físico inicial",
+      claveIdempotencia: "k-ntariotestts-50",
     });
 
     expect(result.ok).toBe(true);
@@ -84,6 +87,7 @@ describe("ajustarInventario", () => {
       productoId: 5,
       cantidad: "-4",
       motivo: "Merma por rotura",
+      claveIdempotencia: "k-ntariotestts-84",
     });
 
     expect(result.ok).toBe(true);
@@ -96,6 +100,7 @@ describe("ajustarInventario", () => {
       productoId: 5,
       cantidad: "5",
       motivo: "   ",
+      claveIdempotencia: "k-ntariotestts-96",
     });
 
     expect(result.ok).toBe(false);
@@ -108,6 +113,7 @@ describe("ajustarInventario", () => {
       productoId: 5,
       cantidad: "0",
       motivo: "Sin efecto",
+      claveIdempotencia: "k-ntariotestts-108",
     });
 
     expect(result.ok).toBe(false);
@@ -120,6 +126,7 @@ describe("ajustarInventario", () => {
       productoId: 5,
       cantidad: "abc",
       motivo: "Razón válida",
+      claveIdempotencia: "k-ntariotestts-120",
     });
 
     expect(result.ok).toBe(false);
@@ -136,10 +143,64 @@ describe("ajustarInventario", () => {
       productoId: 5,
       cantidad: "-4",
       motivo: "Salida mayor al stock",
+      claveIdempotencia: "k-ntariotestts-136",
     });
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(STOCK_INSUFICIENTE);
+  });
+
+  it("hands the idempotency key to the repository untouched", async () => {
+    (ajustarStockEnTx as jest.Mock).mockResolvedValue({
+      inventoryId: 9,
+      previousQuantity: "3.000",
+      newQuantity: "8.000",
+    });
+
+    await ajustarInventario(makeTx(), ctx, {
+      productoId: 5,
+      cantidad: "5",
+      motivo: "Conteo",
+      claveIdempotencia: "clave-unica-123",
+    });
+
+    expect(ajustarStockEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      ctx,
+      expect.objectContaining({ claveIdempotencia: "clave-unica-123" }),
+    );
+  });
+
+  it("maps the repository's reused-key rejection to IDEMPOTENCIA_CONFLICTO", async () => {
+    (ajustarStockEnTx as jest.Mock).mockRejectedValue(
+      new InventarioDomainError(IDEMPOTENCIA_CONFLICTO),
+    );
+
+    const result = await ajustarInventario(makeTx(), ctx, {
+      productoId: 5,
+      cantidad: "7",
+      motivo: "Misma clave, otra cantidad",
+      claveIdempotencia: "clave-unica-123",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(IDEMPOTENCIA_CONFLICTO);
+  });
+
+  it("maps the repository's stock-ceiling rejection to STOCK_MAXIMO_EXCEDIDO", async () => {
+    (ajustarStockEnTx as jest.Mock).mockRejectedValue(
+      new InventarioDomainError(STOCK_MAXIMO_EXCEDIDO),
+    );
+
+    const result = await ajustarInventario(makeTx(), ctx, {
+      productoId: 5,
+      cantidad: "999999999",
+      motivo: "Entrada enorme",
+      claveIdempotencia: "k-ntariotestts-151",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(STOCK_MAXIMO_EXCEDIDO);
   });
 
   it("maps a foreign/non-existent product rejection to INVENTARIO_NO_ENCONTRADO", async () => {
@@ -151,6 +212,7 @@ describe("ajustarInventario", () => {
       productoId: 999,
       cantidad: "5",
       motivo: "Intento cross-tenant",
+      claveIdempotencia: "k-ntariotestts-166",
     });
 
     expect(result.ok).toBe(false);
@@ -165,6 +227,7 @@ describe("ajustarInventario", () => {
         productoId: 5,
         cantidad: "5",
         motivo: "Razón válida",
+        claveIdempotencia: "k-ntariotestts-180",
       }),
     ).rejects.toThrow("boom");
   });

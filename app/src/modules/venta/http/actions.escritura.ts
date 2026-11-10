@@ -3,6 +3,7 @@
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { crearVenta, actualizarVenta, cancelarVenta } from "../application/venta-service";
 import { confirmarVenta } from "../application/confirmar-venta";
+import { STOCK_MAXIMO_EXCEDIDO, VentaDomainError } from "../domain/errors";
 import { tieneRolPermitidoEnTx } from "../infrastructure/venta-repository";
 import {
   zCrearVentaInput,
@@ -73,15 +74,24 @@ export async function cancelarVentaAction(
   const ctx = await resolverCtx();
   if (ctx === null) return fail(SESION_INVALIDA, mensajeTransporte(SESION_INVALIDA));
 
-  return withTenantTransaction(ctx, async (tx) => {
-    const permitido = await tieneRolPermitidoEnTx(tx, ctx.usuarioId, ctx.empresaId, ROLES_VENTA);
-    if (!permitido) {
-      return fail(NO_AUTORIZADO, "No tiene permisos para cancelar ventas");
+  try {
+    return await withTenantTransaction(ctx, async (tx) => {
+      const permitido = await tieneRolPermitidoEnTx(tx, ctx.usuarioId, ctx.empresaId, ROLES_VENTA);
+      if (!permitido) {
+        return fail(NO_AUTORIZADO, "No tiene permisos para cancelar ventas");
+      }
+      const result = await cancelarVenta(tx, ctx, parsed.data);
+      if (!result.ok) return fail(result.code, result.message);
+      return ok(result.data);
+    });
+  } catch (err) {
+    // A confirmed-cancel ceiling rejection is thrown after the guarded flip so
+    // the transaction rolls back; only then surface its stable typed result.
+    if (err instanceof VentaDomainError && err.code === STOCK_MAXIMO_EXCEDIDO) {
+      return fail(err.code, err.message);
     }
-    const result = await cancelarVenta(tx, ctx, parsed.data);
-    if (!result.ok) return fail(result.code, result.message);
-    return ok(result.data);
-  });
+    throw err;
+  }
 }
 
 /**

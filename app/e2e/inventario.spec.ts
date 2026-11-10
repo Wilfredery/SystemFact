@@ -1,9 +1,10 @@
 /**
  * /inventario consulta E2E (odd/tasks/inventario-consulta.md T4, S2/S4).
  *
- * Operador and Despachador are view-only and the Administrador manages (Step 1b),
- * but in this PR all three roles see the same read-only screen: list, KPIs,
- * search and status filter, and NO manage controls ("+ Ajustar", "Acciones").
+ * Operador and Despachador are view-only and the Administrador manages. All
+ * three roles see the same list, KPIs, search and status filter; only the
+ * Administrador also sees the "+ Ajustar" link (its form is covered by
+ * inventario-ajuste.spec.ts). Nobody gets an "Acciones" column.
  * One test per role, each signing in through the real login form with that
  * role's own identity (provisioned by .github/ci/provision-local-e2e.sh).
  *
@@ -55,7 +56,12 @@ async function rolDelUsuario(nombreUsuario: string): Promise<string[]> {
 
 const FILAS = '[data-testid^="inventario-fila-"]';
 
-async function verInventario(page: Page, rol: string, envUser: string): Promise<void> {
+async function verInventario(
+  page: Page,
+  rol: string,
+  envUser: string,
+  veAjustar: boolean,
+): Promise<void> {
   const nombreUsuario = requireEnv(envUser);
   requireEnv("E2E_PASSWORD");
 
@@ -113,22 +119,21 @@ async function verInventario(page: Page, rol: string, envUser: string): Promise<
   await expect(filaProducto.first()).toBeVisible();
   await expect(filaProducto.first()).toContainText("Disponible");
 
-  // View-only: no manage controls in this PR, for any role.
-  await expect(page.getByRole("button", { name: /Ajustar/ })).toHaveCount(0);
-  await expect(page.getByText("+ Ajustar")).toHaveCount(0);
+  // The adjust link is for the manage group only; nobody gets a row-actions column.
+  await expect(page.getByRole("link", { name: "+ Ajustar" })).toHaveCount(veAjustar ? 1 : 0);
   await expect(page.getByRole("columnheader", { name: "Acciones" })).toHaveCount(0);
 }
 
 test.describe("/inventario consulta (inventario-consulta T4)", () => {
-  test("Administrador sees the inventory list, KPIs and filters, without adjust controls", async ({ page }) => {
-    await verInventario(page, "Administrador", "E2E_USER");
+  test("Administrador sees the inventory list, KPIs, filters and the + Ajustar link", async ({ page }) => {
+    await verInventario(page, "Administrador", "E2E_USER", true);
   });
 
   test("Operador sees the inventory list, KPIs and filters, without adjust controls", async ({ page }) => {
-    await verInventario(page, "Operador", "E2E_OPERADOR_USER");
+    await verInventario(page, "Operador", "E2E_OPERADOR_USER", false);
   });
 
   test("Despachador sees the inventory list, KPIs and filters, without adjust controls", async ({ page }) => {
-    await verInventario(page, "Despachador", "E2E_DESPACHADOR_USER");
+    await verInventario(page, "Despachador", "E2E_DESPACHADOR_USER", false);
   });
 });

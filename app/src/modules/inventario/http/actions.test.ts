@@ -12,6 +12,7 @@ import {
   listarInventarioAction,
   consultarInventarioAction,
   ajustarInventarioAction,
+  obtenerPermisosInventarioAction,
 } from "./actions";
 import { consultarInventario } from "../application/consultar-inventario";
 import { listarInventario } from "../application/listar-inventario";
@@ -121,7 +122,12 @@ describe("listarInventarioAction", () => {
 });
 
 describe("ajustarInventarioAction", () => {
-  const validInput = { productoId: 5, cantidad: "5", motivo: "Inventario físico" };
+  const validInput = {
+    productoId: 5,
+    cantidad: "5",
+    motivo: "Inventario físico",
+    requestId: "11111111-2222-4333-8444-555555555555",
+  };
 
   it("applies an authorized adjustment inside the tenant transaction", async () => {
     mockSession();
@@ -151,6 +157,35 @@ describe("ajustarInventarioAction", () => {
       ROLES_GESTION_INVENTARIO,
     );
   });
+
+  it("forwards the requestId to the use case as the idempotency key", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (ajustarInventario as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: { inventarioId: 1, productoId: 5, cantidadAnterior: "3.000", cantidadNueva: "8.000" },
+    });
+
+    await ajustarInventarioAction(validInput);
+
+    expect(ajustarInventario).toHaveBeenCalledWith(expect.anything(), mockCtx, {
+      productoId: 5,
+      cantidad: "5",
+      motivo: "Inventario físico",
+      claveIdempotencia: "11111111-2222-4333-8444-555555555555",
+    });
+  });
+
+  it.each([undefined, "", "short"])(
+    "rejects a missing or too short requestId (%p) with VALIDATION_ERROR before any session read",
+    async (requestId) => {
+      const result = await ajustarInventarioAction({ ...validInput, requestId });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe(VALIDATION_ERROR);
+      expect(ajustarInventario).not.toHaveBeenCalled();
+    },
+  );
 
   it("rejects an unauthorized role without delegating to the use case", async () => {
     mockSession();
@@ -278,6 +313,43 @@ describe("consultarInventarioAction", () => {
     (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
 
     const result = await consultarInventarioAction({ page: 1, limit: 25 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(SESION_INVALIDA);
+    expect(withTenantTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("obtenerPermisosInventarioAction", () => {
+  it("says puedeAjustar=true when the caller is in the manage group", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+
+    const result = await obtenerPermisosInventarioAction();
+
+    expect(result).toEqual({ ok: true, data: { puedeAjustar: true } });
+    expect(withTenantTransaction).toHaveBeenCalledTimes(1);
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      1,
+      ROLES_GESTION_INVENTARIO,
+    );
+  });
+
+  it("says puedeAjustar=false (not an error) when the caller is outside the manage group", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+
+    const result = await obtenerPermisosInventarioAction();
+
+    expect(result).toEqual({ ok: true, data: { puedeAjustar: false } });
+  });
+
+  it("rejects a missing session with SESION_INVALIDA before opening a tx", async () => {
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
+
+    const result = await obtenerPermisosInventarioAction();
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe(SESION_INVALIDA);

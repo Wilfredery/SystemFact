@@ -15,6 +15,7 @@ import {
   NCF_SEC_INEXISTENTE,
   FACTURA_AUTOMATICA_FALTA,
   STOCK_INSUFICIENTE_BLOQUEO,
+  STOCK_MAXIMO_EXCEDIDO,
   FECHA_VENTA_FUTURA,
   FECHA_VENTA_RETROACTIVA_EXCEDIDA,
   type VentaErrorCode,
@@ -53,10 +54,21 @@ describe("venta error catalog — 5c confirm delta (R-V13 / R-V15)", () => {
     // F5 sale-date band delta (audit v2r-11).
     FECHA_VENTA_FUTURA: true,
     FECHA_VENTA_RETROACTIVA_EXCEDIDA: true,
+    // L6 additive stock-ceiling delta: the shared repository guard's stable
+    // code, mapped to venta's own copy by the confirmed-cancel reposition and
+    // the VENDIBLE return (both THROW it so the transaction rolls back).
+    STOCK_MAXIMO_EXCEDIDO: true,
   };
 
-  it("carries exactly 26 stable codes (24 + the F5 sale-date band pair)", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(26);
+  it("carries exactly 27 stable codes (26 + the L6 stock-ceiling delta)", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(27);
+  });
+
+  it("exposes the stock-ceiling code with venta's own copy (never inventario's)", () => {
+    expect(STOCK_MAXIMO_EXCEDIDO).toBe("STOCK_MAXIMO_EXCEDIDO");
+    expect(messageFor(STOCK_MAXIMO_EXCEDIDO)).toBe(
+      "La operación dejaría la existencia por encima del máximo permitido (999,999,999.999)",
+    );
   });
 
   it("exposes the five confirm codes with distinct stable values", () => {

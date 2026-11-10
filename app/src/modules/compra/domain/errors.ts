@@ -30,6 +30,9 @@ export const SESION_INVALIDA = "SESION_INVALIDA";
 // inventario's internal codes never leak to the HTTP contract.
 export const COMPRA_SUCURSAL_INVALIDA = "COMPRA_SUCURSAL_INVALIDA";
 export const INVENTARIO_ENTRADA_RECHAZADA = "INVENTARIO_ENTRADA_RECHAZADA";
+// L6 stock-ceiling rejection from inventario. Compra owns the same stable code
+// but provides receipt-specific copy and never forwards inventory details.
+export const STOCK_MAXIMO_EXCEDIDO = "STOCK_MAXIMO_EXCEDIDO";
 
 export type CompraErrorCode =
   | typeof VALIDATION_ERROR
@@ -49,7 +52,8 @@ export type CompraErrorCode =
   | typeof NO_AUTORIZADO
   | typeof SESION_INVALIDA
   | typeof COMPRA_SUCURSAL_INVALIDA
-  | typeof INVENTARIO_ENTRADA_RECHAZADA;
+  | typeof INVENTARIO_ENTRADA_RECHAZADA
+  | typeof STOCK_MAXIMO_EXCEDIDO;
 
 const MESSAGES: Record<CompraErrorCode, string> = {
   [VALIDATION_ERROR]: "Datos de entrada inválidos",
@@ -75,6 +79,8 @@ const MESSAGES: Record<CompraErrorCode, string> = {
     "La compra pertenece a otra sucursal; solo puede recibirse en su propia sucursal",
   [INVENTARIO_ENTRADA_RECHAZADA]:
     "No se pudo registrar la entrada de inventario; la recepción fue cancelada",
+  [STOCK_MAXIMO_EXCEDIDO]:
+    "La recepción dejaría la existencia por encima del máximo permitido (999,999,999.999)",
 };
 
 export function messageFor(code: CompraErrorCode): string {

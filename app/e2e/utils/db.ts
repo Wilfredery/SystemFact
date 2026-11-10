@@ -58,3 +58,20 @@ export async function usuarioPrecond(
     rol: row.rol,
   };
 }
+
+/** Active role names held by a nombreUsuario (assertions only; sorted). */
+export async function rolesDelUsuario(
+  pool: Pool,
+  nombreUsuario: string,
+): Promise<string[]> {
+  const res = await pool.query(
+    `select r.nombre as rol
+       from "USUARIO" u
+       join "USUARIO_ROL" ur on ur."usuarioId" = u.id
+       join "ROL" r on r.id = ur."rolId"
+      where u."nombreUsuario" = $1 and u.activo = true
+      order by r.nombre`,
+    [nombreUsuario],
+  );
+  return res.rows.map((row: { rol: string }) => row.rol);
+}

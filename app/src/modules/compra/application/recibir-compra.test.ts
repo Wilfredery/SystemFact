@@ -24,6 +24,8 @@ import {
 import {
   CompraDomainError,
   INVENTARIO_ENTRADA_RECHAZADA,
+  STOCK_MAXIMO_EXCEDIDO,
+  messageFor,
 } from "../domain/errors";
 import { recibirCompra } from "./recibir-compra";
 
@@ -142,6 +144,30 @@ describe("recibirCompra", () => {
       code: INVENTARIO_ENTRADA_RECHAZADA,
     });
     // No audit after a failed entry (the whole transaction aborts).
+    expect(registrarAuditCompraEnTx).not.toHaveBeenCalled();
+  });
+
+  it("maps the shared stock-ceiling rejection to compra's OWN STOCK_MAXIMO_EXCEDIDO (still thrown → tx rollback, no inventario leak)", async () => {
+    (registrarEntradasCompra as jest.Mock).mockRejectedValue(
+      new InventarioDomainError(STOCK_MAXIMO_EXCEDIDO, {
+        inventarioId: 5,
+        productoId: 10,
+        disponible: "999999990.000",
+        pretendida: "10.000",
+      }),
+    );
+    const capturado = await recibirCompra(tx, ctx, { id: 42 }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(capturado).toBeInstanceOf(CompraDomainError);
+    expect(capturado).toMatchObject({
+      code: STOCK_MAXIMO_EXCEDIDO,
+      message: messageFor(STOCK_MAXIMO_EXCEDIDO),
+      // Context carries ONLY the compra locator — never inventario's internals.
+      details: { compraId: 42 },
+    });
+    // Thrown (not returned): the guarded estado flip above must roll back.
     expect(registrarAuditCompraEnTx).not.toHaveBeenCalled();
   });
 

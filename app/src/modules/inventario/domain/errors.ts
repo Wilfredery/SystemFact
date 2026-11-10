@@ -24,6 +24,12 @@ export const STOCK_INSUFICIENTE = "STOCK_INSUFICIENTE";
 // NCF — rolls back together. The same stable string the venta catalog pins under
 // R-V15/`STOCK_INSUFICIENTE_BLOQUEO`; the inventario module owns the throw.
 export const STOCK_INSUFICIENTE_BLOQUEO = "STOCK_INSUFICIENTE_BLOQUEO";
+// A manual entry may not push the branch stock past what the `Decimal(12,3)`
+// column can hold; without this check the database raises a numeric overflow.
+export const STOCK_MAXIMO_EXCEDIDO = "STOCK_MAXIMO_EXCEDIDO";
+// The same idempotency key was already used for a DIFFERENT amount on this
+// inventory row: replaying it would silently drop the new request, so refuse.
+export const IDEMPOTENCIA_CONFLICTO = "IDEMPOTENCIA_CONFLICTO";
 export const INVENTARIO_NO_ENCONTRADO = "INVENTARIO_NO_ENCONTRADO";
 export const NO_AUTORIZADO = "NO_AUTORIZADO";
 export const LIMITE_PAGINACION_INVALIDO = "LIMITE_PAGINACION_INVALIDO";
@@ -36,6 +42,8 @@ export type InventarioErrorCode =
   | typeof MOTIVO_VACIO
   | typeof STOCK_INSUFICIENTE
   | typeof STOCK_INSUFICIENTE_BLOQUEO
+  | typeof STOCK_MAXIMO_EXCEDIDO
+  | typeof IDEMPOTENCIA_CONFLICTO
   | typeof INVENTARIO_NO_ENCONTRADO
   | typeof NO_AUTORIZADO
   | typeof LIMITE_PAGINACION_INVALIDO
@@ -49,6 +57,8 @@ export const INVENTARIO_ERROR_CODES: readonly InventarioErrorCode[] = [
   MOTIVO_VACIO,
   STOCK_INSUFICIENTE,
   STOCK_INSUFICIENTE_BLOQUEO,
+  STOCK_MAXIMO_EXCEDIDO,
+  IDEMPOTENCIA_CONFLICTO,
   INVENTARIO_NO_ENCONTRADO,
   NO_AUTORIZADO,
   LIMITE_PAGINACION_INVALIDO,
@@ -65,6 +75,10 @@ const MESSAGES: Readonly<Record<InventarioErrorCode, string>> = {
     "El ajuste dejaría el stock en negativo; la cantidad disponible es insuficiente.",
   [STOCK_INSUFICIENTE_BLOQUEO]:
     "No hay existencias suficientes en la sucursal; la salida de venta se bloqueó.",
+  [STOCK_MAXIMO_EXCEDIDO]:
+    "El ajuste dejaría la existencia por encima del máximo permitido (999,999,999.999).",
+  [IDEMPOTENCIA_CONFLICTO]:
+    "Esta solicitud ya se registró con una cantidad distinta. Revise el inventario antes de reintentar.",
   [INVENTARIO_NO_ENCONTRADO]: "El inventario no existe en la empresa o sucursal.",
   [NO_AUTORIZADO]: "No tiene permisos para realizar esta acción.",
   [LIMITE_PAGINACION_INVALIDO]: "El límite de paginación debe estar entre 1 y 100.",
