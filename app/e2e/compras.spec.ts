@@ -116,7 +116,7 @@ async function llenarCompra(
   const resultados = form.getByRole("list", { name: "Resultados línea 1" });
   await resultados.getByRole("button").first().click();
   await expect(form.getByTestId("compra-linea-1-producto")).toContainText(PRODUCTO);
-  await expect(form.getByTestId("compra-linea-1-itbis")).toHaveText("18.00%");
+  await expect(form.getByTestId("compra-linea-1-itbis")).toHaveText("18%");
 
   await form.getByLabel("Cantidad línea 1").fill(cantidad);
   await form.getByLabel("Costo unitario línea 1").fill(COSTO);
