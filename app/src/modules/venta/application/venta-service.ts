@@ -22,6 +22,10 @@
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { registrarReposicionCancelacion } from "@/modules/inventario/application/registrar-salidas-venta";
+import {
+  InventarioDomainError,
+  STOCK_MAXIMO_EXCEDIDO as INVENTARIO_STOCK_MAXIMO_EXCEDIDO,
+} from "@/modules/inventario/domain/errors";
 import { leerPriorNCsPorFacturaEnTx } from "@/modules/devolucion/infrastructure/devolucion-repository";
 import { calcularReposicionNeta } from "../domain/reposicion-neta";
 import { revertirPagosAplicadosDeVentaEnTx } from "@/modules/cobros/infrastructure/pago-repository";
@@ -40,6 +44,7 @@ import {
   VENTA_NO_ENCONTRADO,
   CONCURRENCIA_CONFLICTO,
   DESCUENTO_NO_AUTORIZADO,
+  STOCK_MAXIMO_EXCEDIDO,
   messageFor,
   VentaDomainError,
   type StockWarning,
@@ -465,11 +470,23 @@ async function cancelarVentaConfirmada(
   );
   const lineasNetas = calcularReposicionNeta(lineasBrutas, devueltoPorProducto);
   if (lineasNetas.length > 0) {
-    await registrarReposicionCancelacion(tx, ctx, {
-      ventaId,
-      motivo: trimmed && trimmed.length > 0 ? trimmed : REPOSICION_MOTIVO_DEFECTO,
-      lineas: lineasNetas,
-    });
+    try {
+      await registrarReposicionCancelacion(tx, ctx, {
+        ventaId,
+        motivo: trimmed && trimmed.length > 0 ? trimmed : REPOSICION_MOTIVO_DEFECTO,
+        lineas: lineasNetas,
+      });
+    } catch (err) {
+      if (
+        err instanceof InventarioDomainError &&
+        err.code === INVENTARIO_STOCK_MAXIMO_EXCEDIDO
+      ) {
+        // Still throw after the state flip: the enclosing transaction must roll
+        // back the sale, invoice, stock, and audits together.
+        throw new VentaDomainError(STOCK_MAXIMO_EXCEDIDO, { ventaId });
+      }
+      throw err;
+    }
   }
 
   // 4. Audit BOTH reversals (sale flip + invoice annul), append-only, same tx.

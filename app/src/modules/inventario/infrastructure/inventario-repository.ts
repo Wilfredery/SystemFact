@@ -1022,10 +1022,10 @@ export async function registrarSalidasVentaEnTx(
  * concurrent confirm on the same branch), but the delta is POSITIVE: stock is
  * credited and one `REPOSICION_CANCELACION` movement carrying `ventaId`
  * (before/after) is appended per line. There is no availability check — adding
- * stock cannot go negative. Like the exit path it NEVER touches `costoPromedio`
+ * stock cannot go negative — but the ceiling of the column is checked. Like the exit path it NEVER touches `costoPromedio`
  * (replenish only). A reposition with zero lines is a no-op.
  *
- * @throws InventarioDomainError(INVENTARIO_NO_ENCONTRADO | CANTIDAD_INVALIDA)
+ * @throws InventarioDomainError(INVENTARIO_NO_ENCONTRADO | CANTIDAD_INVALIDA | STOCK_MAXIMO_EXCEDIDO)
  */
 export async function registrarReposicionCancelacionEnTx(
   tx: PrismaTx,
@@ -1057,6 +1057,12 @@ export async function registrarReposicionCancelacionEnTx(
     const cantidad = new Decimal(linea.cantidad);
     const anterior = estado.actual;
     const nueva = anterior.plus(cantidad);
+    verificarTechoDeStock(nueva, {
+      productoId: linea.productoId,
+      inventarioId: estado.inventarioId,
+      disponible: anterior.toFixed(3),
+      pretendida: cantidad.toFixed(3),
+    });
     estado.actual = nueva;
 
     await tx.inventario.update({
@@ -1152,7 +1158,7 @@ const MOVIMIENTO_POR_REPOSICION: Record<TipoReposicion, TipoMovimiento> = {
  * per-line hard block inside the same transaction yields the same
  * all-or-nothing guarantee (a rejected line rolls back prior writes).
  *
- * @throws InventarioDomainError(INVENTARIO_NO_ENCONTRADO | STOCK_INSUFICIENTE_BLOQUEO | CANTIDAD_INVALIDA)
+ * @throws InventarioDomainError(INVENTARIO_NO_ENCONTRADO | STOCK_INSUFICIENTE_BLOQUEO | STOCK_MAXIMO_EXCEDIDO | CANTIDAD_INVALIDA)
  */
 export async function registrarDevolucionEnTx(
   tx: PrismaTx,

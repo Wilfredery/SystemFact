@@ -7,9 +7,11 @@
  * chain itself is regressed by `confirmar-venta.test.ts`.
  */
 
-import { confirmarVentaAction } from "./actions.escritura";
+import { cancelarVentaAction, confirmarVentaAction } from "./actions.escritura";
 import { confirmarVenta } from "../application/confirmar-venta";
+import { cancelarVenta } from "../application/venta-service";
 import { tieneRolPermitidoEnTx } from "../infrastructure/venta-repository";
+import { VentaDomainError } from "../domain/errors";
 
 jest.mock("@/lib/supabase/client", () => ({ createClient: jest.fn() }));
 jest.mock("@/modules/tenant/infrastructure/tenant-runtime", () => ({
@@ -20,6 +22,11 @@ jest.mock("@/modules/tenant/infrastructure/withTenantTransaction", () => ({
 }));
 jest.mock("../application/confirmar-venta", () => ({
   confirmarVenta: jest.fn(),
+}));
+jest.mock("../application/venta-service", () => ({
+  crearVenta: jest.fn(),
+  actualizarVenta: jest.fn(),
+  cancelarVenta: jest.fn(),
 }));
 jest.mock("../infrastructure/venta-repository", () => ({
   tieneRolPermitidoEnTx: jest.fn(),
@@ -91,5 +98,22 @@ describe("confirmarVentaAction — credito verdict verbatim relay (D7/R-V25)", (
     const result = await confirmarVentaAction({ id: 7 });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.data.ncfWarning).toBe("NCF_UMBRAL_90");
+  });
+});
+
+describe("cancelarVentaAction — stock-ceiling rollback mapping", () => {
+  it("maps the thrown sale-domain ceiling error after transaction rollback to its typed action result", async () => {
+    (cancelarVenta as jest.Mock).mockRejectedValue(
+      new VentaDomainError("STOCK_MAXIMO_EXCEDIDO" as never, { ventaId: 7 }),
+    );
+
+    await expect(cancelarVentaAction({ id: 7, motivo: "cancel test" })).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "STOCK_MAXIMO_EXCEDIDO",
+        message:
+          "La operación dejaría la existencia por encima del máximo permitido (999,999,999.999)",
+      },
+    });
   });
 });

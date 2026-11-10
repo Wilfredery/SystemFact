@@ -12,6 +12,12 @@
 import { Decimal } from "decimal.js";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
+import { InventarioDomainError } from "@/modules/inventario/domain/errors";
+import {
+  STOCK_MAXIMO_EXCEDIDO,
+  messageFor,
+  VentaDomainError,
+} from "../domain/errors";
 import {
   crearVentaConLineasEnTx,
   actualizarVentaBorradorEnTx,
@@ -561,6 +567,34 @@ describe("cancelarVenta", () => {
     await expect(cancelarVenta(tx, ctx, { id: 7 })).rejects.toMatchObject({ code: "CONCURRENCIA_CONFLICTO" });
     expect(revertirPagosAplicadosDeVentaEnTx).not.toHaveBeenCalled();
     expect(registrarReposicionCancelacion).not.toHaveBeenCalled();
+  });
+
+  it("CONFIRMADA: a reposition past the stock ceiling maps to venta's STOCK_MAXIMO_EXCEDIDO (thrown → rollback, no inventario leak, no cancel audits)", async () => {
+    (leerVentaEnTx as jest.Mock).mockResolvedValue({ id: 7, estado: "CONFIRMADA", sucursalId: 2, clienteId: 99, updatedAt: new Date() });
+    (registrarReposicionCancelacion as jest.Mock).mockRejectedValue(
+      new InventarioDomainError(STOCK_MAXIMO_EXCEDIDO, {
+        inventarioId: 5,
+        productoId: 10,
+        disponible: "999999990.000",
+        pretendida: "5.000",
+      }),
+    );
+    const capturado = await cancelarVenta(tx, ctx, { id: 7 }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(capturado).toBeInstanceOf(VentaDomainError);
+    expect(capturado).not.toBeInstanceOf(InventarioDomainError);
+    expect(capturado).toMatchObject({
+      code: STOCK_MAXIMO_EXCEDIDO,
+      message: messageFor(STOCK_MAXIMO_EXCEDIDO),
+      // Venta-owned locator only — inventario's details are dropped.
+      details: { ventaId: 7 },
+    });
+    // Post-flip throw → the whole cancel rolls back; the reversal audits
+    // (which run AFTER the reposition) never execute.
+    expect(registrarAuditVentaEnTx).not.toHaveBeenCalled();
+    expect(registrarAuditFacturaEnTx).not.toHaveBeenCalled();
   });
 });
 
