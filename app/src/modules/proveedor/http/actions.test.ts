@@ -3,11 +3,14 @@
   listarProveedoresAction,
   actualizarProveedorAction,
   desactivarProveedorAction,
+  obtenerProveedorAction,
+  obtenerPermisosProveedorAction,
 } from "./actions";
 import { crearProveedor } from "../application/crear-proveedor";
 import { listarProveedores } from "../application/listar-proveedores";
 import { actualizarProveedor } from "../application/actualizar-proveedor";
 import { desactivarProveedor } from "../application/desactivar-proveedor";
+import { obtenerProveedor } from "../application/obtener-proveedor";
 import { tieneRolPermitidoEnTx } from "../infrastructure/proveedor-repository";
 import {
   RNC_PROVEEDOR_DUPLICADO,
@@ -47,6 +50,10 @@ jest.mock("../application/actualizar-proveedor", () => ({
 
 jest.mock("../application/desactivar-proveedor", () => ({
   desactivarProveedor: jest.fn(),
+}));
+
+jest.mock("../application/obtener-proveedor", () => ({
+  obtenerProveedor: jest.fn(),
 }));
 
 jest.mock("../infrastructure/proveedor-repository", () => ({
@@ -120,12 +127,12 @@ describe("crearProveedorAction", () => {
       expect(result.data).toEqual({ id: 4, nombre: "Distribuidora Norte", version: 1 });
     }
     expect(withTenantTransaction).toHaveBeenCalled();
-    // CRUD is Administrador + Operador (role matrix).
+    // Managing suppliers is Administrador-only (owner L9).
     expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
       expect.anything(),
       1,
       1,
-      ["Administrador", "Operador"],
+      ["Administrador"],
     );
   });
 
@@ -235,6 +242,161 @@ describe("listarProveedoresAction", () => {
     if (!result.ok) expect(result.error.code).toBe(NO_AUTORIZADO);
     expect(listarProveedores).not.toHaveBeenCalled();
   });
+
+  it("PRV-A-6: reading the list is a VIEW capability (owner L9)", async () => {
+    // Administrador, Operador and Despachador receive purchases, so all three
+    // read the list; the manage group is what write actions check.
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (listarProveedores as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: { items: [], total: 0, page: 1 },
+    });
+
+    await listarProveedoresAction({ page: 1, limit: 25 });
+
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      1,
+      ["Administrador", "Operador", "Despachador"],
+    );
+  });
+});
+
+describe("obtenerProveedorAction", () => {
+  it("PRV-A-7: returns the detail DTO (version included) for a view role", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (obtenerProveedor as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: makeProveedor({ version: 3 }),
+    });
+
+    const result = await obtenerProveedorAction({ id: 4 });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toEqual({
+        id: 4,
+        nombre: "Distribuidora Norte",
+        contacto: "Juan Pérez",
+        telefono: "809-555-1212",
+        rnc: "138000001",
+        tipoProveedor: "FORMAL",
+        tipoPersona: "JURIDICA",
+        activo: true,
+        version: 3,
+      });
+    }
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      1,
+      ["Administrador", "Operador", "Despachador"],
+    );
+    expect(withTenantTransaction).toHaveBeenCalled();
+  });
+
+  it("PRV-A-7: an invalid id fails Zod before any DB access", async () => {
+    const result = await obtenerProveedorAction({ id: 0 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(VALIDATION_ERROR);
+    expect(obtenerProveedor).not.toHaveBeenCalled();
+    expect(withTenantTransaction).not.toHaveBeenCalled();
+  });
+
+  it("PRV-A-7: a foreign-tenant id surfaces PROVEEDOR_NO_ENCONTRADO", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (obtenerProveedor as jest.Mock).mockResolvedValue({
+      ok: false,
+      code: PROVEEDOR_NO_ENCONTRADO,
+      message: messageFor(PROVEEDOR_NO_ENCONTRADO),
+    });
+
+    const result = await obtenerProveedorAction({ id: 99 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(PROVEEDOR_NO_ENCONTRADO);
+  });
+
+  it("PRV-A-7: a forbidden role is refused before the read", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+
+    const result = await obtenerProveedorAction({ id: 4 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(NO_AUTORIZADO);
+    expect(obtenerProveedor).not.toHaveBeenCalled();
+  });
+
+  it("PRV-A-7: a missing session returns SESION_INVALIDA", async () => {
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
+
+    const result = await obtenerProveedorAction({ id: 4 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(SESION_INVALIDA);
+    expect(obtenerProveedor).not.toHaveBeenCalled();
+  });
+});
+
+describe("obtenerPermisosProveedorAction", () => {
+  it("PRV-A-8: reports the manage capability from the named role group", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+
+    const result = await obtenerPermisosProveedorAction();
+
+    expect(result).toEqual({ ok: true, data: { puedeGestionar: true } });
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      1,
+      ["Administrador"],
+    );
+    expect(withTenantTransaction).toHaveBeenCalled();
+  });
+
+  it("PRV-A-8: a view-only caller gets puedeGestionar=false", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+
+    const result = await obtenerPermisosProveedorAction();
+
+    expect(result).toEqual({ ok: true, data: { puedeGestionar: false } });
+  });
+
+  it("PRV-A-8: no session returns SESION_INVALIDA", async () => {
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
+
+    const result = await obtenerPermisosProveedorAction();
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(SESION_INVALIDA);
+  });
+});
+
+describe("write actions are Administrador-only (owner L9)", () => {
+  it("PRV-A-9: Operador and Despachador are refused on create, edit and deactivate", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+
+    const crear = await crearProveedorAction(crearInput);
+    const editar = await actualizarProveedorAction({ id: 4, version: 1, nombre: "X" });
+    const desactivar = await desactivarProveedorAction({ id: 4 });
+
+    for (const result of [crear, editar, desactivar]) {
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe(NO_AUTORIZADO);
+    }
+    expect(crearProveedor).not.toHaveBeenCalled();
+    expect(actualizarProveedor).not.toHaveBeenCalled();
+    expect(desactivarProveedor).not.toHaveBeenCalled();
+  });
 });
 
 describe("actualizarProveedorAction", () => {
@@ -255,11 +417,12 @@ describe("actualizarProveedorAction", () => {
     const passed = (actualizarProveedor as jest.Mock).mock.calls[0][2];
     expect(passed.version).toBe(2);
     expect(withTenantTransaction).toHaveBeenCalled();
+    // Editing suppliers is Administrador-only (owner L9).
     expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
       expect.anything(),
       1,
       1,
-      ["Administrador", "Operador"],
+      ["Administrador"],
     );
   });
 

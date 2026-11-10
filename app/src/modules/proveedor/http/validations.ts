@@ -62,6 +62,14 @@ export const zDesactivarProveedorInput = z.object({
   id: z.number().int().positive(),
 });
 
+// Single-supplier read for the edit dialog (screens plan Step 4): transport
+// bound only, the tenant scope comes from the session context.
+export const zObtenerProveedorInput = z.object({
+  id: z.number().int().positive(),
+});
+
+export type ObtenerProveedorInputDto = z.infer<typeof zObtenerProveedorInput>;
+
 export type DesactivarProveedorInputDto = z.infer<
   typeof zDesactivarProveedorInput
 >;
