@@ -27,7 +27,7 @@ const NAV_ITEMS: readonly SidebarItemDef[] = [
   { label: "Compras", href: "/compras" },
   { label: "Caja", disabled: true },
   { label: "Reportes", href: "/reportes" },
-  { label: "Administración", disabled: true },
+  { label: "Administración", href: "/administracion" },
   { label: "Auditoría", href: "/auditoria" },
 ];
 
