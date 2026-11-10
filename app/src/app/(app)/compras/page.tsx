@@ -11,11 +11,16 @@
  * groups, so this page never names a role. A failed permission call hides it
  * (deny by default) but never breaks the read-only list. Every write action
  * re-checks on the server.
+ *
+ * The session's sucursal NAME (S1 read-only field of the purchase dialog) comes
+ * from `getCurrentTenantHeader`, the same identity read with the display names
+ * the shell header uses. The backend still takes `sucursalId` from the session
+ * context — there is deliberately no branch selector here.
  */
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import { getCurrentTenantHeader } from "@/modules/tenant/infrastructure/tenant-runtime";
 import {
   listarComprasAction,
   obtenerPermisosCompraAction,
@@ -54,7 +59,7 @@ export default async function ComprasPage({
   readonly searchParams: Promise<Record<string, Param>>;
 }) {
   const supabase = await createClient();
-  const ctx = await getCurrentTenantContext(supabase);
+  const ctx = await getCurrentTenantHeader(supabase);
   if (ctx === null) {
     redirect("/login");
   }
@@ -87,6 +92,7 @@ export default async function ComprasPage({
         inicial={inicial}
         filtrosIniciales={filtros}
         puedeGestionar={puedeGestionar}
+        sucursalNombre={ctx.sucursalNombre}
       />
     </main>
   );

@@ -17,7 +17,20 @@ import { ComprasScreen, type ComprasInicial } from "../ComprasScreen";
 import type { CompraFila, FiltrosCompras } from "../compras-filtros";
 import { listarComprasAction, obtenerCompraAction } from "@/modules/compra/http/actions";
 
+jest.mock("@/modules/proveedor/http/actions", () => ({
+  listarProveedoresAction: jest.fn(),
+}));
+
+jest.mock("@/modules/producto/http/actions", () => ({
+  consultarProductosAction: jest.fn(),
+}));
+
 jest.mock("@/modules/compra/http/actions", () => ({
+  crearCompraAction: jest.fn(),
+  actualizarCompraAction: jest.fn(),
+  confirmarCompraAction: jest.fn(),
+  cancelarCompraAction: jest.fn(),
+  recibirCompraAction: jest.fn(),
   listarComprasAction: jest.fn(),
   obtenerCompraAction: jest.fn(),
   obtenerPermisosCompraAction: jest.fn(),
@@ -70,6 +83,7 @@ function montar({
       inicial={inicial}
       filtrosIniciales={filtros}
       puedeGestionar={puedeGestionar}
+      sucursalNombre="Sucursal Central"
     />,
   );
 }

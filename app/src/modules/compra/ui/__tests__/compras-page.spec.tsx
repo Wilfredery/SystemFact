@@ -19,7 +19,7 @@ import {
   listarComprasAction,
   obtenerPermisosCompraAction,
 } from "@/modules/compra/http/actions";
-import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import { getCurrentTenantHeader } from "@/modules/tenant/infrastructure/tenant-runtime";
 import type { CompraFila } from "@/modules/compra/ui/compras-filtros";
 
 jest.mock("@/lib/supabase/client", () => ({
@@ -27,7 +27,15 @@ jest.mock("@/lib/supabase/client", () => ({
 }));
 
 jest.mock("@/modules/tenant/infrastructure/tenant-runtime", () => ({
-  getCurrentTenantContext: jest.fn(),
+  getCurrentTenantHeader: jest.fn(),
+}));
+
+jest.mock("@/modules/proveedor/http/actions", () => ({
+  listarProveedoresAction: jest.fn(),
+}));
+
+jest.mock("@/modules/producto/http/actions", () => ({
+  consultarProductosAction: jest.fn(),
 }));
 
 jest.mock("@/modules/compra/http/actions", () => ({
@@ -47,7 +55,7 @@ jest.mock("next/navigation", () => ({
 
 const mockListar = jest.mocked(listarComprasAction);
 const mockPermisos = jest.mocked(obtenerPermisosCompraAction);
-const mockContexto = jest.mocked(getCurrentTenantContext);
+const mockContexto = jest.mocked(getCurrentTenantHeader);
 
 const BORRADOR: CompraFila = {
   id: 7,
@@ -78,7 +86,10 @@ beforeEach(() => {
     empresaId: 1,
     sucursalId: 1,
     usuarioId: 1,
-  } as Awaited<ReturnType<typeof getCurrentTenantContext>>);
+    esAdmin: true,
+    empresaNombre: "Empresa Demo",
+    sucursalNombre: "Sucursal Central",
+  } as Awaited<ReturnType<typeof getCurrentTenantHeader>>);
   mockListar.mockResolvedValue({ ok: true, data: salida() });
 });
 

@@ -14,12 +14,25 @@
  *
  * S6: money and quantities arrive as fixed-point STRINGS and are only formatted
  * for display (`formatearMonto`) — no float arithmetic on the client.
+ *
+ * T3 (S1/S2/S5): the manage controls live here and in the two dialogs. The
+ * create/edit dialog mirrors the state rules exactly — Editar and Confirmar only
+ * for BORRADOR, Recibir only for PENDIENTE, Cancelar for BORRADOR|PENDIENTE, and
+ * RECIBIDA offers NO cancel action because the domain has no path back from it.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listarComprasAction, obtenerCompraAction } from "@/modules/compra/http/actions";
-import { formatearFechaSD } from "@/shared/ui/format/date";
+import {
+  cancelarCompraAction,
+  confirmarCompraAction,
+  listarComprasAction,
+  obtenerCompraAction,
+  recibirCompraAction,
+} from "@/modules/compra/http/actions";
 import { formatearMonto } from "@/shared/ui/format/money";
+import { CompraFormulario } from "./CompraFormulario";
+import { CLASE_ALERTA_COMPRA, formatearFechaCompra } from "./compra-form-utils";
+import { ConfirmarCancelacionCompra } from "./ConfirmarCancelacionCompra";
 import {
   DEBOUNCE_BUSQUEDA_MS,
   ESTADOS_COMPRA_FILTRO,
@@ -37,13 +50,12 @@ export type { CompraFila, FiltrosCompras } from "./compras-filtros";
 
 const MENSAJE_FALLO_CARGA = "No se pudo cargar las compras. Intente de nuevo.";
 const MENSAJE_FALLO_DETALLE = "No se pudo abrir la compra. Intente de nuevo.";
+const MENSAJE_FALLO_ACCION = "No se pudo completar la acción. Intente de nuevo.";
 
 const CLASE_CONTROL =
   "min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
 const CLASE_BOTON =
   "min-h-11 rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300";
-const CLASE_ALERTA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
 
 /** Badge tone per frozen purchase state. */
 const CLASE_ESTADO: Record<string, string> = {
@@ -65,14 +77,22 @@ type DetalleAbierto =
   | { readonly correlativo: string; readonly estado: "listo"; readonly data: CompraDetalle }
   | { readonly correlativo: string; readonly estado: "error"; readonly mensaje: string };
 
+type FormularioAbierto =
+  | { readonly modo: "crear" }
+  | { readonly modo: "editar"; readonly compra: CompraDetalle }
+  | null;
+
 export function ComprasScreen({
   inicial,
   filtrosIniciales,
   puedeGestionar,
+  sucursalNombre,
 }: {
   readonly inicial: ComprasInicial;
   readonly filtrosIniciales: FiltrosCompras;
   readonly puedeGestionar: boolean;
+  /** Read-only branch of the session, shown in the purchase dialog (S1). */
+  readonly sucursalNombre: string;
 }) {
   const [data, setData] = useState<ListadoCompras | null>(
     inicial.ok ? inicial.data : null,
@@ -82,6 +102,14 @@ export function ComprasScreen({
   const [filtros, setFiltros] = useState<FiltrosCompras>(filtrosIniciales);
   const [texto, setTexto] = useState(filtrosIniciales.proveedorBusqueda);
   const [detalle, setDetalle] = useState<DetalleAbierto | null>(null);
+  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  const [procesando, setProcesando] = useState<number | null>(null);
+  const [formulario, setFormulario] = useState<FormularioAbierto>(null);
+  const [porCancelar, setPorCancelar] = useState<CompraFila | null>(null);
+  const [motivo, setMotivo] = useState("");
+  const [cancelando, setCancelando] = useState(false);
+  const [errorCancelar, setErrorCancelar] = useState<string | null>(null);
   const ultimaSolicitud = useRef(0);
 
   // Only the latest request may settle state: a slow earlier answer must not
@@ -115,6 +143,103 @@ export function ComprasScreen({
     return () => clearTimeout(timer);
   }, [texto, filtros, consultar]);
 
+  /** Re-reads the page/filter the user is on after a write. */
+  async function refrescar() {
+    await consultar({ ...filtros, proveedorBusqueda: texto }, data?.page ?? 1);
+  }
+
+  /** Opens the edit dialog from a fresh draft read (S5). */
+  async function abrirEdicion(fila: CompraFila) {
+    setErrorAccion(null);
+    setMensaje(null);
+    try {
+      const r = await obtenerCompraAction({ id: fila.id });
+      if (!r.ok) {
+        setErrorAccion(r.error.message);
+        return;
+      }
+      setFormulario({ modo: "editar", compra: r.data });
+    } catch {
+      setErrorAccion(MENSAJE_FALLO_DETALLE);
+    }
+  }
+
+  /** S5: confirms a draft and shows the retentions the server returned. */
+  async function confirmarFila(fila: CompraFila) {
+    setErrorAccion(null);
+    setMensaje(null);
+    setProcesando(fila.id);
+    try {
+      const r = await confirmarCompraAction({ id: fila.id });
+      if (!r.ok) {
+        setErrorAccion(r.error.message);
+        return;
+      }
+      setMensaje(
+        `Compra ${r.data.correlativoInterno} confirmada. Retención ISR ${formatearMonto(
+          r.data.retencionIsr,
+        )} · Retención ITBIS ${formatearMonto(r.data.retencionItbis)}.`,
+      );
+      await refrescar();
+    } catch {
+      setErrorAccion(MENSAJE_FALLO_ACCION);
+    } finally {
+      setProcesando(null);
+    }
+  }
+
+  /** S5/S2: receives a PENDIENTE purchase; a typed refusal is shown, not hidden. */
+  async function recibirFila(fila: CompraFila) {
+    setErrorAccion(null);
+    setMensaje(null);
+    setProcesando(fila.id);
+    try {
+      const r = await recibirCompraAction({ id: fila.id });
+      if (!r.ok) {
+        setErrorAccion(r.error.message);
+        return;
+      }
+      setMensaje(`Compra ${fila.correlativoInterno} recibida.`);
+      await refrescar();
+    } catch {
+      setErrorAccion(MENSAJE_FALLO_ACCION);
+    } finally {
+      setProcesando(null);
+    }
+  }
+
+  function abrirCancelacion(fila: CompraFila) {
+    setErrorAccion(null);
+    setMensaje(null);
+    setErrorCancelar(null);
+    setMotivo("");
+    setPorCancelar(fila);
+  }
+
+  /** S5: the motivo is mandatory; the server double-checks it. */
+  async function confirmarCancelacion() {
+    if (porCancelar === null) return;
+    setCancelando(true);
+    setErrorCancelar(null);
+    try {
+      const r = await cancelarCompraAction({
+        id: porCancelar.id,
+        motivo: motivo.trim(),
+      });
+      if (!r.ok) {
+        setErrorCancelar(r.error.message);
+        return;
+      }
+      setMensaje(`Compra ${porCancelar.correlativoInterno} cancelada.`);
+      setPorCancelar(null);
+      await refrescar();
+    } catch {
+      setErrorCancelar(MENSAJE_FALLO_ACCION);
+    } finally {
+      setCancelando(false);
+    }
+  }
+
   /** Read-only detail from the canonical single-purchase read (S7 reuse). */
   async function abrirDetalle(fila: CompraFila) {
     setDetalle({ correlativo: fila.correlativoInterno, estado: "cargando" });
@@ -144,7 +269,7 @@ export function ComprasScreen({
 
   if (data === null) {
     return (
-      <p role="alert" className={CLASE_ALERTA}>
+      <p role="alert" className={CLASE_ALERTA_COMPRA}>
         {error ?? "No hay datos de compras."}
       </p>
     );
@@ -157,8 +282,21 @@ export function ComprasScreen({
   return (
     <div className="flex flex-col gap-4">
       {error !== null && (
-        <p role="alert" className={CLASE_ALERTA}>
+        <p role="alert" className={CLASE_ALERTA_COMPRA}>
           {error}
+        </p>
+      )}
+      {errorAccion !== null && (
+        <p role="alert" className={CLASE_ALERTA_COMPRA}>
+          {errorAccion}
+        </p>
+      )}
+      {mensaje !== null && (
+        <p
+          role="status"
+          className="rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+        >
+          {mensaje}
         </p>
       )}
 
@@ -202,6 +340,19 @@ export function ComprasScreen({
             </option>
           ))}
         </select>
+        {puedeGestionar && (
+          <button
+            type="button"
+            onClick={() => {
+              setErrorAccion(null);
+              setMensaje(null);
+              setFormulario({ modo: "crear" });
+            }}
+            className="min-h-11 rounded-md bg-zinc-900 px-5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900"
+          >
+            + Nueva compra
+          </button>
+        )}
       </div>
 
       {data.items.length === 0 ? (
@@ -244,18 +395,62 @@ export function ComprasScreen({
                       {etiquetaEstadoCompra(c.estado)}
                     </span>
                   </td>
-                  <td className="px-4 py-2">{formatearFechaSD(c.fecha)}</td>
+                  <td className="px-4 py-2">{formatearFechaCompra(c.fecha)}</td>
                   <td className="px-4 py-2 tabular-nums">{formatearMonto(c.total)}</td>
                   {puedeGestionar && (
                     <td className="px-4 py-2">
-                      <button
-                        type="button"
-                        aria-label={`Ver detalle ${c.correlativoInterno}`}
-                        onClick={() => void abrirDetalle(c)}
-                        className={CLASE_BOTON}
-                      >
-                        Ver detalle
-                      </button>
+                      <div className="flex flex-wrap gap-1">
+                        <button
+                          type="button"
+                          aria-label={`Ver detalle ${c.correlativoInterno}`}
+                          onClick={() => void abrirDetalle(c)}
+                          className={CLASE_BOTON}
+                        >
+                          Ver detalle
+                        </button>
+                        {c.estado === "BORRADOR" && (
+                          <>
+                            <button
+                              type="button"
+                              aria-label={`Editar ${c.correlativoInterno}`}
+                              onClick={() => void abrirEdicion(c)}
+                              className={CLASE_BOTON}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Confirmar ${c.correlativoInterno}`}
+                              onClick={() => void confirmarFila(c)}
+                              disabled={procesando !== null}
+                              className={CLASE_BOTON}
+                            >
+                              Confirmar
+                            </button>
+                          </>
+                        )}
+                        {c.estado === "PENDIENTE" && (
+                          <button
+                            type="button"
+                            aria-label={`Recibir ${c.correlativoInterno}`}
+                            onClick={() => void recibirFila(c)}
+                            disabled={procesando !== null}
+                            className={CLASE_BOTON}
+                          >
+                            Recibir
+                          </button>
+                        )}
+                        {(c.estado === "BORRADOR" || c.estado === "PENDIENTE") && (
+                          <button
+                            type="button"
+                            aria-label={`Cancelar ${c.correlativoInterno}`}
+                            onClick={() => abrirCancelacion(c)}
+                            className={CLASE_BOTON}
+                          >
+                            Cancelar
+                          </button>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -292,6 +487,31 @@ export function ComprasScreen({
       {detalle !== null && (
         <DetalleCompra detalle={detalle} onCerrar={() => setDetalle(null)} />
       )}
+
+      {formulario !== null && (
+        <CompraFormulario
+          compra={formulario.modo === "editar" ? formulario.compra : null}
+          sucursalNombre={sucursalNombre}
+          onGuardado={() => {
+            setFormulario(null);
+            void refrescar();
+          }}
+          onActualizado={() => void refrescar()}
+          onCancelar={() => setFormulario(null)}
+        />
+      )}
+
+      {porCancelar !== null && (
+        <ConfirmarCancelacionCompra
+          correlativoInterno={porCancelar.correlativoInterno}
+          motivo={motivo}
+          onMotivo={setMotivo}
+          enviando={cancelando}
+          error={errorCancelar}
+          onConfirmar={() => void confirmarCancelacion()}
+          onCerrar={() => setPorCancelar(null)}
+        />
+      )}
     </div>
   );
 }
@@ -321,7 +541,7 @@ function DetalleCompra({
       {detalle.estado === "cargando" && <p className="text-sm text-zinc-500">Cargando…</p>}
 
       {detalle.estado === "error" && (
-        <p role="alert" className={CLASE_ALERTA}>
+        <p role="alert" className={CLASE_ALERTA_COMPRA}>
           {detalle.mensaje}
         </p>
       )}
@@ -337,7 +557,7 @@ function DetalleCompra({
           <dt className="text-zinc-500">NCF</dt>
           <dd className="font-mono text-xs">{detalle.data.ncf ?? "—"}</dd>
           <dt className="text-zinc-500">Fecha</dt>
-          <dd>{formatearFechaSD(detalle.data.fecha)}</dd>
+          <dd>{formatearFechaCompra(detalle.data.fecha)}</dd>
           <dt className="text-zinc-500">Subtotal</dt>
           <dd className="tabular-nums">{formatearMonto(detalle.data.subtotal)}</dd>
           <dt className="text-zinc-500">ITBIS</dt>
