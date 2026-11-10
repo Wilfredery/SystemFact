@@ -1,3 +1,15 @@
+## [0.26.0](https://github.com/Wilfredery/SystemFact/compare/v0.25.0...v0.26.0) (2026-11-10)
+
+### Features
+
+* **tenant:** the **Administración** screen (`/administracion`), Step 7 of the screens plan, **read-only first** (owner decision: directory only, no RLS change): three tabs over one server page and a client island. **Usuarios** lists the session branch's users (search by `nombreUsuario`/nombre debounced at 300 ms, Activos/Inactivos/Todos filter, 25 per page, "Página X de Y") with Usuario, Nombre, Rol, Empresa/Sucursal and Activo/Inactivo badges — the branch scope is the existing `usuario_select` RLS policy, so a company-wide listing stays deferred. **Sucursales** shows the caller empresa's active branches from the existing use case. **Configuración** renders the read-only system parameters: the retentions, the NCF sequences (rango, secuencia actual, vigencia fin and % used) and an explicit "No disponible aún" note for the ITBIS rates, because no backend reader exposes a rate with its validity window yet. No create, edit, role or branch assignment, activate/deactivate or `Acciones` column anywhere — for any role. The "Administración" menu entry is enabled in the same release.
+* **tenant (backend, additive):** one named role group, `ROLES_VER_ADMINISTRACION` (Administrador), in `tenant/http/shared.ts` — the single place a role name is written for this capability, deny-by-default for Operador and Despachador. Four read-only Server Actions inside `withTenantTransaction`: `listarUsuariosAction` (paginated `empresaId`-scoped listing, branch scope left to RLS), `listarSucursalesDeEmpresaAction` (thin adapter over the existing use case), `obtenerPermisosAdministracionAction` and `consultarConfiguracionAction` (a read-only view over the existing configuration/NCF readers; a missing or expired retention config renders as "no configurada", never a fabricated 0%). No Prisma in `http`, no error code invented (denial reuses `TEN_OPS_NO_AUTORIZADO`), no existing behavior changed.
+
+### Tests
+
+* **unit:** the role group on every read action and on the permission seam, the paginated/tenancy-scoped listing, the configuration view (retentions absent, NCF % used) and the pure NCF usage math. RTL suites cover the three tabs, the columns and rows, the debounced search and estado filter, pagination, the empty state, the URL contract and both deny paths (no data, only the access message).
+* **e2e:** `administracion.spec.ts` has the Administrador read all three tabs — the Usuarios rows asserted by set equality against the branch's users in the database, the branch rows and the seeded B01/B02 NCF sequences — and Operador and Despachador land on the access message with no tabs, no tables and no rows. No write control exists for any of them. No test may skip.
+
 ## [0.25.0](https://github.com/Wilfredery/SystemFact/compare/v0.24.0...v0.25.0) (2026-11-10)
 
 ### Features
