@@ -268,7 +268,10 @@ export function CompraFormulario({
         if (!abierto && !enviando) onCancelar();
       }}
     >
-      <DialogContent aria-label={editando ? "Editar compra" : "Nueva compra"}>
+      <DialogContent
+        aria-label={editando ? "Editar compra" : "Nueva compra"}
+        className="sm:max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto"
+      >
         <form
           onSubmit={(e) => {
             e.preventDefault();
