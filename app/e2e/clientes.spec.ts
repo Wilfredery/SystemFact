@@ -208,7 +208,12 @@ test.describe("/clientes (clientes T1/T2)", () => {
           .first()
           .or(page.getByText("No hay clientes que coincidan con los filtros.")),
       ).toBeVisible();
-      await expect(page.getByRole("alert")).toHaveCount(0);
+      // The screen's OWN alert (inside `main`), never any alert on the page:
+      // Next.js App Router appends a route announcer to `document.body`
+      // (`<next-route-announcer>` with `role="alert"`, open shadow root) that
+      // Playwright's role query pierces, so an unscoped `getByRole("alert")`
+      // reports 1 on every route and can never be 0. Same rule as the CxC board.
+      await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
 
       // Manage side is absent markup, not a disabled control (S3).
       await expect(page.getByRole("button", { name: "+ Nuevo cliente" })).toHaveCount(0);

@@ -160,6 +160,11 @@ describe("ClientesScreen — list, filters and pagination (S1, S4)", () => {
     // The read side still works: they sell to and collect from these clients.
     expect(screen.getByLabelText("Buscar cliente")).toBeInTheDocument();
     expect(screen.getByTestId("cliente-fila-4")).toBeInTheDocument();
+
+    // Rows plus an error alert cannot co-exist: the alert only replaces the
+    // list (`inicial.ok === false`) or reports a failed re-query. The E2E
+    // assertion this pins is scoped to `main` for that reason.
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("S3: the manage caller sees the create control, the row actions and the credit columns", () => {
