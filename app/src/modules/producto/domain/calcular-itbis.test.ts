@@ -14,6 +14,7 @@ function producto(
     codigo: "TEST",
     nombre: "Producto de prueba",
     descripcion: null,
+    unidadMedida: "",
     precioVenta: new Decimal(precioVenta),
     itbis: {
       tasa,

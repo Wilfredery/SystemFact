@@ -4,12 +4,17 @@ import {
   listarProductosAction,
   actualizarProductoAction,
   desactivarProductoAction,
+  consultarProductosAction,
+  obtenerProductoPorIdAction,
+  obtenerPermisosProductoAction,
 } from "./actions";
 import {
   crearProducto,
   type CrearProductoResult,
 } from "../application/crear-producto";
 import { listarProductos } from "../application/listar-productos";
+import { consultarProductos } from "../application/consultar-productos";
+import { obtenerProductoDetalle } from "../application/obtener-producto";
 import { ROLES_GESTION_PRODUCTOS, ROLES_VER_PRODUCTOS } from "./shared";
 import { actualizarProducto } from "../application/actualizar-producto";
 import { desactivarProducto } from "../application/desactivar-producto";
@@ -45,6 +50,14 @@ jest.mock("../application/crear-producto", () => ({
 
 jest.mock("../application/listar-productos", () => ({
   listarProductos: jest.fn(),
+}));
+
+jest.mock("../application/consultar-productos", () => ({
+  consultarProductos: jest.fn(),
+}));
+
+jest.mock("../application/obtener-producto", () => ({
+  obtenerProductoDetalle: jest.fn(),
 }));
 
 jest.mock("../application/actualizar-producto", () => ({
@@ -113,6 +126,7 @@ function mockProductoResult(
       codigo: "LAP001",
       nombre: "Laptop Dell",
       descripcion: null,
+      unidadMedida: "",
       precioVenta: new Decimal("50000.00"),
       itbis: {
         tasa: "18",
@@ -305,6 +319,7 @@ function makeProductoDomain() {
     codigo: "LAP001",
     nombre: "Laptop Dell",
     descripcion: null,
+    unidadMedida: "",
     precioVenta: new Decimal("55000.00"),
     itbis: {
       tasa: "18" as const,
@@ -489,5 +504,221 @@ describe("desactivarProductoAction", () => {
     if (!result.ok) expect(result.error.code).toBe(VALIDATION_ERROR);
     expect(desactivarProducto).not.toHaveBeenCalled();
     expect(withTenantTransaction).not.toHaveBeenCalled();
+  });
+});
+
+const CONSULTA_VACIA = {
+  items: [],
+  total: 0,
+  page: 1,
+  limit: 25,
+  categorias: [],
+};
+
+describe("consultarProductosAction", () => {
+  it("S3: authorizes against the view group and returns the projection", async () => {
+    mockSupabase();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (consultarProductos as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: {
+        ...CONSULTA_VACIA,
+        items: [
+          {
+            id: 7,
+            codigo: "P-007",
+            nombre: "Arroz",
+            descripcion: null,
+            categoriaId: 3,
+            categoria: "Granos",
+            unidadMedida: "Libra",
+            precioVenta: "125.50",
+            tasaItbis: "18",
+            itbisVigenteDesde: "2026-01-01T00:00:00.000Z",
+            itbisVigenteHasta: null,
+            itbisAplicaRetencionITBIS: false,
+            activo: true,
+            version: 4,
+          },
+        ],
+        total: 1,
+        categorias: [{ id: 3, nombre: "Granos" }],
+      },
+    });
+
+    const result = await consultarProductosAction({ page: 1, limit: 25 });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.items[0].categoria).toBe("Granos");
+      expect(result.data.items[0].unidadMedida).toBe("Libra");
+      expect(result.data.items[0].version).toBe(4);
+      expect(result.data.categorias).toEqual([{ id: 3, nombre: "Granos" }]);
+    }
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      1,
+      ROLES_VER_PRODUCTOS,
+    );
+    expect(withTenantTransaction).toHaveBeenCalled();
+  });
+
+  it("S1: an invalid query returns VALIDATION_ERROR without delegating", async () => {
+    const result = await consultarProductosAction({ page: 1, limit: 101 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(VALIDATION_ERROR);
+    expect(consultarProductos).not.toHaveBeenCalled();
+  });
+
+  it("S3: an unauthorized role is refused without delegating", async () => {
+    mockSupabase();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+
+    const result = await consultarProductosAction({ page: 1, limit: 25 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(NO_AUTORIZADO);
+    expect(consultarProductos).not.toHaveBeenCalled();
+  });
+});
+
+describe("obtenerProductoPorIdAction", () => {
+  const detalle = {
+    id: 10,
+    codigo: "LAP-001",
+    nombre: "Laptop",
+    descripcion: null,
+    categoriaId: 2,
+    categoria: "Equipos",
+    unidadMedida: "Unidad",
+    precioVenta: "55000.00",
+    tasaItbis: "18",
+    itbisVigenteDesde: "2026-01-01T00:00:00.000Z",
+    itbisVigenteHasta: null,
+    itbisAplicaRetencionITBIS: false,
+    activo: true,
+    version: 7,
+  };
+
+  it("S1: returns the full detail including the version, for the edit prefill", async () => {
+    mockSupabase();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (obtenerProductoDetalle as jest.Mock).mockResolvedValue({ ok: true, producto: detalle });
+
+    const result = await obtenerProductoPorIdAction({ id: 10 });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toEqual(detalle);
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      1,
+      ROLES_VER_PRODUCTOS,
+    );
+    expect(obtenerProductoDetalle).toHaveBeenCalledWith(expect.anything(), mockCtx, { id: 10 });
+  });
+
+  it("S4: a missing product maps PRODUCTO_NO_ENCONTRADO", async () => {
+    mockSupabase();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (obtenerProductoDetalle as jest.Mock).mockResolvedValue({
+      ok: false,
+      code: PRODUCTO_NO_ENCONTRADO,
+      message: messageFor(PRODUCTO_NO_ENCONTRADO),
+    });
+
+    const result = await obtenerProductoPorIdAction({ id: 99 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(PRODUCTO_NO_ENCONTRADO);
+  });
+
+  it("S1: an invalid id fails before any database access", async () => {
+    const result = await obtenerProductoPorIdAction({ id: 0 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(VALIDATION_ERROR);
+    expect(obtenerProductoDetalle).not.toHaveBeenCalled();
+  });
+});
+
+describe("obtenerPermisosProductoAction", () => {
+  it("S3: answers from the manage role group (Administrador may manage)", async () => {
+    mockSupabase();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+
+    const result = await obtenerPermisosProductoAction();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toEqual({ puedeGestionar: true });
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      1,
+      ROLES_GESTION_PRODUCTOS,
+    );
+  });
+
+  it("S3: Operador and Despachador get no manage capability", async () => {
+    mockSupabase();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+
+    const result = await obtenerPermisosProductoAction();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toEqual({ puedeGestionar: false });
+  });
+});
+
+describe("unidad in the write actions (S1)", () => {
+  it("crearProductoAction forwards unidadMedida to the use case", async () => {
+    mockSupabase();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (crearProducto as jest.Mock).mockResolvedValue(mockProductoResult());
+
+    const result = await crearProductoAction({ ...validInput, unidadMedida: "Libra" });
+
+    expect(result.ok).toBe(true);
+    const passed = (crearProducto as jest.Mock).mock.calls[0][2];
+    expect(passed.unidadMedida).toBe("Libra");
+  });
+
+  it("crearProductoAction defaults itbisVigenteDesde to now when the dialog omits it", async () => {
+    mockSupabase();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (crearProducto as jest.Mock).mockResolvedValue(mockProductoResult());
+    const sinVigencia = {
+      categoriaId: validInput.categoriaId,
+      codigo: validInput.codigo,
+      nombre: validInput.nombre,
+      precioVenta: validInput.precioVenta,
+      itbisTasa: validInput.itbisTasa,
+      itbisVigenteHasta: validInput.itbisVigenteHasta,
+      itbisAplicaRetencionITBIS: validInput.itbisAplicaRetencionITBIS,
+    };
+
+    const result = await crearProductoAction(sinVigencia);
+
+    expect(result.ok).toBe(true);
+    const passed = (crearProducto as jest.Mock).mock.calls[0][2];
+    expect(passed.itbisVigenteDesde).toBeInstanceOf(Date);
+  });
+
+  it("actualizarProductoAction forwards unidadMedida in the patch", async () => {
+    mockSupabase();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (actualizarProducto as jest.Mock).mockResolvedValue({
+      ok: true,
+      producto: makeProductoDomain(),
+      version: 3,
+    });
+
+    const result = await actualizarProductoAction({ id: 10, version: 2, unidadMedida: "Caja" });
+
+    expect(result.ok).toBe(true);
+    const passed = (actualizarProducto as jest.Mock).mock.calls[0][2];
+    expect(passed.unidadMedida).toBe("Caja");
   });
 });

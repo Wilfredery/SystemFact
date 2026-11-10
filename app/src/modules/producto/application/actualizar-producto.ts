@@ -40,6 +40,7 @@ export interface ActualizarProductoInput {
   readonly version: number;
   readonly nombre?: string;
   readonly descripcion?: string | null;
+  readonly unidadMedida?: string;
   readonly precioVenta?: Prisma.Decimal;
   readonly itbisTasa?: TasaItbis;
   readonly itbisVigenteDesde?: Date;
@@ -76,6 +77,7 @@ function buildError(
 const CAMPOS_EDITABLES: readonly (keyof ActualizarProductoInput)[] = [
   "nombre",
   "descripcion",
+  "unidadMedida",
   "precioVenta",
   "itbisTasa",
   "itbisVigenteDesde",
@@ -128,6 +130,7 @@ const formatoFecha = (value: unknown): unknown =>
 const CAMPOS_EDICION_PRODUCTO: readonly CampoEdicionProducto[] = [
   { key: "nombre", leerInput: (i) => i.nombre, leerActual: (p) => p.nombre, iguales: igualesScalar, formatearAuditoria: formatoIdentidad },
   { key: "descripcion", leerInput: (i) => i.descripcion, leerActual: (p) => p.descripcion, iguales: igualesScalar, formatearAuditoria: formatoIdentidad },
+  { key: "unidadMedida", leerInput: (i) => i.unidadMedida, leerActual: (p) => p.unidadMedida, iguales: igualesScalar, formatearAuditoria: formatoIdentidad },
   { key: "precioVenta", leerInput: (i) => i.precioVenta, leerActual: (p) => p.precioVenta, iguales: igualesDecimal, formatearAuditoria: formatoDecimal },
   { key: "tasaItbis", leerInput: (i) => i.itbisTasa, leerActual: (p) => p.itbis.tasa, iguales: igualesScalar, formatearAuditoria: formatoIdentidad },
   { key: "itbisVigenteDesde", leerInput: (i) => i.itbisVigenteDesde, leerActual: (p) => p.itbis.vigenteDesde, iguales: igualesFecha, formatearAuditoria: formatoFecha },

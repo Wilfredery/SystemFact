@@ -33,9 +33,10 @@ export interface ProductoItbis {
 /**
  * Entidad Producto del dominio.
  *
- * Campos como codigoBarras, unidadMedida, etc. existen en el modelo de BD pero
- * no son relevantes para el cálculo fiscal; el repositorio los completa con
- * valores por defecto al crear un producto.
+ * Campos como codigoBarras o unidadEmpaque existen en el modelo de BD pero no
+ * son relevantes para el cálculo fiscal; el repositorio los completa con
+ * valores por defecto al crear un producto. `unidadMedida` sí forma parte de la
+ * entidad (se edita y se audita desde la pantalla de Productos).
  */
 export interface Producto {
   readonly id: number;
@@ -44,6 +45,8 @@ export interface Producto {
   readonly codigo: string;
   readonly nombre: string;
   readonly descripcion: string | null;
+  /** Presentation unit stored on the row (Libra, Unidad, Caja...); "" if unset. */
+  readonly unidadMedida: string;
   readonly precioVenta: Decimal;
   readonly itbis: ProductoItbis;
   readonly exento: boolean;

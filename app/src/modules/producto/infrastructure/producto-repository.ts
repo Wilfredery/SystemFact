@@ -16,6 +16,8 @@ import {
 
 export interface CrearProductoInput {
   readonly categoriaId: number;
+  /** Presentation unit (Libra, Unidad, Caja...). Optional: defaults to "". */
+  readonly unidadMedida?: string;
   readonly codigo: string;
   readonly nombre: string;
   readonly descripcion?: string | null;
@@ -40,6 +42,7 @@ const productoSelect = {
   codigo: true,
   nombre: true,
   descripcion: true,
+  unidadMedida: true,
   precioVenta: true,
   tasaItbis: true,
   itbisVigenteDesde: true,
@@ -64,6 +67,7 @@ function toDomainProducto(row: ProductoRow): Producto {
     codigo: row.codigo,
     nombre: row.nombre,
     descripcion: row.descripcion,
+    unidadMedida: row.unidadMedida,
     precioVenta: row.precioVenta,
     itbis: {
       tasa: tasaString,
@@ -94,6 +98,160 @@ function buildWhere(
     ];
   }
   return where;
+}
+
+/**
+ * Filtered list/search read for the Productos screen (plan Step 2).
+ *
+ * One flat row shape (the projection the screen and the edit dialog consume)
+ * plus the two paged reads and the category options. The state filter accepts
+ * the screen's `estado` and, for old callers, the previous boolean
+ * `incluirInactivos`; the use case normalizes one into the other, so this layer
+ * only ever sees a resolved `estado`.
+ */
+export type EstadoProductoFiltro = "activos" | "inactivos" | "todos";
+
+export interface ConsultarProductosQuery {
+  readonly page: number;
+  readonly limit: number;
+  /** Matches nombre, descripcion or codigo (case-insensitive). */
+  readonly busqueda?: string;
+  readonly categoriaId?: number;
+  /** Already resolved by the use case; omitted means "no state filter". */
+  readonly estado?: EstadoProductoFiltro;
+  /** Legacy switch kept for old callers (true -> estado "todos"). */
+  readonly incluirInactivos?: boolean;
+}
+
+/** Flat projection row: Decimal stays Decimal here; the use case serializes it. */
+export interface ProductoConsultaFila {
+  readonly id: number;
+  readonly codigo: string;
+  readonly nombre: string;
+  readonly descripcion: string | null;
+  readonly categoriaId: number;
+  readonly categoriaNombre: string;
+  readonly unidadMedida: string;
+  readonly precioVenta: Prisma.Decimal;
+  readonly tasaItbis: Prisma.Decimal;
+  readonly itbisVigenteDesde: Date;
+  readonly itbisVigenteHasta: Date | null;
+  readonly itbisAplicaRetencionITBIS: boolean;
+  readonly activo: boolean;
+  readonly version: number;
+}
+
+export interface CategoriaOpcion {
+  readonly id: number;
+  readonly nombre: string;
+}
+
+const productoConsultaSelect = {
+  id: true,
+  codigo: true,
+  nombre: true,
+  descripcion: true,
+  categoriaId: true,
+  unidadMedida: true,
+  precioVenta: true,
+  tasaItbis: true,
+  itbisVigenteDesde: true,
+  itbisVigenteHasta: true,
+  itbisAplicaRetencionITBIS: true,
+  activo: true,
+  version: true,
+  categoria: { select: { nombre: true } },
+} satisfies Prisma.ProductoSelect;
+
+type ProductoConsultaRow = Prisma.ProductoGetPayload<{
+  select: typeof productoConsultaSelect;
+}>;
+
+function toProductoConsultaFila(row: ProductoConsultaRow): ProductoConsultaFila {
+  return {
+    id: row.id,
+    codigo: row.codigo,
+    nombre: row.nombre,
+    descripcion: row.descripcion,
+    categoriaId: row.categoriaId,
+    categoriaNombre: row.categoria.nombre,
+    unidadMedida: row.unidadMedida,
+    precioVenta: row.precioVenta,
+    tasaItbis: row.tasaItbis,
+    itbisVigenteDesde: row.itbisVigenteDesde,
+    itbisVigenteHasta: row.itbisVigenteHasta,
+    itbisAplicaRetencionITBIS: row.itbisAplicaRetencionITBIS,
+    activo: row.activo,
+    version: row.version,
+  };
+}
+
+function buildConsultaWhere(
+  ctx: TenantCtx,
+  query: ConsultarProductosQuery,
+): Prisma.ProductoWhereInput {
+  const where: Prisma.ProductoWhereInput = { empresaId: ctx.empresaId };
+  if (query.estado === "activos") where.activo = true;
+  else if (query.estado === "inactivos") where.activo = false;
+  if (query.categoriaId !== undefined) where.categoriaId = query.categoriaId;
+  const term = query.busqueda?.trim() ?? "";
+  if (term.length > 0) {
+    where.OR = [
+      { nombre: { contains: term, mode: "insensitive" } },
+      { descripcion: { contains: term, mode: "insensitive" } },
+      { codigo: { contains: term, mode: "insensitive" } },
+    ];
+  }
+  return where;
+}
+
+/** One page of the filtered projection, ordered by codigo like the old listing. */
+export async function consultarProductosEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  query: ConsultarProductosQuery,
+): Promise<ProductoConsultaFila[]> {
+  const rows = await tx.producto.findMany({
+    where: buildConsultaWhere(ctx, query),
+    select: productoConsultaSelect,
+    orderBy: { codigo: "asc" },
+    skip: (query.page - 1) * query.limit,
+    take: query.limit,
+  });
+  return rows.map(toProductoConsultaFila);
+}
+
+export async function contarConsultaProductosEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  query: ConsultarProductosQuery,
+): Promise<number> {
+  return tx.producto.count({ where: buildConsultaWhere(ctx, query) });
+}
+
+/** Tenant-filtered single product with its projection and row version. */
+export async function obtenerProductoDetalleEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  id: number,
+): Promise<ProductoConsultaFila | null> {
+  const row = await tx.producto.findFirst({
+    where: { id, empresaId },
+    select: productoConsultaSelect,
+  });
+  return row === null ? null : toProductoConsultaFila(row);
+}
+
+/** Active categories of the company, for the screen's category selector. */
+export async function listarCategoriasProductoEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+): Promise<CategoriaOpcion[]> {
+  return tx.categoria.findMany({
+    where: { empresaId: ctx.empresaId, activa: true },
+    select: { id: true, nombre: true },
+    orderBy: { nombre: "asc" },
+  });
 }
 
 export async function existeCodigoEnEmpresa(
@@ -141,6 +299,7 @@ export async function obtenerProductoPorId(
 
 export interface ActualizarProductoData {
   nombre?: string;
+  unidadMedida?: string;
   descripcion?: string | null;
   precioVenta?: Prisma.Decimal;
   tasaItbis?: TasaItbis;
@@ -291,7 +450,7 @@ export async function crearProductoEnTx(
         nombre: input.nombre,
         descripcion: input.descripcion ?? null,
         codigoBarras: "",
-        unidadMedida: "",
+        unidadMedida: input.unidadMedida ?? "",
         unidadEmpaque: "",
         stockMinimo: 0,
         precioCompra: new Prisma.Decimal("0"),

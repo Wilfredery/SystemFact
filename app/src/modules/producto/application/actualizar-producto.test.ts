@@ -54,6 +54,7 @@ function makeProducto(overrides: Partial<Producto> = {}): Producto {
     codigo: "LAPTOP-001",
     nombre: "Laptop",
     descripcion: null,
+    unidadMedida: "",
     precioVenta: new Decimal("50000.00"),
     itbis: {
       tasa: "18",
@@ -359,5 +360,54 @@ describe("actualizarProducto", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(VALIDATION_ERROR);
     expect(obtenerProductoPorId).not.toHaveBeenCalled();
+  });
+});
+
+describe("actualizarProducto — unidad (S1)", () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+  });
+
+  it("patches unidadMedida and audits the old and new unit", async () => {
+    (obtenerProductoPorId as jest.Mock).mockResolvedValue({
+      producto: makeProducto({ unidadMedida: "Libra" }),
+      version: 2,
+    });
+    (actualizarProductoEnTx as jest.Mock).mockResolvedValue({
+      updated: true,
+      newVersion: 3,
+    });
+
+    const result = await actualizarProducto(makeTx(), ctx, {
+      id: 10,
+      version: 2,
+      unidadMedida: "Caja",
+    });
+
+    expect(result.ok).toBe(true);
+    const data = (actualizarProductoEnTx as jest.Mock).mock.calls[0][4];
+    expect(data).toEqual({ unidadMedida: "Caja" });
+    const [oldVals, newVals] = (registrarProductoActualizadoEnTx as jest.Mock).mock
+      .calls[0].slice(3);
+    expect(oldVals).toEqual({ unidadMedida: "Libra" });
+    expect(newVals).toEqual({ unidadMedida: "Caja" });
+  });
+
+  it("the same unit is a no-op in the audit while the patch is still applied", async () => {
+    (obtenerProductoPorId as jest.Mock).mockResolvedValue({
+      producto: makeProducto({ unidadMedida: "Libra" }),
+      version: 2,
+    });
+    (actualizarProductoEnTx as jest.Mock).mockResolvedValue({
+      updated: true,
+      newVersion: 3,
+    });
+
+    await actualizarProducto(makeTx(), ctx, { id: 10, version: 2, unidadMedida: "Libra" });
+
+    const [oldVals, newVals] = (registrarProductoActualizadoEnTx as jest.Mock).mock
+      .calls[0].slice(3);
+    expect(oldVals).toEqual({});
+    expect(newVals).toEqual({});
   });
 });

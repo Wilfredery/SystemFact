@@ -69,6 +69,7 @@ describe("crearProducto", () => {
       codigo: "LAPTOP-001",
       nombre: "Laptop",
       descripcion: null,
+      unidadMedida: "",
       precioVenta: new Decimal("50000.00"),
       itbis: {
         tasa: "18",
@@ -178,5 +179,71 @@ describe("crearProducto", () => {
     if (!result.ok) {
       expect(result.code).toBe(PRECIO_BASE_INVALIDO);
     }
+  });
+});
+
+describe("crearProducto — unidad (S1)", () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+  });
+
+  it("passes unidadMedida through to the repository create call", async () => {
+    const tx = makeTx();
+    (existeCodigoEnEmpresa as jest.Mock).mockResolvedValue(false);
+    (categoriaPerteneceAEmpresa as jest.Mock).mockResolvedValue(true);
+    (crearProductoEnTx as jest.Mock).mockResolvedValue({
+      id: 1,
+      empresaId: 1,
+      categoriaId: 1,
+      codigo: "LAPTOP-001",
+      nombre: "Laptop",
+      descripcion: null,
+      unidadMedida: "",
+      precioVenta: new Decimal("50000.00"),
+      itbis: {
+        tasa: "18",
+        vigenteDesde: new Date("2026-01-01"),
+        vigenteHasta: null,
+        aplicaRetencionITBIS: false,
+      },
+      exento: false,
+      activo: true,
+    });
+
+    const result = await crearProducto(tx, ctx, { ...baseInput, unidadMedida: "Unidad" });
+
+    expect(result.ok).toBe(true);
+    expect((crearProductoEnTx as jest.Mock).mock.calls[0][2]).toMatchObject({
+      unidadMedida: "Unidad",
+    });
+  });
+
+  it("omitting unidadMedida keeps the previous request untouched", async () => {
+    const tx = makeTx();
+    (existeCodigoEnEmpresa as jest.Mock).mockResolvedValue(false);
+    (categoriaPerteneceAEmpresa as jest.Mock).mockResolvedValue(true);
+    (crearProductoEnTx as jest.Mock).mockResolvedValue({
+      id: 1,
+      empresaId: 1,
+      categoriaId: 1,
+      codigo: "LAPTOP-001",
+      nombre: "Laptop",
+      descripcion: null,
+      unidadMedida: "",
+      precioVenta: new Decimal("50000.00"),
+      itbis: {
+        tasa: "18",
+        vigenteDesde: new Date("2026-01-01"),
+        vigenteHasta: null,
+        aplicaRetencionITBIS: false,
+      },
+      exento: false,
+      activo: true,
+    });
+
+    await crearProducto(tx, ctx, baseInput);
+
+    const enviado = (crearProductoEnTx as jest.Mock).mock.calls[0][2];
+    expect(enviado.unidadMedida).toBeUndefined();
   });
 });

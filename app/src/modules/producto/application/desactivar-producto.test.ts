@@ -41,6 +41,7 @@ function makeProducto(overrides: Partial<Producto> = {}): Producto {
     codigo: "LAPTOP-001",
     nombre: "Laptop",
     descripcion: null,
+    unidadMedida: "",
     precioVenta: new Decimal("50000.00"),
     itbis: {
       tasa: "18",
