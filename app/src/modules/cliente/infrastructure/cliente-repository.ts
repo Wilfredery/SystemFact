@@ -27,11 +27,20 @@ import {
  * `decimal.js` Decimal on read — never a float.
  */
 
+/**
+ * The screen's estado filter. `activos` / `inactivos` / `todos`; when it is
+ * absent, the legacy `incluirInactivos` boolean keeps deciding, so callers
+ * written before the Clientes screen keep their behavior.
+ */
+export type EstadoClientesFiltro = "activos" | "inactivos" | "todos";
+
 export interface ListarClientesQuery {
   readonly page: number;
   readonly limit: number;
   readonly buscar?: string;
   readonly incluirInactivos?: boolean;
+  /** Screen estado filter; wins over `incluirInactivos` when present. */
+  readonly estado?: EstadoClientesFiltro;
   /**
    * Regular operator CRUD hides the per-empresa Consumidor Final row. Default
    * false (exclude); only internal provisioning reads set it true. This is the
@@ -107,7 +116,9 @@ function buildWhere(
   query: ListarClientesQuery,
 ): Prisma.ClienteWhereInput {
   const where: Prisma.ClienteWhereInput = { empresaId: ctx.empresaId };
-  if (!query.incluirInactivos) where.activo = true;
+  if (query.estado === "activos") where.activo = true;
+  else if (query.estado === "inactivos") where.activo = false;
+  else if (query.estado !== "todos" && !query.incluirInactivos) where.activo = true;
   if (!query.incluirConsumidorFinal) where.esConsumidorFinal = false;
   if (query.buscar) {
     const or: Prisma.ClienteWhereInput[] = [

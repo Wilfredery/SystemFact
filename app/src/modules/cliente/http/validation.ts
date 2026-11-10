@@ -44,6 +44,9 @@ export const zListarClientesQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   buscar: z.string().trim().min(1).max(100).optional(),
   incluirInactivos: z.coerce.boolean().default(false),
+  // Screen filter (plan Step 3). Optional on purpose: when omitted the legacy
+  // `incluirInactivos` switch still decides, so older callers keep working.
+  estado: z.enum(["activos", "inactivos", "todos"]).optional(),
 });
 
 export type ListarClientesQueryDto = z.infer<typeof zListarClientesQuery>;

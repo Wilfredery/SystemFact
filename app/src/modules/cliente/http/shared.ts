@@ -5,11 +5,24 @@ export type ActionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: { code: ClienteErrorCode; message: string } };
 
-// Regular client management (create/read/list/ordinary edit) is operational:
-// Administrador + Operador per the role matrix.
-export const ROLES_GESTION_CLIENTES = ["Administrador", "Operador"];
-// Credit fields, tipoCliente and deactivation are reserved for Administrador and
-// enforced SERVER-SIDE inside the transaction — never by hiding UI controls.
+// One named group per capability (owner L9: Operador and Despachador are
+// view-only, Administrador manages), so a future change of who may do what is a
+// one-line edit here. Screens and actions read these groups, never a literal
+// role name.
+//
+// View: list and read clients. Operador and Despachador sell and collect, so
+// they must see the client list even though they cannot change it.
+export const ROLES_VER_CLIENTES = ["Administrador", "Operador", "Despachador"];
+
+// Manage: create and edit the ordinary fields (owner L9 / screens plan Step 3).
+export const ROLES_GESTION_CLIENTES = ["Administrador"];
+
+// Credit fields (creditoHabilitado, limiteCredito, plazoCreditoDias,
+// tipoCliente) are Administrador-only even in view mode, and enforced
+// SERVER-SIDE inside the transaction — never by hiding UI controls.
+export const ROLES_GESTION_CREDITO = ["Administrador"];
+
+// Deactivation is a lifecycle decision with fiscal history consequences.
 export const ROLES_ADMIN_ONLY = ["Administrador"];
 
 export function ok<T>(data: T): ActionResult<T> {

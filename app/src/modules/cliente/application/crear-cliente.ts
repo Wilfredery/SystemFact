@@ -4,6 +4,7 @@ import { Decimal } from "decimal.js";
 import {
   LIMITE_CREDITO_DEFAULT,
   PLAZO_CREDITO_DIAS_DEFAULT,
+  TIPO_CLIENTE,
   normalizeIdentificacionFiscal,
   normalizeNombre,
   validarLimitesCredito,
@@ -43,6 +44,22 @@ export interface CrearClienteInput {
 }
 
 export type CrearClienteResult = ClienteResult<Cliente>;
+
+/**
+ * Whether a creation carries credit-bearing data, and therefore needs the
+ * Administrador-only credit group at the action layer (same seam the edit
+ * path uses through `llevaCamposDeCredito`). An explicit
+ * `creditoHabilitado: false` with no limit and a non-CREDITO classification is
+ * an ordinary client, not a credit request.
+ */
+export function llevaCreditoEnCreacion(input: CrearClienteInput): boolean {
+  return (
+    input.creditoHabilitado === true ||
+    input.limiteCredito !== undefined ||
+    input.plazoCreditoDias !== undefined ||
+    input.tipoCliente === TIPO_CLIENTE.CREDITO
+  );
+}
 
 function buildError(
   code: ClienteErrorCode,

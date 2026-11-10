@@ -1,5 +1,5 @@
 import { Decimal } from "decimal.js";
-import { crearCliente } from "./crear-cliente";
+import { crearCliente, llevaCreditoEnCreacion } from "./crear-cliente";
 import {
   existeIdentificacionFiscalEnEmpresa,
   crearClienteEnTx,
@@ -199,5 +199,33 @@ describe("crearCliente", () => {
     const result = await crearCliente(makeTx(), ctx, inputValido);
     expect(result.ok === false && result.code).toBe(CLIENTE_IDENTIFICACION_DUPLICADA);
     expect(registrarAuditClienteEnTx).not.toHaveBeenCalled();
+  });
+});
+
+describe("llevaCreditoEnCreacion (Clientes screen S3: credit is admin-only)", () => {
+  const base = {
+    nombre: "Acme SRL",
+    telefono: "809-555-0000",
+    direccion: "Av. 1",
+    tipoCliente: "MAYORISTA" as const,
+  };
+
+  it("a plain client without credit fields carries no credit", () => {
+    expect(llevaCreditoEnCreacion(base)).toBe(false);
+  });
+
+  it("any credit-bearing field makes the creation credit-bearing", () => {
+    expect(llevaCreditoEnCreacion({ ...base, creditoHabilitado: true })).toBe(true);
+    expect(llevaCreditoEnCreacion({ ...base, limiteCredito: "500.00" })).toBe(true);
+    expect(llevaCreditoEnCreacion({ ...base, plazoCreditoDias: 15 })).toBe(true);
+    expect(
+      llevaCreditoEnCreacion({ ...base, tipoCliente: "CREDITO" }),
+    ).toBe(true);
+  });
+
+  it("an explicit creditoHabilitado=false with no limit is not credit", () => {
+    expect(
+      llevaCreditoEnCreacion({ ...base, creditoHabilitado: false }),
+    ).toBe(false);
   });
 });

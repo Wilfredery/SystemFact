@@ -284,6 +284,34 @@ describe("cliente-repository", () => {
     });
   });
 
+  describe("listarClientesEnEmpresa — estado filter (Clientes screen S1)", () => {
+    it("estado activos keeps the active-only default", async () => {
+      const tx = makeTx();
+      await listarClientesEnEmpresa(tx, ctx, { page: 1, limit: 25, estado: "activos" });
+      const arg = (tx.cliente.findMany as jest.Mock).mock.calls[0][0];
+      expect(arg.where).toEqual({ empresaId: 1, activo: true, esConsumidorFinal: false });
+    });
+
+    it("estado inactivos lists only the retired rows, still tenant-scoped", async () => {
+      const tx = makeTx();
+      await listarClientesEnEmpresa(tx, ctx, { page: 1, limit: 25, estado: "inactivos" });
+      const arg = (tx.cliente.findMany as jest.Mock).mock.calls[0][0];
+      expect(arg.where).toEqual({ empresaId: 1, activo: false, esConsumidorFinal: false });
+    });
+
+    it("estado todos drops the active filter (and wins over incluirInactivos)", async () => {
+      const tx = makeTx();
+      await listarClientesEnEmpresa(tx, ctx, {
+        page: 1,
+        limit: 25,
+        estado: "todos",
+        incluirInactivos: false,
+      });
+      const arg = (tx.cliente.findMany as jest.Mock).mock.calls[0][0];
+      expect(arg.where).toEqual({ empresaId: 1, esConsumidorFinal: false });
+    });
+  });
+
   describe("tieneVentasNoCanceladas", () => {
     it("CLT-GUARD-A: real Venta probe counts non-CANCELADA sales in tenant", async () => {
       const tx = makeTx();
