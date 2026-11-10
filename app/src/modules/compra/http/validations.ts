@@ -17,9 +17,11 @@
 
 import { z } from "@/lib/zod";
 import {
+  ESTADO_COMPRA,
   NCF_COMPRA_REGEX,
   TIPO_COMPRA,
   TIPO_NCF_COMPRA,
+  type EstadoCompraCore,
   type TipoCompra,
   type TipoNcfCompra,
 } from "../domain/compra";
@@ -29,6 +31,10 @@ import { RE_CANTIDAD, RE_COSTO_UNITARIO } from "../domain/calculators";
 // silently desync the transport (the same no-drift goal as RE_CANTIDAD above).
 const zTipoCompra = z.enum(
   Object.values(TIPO_COMPRA) as [TipoCompra, ...TipoCompra[]],
+);
+
+const zEstadoCompra = z.enum(
+  Object.values(ESTADO_COMPRA) as [EstadoCompraCore, ...EstadoCompraCore[]],
 );
 
 const zTipoNcfCompra = z.enum(
@@ -92,10 +98,23 @@ export const zRecibirCompraInput = z.object({
 });
 export type RecibirCompraInputDto = z.infer<typeof zRecibirCompraInput>;
 
+// A cleared filter field arrives as "" from the screen: it means "no filter",
+// not a value to reject (inventario consulta precedent).
+const vacioAUndefined = (v: unknown) => (v === "" || v === null ? undefined : v);
+
+// Filtered listing (screens plan Step 6, S7). Every filter is optional and
+// AND-combined; `estado`/`tipoCompra` accept only the domain literals, so an
+// out-of-scope state (PAGADA) dies at the boundary.
 export const zListarComprasQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   // max 100 is the hard pagination ceiling (19-directivas §Performance).
   limit: z.coerce.number().int().min(1).max(100).default(25),
+  estado: z.preprocess(vacioAUndefined, zEstadoCompra.optional()),
+  tipoCompra: z.preprocess(vacioAUndefined, zTipoCompra.optional()),
+  proveedorBusqueda: z.preprocess(
+    vacioAUndefined,
+    z.string().trim().max(100).optional(),
+  ),
 });
 export type ListarComprasQueryDto = z.infer<typeof zListarComprasQuery>;
 

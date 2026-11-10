@@ -19,8 +19,14 @@ import {
   ok,
   error,
   resolverCtx,
-  ROLES_ADMIN_ONLY,
+  ROLES_VER_COMPRAS,
+  ROLES_GESTION_COMPRAS,
 } from "./shared";
+
+// Reads are a VIEW capability (screens plan Step 6, S3): the purchase list and
+// detail are open to Administrador, Operador and Despachador through the named
+// view group. The manage group only decides the write actions and the screen's
+// manage controls.
 
 export async function listarComprasAction(
   query: unknown,
@@ -52,10 +58,10 @@ export async function listarComprasAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_ADMIN_ONLY,
+      ROLES_VER_COMPRAS,
     );
     if (!permitido) {
-      return error(NO_AUTORIZADO, "Solo un administrador puede listar compras");
+      return error(NO_AUTORIZADO, "No tiene permisos para listar compras");
     }
     const result = await listarCompras(tx, ctx, parsed.data);
     if (!result.ok) return error(result.code, result.message);
@@ -118,10 +124,10 @@ export async function obtenerCompraAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_ADMIN_ONLY,
+      ROLES_VER_COMPRAS,
     );
     if (!permitido) {
-      return error(NO_AUTORIZADO, "Solo un administrador puede ver compras");
+      return error(NO_AUTORIZADO, "No tiene permisos para ver compras");
     }
     const result = await obtenerCompra(tx, ctx, parsed.data);
     if (!result.ok) return error(result.code, result.message);
@@ -151,5 +157,30 @@ export async function obtenerCompraAction(
         subtotalLinea: l.subtotalLinea,
       })),
     });
+  });
+}
+
+/**
+ * Whether the caller may create, edit, confirm, cancel and receive purchases,
+ * answered from the named manage group so the screen never names a role. It is
+ * only a UI question (show or hide the manage controls); each write action
+ * re-checks on the server.
+ */
+export async function obtenerPermisosCompraAction(): Promise<
+  ActionResult<{ puedeGestionar: boolean }>
+> {
+  const ctx = await resolverCtx();
+  if (ctx === null) {
+    return error(SESION_INVALIDA, messageFor(SESION_INVALIDA));
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const puedeGestionar = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_GESTION_COMPRAS,
+    );
+    return ok({ puedeGestionar });
   });
 }

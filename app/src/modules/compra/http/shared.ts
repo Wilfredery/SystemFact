@@ -6,10 +6,18 @@ export type ActionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: { code: CompraErrorCode; message: string } };
 
-// Compra-core is an operational/management capability reserved for the tenant
-// Administrador (product decision 7 / role matrix 04). Server-side enforcement
-// is the control — hiding UI buttons is not security.
-export const ROLES_ADMIN_ONLY = ["Administrador"];
+// One named group per capability (screens plan Step 6, S3), so a future change
+// of who may do what is a one-line edit here. Screens and actions read these
+// groups, never a literal role name.
+//
+// View: list and read purchases (and the permissions probe). Operador and
+// Despachador receive purchases, so they must see the purchase list even though
+// they cannot change it.
+export const ROLES_VER_COMPRAS = ["Administrador", "Operador", "Despachador"];
+
+// Manage: create, edit, confirm, cancel and receive purchases. Server-side
+// enforcement is the control — hiding UI buttons is not security.
+export const ROLES_GESTION_COMPRAS = ["Administrador"];
 
 export function ok<T>(data: T): ActionResult<T> {
   return { ok: true, data };

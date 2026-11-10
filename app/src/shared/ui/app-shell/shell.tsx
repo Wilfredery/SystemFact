@@ -24,7 +24,7 @@ const NAV_ITEMS: readonly SidebarItemDef[] = [
   { label: "Productos", href: "/productos" },
   { label: "Clientes", href: "/clientes" },
   { label: "Proveedores", href: "/proveedores" },
-  { label: "Compras", disabled: true },
+  { label: "Compras", href: "/compras" },
   { label: "Caja", disabled: true },
   { label: "Reportes", href: "/reportes" },
   { label: "Administración", disabled: true },
