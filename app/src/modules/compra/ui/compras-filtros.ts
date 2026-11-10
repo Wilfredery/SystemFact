@@ -100,3 +100,18 @@ export function construirQueryCompras(filtros: FiltrosCompras, page: number) {
     ...(proveedorBusqueda === "" ? {} : { proveedorBusqueda }),
   };
 }
+
+/**
+ * The `/compras` URL for a CxP page (T4/S8): the read-only payable section
+ * paginates through the SAME route, keeping the Compras list filters the user
+ * had chosen so switching pages never resets their search.
+ */
+export function construirHrefCxP(filtros: FiltrosCompras, page: number): string {
+  const params = new URLSearchParams();
+  const proveedorBusqueda = filtros.proveedorBusqueda.trim();
+  if (proveedorBusqueda !== "") params.set("proveedorBusqueda", proveedorBusqueda);
+  if (filtros.estado !== "") params.set("estado", filtros.estado);
+  if (filtros.tipoCompra !== "") params.set("tipoCompra", filtros.tipoCompra);
+  params.set("cxpPage", String(page));
+  return `/compras?${params.toString()}`;
+}

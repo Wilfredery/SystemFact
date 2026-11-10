@@ -13,12 +13,13 @@
  */
 
 import "@testing-library/jest-dom";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import ComprasPage from "@/app/(app)/compras/page";
 import {
   listarComprasAction,
   obtenerPermisosCompraAction,
 } from "@/modules/compra/http/actions";
+import { consultarCxPAction } from "@/modules/reportes/http/actions.lectura";
 import { getCurrentTenantHeader } from "@/modules/tenant/infrastructure/tenant-runtime";
 import type { CompraFila } from "@/modules/compra/ui/compras-filtros";
 
@@ -44,6 +45,10 @@ jest.mock("@/modules/compra/http/actions", () => ({
   obtenerPermisosCompraAction: jest.fn(),
 }));
 
+jest.mock("@/modules/reportes/http/actions.lectura", () => ({
+  consultarCxPAction: jest.fn(),
+}));
+
 const redirect = jest.fn((destino: string): never => {
   throw new Error(`NEXT_REDIRECT:${destino}`);
 });
@@ -55,6 +60,7 @@ jest.mock("next/navigation", () => ({
 
 const mockListar = jest.mocked(listarComprasAction);
 const mockPermisos = jest.mocked(obtenerPermisosCompraAction);
+const mockCxP = jest.mocked(consultarCxPAction);
 const mockContexto = jest.mocked(getCurrentTenantHeader);
 
 const BORRADOR: CompraFila = {
@@ -72,6 +78,30 @@ function salida() {
   return { items: [BORRADOR], total: 1, page: 1 };
 }
 
+function salidaCxP() {
+  return {
+    filas: [
+      {
+        compraId: 31,
+        proveedorId: 4,
+        proveedorNombre: "Distribuidora Norte",
+        sucursalId: 1,
+        sucursalNombre: "Sucursal Central",
+        fechaSD: "2026-11-09",
+        estado: "PENDIENTE" as const,
+        total: "1234.50",
+        pagado: "234.50",
+        saldoPendiente: "1000.00",
+      },
+    ],
+    total: 1,
+    page: 1,
+    pageSize: 25,
+    totalPages: 1,
+    resumen: { saldoTotal: "1000.00", comprasAbiertas: "1" },
+  };
+}
+
 async function renderizarPagina(
   params: Record<string, string | string[]> = {},
 ): Promise<void> {
@@ -81,7 +111,9 @@ async function renderizarPagina(
 beforeEach(() => {
   mockListar.mockReset();
   mockPermisos.mockReset();
+  mockCxP.mockReset();
   redirect.mockClear();
+  mockCxP.mockResolvedValue({ ok: true, data: salidaCxP() });
   mockContexto.mockResolvedValue({
     empresaId: 1,
     sucursalId: 1,
@@ -124,6 +156,60 @@ describe("ComprasPage — manage gate (S4)", () => {
 
     expect(screen.getByTestId("compra-fila-7")).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Acciones" })).toBeNull();
+  });
+});
+
+describe("ComprasPage — CxP section (T4: S8)", () => {
+  it("renders the read-only CxP table for an Administrador caller", async () => {
+    mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeGestionar: true } });
+
+    await renderizarPagina();
+
+    const seccion = screen.getByRole("region", { name: "Cuentas por pagar" });
+    expect(within(seccion).getByTestId("cxp-fila-31")).toBeInTheDocument();
+    expect(within(seccion).getByText("Distribuidora Norte")).toBeInTheDocument();
+    // The Compras list stays intact beside it (smaller diff: a second section).
+    expect(screen.getByTestId("compra-fila-7")).toBeInTheDocument();
+    // Pagination follows the report action's own contract (25/page, unbounded window).
+    expect(mockCxP).toHaveBeenCalledWith({ page: 1, pageSize: 25 });
+  });
+
+  it("forwards the CxP page from the URL", async () => {
+    mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeGestionar: true } });
+
+    await renderizarPagina({ cxpPage: "2" });
+
+    expect(mockCxP).toHaveBeenCalledWith({ page: 2, pageSize: 25 });
+  });
+
+  it("renders no CxP section and never reads it for a non-Administrador caller (FIN-3)", async () => {
+    mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeGestionar: false } });
+
+    await renderizarPagina();
+
+    expect(screen.queryByRole("region", { name: "Cuentas por pagar" })).toBeNull();
+    expect(mockCxP).not.toHaveBeenCalled();
+  });
+
+  it("renders no CxP section when the report gate refuses the read", async () => {
+    mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeGestionar: true } });
+    mockCxP.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "REPORTE_NO_AUTORIZADO", message: "No tiene permisos" },
+    });
+
+    await renderizarPagina();
+
+    expect(screen.queryByRole("region", { name: "Cuentas por pagar" })).toBeNull();
+  });
+
+  it("exposes no write control inside the CxP section", async () => {
+    mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeGestionar: true } });
+
+    await renderizarPagina();
+
+    const seccion = screen.getByRole("region", { name: "Cuentas por pagar" });
+    expect(within(seccion).queryAllByRole("button")).toHaveLength(0);
   });
 });
 

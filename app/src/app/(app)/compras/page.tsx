@@ -16,6 +16,15 @@
  * from `getCurrentTenantHeader`, the same identity read with the display names
  * the shell header uses. The backend still takes `sucursalId` from the session
  * context — there is deliberately no branch selector here.
+ *
+ * T4/S8 — the read-only CxP (cuentas por pagar) section below the list. It is
+ * Administrador-only (FIN-3, a Cobrador is denied) and that gate is SERVER-SIDE,
+ * never CSS: the SAME permission seam the Acciones column uses (
+ * `obtenerPermisosCompraAction`, whose `ROLES_GESTION_COMPRAS` group is exactly
+ * Administrador) decides whether the report read is issued at all, and the
+ * report's own use case re-checks its role gate before any aggregate. A refusal
+ * or a failed gate simply renders no section. There is no payment-creation
+ * surface: the view is read-only by design (YAGNI).
  */
 
 import { redirect } from "next/navigation";
@@ -25,10 +34,14 @@ import {
   listarComprasAction,
   obtenerPermisosCompraAction,
 } from "@/modules/compra/http/actions";
+import { consultarCxPAction } from "@/modules/reportes/http/actions.lectura";
 import { ComprasScreen, type ComprasInicial } from "@/modules/compra/ui/ComprasScreen";
+import { CxpPanel } from "@/modules/compra/ui/CxpPanel";
 import {
   ESTADOS_COMPRA_FILTRO,
+  TAMANO_PAGINA,
   TIPOS_COMPRA_FILTRO,
+  construirHrefCxP,
   construirQueryCompras,
   type FiltrosCompras,
 } from "@/modules/compra/ui/compras-filtros";
@@ -83,6 +96,15 @@ export default async function ComprasPage({
     ? { ok: true, data: resultado.data }
     : { ok: false, message: resultado.error.message };
 
+  // S8: the payable read is issued ONLY for the Administrador capability, and
+  // the report use case re-checks its own gate. Anything but a successful read
+  // yields no section — never an empty shell and never a client-side hide.
+  const cxpPage = enteroPositivo(params.cxpPage) ?? 1;
+  const cxp = puedeGestionar
+    ? await consultarCxPAction({ page: cxpPage, pageSize: TAMANO_PAGINA })
+    : null;
+  const cxpPagina = cxp !== null && cxp.ok ? cxp.data : null;
+
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
       <div className="mb-6 flex items-center justify-between gap-4">
@@ -94,6 +116,12 @@ export default async function ComprasPage({
         puedeGestionar={puedeGestionar}
         sucursalNombre={ctx.sucursalNombre}
       />
+      {cxpPagina !== null && (
+        <CxpPanel
+          pagina={cxpPagina}
+          hrefPagina={(page) => construirHrefCxP(filtros, page)}
+        />
+      )}
     </main>
   );
 }
