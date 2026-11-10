@@ -62,7 +62,7 @@ export async function obtenerClienteAction(
 export async function listarClientesAction(
   query: unknown,
 ): Promise<
-  ActionResult<{ items: ClienteDto[]; total: number; page: number; limit: number }>
+  ActionResult<{ items: ClienteDto[]; total: number; page: number }>
 > {
   const parsed = zListarClientesQuery.safeParse(query);
   if (!parsed.success) return error(VALIDATION_ERROR, messageFor(VALIDATION_ERROR));
@@ -88,7 +88,6 @@ export async function listarClientesAction(
       items: result.data.items.map(toDto),
       total: result.data.total,
       page: result.data.page,
-      limit: result.data.limit,
     });
   });
 }

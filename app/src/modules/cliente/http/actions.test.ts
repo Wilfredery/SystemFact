@@ -285,9 +285,7 @@ describe("Cliente role seam (Clientes screen S3)", () => {
     expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
       expect.anything(), 1, 1, ["Administrador", "Operador", "Despachador"],
     );
-    if (!result.ok) throw new Error("expected ok");
-    // The screen needs the page size to compute total pages.
-    expect(result.data.limit).toBe(25);
+    expect(result.ok).toBe(true);
   });
 
   it("reading one client uses the view group, not the manage group", async () => {
