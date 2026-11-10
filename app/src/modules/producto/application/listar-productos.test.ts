@@ -40,6 +40,7 @@ function makeProducto(id: number, codigo: string, descripcion?: string) {
     codigo,
     nombre: `Producto ${codigo}`,
     descripcion: (descripcion ?? null) as string | null,
+    unidadMedida: "",
     precioVenta: new Decimal("100.00"),
     itbis: {
       tasa: "18" as const,

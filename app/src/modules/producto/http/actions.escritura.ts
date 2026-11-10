@@ -62,9 +62,12 @@ export async function crearProductoAction(
       codigo: parsed.codigo,
       nombre: parsed.nombre,
       descripcion: parsed.descripcion,
+      unidadMedida: parsed.unidadMedida,
       precioVenta: new Prisma.Decimal(parsed.precioVenta),
       itbisTasa: parsed.itbisTasa,
-      itbisVigenteDesde: parsed.itbisVigenteDesde,
+      // The screen does not expose the ITBIS validity window: a creation starts
+      // its window now. An explicit date from another caller still wins.
+      itbisVigenteDesde: parsed.itbisVigenteDesde ?? new Date(),
       itbisVigenteHasta: parsed.itbisVigenteHasta ?? null,
       itbisAplicaRetencionITBIS: parsed.itbisAplicaRetencionITBIS,
     });
@@ -111,6 +114,9 @@ export async function actualizarProductoAction(
       ...(parsed.nombre !== undefined ? { nombre: parsed.nombre } : {}),
       ...(parsed.descripcion !== undefined
         ? { descripcion: parsed.descripcion }
+        : {}),
+      ...(parsed.unidadMedida !== undefined
+        ? { unidadMedida: parsed.unidadMedida }
         : {}),
       ...(parsed.precioVenta !== undefined
         ? { precioVenta: new Prisma.Decimal(parsed.precioVenta) }
