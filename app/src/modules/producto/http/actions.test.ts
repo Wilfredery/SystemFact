@@ -689,7 +689,15 @@ describe("unidad in the write actions (S1)", () => {
     mockSupabase();
     (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
     (crearProducto as jest.Mock).mockResolvedValue(mockProductoResult());
-    const { itbisVigenteDesde: _omitido, ...sinVigencia } = validInput;
+    const sinVigencia = {
+      categoriaId: validInput.categoriaId,
+      codigo: validInput.codigo,
+      nombre: validInput.nombre,
+      precioVenta: validInput.precioVenta,
+      itbisTasa: validInput.itbisTasa,
+      itbisVigenteHasta: validInput.itbisVigenteHasta,
+      itbisAplicaRetencionITBIS: validInput.itbisAplicaRetencionITBIS,
+    };
 
     const result = await crearProductoAction(sinVigencia);
 
