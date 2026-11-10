@@ -863,18 +863,47 @@ export async function bloquearInventarioSucursalEnTx(
   ctx: TenantCtx,
   productoId: number,
 ): Promise<{ inventarioId: number; cantidad: Decimal }> {
-  const ensured = await tx.inventario.upsert({
-    where: {
-      sucursalId_productoId: { sucursalId: ctx.sucursalId, productoId },
-    },
-    update: {},
-    create: {
-      sucursalId: ctx.sucursalId,
-      productoId,
-      cantidad: new Prisma.Decimal(0),
-    },
-    select: { id: true },
-  });
+  // Prisma's upsert is find-then-insert, not atomic: when the row does not
+  // exist yet, two concurrent transactions can both take the create path and
+  // the loser hits `INVENTARIO_sucursalId_productoId_key` (P2002) once the
+  // winner commits. The loser then retries the upsert: the winning row is now
+  // committed-visible, so the retry takes the update path and returns it
+  // ("loser refetches the winner", the same pattern as the cliente repository).
+  let ensured: { id: number };
+  try {
+    ensured = await tx.inventario.upsert({
+      where: {
+        sucursalId_productoId: { sucursalId: ctx.sucursalId, productoId },
+      },
+      update: {},
+      create: {
+        sucursalId: ctx.sucursalId,
+        productoId,
+        cantidad: new Prisma.Decimal(0),
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      ensured = await tx.inventario.upsert({
+        where: {
+          sucursalId_productoId: { sucursalId: ctx.sucursalId, productoId },
+        },
+        update: {},
+        create: {
+          sucursalId: ctx.sucursalId,
+          productoId,
+          cantidad: new Prisma.Decimal(0),
+        },
+        select: { id: true },
+      });
+    } else {
+      throw err;
+    }
+  }
 
   const locked = await tx.$queryRaw<{ cantidad: Prisma.Decimal }[]>`
     SELECT "cantidad" FROM "INVENTARIO" WHERE "id" = ${ensured.id} FOR UPDATE`;
