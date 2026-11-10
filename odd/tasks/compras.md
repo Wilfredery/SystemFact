@@ -23,6 +23,11 @@ Feature branch: `feature/screens-compras` · target version 0.25.0 · issue-firs
 - T4 (S8) CxP read-only tab
 - T5 (S9,S10) E2E spec + e2e seed roles check + version bump + tracker log
 
+## Slices
+
+- Slice A (T1, commit 9eee269): backend role groups + permisos + filtered listing.
+- Slice B (T2, commit 548d5ee, list screen + RTL specs; gga pre-commit review PASSED): list page, filters, nav entry enabled.
+
 ## Log
 
 - L1 (2026-11-10): "Continue with step 6: compras" — original request verbatim.
