@@ -863,47 +863,27 @@ export async function bloquearInventarioSucursalEnTx(
   ctx: TenantCtx,
   productoId: number,
 ): Promise<{ inventarioId: number; cantidad: Decimal }> {
-  // Prisma's upsert is find-then-insert, not atomic: when the row does not
-  // exist yet, two concurrent transactions can both take the create path and
-  // the loser hits `INVENTARIO_sucursalId_productoId_key` (P2002) once the
-  // winner commits. The loser then retries the upsert: the winning row is now
-  // committed-visible, so the retry takes the update path and returns it
-  // ("loser refetches the winner", the same pattern as the cliente repository).
-  let ensured: { id: number };
-  try {
-    ensured = await tx.inventario.upsert({
-      where: {
-        sucursalId_productoId: { sucursalId: ctx.sucursalId, productoId },
-      },
-      update: {},
-      create: {
-        sucursalId: ctx.sucursalId,
-        productoId,
-        cantidad: new Prisma.Decimal(0),
-      },
-      select: { id: true },
+  // A plain Prisma upsert is find-then-insert, not atomic: when the row does
+  // not exist yet, two concurrent transactions can both take the create path
+  // and the loser hits `INVENTARIO_sucursalId_productoId_key` (P2002). The
+  // violation aborts the loser's whole transaction (25P02), so it cannot be
+  // caught and retried inside it. The atomic INSERT ... ON CONFLICT DO NOTHING
+  // instead WAITS on the concurrent uncommitted insert and no-ops once the
+  // winner commits, so both transactions proceed to lock the single row below.
+  await tx.$executeRaw`
+    INSERT INTO "INVENTARIO" ("sucursalId", "productoId", "cantidad")
+    VALUES (${ctx.sucursalId}, ${productoId}, ${new Prisma.Decimal(0)})
+    ON CONFLICT ("sucursalId", "productoId") DO NOTHING`;
+  const ensuredRows = await tx.$queryRaw<{ id: number }[]>`
+    SELECT "id" FROM "INVENTARIO"
+    WHERE "sucursalId" = ${ctx.sucursalId} AND "productoId" = ${productoId}`;
+  if (ensuredRows.length === 0) {
+    throw new InventarioDomainError(INVENTARIO_NO_ENCONTRADO, {
+      sucursalId: ctx.sucursalId,
+      productoId,
     });
-  } catch (err) {
-    if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002"
-    ) {
-      ensured = await tx.inventario.upsert({
-        where: {
-          sucursalId_productoId: { sucursalId: ctx.sucursalId, productoId },
-        },
-        update: {},
-        create: {
-          sucursalId: ctx.sucursalId,
-          productoId,
-          cantidad: new Prisma.Decimal(0),
-        },
-        select: { id: true },
-      });
-    } else {
-      throw err;
-    }
   }
+  const ensured = { id: ensuredRows[0].id };
 
   const locked = await tx.$queryRaw<{ cantidad: Prisma.Decimal }[]>`
     SELECT "cantidad" FROM "INVENTARIO" WHERE "id" = ${ensured.id} FOR UPDATE`;
