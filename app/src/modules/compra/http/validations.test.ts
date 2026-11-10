@@ -8,7 +8,11 @@
  * with the stable Spanish message "ncf inválido".
  */
 
-import { zActualizarCompraInput, zCrearCompraInput } from "./validations";
+import {
+  zActualizarCompraInput,
+  zCrearCompraInput,
+  zListarComprasQuery,
+} from "./validations";
 
 /** Minimal payload accepted by zCrearCompraInput (everything else is optional). */
 const CREAR_MINIMO = {
@@ -138,5 +142,54 @@ describe("zActualizarCompraInput — ncf", () => {
     const r = zActualizarCompraInput.safeParse({ ...ACTUALIZAR_MINIMO, id: 0 });
     expect(r.success).toBe(false);
     expect((r.error?.issues ?? []).map((i) => i.path[0])).toContain("id");
+  });
+});
+
+/**
+ * S7 — the filtered listing query. Only estado/tipoCompra/estado values the
+ * domain actually declares may pass; a cleared filter is "no filter".
+ */
+describe("zListarComprasQuery — filters", () => {
+  it("accepts every estado and tipoCompra literal of the domain", async () => {
+    for (const estado of ["BORRADOR", "PENDIENTE", "RECIBIDA", "CANCELADA"]) {
+      expect(zListarComprasQuery.safeParse({ estado }).success).toBe(true);
+    }
+    for (const tipoCompra of [
+      "MERCANCIA",
+      "SERVICIO_PROFESIONAL",
+      "SERVICIO_TECNICO",
+      "ALQUILER",
+    ]) {
+      expect(zListarComprasQuery.safeParse({ tipoCompra }).success).toBe(true);
+    }
+  });
+
+  it("rejects states the domain does not represent (PAGADA is out of scope)", async () => {
+    expect(zListarComprasQuery.safeParse({ estado: "PAGADA" }).success).toBe(false);
+    expect(zListarComprasQuery.safeParse({ tipoCompra: "GASOLINA" }).success).toBe(false);
+  });
+
+  it("trims proveedorBusqueda and treats empty/cleared values as no filter", async () => {
+    const trimmed = zListarComprasQuery.safeParse({ proveedorBusqueda: "  Acme  " });
+    expect(trimmed.success && trimmed.data.proveedorBusqueda).toBe("Acme");
+
+    for (const vacio of ["", null]) {
+      const r = zListarComprasQuery.safeParse({ proveedorBusqueda: vacio });
+      expect(r.success).toBe(true);
+      expect(r.success && r.data.proveedorBusqueda).toBeUndefined();
+    }
+  });
+
+  it("bounds proveedorBusqueda to 100 chars (no unbounded scan term)", async () => {
+    expect(
+      zListarComprasQuery.safeParse({ proveedorBusqueda: "a".repeat(101) }).success,
+    ).toBe(false);
+  });
+
+  it("keeps the pagination contract (defaults 25, ceiling 100)", async () => {
+    const r = zListarComprasQuery.safeParse({});
+    expect(r.success && r.data.limit).toBe(25);
+    expect(r.success && r.data.page).toBe(1);
+    expect(zListarComprasQuery.safeParse({ limit: 101 }).success).toBe(false);
   });
 });

@@ -85,6 +85,22 @@ export interface ProductoParaLinea {
   readonly tasaItbis: string;
 }
 
+/**
+ * Filters of the purchase listing (screens plan Step 6, S7). All optional and
+ * AND-combined on top of the tenant anchor; `proveedorBusqueda` matches the
+ * supplier name case-insensitively.
+ */
+export interface CompraListFiltros {
+  readonly estado?: EstadoCompraCore;
+  readonly tipoCompra?: TipoCompraCore;
+  readonly proveedorBusqueda?: string;
+}
+
+export interface CompraListQuery extends CompraListFiltros {
+  readonly page: number;
+  readonly limit: number;
+}
+
 /** A compact list row (header projection) for paginated listing. */
 export interface CompraListRow {
   readonly id: number;
@@ -561,10 +577,10 @@ export async function recibirCompraEnTx(
 export async function listarComprasEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
-  query: { readonly page: number; readonly limit: number },
+  query: CompraListQuery,
 ): Promise<CompraListRow[]> {
   const rows = await tx.compra.findMany({
-    where: { empresaId: ctx.empresaId },
+    where: compraListWhere(ctx, query),
     select: {
       id: true,
       correlativoInterno: true,
@@ -591,12 +607,36 @@ export async function listarComprasEnTx(
   }));
 }
 
+/**
+ * The one `where` of the listing: the tenant anchor always comes first, then
+ * the optional filters. Page and count share it, so the total always describes
+ * the rows actually shown. A blank search term is not a filter.
+ */
+function compraListWhere(
+  ctx: TenantCtx,
+  query: CompraListFiltros,
+): Prisma.CompraWhereInput {
+  const where: Prisma.CompraWhereInput = { empresaId: ctx.empresaId };
+  if (query.estado !== undefined) {
+    where.estado = query.estado;
+  }
+  if (query.tipoCompra !== undefined) {
+    where.tipoCompra = query.tipoCompra;
+  }
+  const busqueda = query.proveedorBusqueda?.trim();
+  if (busqueda) {
+    where.proveedor = { nombre: { contains: busqueda, mode: "insensitive" } };
+  }
+  return where;
+}
+
 /** Total purchases for the empresa, matching the listing filter. */
 export async function contarComprasEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
+  query: CompraListFiltros,
 ): Promise<number> {
-  return tx.compra.count({ where: { empresaId: ctx.empresaId } });
+  return tx.compra.count({ where: compraListWhere(ctx, query) });
 }
 
 /** Same-empresa detail with supplier and lines, or `null`. */

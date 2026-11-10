@@ -26,12 +26,14 @@ import {
   ok,
   error,
   resolverCtx,
-  ROLES_ADMIN_ONLY,
+  ROLES_GESTION_COMPRAS,
 } from "./shared";
 
 // Session/ctx resolution happens before withTenantTransaction (an auth read,
 // not tenant-DB access); ALL role checks and Prisma access stay inside the wrap
 // below (Producto/Proveedor convention, ESLint server-action-must-wrap-tenant).
+// Every write checks the named MANAGE group (screens plan Step 6, S3), never a
+// literal role name.
 
 export async function crearCompraAction(
   input: unknown,
@@ -50,7 +52,7 @@ export async function crearCompraAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_ADMIN_ONLY,
+      ROLES_GESTION_COMPRAS,
     );
     if (!permitido) {
       return error(NO_AUTORIZADO, "Solo un administrador puede crear compras");
@@ -76,7 +78,7 @@ export async function actualizarCompraAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_ADMIN_ONLY,
+      ROLES_GESTION_COMPRAS,
     );
     if (!permitido) {
       return error(NO_AUTORIZADO, "Solo un administrador puede editar compras");
@@ -111,7 +113,7 @@ export async function confirmarCompraAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_ADMIN_ONLY,
+      ROLES_GESTION_COMPRAS,
     );
     if (!permitido) {
       return error(NO_AUTORIZADO, "Solo un administrador puede confirmar compras");
@@ -137,7 +139,7 @@ export async function cancelarCompraAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_ADMIN_ONLY,
+      ROLES_GESTION_COMPRAS,
     );
     if (!permitido) {
       return error(NO_AUTORIZADO, "Solo un administrador puede cancelar compras");
@@ -164,7 +166,7 @@ export async function recibirCompraAction(
         tx,
         ctx.usuarioId,
         ctx.empresaId,
-        ROLES_ADMIN_ONLY,
+        ROLES_GESTION_COMPRAS,
       );
       if (!permitido) {
         return error(NO_AUTORIZADO, "Solo un administrador puede recibir compras");

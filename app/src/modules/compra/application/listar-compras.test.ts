@@ -68,3 +68,36 @@ describe("obtenerCompra", () => {
     expect(obtenerCompraDetalleEnTx).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * S7 — filtered listing. The filters travel to BOTH the page query and the
+ * count (otherwise the total would describe a different result set); absent
+ * filters are not forwarded at all.
+ */
+describe("listarCompras — filters (S7)", () => {
+  it("forwards estado, tipoCompra and proveedorBusqueda to page and count", async () => {
+    const result = await listarCompras(tx, ctx, {
+      page: 1,
+      limit: 25,
+      estado: "PENDIENTE",
+      tipoCompra: "MERCANCIA",
+      proveedorBusqueda: "Acme",
+    });
+
+    expect(result.ok).toBe(true);
+    const esperado = {
+      page: 1,
+      limit: 25,
+      estado: "PENDIENTE",
+      tipoCompra: "MERCANCIA",
+      proveedorBusqueda: "Acme",
+    };
+    expect(listarComprasEnTx).toHaveBeenCalledWith(tx, ctx, esperado);
+    expect(contarComprasEnTx).toHaveBeenCalledWith(tx, ctx, esperado);
+  });
+
+  it("does not invent filter keys when none is given", async () => {
+    await listarCompras(tx, ctx, { page: 1, limit: 25 });
+    expect(contarComprasEnTx).toHaveBeenCalledWith(tx, ctx, { page: 1, limit: 25 });
+  });
+});

@@ -5,16 +5,28 @@ import {
   messageFor,
   type CompraErrorCode,
 } from "../domain/errors";
-import type { CompraResult } from "../domain/compra";
+import type {
+  CompraResult,
+  EstadoCompraCore,
+  TipoCompra,
+} from "../domain/compra";
 import {
   contarComprasEnTx,
   listarComprasEnTx,
   type CompraListRow,
 } from "../infrastructure/compra-repository";
 
+/**
+ * Filters are optional and AND-combined (screens plan Step 6, S7): the list is
+ * the same tenant-scoped page, narrowed by state, purchase type or a supplier
+ * name search.
+ */
 export interface ListarComprasInput {
   readonly page: number;
   readonly limit: number;
+  readonly estado?: EstadoCompraCore;
+  readonly tipoCompra?: TipoCompra;
+  readonly proveedorBusqueda?: string;
 }
 
 export interface ListarComprasOutput {
@@ -56,9 +68,21 @@ export async function listarCompras(
     };
   }
 
+  // Only the filters actually given travel down, so an absent filter never
+  // becomes a `where` clause, and the page and the count share ONE query shape.
+  const query = {
+    page,
+    limit,
+    ...(input.estado === undefined ? {} : { estado: input.estado }),
+    ...(input.tipoCompra === undefined ? {} : { tipoCompra: input.tipoCompra }),
+    ...(input.proveedorBusqueda === undefined
+      ? {}
+      : { proveedorBusqueda: input.proveedorBusqueda }),
+  };
+
   const [items, total] = await Promise.all([
-    listarComprasEnTx(tx, ctx, { page, limit }),
-    contarComprasEnTx(tx, ctx),
+    listarComprasEnTx(tx, ctx, query),
+    contarComprasEnTx(tx, ctx, query),
   ]);
 
   return { ok: true, data: { items, total, page } };
