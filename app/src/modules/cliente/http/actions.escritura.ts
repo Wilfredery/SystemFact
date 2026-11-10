@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
-import { crearCliente } from "../application/crear-cliente";
+import { crearCliente, llevaCreditoEnCreacion } from "../application/crear-cliente";
 import {
   actualizarCliente,
   llevaCamposDeCredito,
@@ -28,6 +28,7 @@ import {
   error,
   toDto,
   ROLES_GESTION_CLIENTES,
+  ROLES_GESTION_CREDITO,
   ROLES_ADMIN_ONLY,
 } from "./shared";
 
@@ -55,6 +56,23 @@ export async function crearClienteAction(
     );
     if (!permitido) {
       return error(NO_AUTORIZADO, "No tiene permisos para crear clientes");
+    }
+
+    // Credit is Administrador-only even if the manage group is ever widened
+    // (same seam the edit path layers over `llevaCamposDeCredito`).
+    if (llevaCreditoEnCreacion(parsed.data)) {
+      const admin = await tieneRolPermitidoEnTx(
+        tx,
+        ctx.usuarioId,
+        ctx.empresaId,
+        ROLES_GESTION_CREDITO,
+      );
+      if (!admin) {
+        return error(
+          NO_AUTORIZADO,
+          "Solo un administrador puede habilitar crédito o clasificación",
+        );
+      }
     }
 
     const result = await crearCliente(tx, ctx, parsed.data);
@@ -97,7 +115,7 @@ export async function actualizarClienteAction(
         tx,
         ctx.usuarioId,
         ctx.empresaId,
-        ROLES_ADMIN_ONLY,
+        ROLES_GESTION_CREDITO,
       );
       if (!admin) {
         return error(

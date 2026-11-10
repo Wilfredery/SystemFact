@@ -23,7 +23,14 @@ import {
   error,
   toDto,
   ROLES_GESTION_CLIENTES,
+  ROLES_GESTION_CREDITO,
+  ROLES_VER_CLIENTES,
 } from "./shared";
+
+// Reads are a view capability: the Clientes list (plan Step 3, S3/L9) is open to
+// Administrador, Operador and Despachador through the named view group — they
+// sell to and collect from clients. The manage group only decides the write
+// actions and the screen's manage controls.
 
 export async function obtenerClienteAction(
   input: unknown,
@@ -40,7 +47,7 @@ export async function obtenerClienteAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_GESTION_CLIENTES,
+      ROLES_VER_CLIENTES,
     );
     if (!permitido) {
       return error(NO_AUTORIZADO, "No tiene permisos para ver clientes");
@@ -69,7 +76,7 @@ export async function listarClientesAction(
       tx,
       ctx.usuarioId,
       ctx.empresaId,
-      ROLES_GESTION_CLIENTES,
+      ROLES_VER_CLIENTES,
     );
     if (!permitido) {
       return error(NO_AUTORIZADO, "No tiene permisos para listar clientes");
@@ -82,5 +89,39 @@ export async function listarClientesAction(
       total: result.data.total,
       page: result.data.page,
     });
+  });
+}
+
+/**
+ * Whether the caller may create, edit and deactivate clients, and whether the
+ * credit fields are visible to them, answered from the named role groups so the
+ * screen never names a role. It is only a UI question (show or hide the manage
+ * controls and the credit columns); each write action re-checks on the server,
+ * and the credit gate is re-checked there too.
+ */
+export async function obtenerPermisosClienteAction(): Promise<
+  ActionResult<{ puedeGestionar: boolean; puedeVerCredito: boolean }>
+> {
+  const supabase = await createClient();
+  const ctx = await getCurrentTenantContext(supabase);
+  if (ctx === null) {
+    return error(SESION_INVALIDA, messageFor(SESION_INVALIDA));
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    // Sequential on purpose: both queries run on the same transaction client.
+    const puedeGestionar = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_GESTION_CLIENTES,
+    );
+    const puedeVerCredito = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_GESTION_CREDITO,
+    );
+    return ok({ puedeGestionar, puedeVerCredito });
   });
 }

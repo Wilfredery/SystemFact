@@ -79,3 +79,38 @@ describe("listarClientes", () => {
     expect(passed.buscar).toBe("acme");
   });
 });
+
+describe("listarClientes — Clientes screen read contract (S1, S4)", () => {
+  beforeEach(() => jest.resetAllMocks());
+
+  it("returns the page size so the screen can compute total pages", async () => {
+    (listarClientesEnEmpresa as jest.Mock).mockResolvedValue([makeCliente(1)]);
+    (contarClientesEnEmpresa as jest.Mock).mockResolvedValue(1);
+
+    const result = await listarClientes(tx, ctx, { page: 1, limit: 25 });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.limit).toBe(25);
+  });
+
+  it("forwards the estado filter to the tenant-scoped read", async () => {
+    (listarClientesEnEmpresa as jest.Mock).mockResolvedValue([]);
+    (contarClientesEnEmpresa as jest.Mock).mockResolvedValue(0);
+
+    await listarClientes(tx, ctx, { page: 1, limit: 25, estado: "inactivos" });
+
+    const passed = (listarClientesEnEmpresa as jest.Mock).mock.calls[0][2];
+    expect(passed.estado).toBe("inactivos");
+  });
+
+  it("clamps a page past the end to the last page instead of an empty table", async () => {
+    (listarClientesEnEmpresa as jest.Mock).mockResolvedValue([makeCliente(1)]);
+    (contarClientesEnEmpresa as jest.Mock).mockResolvedValue(30);
+
+    const result = await listarClientes(tx, ctx, { page: 5, limit: 25 });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.page).toBe(2);
+    expect((listarClientesEnEmpresa as jest.Mock).mock.calls[0][2].page).toBe(2);
+  });
+});

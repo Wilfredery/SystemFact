@@ -5,6 +5,7 @@ import {
   listarClientesAction,
   actualizarClienteAction,
   desactivarClienteAction,
+  obtenerPermisosClienteAction,
 } from "./actions";
 import { crearCliente } from "../application/crear-cliente";
 import { obtenerCliente } from "../application/obtener-cliente";
@@ -21,7 +22,13 @@ jest.mock("@/modules/tenant/infrastructure/tenant-runtime", () => ({
 jest.mock("@/modules/tenant/infrastructure/withTenantTransaction", () => ({
   withTenantTransaction: jest.fn(),
 }));
-jest.mock("../application/crear-cliente", () => ({ crearCliente: jest.fn() }));
+jest.mock("../application/crear-cliente", () => {
+  const actual = jest.requireActual("../application/crear-cliente");
+  return {
+    crearCliente: jest.fn(),
+    llevaCreditoEnCreacion: actual.llevaCreditoEnCreacion,
+  };
+});
 jest.mock("../application/obtener-cliente", () => ({ obtenerCliente: jest.fn() }));
 jest.mock("../application/listar-clientes", () => ({ listarClientes: jest.fn() }));
 jest.mock("../application/actualizar-cliente", () => {
@@ -84,7 +91,7 @@ const crearInput = {
 };
 
 describe("crearClienteAction", () => {
-  it("happy path returns a Decimal-as-string DTO and requires Admin+Operador", async () => {
+  it("happy path returns a Decimal-as-string DTO and requires the manage group", async () => {
     mockSession();
     (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
     (crearCliente as jest.Mock).mockResolvedValue({ ok: true, data: makeCliente() });
@@ -97,8 +104,11 @@ describe("crearClienteAction", () => {
       expect(result.data.limiteCredito).toBe("0.00");
       expect(result.data.id).toBe(4);
     }
+    // Clientes screen S3 (owner L9): Operador and Despachador are view-only,
+    // so creating a client is Administrador-only. One-line group edit in
+    // http/shared.ts when that changes.
     expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
-      expect.anything(), 1, 1, ["Administrador", "Operador"],
+      expect.anything(), 1, 1, ["Administrador"],
     );
   });
 
@@ -259,5 +269,94 @@ describe("desactivarClienteAction", () => {
     const result = await desactivarClienteAction({ id: 9 });
     expect(result.ok === false && result.error.code).toBe(NO_AUTORIZADO);
     expect(desactivarCliente).not.toHaveBeenCalled();
+  });
+});
+
+describe("Cliente role seam (Clientes screen S3)", () => {
+  it("the list is open to the view group, never to a literal role name", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (listarClientes as jest.Mock).mockResolvedValue({
+      ok: true, data: { items: [makeCliente()], total: 1, page: 1, limit: 25 },
+    });
+
+    const result = await listarClientesAction({ page: 1, limit: 25 });
+
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(), 1, 1, ["Administrador", "Operador", "Despachador"],
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("reading one client uses the view group, not the manage group", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (obtenerCliente as jest.Mock).mockResolvedValue({ ok: true, data: makeCliente() });
+
+    await obtenerClienteAction({ id: 4 });
+
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(), 1, 1, ["Administrador", "Operador", "Despachador"],
+    );
+  });
+
+  it("a credit-bearing creation by a non-admin → NO_AUTORIZADO with zero writes", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock)
+      .mockResolvedValueOnce(true) // manage gate (a future wider group)
+      .mockResolvedValueOnce(false); // credit gate
+
+    const result = await crearClienteAction({ ...crearInput, creditoHabilitado: true });
+
+    expect(result.ok === false && result.error.code).toBe(NO_AUTORIZADO);
+    expect(crearCliente).not.toHaveBeenCalled();
+    expect(tieneRolPermitidoEnTx).toHaveBeenLastCalledWith(
+      expect.anything(), 1, 1, ["Administrador"],
+    );
+  });
+
+  it("a plain creation by an admin needs no extra credit gate", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (crearCliente as jest.Mock).mockResolvedValue({ ok: true, data: makeCliente() });
+
+    await crearClienteAction(crearInput);
+
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("obtenerPermisosClienteAction", () => {
+  it("answers manage and credit visibility from the named role groups", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+
+    const result = await obtenerPermisosClienteAction();
+
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.data).toEqual({ puedeGestionar: true, puedeVerCredito: true });
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(), 1, 1, ["Administrador"],
+    );
+  });
+
+  it("view-only callers get neither manage nor credit visibility", async () => {
+    mockSession();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+
+    const result = await obtenerPermisosClienteAction();
+
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.data).toEqual({ puedeGestionar: false, puedeVerCredito: false });
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledTimes(2);
+  });
+
+  it("no session → SESION_INVALIDA and no role query", async () => {
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
+
+    const result = await obtenerPermisosClienteAction();
+
+    expect(result.ok === false && result.error.code).toBe(SESION_INVALIDA);
+    expect(tieneRolPermitidoEnTx).not.toHaveBeenCalled();
   });
 });
