@@ -5,9 +5,10 @@
  * single source of truth for every Caja error code; adapters and use cases never inline one
  * (AGENTS.md "Errors").
  *
- * Deliberately MINIMAL (AGENTS.md "Strict YAGNI"): the only failure the pure domain can raise
- * today is an SD day that cannot be resolved to a real calendar date, so it is the only code
- * declared. A code that is never thrown is noise, not a contract.
+ * Deliberately MINIMAL (AGENTS.md "Strict YAGNI"): the pure domain raises an SD day that cannot be
+ * resolved to a real calendar date, and the read gate refuses an unauthorized viewer (S6 — the
+ * close and the day summary are Administrador-only). A code that is never thrown is noise, not a
+ * contract.
  */
 
 // --- Stable code catalog ---
@@ -16,14 +17,23 @@
  *  non-existent calendar date) — fail loud instead of aggregating a wrong day. */
 export const CAJA_VALIDACION = "CAJA_VALIDACION";
 
-export type CajaErrorCode = typeof CAJA_VALIDACION;
+/** The caller may not view the close or the day summary (S6: `ROLES_VER_CAJA` is
+ *  Administrador-only, both boards; deny-by-default — hiding the UI is not the control). */
+export const CAJA_NO_AUTORIZADO = "CAJA_NO_AUTORIZADO";
+
+export type CajaErrorCode = typeof CAJA_VALIDACION | typeof CAJA_NO_AUTORIZADO;
 
 /** Ordered catalog — a test asserts every code yields a stable message. */
-export const CAJA_ERROR_CODES: readonly CajaErrorCode[] = [CAJA_VALIDACION];
+export const CAJA_ERROR_CODES: readonly CajaErrorCode[] = [
+  CAJA_VALIDACION,
+  CAJA_NO_AUTORIZADO,
+];
 
 const MESSAGES: Readonly<Record<CajaErrorCode, string>> = {
   [CAJA_VALIDACION]:
     "La fecha del cierre de caja no es válida; revísela e intente de nuevo",
+  [CAJA_NO_AUTORIZADO]:
+    "No tiene permisos para consultar la caja del día",
 };
 
 /** The stable Spanish user-facing copy for a Caja code (never a raw exception message). */

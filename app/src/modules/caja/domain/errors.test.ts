@@ -1,16 +1,23 @@
 /**
- * Unit — Caja domain error catalog (S5). No database.
+ * Unit — Caja domain error catalog (S5/S6). No database.
  *
- * The catalog is deliberately minimal (YAGNI): ONLY the SD day-resolution failure is thrown by
- * this module today. The test pins that every declared code carries a stable Spanish message and
- * that the error object exposes the stable code so adapters never inline a string.
+ * The catalog is deliberately minimal (YAGNI): only the SD day-resolution failure and the
+ * authorization refusal (the read gate is Administrador-only, S6) are declared. The test pins that
+ * every declared code carries a stable Spanish message and that the error object exposes the stable
+ * code so adapters never inline a string.
  */
 
-import { CAJA_ERROR_CODES, CAJA_VALIDACION, CajaDomainError, messageFor } from "./errors";
+import {
+  CAJA_ERROR_CODES,
+  CAJA_NO_AUTORIZADO,
+  CAJA_VALIDACION,
+  CajaDomainError,
+  messageFor,
+} from "./errors";
 
 describe("caja error catalog", () => {
-  it("declares only the code the domain can actually throw", () => {
-    expect(CAJA_ERROR_CODES).toEqual([CAJA_VALIDACION]);
+  it("declares only the codes the module can actually throw", () => {
+    expect(CAJA_ERROR_CODES).toEqual([CAJA_VALIDACION, CAJA_NO_AUTORIZADO]);
   });
 
   it("gives every code a stable, non-empty user message", () => {
@@ -30,5 +37,12 @@ describe("caja error catalog", () => {
     expect(error.code).toBe(CAJA_VALIDACION);
     expect(error.message).toBe(messageFor(CAJA_VALIDACION));
     expect(error.details).toEqual({ campo: "fechaSD" });
+  });
+
+  it("the authorization refusal has its own stable copy (never a bare transport code)", () => {
+    const error = new CajaDomainError(CAJA_NO_AUTORIZADO);
+    expect(error.code).toBe(CAJA_NO_AUTORIZADO);
+    expect(error.message).toBe(messageFor(CAJA_NO_AUTORIZADO));
+    expect(error.message.length).toBeGreaterThan(0);
   });
 });
