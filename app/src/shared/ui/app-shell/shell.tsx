@@ -17,7 +17,7 @@ import { SidebarNav, type SidebarItemDef } from "./sidebar";
 
 const NAV_ITEMS: readonly SidebarItemDef[] = [
   { label: "Dashboard", href: "/dashboard" },
-  // The eight ratified modules in order (app-shell spec).
+  // The ten ratified modules in order (app-shell spec).
   { label: "Venta", href: "/venta" },
   { label: "Cobros", href: "/cobros" },
   { label: "Inventario", href: "/inventario" },
