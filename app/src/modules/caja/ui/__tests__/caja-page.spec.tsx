@@ -83,8 +83,8 @@ beforeEach(() => {
     sucursalId: 1,
     usuarioId: 1,
     esAdmin: true,
-    empresaNombre: "Empresa Demo",
-    sucursalNombre: "Sucursal Central",
+    empresaNombre: "Comercial Demo SRL",
+    sucursalNombre: "Central",
   } as Awaited<ReturnType<typeof getCurrentTenantHeader>>);
   mockPermisos.mockResolvedValue({ ok: true, data: { puedeVer: true } });
   mockCierre.mockResolvedValue({ ok: true, data: CIERRE });
@@ -114,10 +114,29 @@ describe("CajaPage — permitted caller (S7)", () => {
   });
 
   it("shows the tenant names read-only and NO date selector", async () => {
+    mockHeader.mockResolvedValueOnce({
+      empresaId: 1,
+      sucursalId: 1,
+      usuarioId: 1,
+      esAdmin: false,
+      empresaNombre: "Comercial Demo SRL",
+      sucursalNombre: "Central",
+    } as Awaited<ReturnType<typeof getCurrentTenantHeader>>);
     const { container } = await renderizarPagina();
 
-    expect(screen.getByTestId("caja-tenant")).toHaveTextContent("Empresa Demo");
+    expect(screen.getByTestId("caja-tenant")).toHaveTextContent(
+      "Comercial Demo SRL · Sucursal Central",
+    );
     expect(container.querySelector('input[type="date"]')).toBeNull();
+  });
+
+  it("labels an Administrador's company-wide figures as Todas las sucursales (JD-A-002)", async () => {
+    await renderizarPagina();
+
+    expect(screen.getByTestId("caja-tenant")).toHaveTextContent(
+      "Empresa Comercial Demo SRL · Todas las sucursales",
+    );
+    expect(screen.getByTestId("caja-tenant")).not.toHaveTextContent("Sucursal Central");
   });
 
   it("reads the day through the actions with an EMPTY payload (today only, no date)", async () => {

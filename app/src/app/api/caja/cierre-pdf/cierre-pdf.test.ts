@@ -29,8 +29,7 @@ const cierre: CierreDiarioDto = {
 
 const entrada = {
   cierre,
-  empresaNombre: "Comercial Demo SRL",
-  sucursalNombre: "Sucursal Centro",
+  alcanceNombre: "Empresa Comercial Demo SRL · Sucursal Centro",
 };
 
 /**
@@ -59,13 +58,24 @@ describe("construirCierrePdf", () => {
     expect(pdf.length).toBeGreaterThan(1000);
   });
 
-  it("prints the title, the SD date, and the tenant names", async () => {
+  it("prints the title, the SD date, and the scope label", async () => {
     const t = texto(await construirCierrePdf(entrada));
 
     expect(t).toContain("Cierre diario de caja");
     expect(t).toContain(formatearFechaSD(cierre.fechaSD));
-    expect(t).toContain("Comercial Demo SRL");
-    expect(t).toContain("Sucursal Centro");
+    expect(t).toContain("Empresa Comercial Demo SRL · Sucursal Centro");
+  });
+
+  it("prints the company-wide scope label as given, never a hardcoded branch (JD-A-002)", async () => {
+    const t = texto(
+      await construirCierrePdf({
+        ...entrada,
+        alcanceNombre: "Empresa Comercial Demo SRL · Todas las sucursales",
+      }),
+    );
+
+    expect(t).toContain("Todas las sucursales");
+    expect(t).not.toContain("Sucursal Centro");
   });
 
   it("prints the four KPIs with the SAME figures the screen shows", async () => {
@@ -80,6 +90,32 @@ describe("construirCierrePdf", () => {
     expect(t).toContain("Diferencia");
     // Signed, magnitude formatted by the shared money helper.
     expect(t).toContain("-RD$ 499.50");
+  });
+
+  it("prints a negative Efectivo esperado (KPI and Esperado) with its sign (JD-A-001)", async () => {
+    const t = texto(
+      await construirCierrePdf({
+        ...entrada,
+        cierre: {
+          ...cierre,
+          efectivoEsperado: "-250.00",
+          corte: { cobros: "250.00", devoluciones: "500.00" },
+        },
+      }),
+    );
+
+    expect(t).toContain("-RD$ 250.00");
+    expect(t).not.toContain("RD$ -250.00");
+  });
+
+  it("prints the Total row's Cobros/Total from the DTO's totalCobrado (JD-A-003/JD-A-004)", async () => {
+    // The per-method row sums to 1500.50; the DTO says 1600.00, and the DTO wins.
+    const t = texto(
+      await construirCierrePdf({ ...entrada, cierre: { ...cierre, totalCobrado: "1600.00" } }),
+    );
+
+    expect(t).toContain("RD$ 1,600.00");
+    expect(t).toContain("RD$ 1,500.50");
   });
 
   it("prints the método table with a dash under per-method Ventas and a Total row", async () => {

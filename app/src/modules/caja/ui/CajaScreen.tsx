@@ -32,7 +32,6 @@ import {
   etiquetaMetodo,
   formatearMargen,
   formatearMontoConSigno,
-  sumarMontos,
   testIdMetodo,
 } from "./caja-formato";
 import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
@@ -93,20 +92,19 @@ function TerminoCorte({
 export function CajaScreen({
   cierre,
   resumen,
-  empresaNombre,
-  sucursalNombre,
+  alcanceNombre,
 }: {
   readonly cierre: CierreDiarioDto;
   readonly resumen: ResumenDiaDto;
-  readonly empresaNombre: string;
-  readonly sucursalNombre: string;
+  /** The read-only scope the figures cover, already resolved by the page (branch or company-wide). */
+  readonly alcanceNombre: string;
 }) {
   const diferencia = formatearMontoConSigno(cierre.diferencia);
   const claseDiferencia = esMontoNegativo(cierre.diferencia)
     ? `${CLASE_KPI_VALOR} text-red-600 dark:text-red-400`
     : CLASE_KPI_VALOR;
-  // The Total row's Cobros cell: the exact Σ of the per-method figures (Decimal, never a float).
-  const cobrosTotal = sumarMontos(cierre.metodos.map((m) => m.cobros));
+  // The money COUNTED this day: the use case's `totalCobrado`, never a figure re-derived here.
+  const cobrosTotal = formatearMonto(cierre.totalCobrado);
 
   return (
     <div className="flex flex-col gap-8">
@@ -131,7 +129,7 @@ export function CajaScreen({
           </div>
           {/* Read-only tenant scope: the day is the session's empresa + sucursal, never a filter. */}
           <p data-testid={CAJA_TESTID.tenant} className={CLASE_SUBTITULO}>
-            {empresaNombre} · Sucursal {sucursalNombre}
+            {alcanceNombre}
           </p>
         </div>
 
@@ -148,7 +146,7 @@ export function CajaScreen({
           />
           <Kpi
             titulo="Efectivo esperado"
-            valor={formatearMonto(cierre.efectivoEsperado)}
+            valor={formatearMontoConSigno(cierre.efectivoEsperado)}
             testid={CAJA_TESTID.kpiEfectivoEsperado}
           />
           <Kpi
@@ -193,8 +191,8 @@ export function CajaScreen({
             >
               <td className={CLASE_CELDA}>Total</td>
               <td className={CLASE_CELDA_NUM}>{formatearMonto(cierre.totalFacturado)}</td>
-              <td className={CLASE_CELDA_NUM}>{formatearMonto(cobrosTotal)}</td>
-              <td className={CLASE_CELDA_NUM}>{formatearMonto(cierre.totalFacturado)}</td>
+              <td className={CLASE_CELDA_NUM}>{cobrosTotal}</td>
+              <td className={CLASE_CELDA_NUM}>{cobrosTotal}</td>
             </tr>
           </tbody>
         </table>
@@ -219,7 +217,7 @@ export function CajaScreen({
           />
           <TerminoCorte
             etiqueta="Esperado"
-            valor={formatearMonto(cierre.efectivoEsperado)}
+            valor={formatearMontoConSigno(cierre.efectivoEsperado)}
             testid={CAJA_TESTID.corteEsperado}
           />
         </div>
@@ -270,7 +268,7 @@ export function CajaScreen({
           />
           <Kpi
             titulo="Margen bruto"
-            valor={formatearMonto(resumen.margenBruto)}
+            valor={formatearMontoConSigno(resumen.margenBruto)}
             testid={CAJA_TESTID.resumenMargen}
           />
           <Kpi

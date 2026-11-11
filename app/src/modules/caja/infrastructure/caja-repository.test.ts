@@ -7,7 +7,7 @@
  *   - pins `empresaId` (first defense) and narrows by branch only through the explicit optional
  *     `sucursalId` bind (a `null` drops the branch predicate, NEVER the tenant pin — the
  *     company-wide Admin path clears the branch GUC via `conSucursalAmpliadaEnTx` upstream);
- *   - filters the Santo-Domingo day with the HALF-OPEN window `< inicio AND <= fin` (zona.ts
+ *   - filters the Santo-Domingo day with the HALF-OPEN window `inicio <= fecha < fin` (zona.ts
  *     exposes `[inicio, fin)`; a `<=`/`BETWEEN` on the exclusive bound would double-count the
  *     next day's first instant);
  *   - carries only the spec's own predicates: `tipo`/`estado`/`metodoPago` for PAGO and

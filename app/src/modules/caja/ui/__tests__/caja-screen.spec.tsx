@@ -55,15 +55,9 @@ const RESUMEN_VACIO: ResumenDiaDto = {
 function renderizar(
   cierre: CierreDiarioDto = CIERRE,
   resumen: ResumenDiaDto = RESUMEN,
+  alcanceNombre = "Empresa Demo · Sucursal Central",
 ) {
-  return render(
-    <CajaScreen
-      cierre={cierre}
-      resumen={resumen}
-      empresaNombre="Empresa Demo"
-      sucursalNombre="Sucursal Central"
-    />,
-  );
+  return render(<CajaScreen cierre={cierre} resumen={resumen} alcanceNombre={alcanceNombre} />);
 }
 
 afterEach(cleanup);
@@ -83,6 +77,15 @@ describe("06a Cierre diario de caja — header (S1)", () => {
 
     expect(container.querySelector('input[type="date"]')).toBeNull();
     expect(screen.queryByLabelText(/fecha/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the page's company-wide scope label verbatim (JD-A-002)", () => {
+    // An Administrador's figures are company-wide, so the session branch is never named.
+    renderizar(CIERRE, RESUMEN, "Empresa Comercial Demo SRL · Todas las sucursales");
+
+    expect(screen.getByTestId("caja-tenant")).toHaveTextContent(
+      "Empresa Comercial Demo SRL · Todas las sucursales",
+    );
   });
 
   it("renders the informational note verbatim", () => {
@@ -122,6 +125,12 @@ describe("06a KPIs (S1)", () => {
     expect(diferencia.className).toMatch(/text-red/);
   });
 
+  it("keeps the sign on a negative Efectivo esperado (JD-A-001)", () => {
+    renderizar({ ...CIERRE, efectivoEsperado: "-250.00" });
+
+    expect(screen.getByTestId("caja-kpi-efectivo-esperado")).toHaveTextContent("-RD$ 250.00");
+  });
+
   it("does not apply the negative styling to a non-negative Diferencia", () => {
     renderizar({ ...CIERRE, diferencia: "120.00" });
 
@@ -151,15 +160,28 @@ describe("06a método table (S1/S6)", () => {
     expect(celdas[2]).toHaveTextContent(formatearMonto("1500.50"));
   });
 
-  it("closes with a Total row: day-level Ventas, summed Cobros, day-level Total", () => {
+  it("closes with a Total row whose Total column is the money counted (JD-A-003)", () => {
     renderizar();
 
     const total = screen.getByTestId("caja-total-fila");
     const celdas = within(total).getAllByRole("cell");
     expect(celdas[0]).toHaveTextContent("Total");
+    // Ventas stays the day-level context figure.
     expect(celdas[1]).toHaveTextContent(formatearMonto("2000.00"));
+    // Cobros and Total are BOTH the Σ cobros: the Total column is money counted, not billed.
     expect(celdas[2]).toHaveTextContent(formatearMonto("1500.50"));
-    expect(celdas[3]).toHaveTextContent(formatearMonto("2000.00"));
+    expect(celdas[3]).toHaveTextContent(formatearMonto("1500.50"));
+  });
+
+  it("takes the Total row's Cobros/Total from the DTO's totalCobrado, never a re-summed figure (JD-A-004)", () => {
+    // The DTO is authoritative: the per-method rows alone would sum to 1500.50.
+    renderizar({ ...CIERRE, totalCobrado: "1600.00" });
+
+    const total = screen.getByTestId("caja-total-fila");
+    const celdas = within(total).getAllByRole("cell");
+    expect(celdas[2]).toHaveTextContent(formatearMonto("1600.00"));
+    expect(celdas[3]).toHaveTextContent(formatearMonto("1600.00"));
+    expect(celdas[3]).not.toHaveTextContent(formatearMonto("1500.50"));
   });
 });
 
@@ -181,6 +203,16 @@ describe("06a Corte de caja panel (S1)", () => {
     expect(within(panel).getByTestId("caja-corte-esperado")).toHaveTextContent(
       formatearMonto("1000.25"),
     );
+  });
+
+  it("keeps the sign on a negative Esperado (JD-A-001)", () => {
+    renderizar({
+      ...CIERRE,
+      efectivoEsperado: "-250.00",
+      corte: { cobros: "250.00", devoluciones: "500.00" },
+    });
+
+    expect(screen.getByTestId("caja-corte-esperado")).toHaveTextContent("-RD$ 250.00");
   });
 });
 
@@ -223,6 +255,12 @@ describe("06b Resumen del día (S2)", () => {
       formatearMonto("652.00"),
     );
     expect(screen.getByTestId("caja-resumen-margen-pct")).toHaveTextContent("32.6%");
+  });
+
+  it("keeps the sign on a negative Margen bruto (JD-A-001)", () => {
+    renderizar(CIERRE, { ...RESUMEN, margenBruto: "-100.00" });
+
+    expect(screen.getByTestId("caja-resumen-margen")).toHaveTextContent("-RD$ 100.00");
   });
 
   it("keeps the close KPIs OUT of the summary section (no duplication)", () => {

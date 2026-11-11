@@ -7,11 +7,10 @@
  *
  * Nothing here computes business figures: the DTOs already carry `Decimal(12,2)` STRINGS and the
  * use cases own every calculation. These helpers only FORMAT those strings (sign, method label, the
- * method-sum for the Total row via decimal.js, the margin suffix) so the island has ONE home for
- * every displayed figure and never does JS float arithmetic (AGENTS.md "Money = Decimal").
+ * read-only scope label, the margin suffix) so the island has ONE home for every displayed figure
+ * and never does JS float arithmetic (AGENTS.md "Money = Decimal").
  */
 
-import { Decimal } from "decimal.js";
 import { formatearMonto } from "@/shared/ui/format";
 
 /** Wireframe 06a copy (S1), stored once so a test can pin it verbatim. */
@@ -78,18 +77,26 @@ export function formatearMontoConSigno(valor: string): string {
 }
 
 /**
+ * The header's read-only scope label. An Administrador's figures are COMPANY-WIDE (the use case
+ * widens past the session branch), so naming only that branch would misdescribe the data: the
+ * label states the empresa and "Todas las sucursales" instead. Everyone else sees their branch.
+ */
+export function etiquetaAlcance(alcance: {
+  readonly esAdmin: boolean;
+  readonly empresaNombre: string;
+  readonly sucursalNombre: string;
+}): string {
+  if (alcance.esAdmin) return `Empresa ${alcance.empresaNombre} · Todas las sucursales`;
+  return `${alcance.empresaNombre} · Sucursal ${alcance.sucursalNombre}`;
+}
+
+/**
  * A `Pago.metodoPago` enum value → the wireframe row label (`EFECTIVO` → `Efectivo`). An unknown
  * value still renders readable (never hidden, never blank).
  */
 export function etiquetaMetodo(metodo: string): string {
   const texto = metodo.replace(/_/g, " ").toLowerCase();
   return texto.charAt(0).toUpperCase() + texto.slice(1);
-}
-
-/** Σ of the per-method `cobros` Decimal strings → a `Decimal(12,2)` string (exact, no float). */
-export function sumarMontos(valores: readonly string[]): string {
-  const total = valores.reduce((acc, valor) => acc.plus(new Decimal(valor.trim())), new Decimal(0));
-  return total.toFixed(2);
 }
 
 /** The 06b "Margen %" cell: the DTO already carries one decimal (`"32.6"` → `"32.6%"`). */

@@ -14,6 +14,22 @@ import { tieneRolPermitidoEnTx } from "@/modules/venta/infrastructure/venta-repo
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentTenantHeader } from "@/modules/tenant/infrastructure/tenant-runtime";
 
+/**
+ * The PDF's visible text: pdfkit emits text runs as `[...] TJ` arrays whose glyphs are HEX strings
+ * interleaved with kerning offsets, so a long label is often split across tokens. Rebuild them.
+ */
+function textoPdf(pdf: Buffer): string {
+  const crudo = pdf.toString("latin1");
+  const decodificar = new TextDecoder("windows-1252");
+  return [...crudo.matchAll(/\[([^\]]*)\]\s*TJ/gs)]
+    .map((m) =>
+      [...m[1].matchAll(/<([0-9A-Fa-f]+)>/g)]
+        .map((h) => decodificar.decode(Buffer.from(h[1], "hex")))
+        .join(""),
+    )
+    .join("\n");
+}
+
 jest.mock("@/lib/supabase/client", () => ({ createClient: jest.fn() }));
 jest.mock("@/modules/tenant/infrastructure/tenant-runtime", () => ({
   getCurrentTenantHeader: jest.fn(),
@@ -99,6 +115,9 @@ describe("GET /api/caja/cierre-pdf", () => {
     expect(bytes.toString("latin1")).toContain(
       Buffer.from("Cierre diario de caja", "latin1").toString("hex"),
     );
+    // JD-A-002: the Administrador's figures are company-wide, so the document names that scope
+    // (never only the session branch).
+    expect(textoPdf(bytes)).toContain("Todas las sucursales");
     expect(consultarCierreDiario).toHaveBeenCalledWith(expect.anything(), ctx);
   });
 

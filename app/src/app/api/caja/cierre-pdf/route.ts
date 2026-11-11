@@ -29,6 +29,7 @@ import { tieneRolPermitidoEnTx } from "@/modules/venta/infrastructure/venta-repo
 import { consultarCierreDiario } from "@/modules/caja/application/consultar-cierre-diario";
 import { CAJA_NO_AUTORIZADO, messageFor } from "@/modules/caja/domain/errors";
 import { ROLES_VER_CAJA } from "@/modules/caja/http/shared";
+import { etiquetaAlcance } from "@/modules/caja/ui/caja-formato";
 import { SESION_INVALIDA, mensajeTransporte } from "@/modules/caja/http/validations";
 import { construirCierrePdf } from "./cierre-pdf";
 
@@ -70,8 +71,13 @@ export async function GET(): Promise<Response> {
 
     const pdf = await construirCierrePdf({
       cierre: resultado.data,
-      empresaNombre: ctx.empresaNombre,
-      sucursalNombre: ctx.sucursalNombre,
+      // The SAME scope label the /caja page renders: company-wide for an Administrador, whose
+      // figures the use case widens past the session branch.
+      alcanceNombre: etiquetaAlcance({
+        esAdmin: ctx.esAdmin,
+        empresaNombre: ctx.empresaNombre,
+        sucursalNombre: ctx.sucursalNombre,
+      }),
     });
 
     // `construirCierrePdf` returns a Node Buffer; wrap it as a plain ArrayBufferView so it is a

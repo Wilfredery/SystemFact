@@ -2,16 +2,16 @@
  * Unit — Caja UI presentation helpers (S7). Pure functions, no DOM.
  *
  * The screen never computes money with JS floats: these helpers only FORMAT the Decimal strings
- * the DTOs carry (sign, method label, method-sum via decimal.js, margin suffix) so the island has
- * one home for every displayed figure.
+ * the DTOs carry (sign, method label, scope label, margin suffix) so the island has one home for
+ * every displayed figure.
  */
 
 import {
   esMontoNegativo,
+  etiquetaAlcance,
   etiquetaMetodo,
   formatearMargen,
   formatearMontoConSigno,
-  sumarMontos,
 } from "../caja-formato";
 
 describe("formatearMontoConSigno — Diferencia keeps its sign (S1)", () => {
@@ -50,15 +50,33 @@ describe("etiquetaMetodo — wireframe row label", () => {
   });
 });
 
-describe("sumarMontos — the Total row's Cobros cell", () => {
-  it("adds Decimal strings exactly (no float drift)", () => {
-    expect(sumarMontos(["0.10", "0.20"])).toBe("0.30");
-    expect(sumarMontos(["1500.50"])).toBe("1500.50");
-    expect(sumarMontos(["1500.50", "999.50"])).toBe("2500.00");
+describe("etiquetaAlcance — the header's read-only scope label", () => {
+  it("names the session branch for a branch-pinned caller", () => {
+    expect(
+      etiquetaAlcance({
+        esAdmin: false,
+        empresaNombre: "Comercial Demo SRL",
+        sucursalNombre: "Centro",
+      }),
+    ).toBe("Comercial Demo SRL · Sucursal Centro");
   });
 
-  it("returns a two-decimal zero for an empty day", () => {
-    expect(sumarMontos([])).toBe("0.00");
+  it("states the company-wide scope for an Administrador, whose figures widen to the empresa", () => {
+    expect(
+      etiquetaAlcance({
+        esAdmin: true,
+        empresaNombre: "Comercial Demo SRL",
+        sucursalNombre: "Centro",
+      }),
+    ).toBe("Empresa Comercial Demo SRL · Todas las sucursales");
+    // The session branch must NOT be named: it is not what the figures cover.
+    expect(
+      etiquetaAlcance({
+        esAdmin: true,
+        empresaNombre: "Comercial Demo SRL",
+        sucursalNombre: "Centro",
+      }),
+    ).not.toContain("Sucursal Centro");
   });
 });
 

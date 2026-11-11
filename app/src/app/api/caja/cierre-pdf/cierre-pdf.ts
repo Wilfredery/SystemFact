@@ -20,15 +20,14 @@ import {
   TEXTO_NOTA_CIERRE,
   etiquetaMetodo,
   formatearMontoConSigno,
-  sumarMontos,
 } from "@/modules/caja/ui/caja-formato";
 import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
 
-/** What the PDF needs that the close DTO does not carry: the tenant display names. */
+/** What the PDF needs that the close DTO does not carry: the resolved read-only scope label. */
 export interface EntradaCierrePdf {
   readonly cierre: CierreDiarioDto;
-  readonly empresaNombre: string;
-  readonly sucursalNombre: string;
+  /** Already resolved by the route (session branch, or company-wide for an Administrador). */
+  readonly alcanceNombre: string;
 }
 
 /** How a document is created — the seam that keeps this builder testable. */
@@ -130,7 +129,7 @@ export async function construirCierrePdf(
   entrada: EntradaCierrePdf,
   crearDoc: CreadorDocPdf = crearDocCierrePdf,
 ): Promise<Buffer> {
-  const { cierre, empresaNombre, sucursalNombre } = entrada;
+  const { cierre, alcanceNombre } = entrada;
   const doc = crearDoc();
   const trozos: Buffer[] = [];
 
@@ -147,7 +146,7 @@ export async function construirCierrePdf(
     .font("Helvetica")
     .fontSize(10)
     .text(`${formatearFechaSD(cierre.fechaSD)} (America/Santo_Domingo)`, MARGEN, MARGEN + 26);
-  doc.text(`${empresaNombre} · Sucursal ${sucursalNombre}`, MARGEN, MARGEN + 40);
+  doc.text(alcanceNombre, MARGEN, MARGEN + 40);
   doc
     .moveTo(MARGEN, MARGEN + 58)
     .lineTo(DERECHA, MARGEN + 58)
@@ -173,7 +172,7 @@ export async function construirCierrePdf(
     yKpi,
     anchoKpi,
     "Efectivo esperado",
-    formatearMonto(cierre.efectivoEsperado),
+    formatearMontoConSigno(cierre.efectivoEsperado),
   );
   kpi(
     doc,
@@ -210,8 +209,9 @@ export async function construirCierrePdf(
     y += ALTO_FILA;
   }
 
-  // Total row — the same composition the screen uses (the Σ of the method rows for Cobros).
-  const cobrosTotal = sumarMontos(cierre.metodos.map((m) => m.cobros));
+  // Total row — the SAME composition the screen uses: the money COUNTED this day (the use case's
+  // `totalCobrado`) fills both the Cobros and the Total cell; Ventas stays the day-level context.
+  const cobrosTotal = formatearMonto(cierre.totalCobrado);
   doc.moveTo(MARGEN, y - 4).lineTo(DERECHA, y - 4).strokeColor(BORDE).stroke();
   doc
     .font("Helvetica-Bold")
@@ -219,8 +219,8 @@ export async function construirCierrePdf(
     .fillColor(TINTA)
     .text("Total", COL.metodo.x, y, { width: COL.metodo.width });
   celdaNumero(doc, COL.ventas, y, formatearMonto(cierre.totalFacturado));
-  celdaNumero(doc, COL.cobros, y, formatearMonto(cobrosTotal));
-  celdaNumero(doc, COL.total, y, formatearMonto(cierre.totalFacturado));
+  celdaNumero(doc, COL.cobros, y, cobrosTotal);
+  celdaNumero(doc, COL.total, y, cobrosTotal);
   y += ALTO_FILA + 18;
 
   // Corte de caja panel: the formula then its two terms and the result.
@@ -241,7 +241,7 @@ export async function construirCierrePdf(
     .text(textoSeguro(FORMULA_CORTE), MARGEN + 10, y + 26, { width: ANCHO_UTIL - 20 });
   termino(doc, y + 44, "Cobros", formatearMonto(cierre.corte.cobros));
   termino(doc, y + 62, "Devoluciones", formatearMonto(cierre.corte.devoluciones));
-  termino(doc, y + 80, "Esperado", formatearMonto(cierre.efectivoEsperado));
+  termino(doc, y + 80, "Esperado", formatearMontoConSigno(cierre.efectivoEsperado));
   y += 104 + 18;
 
   // Diferencia, spelled out with its formula so the sign is never read as a corte deviation.

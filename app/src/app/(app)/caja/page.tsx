@@ -28,6 +28,7 @@ import {
   obtenerPermisosCajaAction,
 } from "@/modules/caja/http/actions.lectura";
 import { CajaScreen } from "@/modules/caja/ui/CajaScreen";
+import { etiquetaAlcance } from "@/modules/caja/ui/caja-formato";
 
 export default async function CajaPage() {
   const supabase = await createClient();
@@ -43,6 +44,13 @@ export default async function CajaPage() {
   ]);
 
   const puedeVer = permisos !== null && permisos.ok && permisos.data.puedeVer;
+  // An Administrador's figures are COMPANY-WIDE (the use case widens past the session branch), so
+  // the header must not name only that branch: the scope label is resolved here, once.
+  const alcanceNombre = etiquetaAlcance({
+    esAdmin: ctx.esAdmin,
+    empresaNombre: ctx.empresaNombre,
+    sucursalNombre: ctx.sucursalNombre,
+  });
   // Only a permitted caller's successful pair reaches the island; every other shape renders a
   // plain message with NO board data.
   const datos =
@@ -59,8 +67,7 @@ export default async function CajaPage() {
         <CajaScreen
           cierre={datos.cierre}
           resumen={datos.resumen}
-          empresaNombre={ctx.empresaNombre}
-          sucursalNombre={ctx.sucursalNombre}
+          alcanceNombre={alcanceNombre}
         />
       ) : (
         <p
