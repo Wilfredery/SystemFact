@@ -159,7 +159,7 @@ describe("CajaPage — deny by default (S7)", () => {
     await renderizarPagina();
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "No tiene permisos para ver la Caja.",
+      "No se pudo cargar la Caja. Intenta de nuevo.",
     );
     expect(screen.queryByTestId("caja-cierre")).not.toBeInTheDocument();
   });
