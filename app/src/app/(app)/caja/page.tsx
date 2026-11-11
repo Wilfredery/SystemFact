@@ -71,9 +71,11 @@ export default async function CajaPage() {
             ? cierre.error.message
             : puedeVer && resumen !== null && !resumen.ok
               ? resumen.error.message
-            : puedeVer
-              ? "No se pudo cargar el cierre del día. Intenta de nuevo."
-              : "No tiene permisos para ver la Caja."}
+            : permisos === null || !permisos.ok
+              ? "No se pudo cargar la Caja. Intenta de nuevo."
+              : puedeVer
+                ? "No se pudo cargar el cierre del día. Intenta de nuevo."
+                : "No tiene permisos para ver la Caja."}
         </p>
       )}
     </main>
