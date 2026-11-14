@@ -9,10 +9,15 @@ import {
   consultarInventario,
   type ConsultarInventarioOutput,
 } from "../application/consultar-inventario";
+import {
+  listarMovimientosInventario,
+  type ListarMovimientosOutput,
+} from "../application/listar-movimientos-inventario";
 import { tieneRolPermitidoEnTx } from "../infrastructure/inventario-repository";
 import {
   zConsultarInventarioQuery,
   zListarInventarioQuery,
+  zListarMovimientosQuery,
 } from "./validations";
 import {
   NO_AUTORIZADO,
@@ -144,5 +149,44 @@ export async function obtenerPermisosInventarioAction(): Promise<
       ROLES_GESTION_INVENTARIO,
     );
     return ok({ puedeAjustar });
+  });
+}
+
+/**
+ * Read-only movement history of the SESSION branch (odd/tasks/inventario-historial.md
+ * S1-S5). Manage group only (Administrador): the history reveals who adjusted
+ * stock and why. Same tenant/role conventions as the listings above; the role is
+ * checked inside the wrapper, and no audit row is written per read (like the stock list).
+ */
+export async function listarMovimientosInventarioAction(
+  query: unknown,
+): Promise<ActionResult<ListarMovimientosOutput>> {
+  const parseResult = zListarMovimientosQuery.safeParse(query);
+  if (!parseResult.success) {
+    return error(VALIDATION_ERROR, messageFor(VALIDATION_ERROR));
+  }
+
+  const supabase = await createClient();
+  const ctx = await getCurrentTenantContext(supabase);
+  if (ctx === null) {
+    return error(SESION_INVALIDA, messageFor(SESION_INVALIDA));
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const permitido = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_GESTION_INVENTARIO,
+    );
+    if (!permitido) {
+      return error(NO_AUTORIZADO, "No tiene permisos para ver el historial de movimientos");
+    }
+
+    const result = await listarMovimientosInventario(tx, ctx, parseResult.data);
+    if (!result.ok) {
+      return error(result.code, result.message);
+    }
+    return ok(result.data);
   });
 }

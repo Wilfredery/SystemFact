@@ -53,7 +53,7 @@ export default async function InventarioPage({
     estado: ESTADOS.find((e) => e === primero(params.estado)) ?? null,
   };
 
-  // Only the manage group sees the adjust link; hiding it is a courtesy, the
+  // Only the manage group sees the adjust and history links (one permission answer); hiding it is a courtesy, the
   // adjust page and the action both re-check on the server. A failed permission
   // call must never break the list: it just hides the link (deny by default).
   const [permisos, resultado] = await Promise.all([
@@ -76,12 +76,20 @@ export default async function InventarioPage({
       <div className="mb-6 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Inventario</h1>
         {puedeAjustar && (
-          <Link
-            href="/inventario/ajuste"
-            className="inline-flex min-h-12 items-center rounded-md bg-zinc-900 px-5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900"
-          >
-            + Ajustar
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/inventario/movimientos"
+              className="inline-flex min-h-12 items-center rounded-md border border-zinc-300 px-5 text-sm font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+            >
+              Ver historial de movimientos
+            </Link>
+            <Link
+              href="/inventario/ajuste"
+              className="inline-flex min-h-12 items-center rounded-md bg-zinc-900 px-5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900"
+            >
+              + Ajustar
+            </Link>
+          </div>
         )}
       </div>
       <InventarioScreen inicial={inicial} filtrosIniciales={filtros} />
