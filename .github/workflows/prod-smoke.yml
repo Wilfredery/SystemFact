@@ -50,7 +50,7 @@ defaults:
 jobs:
   prod-smoke:
     name: Production smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.57: see ci.yml e2e job
     # El environment acota los DOS secretos de producción (sólo este job puede
     # leer PROD_USER / PROD_PASSWORD) y deja un registro por corrida en
     # Deployments. Sin `url` a propósito: GitHub la muestra como un botón

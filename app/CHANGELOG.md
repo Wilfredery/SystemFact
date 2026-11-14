@@ -10,6 +10,10 @@
 
 * **pdfkit** 0.20.2 and **@types/pdfkit** 0.17.7 added in their own commit, for the server-side PDF only (built-in Helvetica, no client JS).
 
+### CI
+
+* **ci:** the Playwright jobs (`e2e` in `ci.yml`, `prod-smoke.yml`, `prod-demo.yml`) run on `ubuntu-24.04` instead of `ubuntu-latest`: the runner image moved to Ubuntu 26.04, where Playwright 1.57.0 fails with "does not support chromium on ubuntu26.04-x64". Revisit when Playwright is upgraded.
+
 ### Tests
 
 * **unit:** the domain (day boundary incl. 03:59 UTC, efectivo esperado, diferencia, margen), the use cases, the repository, the validations and role gate, the screen and page RTL suites, and the PDF builder (real pdfkit) and route specs (401/403/200/typed refusal).
