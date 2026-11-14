@@ -1,3 +1,21 @@
+## [0.27.0](https://github.com/Wilfredery/SystemFact/compare/v0.26.0...v0.27.0) (2026-11-14)
+
+### Features
+
+* **caja:** the **Caja** screen (`/caja`), Step 8 of the screens plan: the **Cierre diario de caja** for today in `America/Santo_Domingo` (no retroactive date selector) with Total facturado, Total cobrado, Efectivo esperado and Diferencia, the per-method Ventas/Cobros table and the corte block, plus the separate **Resumen del día** (ventas, costo de lo vendido, margen bruto, margen %). Negative figures keep their sign, the scope label states the real scope (branch or company), and Total cobrado counts only cobros. **Cerrar caja** stays disabled with a "Próximamente" hint: the close is a derived report, nothing is persisted. No migration, no schema change, RLS untouched.
+* **caja:** **Exportar PDF** of the daily close, generated server-side at `/api/caja/cierre-pdf` (Node runtime, session required, role gate before any aggregate, everything inside `withTenantTransaction`, no query parameters, `Cache-Control: no-store`). It reuses the screen's own use case, labels and formatters, so PDF and screen cannot diverge.
+* **caja (backend, additive):** a pure domain (SD day window, efectivo esperado, diferencia, margen) with no DB or framework imports, a read-only repository over `PAGO`/`VENTA` by SQL aggregation, and read-only Server Actions behind `ROLES_VER_CAJA`, deny-by-default.
+
+### Dependencies
+
+* **pdfkit** 0.20.2 and **@types/pdfkit** 0.17.7 added in their own commit, for the server-side PDF only (built-in Helvetica, no client JS).
+
+### Tests
+
+* **unit:** the domain (day boundary incl. 03:59 UTC, efectivo esperado, diferencia, margen), the use cases, the repository, the validations and role gate, the screen and page RTL suites, and the PDF builder (real pdfkit) and route specs (401/403/200/typed refusal).
+* **integration:** `caja.integration.test.ts` against a real Postgres for the daily close.
+* **e2e:** `caja.spec.ts` (3 tests). No test may skip.
+
 ## [0.26.0](https://github.com/Wilfredery/SystemFact/compare/v0.25.0...v0.26.0) (2026-11-10)
 
 ### Features
