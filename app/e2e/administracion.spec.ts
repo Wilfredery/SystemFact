@@ -245,6 +245,16 @@ test.describe("/administracion (administracion T3)", () => {
     for (const seccion of ["Retenciones", "ITBIS", "Secuencias NCF"]) {
       await expect(page.getByRole("heading", { name: seccion, exact: true })).toBeVisible();
     }
+    // ITBIS rates in use (read-only table): headers + the seeded e2e product's
+    // 18% row (.github/ci/e2e-fixture.sql inserts it active with tasaItbis 18.00).
+    for (const columna of ["Tasa (%)", "Vigente desde", "Vigente hasta", "Productos", "Estado"]) {
+      await expect(page.getByRole("columnheader", { name: columna, exact: true })).toBeVisible();
+    }
+    const filaItbis18 = page.getByTestId("itbis-fila-18.00").first();
+    await expect(filaItbis18).toBeVisible();
+    await expect(filaItbis18).toContainText("18.00%");
+    await expect(filaItbis18).toContainText("Vigente");
+    await expect(page.getByText("No disponible aún")).toHaveCount(0);
     // Retentions are tenant configuration: the seeded stack may have the rates
     // ("no configurada" is the documented readable state, never a fabricated 0%).
     await expect(

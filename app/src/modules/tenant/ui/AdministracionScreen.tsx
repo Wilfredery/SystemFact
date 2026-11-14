@@ -574,7 +574,7 @@ function PanelConfiguracion({ inicial }: { readonly inicial: ConfiguracionInicia
     return <p className={CLASE_ALERTA} role="alert">{inicial.message}</p>;
   }
 
-  const { retenciones, ncf } = inicial.data;
+  const { retenciones, ncf, itbisEnUso } = inicial.data;
 
   return (
     <div className="flex flex-col gap-6">
@@ -608,13 +608,43 @@ function PanelConfiguracion({ inicial }: { readonly inicial: ConfiguracionInicia
 
       <section className="flex flex-col gap-2">
         <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">ITBIS</h2>
-        {/*
-          Documented T1 gap: no existing tenant reader exposes a TASA_ITBIS rate
-          with its validity window, so this read-only build does not invent one.
-        */}
-        <p className="rounded-md border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-          No disponible aún: la lectura de las tasas de ITBIS (general/reducido) y su vigencia no
-          existe en el backend actual.
+        {itbisEnUso.length === 0 ? (
+          <p className="rounded-md border border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+            Sin productos activos: no hay tasas de ITBIS en uso.
+          </p>
+        ) : (
+          <div className={CLASE_TABLA}>
+            <table className="w-full text-left text-sm">
+              <thead className={CLASE_CABECERA}>
+                <tr>
+                  <th scope="col" className="px-4 py-2">Tasa (%)</th>
+                  <th scope="col" className="px-4 py-2">Vigente desde</th>
+                  <th scope="col" className="px-4 py-2">Vigente hasta</th>
+                  <th scope="col" className="px-4 py-2">Productos</th>
+                  <th scope="col" className="px-4 py-2">Estado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                {itbisEnUso.map((t) => (
+                  <tr
+                    key={`${t.tasaItbis}|${t.vigenteDesde}|${t.vigenteHasta ?? ""}`}
+                    data-testid={`itbis-fila-${t.tasaItbis}`}
+                  >
+                    <td className="px-4 py-2 tabular-nums">{t.tasaItbis}%</td>
+                    <td className="px-4 py-2">{formatearFechaSD(t.vigenteDesde)}</td>
+                    <td className="px-4 py-2">
+                      {t.vigenteHasta === null ? "Sin fin" : formatearFechaSD(t.vigenteHasta)}
+                    </td>
+                    <td className="px-4 py-2 tabular-nums">{t.productos}</td>
+                    <td className="px-4 py-2">{t.vigenteHoy ? "Vigente" : "No vigente"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Solo lectura: el conjunto de tasas permitidas está fijado por las reglas de producto.
         </p>
       </section>
 

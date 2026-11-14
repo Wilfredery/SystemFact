@@ -113,6 +113,7 @@ beforeEach(() => {
     data: {
       retenciones: { isr15: "15", isr2: "2", itbis100: "100", itbis30: "30" },
       ncf: [],
+      itbisEnUso: [],
     },
   });
 });
@@ -244,7 +245,10 @@ describe("AdministracionPage — URL contract (S6)", () => {
 
     expect(mockConfiguracion).toHaveBeenCalled();
     expect(mockListar).not.toHaveBeenCalled();
-    expect(screen.getByText(/No disponible aún/)).toBeInTheDocument();
+    expect(
+      screen.getByText("Sin productos activos: no hay tasas de ITBIS en uso."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/No disponible aún/)).not.toBeInTheDocument();
   });
 
   it("falls back to Usuarios for an unknown tab", async () => {
