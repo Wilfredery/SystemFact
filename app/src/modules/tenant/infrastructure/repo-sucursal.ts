@@ -67,13 +67,18 @@ export async function leerSucursalActivaEnTx(
  */
 export async function reescribirSucursalUsuarioEnTx(
   tx: PrismaTx,
+  empresaId: number,
   usuarioId: number,
   sucursalId: number,
-): Promise<void> {
-  await tx.usuario.update({
-    where: { id: usuarioId },
+): Promise<boolean> {
+  // Verified write: `empresaId` is pinned in the statement itself (AGENTS.md
+  // defense in depth), not only by the RLS policy. A user that is not a row of
+  // the caller empresa matches nothing: the caller gets `false` and fails closed.
+  const resultado = await tx.usuario.updateMany({
+    where: { id: usuarioId, empresaId },
     data: { sucursalId, version: { increment: 1 } },
   });
+  return resultado.count === 1;
 }
 
 /**

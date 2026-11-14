@@ -859,8 +859,9 @@ describe("RLS GUC pinning — the load-bearing defense-in-depth boundary", () =>
     // EXACTLY one pin, to empresa 7. A missing pin, a pin to any other company,
     // or a second pin widening the GUC each fail this line.
     expect(empresaGucPins(tx.$executeRaw)).toEqual(["7"]);
-    // `usuario_modify` does NOT honor the login-flow flag, so the empresa pin above
-    // is what authorizes this UPDATE. The login-flow flag is still pinned because
+    // `usuario_update` (migration 20261114120000) authorizes this UPDATE only through
+    // its login-flow branch: flag + empresa pin + the unbound-to-bound `authUserId`
+    // transition, so the empresa pin above is required. The flag is also pinned because
     // the SELECTs on this same transaction (the two `findUnique` reads above) run
     // under `usuario_select`, which DOES honor it. Losing it fails here.
     expect(loginFlowPins(tx.$executeRaw)).toEqual(["'true'"]);

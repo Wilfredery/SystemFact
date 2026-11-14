@@ -1,3 +1,13 @@
+## [0.28.1](https://github.com/Wilfredery/SystemFact/compare/v0.28.0...v0.28.1) (2026-11-14)
+
+### Bug Fixes
+
+* **tenant:** the **branch switch** now pins `empresaId` in its own `USUARIO` write. `reescribirSucursalUsuarioEnTx` used `update({ where: { id } })` and relied on RLS alone for the tenant boundary; it is now a verified `updateMany({ where: { id, empresaId } })` that reports whether exactly one row changed. If none did (the session user is not a row of the caller empresa) the use case fails closed with `TEN_OPS_NO_AUTORIZADO` and never pins the target branch, instead of surfacing a raw Prisma error. No behavior change for a valid session. Found by the pre-commit review of the Administración writes PR; not reachable through the UI today.
+
+### Tests
+
+* **unit:** the port signature and the fail-closed path (target branch never pinned). **integration:** a session whose user belongs to another empresa gets the typed denial with that user's branch and `version` untouched.
+
 ## [0.28.0](https://github.com/Wilfredery/SystemFact/compare/v0.27.0...v0.28.0) (2026-11-14)
 
 ### Features

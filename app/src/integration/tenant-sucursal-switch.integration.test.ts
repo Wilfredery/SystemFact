@@ -10,7 +10,7 @@ import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransac
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { cambiarSucursalActiva } from "@/modules/tenant/application/cambiarSucursalActiva";
-import { TEN_SUCURSAL_NO_VALIDA } from "@/modules/tenant/domain/errors";
+import { TEN_OPS_NO_AUTORIZADO, TEN_SUCURSAL_NO_VALIDA } from "@/modules/tenant/domain/errors";
 import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 describe("cambiarSucursalActiva (real DB)", () => {
@@ -97,5 +97,22 @@ describe("cambiarSucursalActiva (real DB)", () => {
       code: "TEN_OPS_NO_AUTORIZADO",
       message: expect.any(String),
     });
+  });
+
+  it("fails closed when the session user is not a row of the caller empresa: typed denial, no throw, other empresa untouched", async () => {
+    const db = getHarnessDb();
+    const foreign = fixture.usuarios.adminB;
+    const antes = await db.usuario.findUniqueOrThrow({ where: { id: foreign.id } });
+    const ctxForjado: TenantCtx = { ...ctxA, usuarioId: foreign.id };
+
+    const result = await withTenantTransaction(ctxForjado, (tx: PrismaTx) =>
+      cambiarSucursalActiva(ctxForjado, { sucursalId: fixture.sucursalA2.id }, tx),
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(TEN_OPS_NO_AUTORIZADO);
+    const despues = await db.usuario.findUniqueOrThrow({ where: { id: foreign.id } });
+    expect(despues.sucursalId).toBe(antes.sucursalId);
+    expect(despues.version).toBe(antes.version);
   });
 });
