@@ -61,6 +61,7 @@ function usuario(parcial: Record<string, unknown> = {}) {
     activo: true,
     version: 3,
     sucursalNombre: "Sucursal Central",
+    esDeOtraSucursal: false,
     empresaNombre: "Empresa Demo",
     roles: ["Administrador"],
     rolIds: [1],
@@ -168,6 +169,20 @@ describe("Acciones column (S11)", () => {
     );
     // Other rows stay actionable.
     expect(within(fila(11)).getByRole("button", { name: "Cambiar roles" })).toBeEnabled();
+  });
+
+  it("disables both actions on another branch's user (visible company-wide, writes pinned) with a title", () => {
+    montar({ items: [usuario(), usuario({ id: 13, nombreUsuario: "otra", esDeOtraSucursal: true })] });
+
+    const ajena = within(fila(13));
+    expect(ajena.getByRole("button", { name: "Cambiar roles" })).toBeDisabled();
+    expect(ajena.getByRole("button", { name: "Desactivar" })).toBeDisabled();
+    expect(ajena.getByRole("button", { name: "Cambiar roles" })).toHaveAttribute(
+      "title",
+      expect.stringMatching(/otra sucursal/i),
+    );
+    // A same-branch row stays actionable.
+    expect(within(fila(10)).getByRole("button", { name: "Cambiar roles" })).toBeEnabled();
   });
 });
 

@@ -9,6 +9,8 @@
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
+import { conSucursalAmpliadaEnTx } from "@/modules/reportes/infrastructure/widen-sucursal-guc";
+import { nombresUsuariosEnTx } from "@/modules/tenant/infrastructure/usuario-repository";
 import {
   LIMITE_PAGINACION_INVALIDO,
   PAGINA_INVALIDA,
@@ -57,6 +59,25 @@ function buildError(code: InventarioErrorCode): { ok: false; code: InventarioErr
   return { ok: false, code, message: messageFor(code) };
 }
 
+/**
+ * RLS pins USUARIO to the session branch, so the author of a movement made in
+ * another branch reads as null. An Administrador gets those names through ONE
+ * name-only lookup for the page, widened to the empresa for that read alone.
+ * Everyone else keeps null (no privacy change). The ledger page itself stays on
+ * the session branch.
+ */
+async function completarAutores(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  items: MovimientoRow[],
+): Promise<MovimientoRow[]> {
+  if (!ctx.esAdmin) return items;
+  const faltantes = [...new Set(items.filter((i) => i.usuarioNombre === null).map((i) => i.usuarioId))];
+  if (faltantes.length === 0) return items;
+  const nombres = await conSucursalAmpliadaEnTx(tx, ctx, (t) => nombresUsuariosEnTx(t, ctx, faltantes));
+  return items.map((i) => (i.usuarioNombre === null ? { ...i, usuarioNombre: nombres.get(i.usuarioId) ?? null } : i));
+}
+
 export async function listarMovimientosInventario(
   tx: PrismaTx,
   ctx: TenantCtx,
@@ -90,7 +111,7 @@ export async function listarMovimientosInventario(
   return {
     ok: true,
     data: {
-      items,
+      items: await completarAutores(tx, ctx, items),
       total,
       page: query.page,
       limit: query.limit,

@@ -10,6 +10,8 @@ import {
   contarMovimientosEnTx,
   listarMovimientosEnTx,
 } from "../infrastructure/movimientos-repository";
+import { conSucursalAmpliadaEnTx } from "@/modules/reportes/infrastructure/widen-sucursal-guc";
+import { nombresUsuariosEnTx } from "@/modules/tenant/infrastructure/usuario-repository";
 import {
   LIMITE_PAGINACION_INVALIDO,
   PAGINA_INVALIDA,
@@ -22,6 +24,13 @@ import {
 jest.mock("../infrastructure/movimientos-repository", () => ({
   listarMovimientosEnTx: jest.fn(),
   contarMovimientosEnTx: jest.fn(),
+}));
+
+jest.mock("@/modules/reportes/infrastructure/widen-sucursal-guc", () => ({
+  conSucursalAmpliadaEnTx: jest.fn(),
+}));
+jest.mock("@/modules/tenant/infrastructure/usuario-repository", () => ({
+  nombresUsuariosEnTx: jest.fn(),
 }));
 
 const tx = {} as PrismaTx;
@@ -38,6 +47,7 @@ const FILA = {
   cantidadAnterior: "10",
   cantidadNueva: "15",
   usuarioNombre: "Ana",
+  usuarioId: 11,
   motivo: "Conteo",
 };
 
@@ -45,6 +55,9 @@ beforeEach(() => {
   jest.resetAllMocks();
   (listarMovimientosEnTx as jest.Mock).mockResolvedValue([FILA]);
   (contarMovimientosEnTx as jest.Mock).mockResolvedValue(61);
+  (conSucursalAmpliadaEnTx as jest.Mock).mockImplementation(
+    async (t: unknown, _c: unknown, lectura: (t: unknown) => Promise<unknown>) => lectura(t),
+  );
 });
 
 describe("listarMovimientosInventario", () => {
@@ -112,5 +125,52 @@ describe("listarMovimientosInventario", () => {
     const r = await listarMovimientosInventario(tx, ctx, { page: 1, limit: 25 }, AHORA);
 
     expect(r).toMatchObject({ ok: true, data: { items: [], total: 0 } });
+  });
+});
+
+describe("listarMovimientosInventario — author names of other branches", () => {
+  const OCULTA = { ...FILA, id: 2, usuarioNombre: null, usuarioId: 99 };
+  const OCULTA_2 = { ...FILA, id: 3, usuarioNombre: null, usuarioId: 99 };
+
+  it("an Administrador gets the hidden names with ONE widened name-only lookup for the page", async () => {
+    (listarMovimientosEnTx as jest.Mock).mockResolvedValue([FILA, OCULTA, OCULTA_2]);
+    (nombresUsuariosEnTx as jest.Mock).mockResolvedValue(new Map([[99, "Luis Otra Sucursal"]]));
+
+    const r = await listarMovimientosInventario(tx, ctx, { page: 1, limit: 25 }, AHORA);
+
+    expect(conSucursalAmpliadaEnTx).toHaveBeenCalledTimes(1);
+    expect(nombresUsuariosEnTx).toHaveBeenCalledTimes(1);
+    expect(nombresUsuariosEnTx).toHaveBeenCalledWith(tx, ctx, [99]);
+    expect(r.ok && r.data.items.map((i) => i.usuarioNombre)).toEqual([
+      "Ana",
+      "Luis Otra Sucursal",
+      "Luis Otra Sucursal",
+    ]);
+  });
+
+  it("an Administrador with no hidden author issues no extra query", async () => {
+    await listarMovimientosInventario(tx, ctx, { page: 1, limit: 25 }, AHORA);
+
+    expect(conSucursalAmpliadaEnTx).not.toHaveBeenCalled();
+    expect(nombresUsuariosEnTx).not.toHaveBeenCalled();
+  });
+
+  it("a name still unresolved stays null", async () => {
+    (listarMovimientosEnTx as jest.Mock).mockResolvedValue([OCULTA]);
+    (nombresUsuariosEnTx as jest.Mock).mockResolvedValue(new Map());
+
+    const r = await listarMovimientosInventario(tx, ctx, { page: 1, limit: 25 }, AHORA);
+
+    expect(r.ok && r.data.items[0].usuarioNombre).toBeNull();
+  });
+
+  it("anyone else keeps null: no widen, no lookup (no privacy change)", async () => {
+    (listarMovimientosEnTx as jest.Mock).mockResolvedValue([OCULTA]);
+
+    const r = await listarMovimientosInventario(tx, { ...ctx, esAdmin: false }, { page: 1, limit: 25 }, AHORA);
+
+    expect(conSucursalAmpliadaEnTx).not.toHaveBeenCalled();
+    expect(nombresUsuariosEnTx).not.toHaveBeenCalled();
+    expect(r.ok && r.data.items[0].usuarioNombre).toBeNull();
   });
 });

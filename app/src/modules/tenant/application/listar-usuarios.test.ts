@@ -14,7 +14,14 @@ import {
   listarUsuariosEnTx,
   type UsuarioListRow,
 } from "../infrastructure/usuario-repository";
+import { conSucursalAmpliadaEnTx } from "@/modules/reportes/infrastructure/widen-sucursal-guc";
 import { listarUsuarios } from "./listar-usuarios";
+
+jest.mock("@/modules/reportes/infrastructure/widen-sucursal-guc", () => ({
+  conSucursalAmpliadaEnTx: jest.fn(
+    async (t: unknown, _ctx: unknown, lectura: (t: unknown) => Promise<unknown>) => lectura(t),
+  ),
+}));
 
 jest.mock("../infrastructure/usuario-repository", () => ({
   listarUsuariosEnTx: jest.fn(),
@@ -31,6 +38,7 @@ function makeRow(overrides: Partial<UsuarioListRow> = {}): UsuarioListRow {
     nombre: "María Pérez",
     activo: true,
     version: 1,
+    sucursalId: 2,
     sucursalNombre: "Matriz",
     roles: ["Administrador"],
     rolIds: [1],
@@ -111,5 +119,34 @@ describe("listarUsuarios", () => {
       ok: true,
       data: { items: [makeRow()], total: 42, page: 2, pageSize: 25 },
     });
+  });
+});
+
+describe("listarUsuarios — read scope", () => {
+  it("an Administrador reads inside the company-wide widen (read-only, restored by the helper)", async () => {
+    await listarUsuarios(tx, ctx, {});
+
+    expect(conSucursalAmpliadaEnTx).toHaveBeenCalledTimes(1);
+    expect(conSucursalAmpliadaEnTx).toHaveBeenCalledWith(tx, ctx, expect.any(Function));
+    expect(listarUsuariosEnTx).toHaveBeenCalledTimes(1);
+    expect(contarUsuariosEnTx).toHaveBeenCalledTimes(1);
+  });
+
+  it("anyone else stays on the session branch: no widen", async () => {
+    const operador: TenantCtx = { ...ctx, esAdmin: false };
+    await listarUsuarios(tx, operador, {});
+
+    expect(conSucursalAmpliadaEnTx).not.toHaveBeenCalled();
+    expect(listarUsuariosEnTx).toHaveBeenCalledWith(tx, operador, { offset: 0, limit: 25 });
+  });
+
+  it("the scope comes from ctx only: no input field can request it", async () => {
+    const operador: TenantCtx = { ...ctx, esAdmin: false };
+    await listarUsuarios(tx, operador, { buscar: "x", empresaId: 99, sucursalId: 9 } as never);
+
+    expect(conSucursalAmpliadaEnTx).not.toHaveBeenCalled();
+    const args = (listarUsuariosEnTx as jest.Mock).mock.calls[0][2];
+    expect(args).not.toHaveProperty("empresaId");
+    expect(args).not.toHaveProperty("sucursalId");
   });
 });

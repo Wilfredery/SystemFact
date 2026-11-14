@@ -65,6 +65,7 @@ function usuario(parcial: Record<string, unknown> = {}) {
     activo: true,
     version: 1,
     sucursalNombre: "Sucursal Central",
+    esDeOtraSucursal: false,
     empresaNombre: "Empresa Demo",
     roles: ["Administrador"],
     rolIds: [1],

@@ -40,6 +40,7 @@ function salida(parcial: Partial<ListarMovimientosOutput> = {}): ListarMovimient
         cantidadAnterior: "10",
         cantidadNueva: "15",
         usuarioNombre: "Ana Pérez",
+        usuarioId: 1,
         motivo: "Conteo físico: e2e",
       },
       {
@@ -52,6 +53,7 @@ function salida(parcial: Partial<ListarMovimientosOutput> = {}): ListarMovimient
         cantidadAnterior: "12.5",
         cantidadNueva: "10",
         usuarioNombre: null,
+        usuarioId: 2,
         motivo: "Venta",
       },
     ],

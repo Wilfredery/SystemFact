@@ -82,12 +82,14 @@ describe("listarMovimientosEnTx", () => {
         cantidadAnterior: new Prisma.Decimal("1"),
         cantidadNueva: new Prisma.Decimal("2"),
         usuario: null,
+        usuarioId: 12,
         inventario: { producto: { codigo: "P-1", nombre: "Arroz" } },
       },
     ]);
     const rows = await listarMovimientosEnTx(tx, ctx, filtros, { page: 1, limit: 25 });
 
     expect(rows[0].usuarioNombre).toBeNull();
+    expect(rows[0].usuarioId).toBe(12);
   });
 
   it("orders fecha desc, id desc and pages with skip/take", async () => {
@@ -111,6 +113,7 @@ describe("listarMovimientosEnTx", () => {
       fecha: true,
       tipoMovimiento: true,
       motivo: true,
+      usuarioId: true,
       cantidadMovida: true,
       cantidadAnterior: true,
       cantidadNueva: true,
@@ -131,6 +134,7 @@ describe("listarMovimientosEnTx", () => {
         cantidadAnterior: new Prisma.Decimal("10.000"),
         cantidadNueva: new Prisma.Decimal("7.500"),
         usuario: { nombre: "Ana" },
+        usuarioId: 11,
         inventario: { producto: { codigo: "P-1", nombre: "Arroz" } },
       },
     ]);
@@ -147,6 +151,7 @@ describe("listarMovimientosEnTx", () => {
         cantidadAnterior: "10",
         cantidadNueva: "7.5",
         usuarioNombre: "Ana",
+        usuarioId: 11,
         motivo: "Venta #1",
       },
     ]);

@@ -454,6 +454,7 @@ function TablaUsuarios({
                       <AccionesUsuario
                         usuario={u}
                         propio={u.id === sesionUsuarioId}
+                        otraSucursal={u.esDeOtraSucursal}
                         deshabilitado={enviando}
                         onAccion={onAccion}
                       />
@@ -496,17 +497,24 @@ function TablaUsuarios({
 function AccionesUsuario({
   usuario,
   propio,
+  otraSucursal,
   deshabilitado,
   onAccion,
 }: {
   readonly usuario: UsuarioAdministracionDto;
   /** The session user's own row: the server refuses it (TEN_AUTO_PROTECCION). */
   readonly propio: boolean;
+  /** Another branch's user: visible company-wide, but writes are pinned to the session branch. */
+  readonly otraSucursal: boolean;
   readonly deshabilitado: boolean;
   readonly onAccion: (accion: AccionUsuario) => void;
 }) {
-  const bloqueado = propio || deshabilitado;
-  const titulo = propio ? TITULO_PROPIO_USUARIO : undefined;
+  const bloqueado = propio || otraSucursal || deshabilitado;
+  const titulo = propio
+    ? TITULO_PROPIO_USUARIO
+    : otraSucursal
+      ? "Este usuario pertenece a otra sucursal: cambie a esa sucursal para gestionarlo."
+      : undefined;
   return (
     <div className="flex flex-wrap gap-2">
       <button
