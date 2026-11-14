@@ -1,3 +1,13 @@
+## [0.29.0](https://github.com/Wilfredery/SystemFact/compare/v0.28.1...v0.29.0) (2026-11-14)
+
+### Features
+
+* **tenant:** the **Configuración** tab of Administración now shows the **ITBIS rates in use** instead of "No disponible aún": a read-only table with Tasa (%), Vigente desde, Vigente hasta ("Sin fin" when open-ended), Productos (count of active products) and an Estado badge, "Vigente" or "No vigente" for today in `America/Santo_Domingo` (a rate is "Vigente" when its window overlaps today's business day). The data is the company's active products (`PRODUCTO.tasaItbis` with its validity window) aggregated in one SQL `GROUP BY`, pinned to the session empresa; nothing is hardcoded, an empresa without active products shows an explicit empty state, never a fabricated rate. No write control, no migration, no RLS change. **Deliberately not done:** the allowed rate set (0/16/18) is still fixed in producto/venta/devolucion; moving it to the database is a separate fiscal decision.
+
+### Tests
+
+* **unit:** the pure domain (day-overlap validity with the SD boundary, numeric ordering, rate kept as string), the repository aggregation, the use case and the action mapping, and the RTL table (badge, "Sin fin", empty state). **integration (real Postgres):** counts and windows match seeded products, inactive products and other empresas are excluded. **e2e:** `administracion.spec.ts` asserts the ITBIS table headers and the seeded product's 18.00 row. No test may skip.
+
 ## [0.28.1](https://github.com/Wilfredery/SystemFact/compare/v0.28.0...v0.28.1) (2026-11-14)
 
 ### Bug Fixes

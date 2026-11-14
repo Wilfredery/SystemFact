@@ -230,7 +230,7 @@ describe("AdministracionScreen — tabs (S2/S6)", () => {
     expect(screen.getByTestId("sucursal-fila-2")).toHaveTextContent("Sucursal Norte");
   });
 
-  it("renders NCF sequences, retentions and the explicit ITBIS gap note (S2c)", () => {
+  it("renders NCF sequences and retentions (S2c)", () => {
     montar({
       tab: "configuracion",
       usuarios: null,
@@ -248,6 +248,7 @@ describe("AdministracionScreen — tabs (S2/S6)", () => {
               porcentajeUsado: 10,
             },
           ],
+          itbisEnUso: [],
         },
       },
     });
@@ -257,6 +258,99 @@ describe("AdministracionScreen — tabs (S2/S6)", () => {
     expect(within(fila).getByText("10%")).toBeInTheDocument();
     expect(screen.getByText("Ret. ISR servicios profesionales")).toBeInTheDocument();
     expect(screen.getByText("15%")).toBeInTheDocument();
-    expect(screen.getByText(/No disponible aún/)).toBeInTheDocument();
+    expect(screen.queryByText(/No disponible aún/)).not.toBeInTheDocument();
+  });
+
+  const retencionesOk = { isr15: "15", isr2: "2", itbis100: "100", itbis30: "30" };
+
+  it("renders the ITBIS rates in use with window, count and state badge (S1/S3)", () => {
+    montar({
+      tab: "configuracion",
+      usuarios: null,
+      configuracion: {
+        ok: true,
+        data: {
+          retenciones: retencionesOk,
+          ncf: [],
+          itbisEnUso: [
+            {
+              tasaItbis: "18.00",
+              vigenteDesde: "2026-01-01T04:00:00.000Z",
+              vigenteHasta: null,
+              productos: 5,
+              vigenteHoy: true,
+            },
+            {
+              tasaItbis: "16.00",
+              vigenteDesde: "2025-01-01T04:00:00.000Z",
+              vigenteHasta: "2025-12-31T04:00:00.000Z",
+              productos: 2,
+              vigenteHoy: false,
+            },
+          ],
+        },
+      },
+    });
+
+    for (const columna of ["Tasa (%)", "Vigente desde", "Vigente hasta", "Productos", "Estado"]) {
+      expect(screen.getByRole("columnheader", { name: columna })).toBeInTheDocument();
+    }
+    const rows = screen.getAllByTestId(/^itbis-fila-/);
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]).getByText("18.00%")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("01/01/2026")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Sin fin")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("5")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Vigente")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("16.00%")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("31/12/2025")).toBeInTheDocument();
+    expect(within(rows[1]).queryByText("Sin fin")).not.toBeInTheDocument();
+    expect(within(rows[1]).getByText("No vigente")).toBeInTheDocument();
+    expect(screen.queryByText(/Sin productos activos/)).not.toBeInTheDocument();
+  });
+
+  it("renders no create/edit/delete control for the ITBIS rates (read-only)", () => {
+    montar({
+      tab: "configuracion",
+      usuarios: null,
+      configuracion: {
+        ok: true,
+        data: {
+          retenciones: retencionesOk,
+          ncf: [],
+          itbisEnUso: [
+            {
+              tasaItbis: "18.00",
+              vigenteDesde: "2026-01-01T04:00:00.000Z",
+              vigenteHasta: null,
+              productos: 1,
+              vigenteHoy: true,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/conjunto de tasas permitidas está fijado por las reglas de producto/),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the explicit empty state when no active product exists (S3)", () => {
+    montar({
+      tab: "configuracion",
+      usuarios: null,
+      configuracion: {
+        ok: true,
+        data: { retenciones: retencionesOk, ncf: [], itbisEnUso: [] },
+      },
+    });
+
+    expect(
+      screen.getByText("Sin productos activos: no hay tasas de ITBIS en uso."),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId(/^itbis-fila-/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Tasa (%)" })).not.toBeInTheDocument();
   });
 });

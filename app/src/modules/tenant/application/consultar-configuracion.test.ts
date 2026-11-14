@@ -9,9 +9,9 @@
  *   - NCF sequences come from the ncf module reader (active row per type), with
  *     bigint ranges rendered as decimal strings and "% used" computed by the
  *     pure domain helper;
- *   - ITBIS rates have NO existing tenant reader, so the field is OMITTED
- *     entirely (tracked as a gap in odd/tasks/administracion.md) — no value is
- *     invented here.
+ *   - ITBIS rates in use come from the repository's single product aggregation
+ *     and are ordered/flagged by the pure domain (`itbisEnUso`); no empresa has
+ *     a fabricated rate: no active products means an empty list.
  */
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
@@ -34,6 +34,7 @@ function leida(
   return {
     retenciones: { isr15: "15", isr2: "2", itbis100: "100", itbis30: "30" },
     secuenciasNcf: [],
+    tasasItbis: [],
     ...overrides,
   };
 }
@@ -58,6 +59,7 @@ describe("consultarConfiguracion", () => {
       data: {
         retenciones: { isr15: "15", isr2: "2", itbis100: "100", itbis30: "30" },
         ncf: [],
+        itbisEnUso: [],
       },
     });
   });
@@ -118,7 +120,39 @@ describe("consultarConfiguracion", () => {
             porcentajeUsado: 0,
           },
         ],
+        itbisEnUso: [],
       },
     });
+  });
+
+  it("shapes the ITBIS rates in use: ordered, string rate, flagged for today's SD day", async () => {
+    const desde = new Date("2026-01-01T04:00:00.000Z");
+    (leerConfiguracionAdministracionEnTx as jest.Mock).mockResolvedValue(
+      leida({
+        tasasItbis: [
+          { tasaItbis: "16.00", vigenteDesde: desde, vigenteHasta: new Date("2026-06-01T04:00:00.000Z"), productos: 2 },
+          { tasaItbis: "18.00", vigenteDesde: desde, vigenteHasta: null, productos: 5 },
+        ],
+      }),
+    );
+
+    const result = await consultarConfiguracion(tx, empresaId, new Date("2026-11-14T15:00:00.000Z"));
+
+    expect(result.data.itbisEnUso).toEqual([
+      {
+        tasaItbis: "18.00",
+        vigenteDesde: "2026-01-01T04:00:00.000Z",
+        vigenteHasta: null,
+        productos: 5,
+        vigenteHoy: true,
+      },
+      {
+        tasaItbis: "16.00",
+        vigenteDesde: "2026-01-01T04:00:00.000Z",
+        vigenteHasta: "2026-06-01T04:00:00.000Z",
+        productos: 2,
+        vigenteHoy: false,
+      },
+    ]);
   });
 });

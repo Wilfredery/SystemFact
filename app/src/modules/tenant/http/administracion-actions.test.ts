@@ -257,12 +257,15 @@ describe("consultarConfiguracionAction", () => {
     (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
     (consultarConfiguracion as jest.Mock).mockResolvedValue({
       ok: true,
-      data: { retenciones: null, ncf: [] },
+      data: { retenciones: null, ncf: [], itbisEnUso: [] },
     });
 
     const result = await consultarConfiguracionAction();
 
-    expect(result).toEqual({ ok: true, data: { retenciones: null, ncf: [] } });
+    expect(result).toEqual({
+      ok: true,
+      data: { retenciones: null, ncf: [], itbisEnUso: [] },
+    });
     expect(consultarConfiguracion).toHaveBeenCalledWith({}, ctx.empresaId);
   });
 
