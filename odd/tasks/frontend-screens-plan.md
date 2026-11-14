@@ -129,13 +129,13 @@ CSP is enforced, so new screens must not need inline scripts or `eval` (the loca
 |---|---|---|---|
 | 0 | Housekeeping | **dead `/cobros` link DONE** (PR #192, v0.19.7, deployed, prod-smoke 7 passed); role names half-decided: Despachador views products (yes), the meaning of `Operador` is not explicitly confirmed (the code treats it as the sales operator) | `787d13f`, `tools/config/nav-routes.test.ts` |
 | 1 | **Inventario / Productos list** (replaces the stand-alone Categorías screen; owner confirmed 2026-11-08, L7) | **1a (consulta) SHIPPED**: PR #196 (`d28f1cc`), v0.20.0, deployed, prod-smoke 7/7, prod-demo 5/5; tracker `odd/tasks/inventario-consulta.md`. **1b (adjust form `04-Inventario-Ajuste`, Administrador only) not started** | Owner 2026-11-08: Operador and Despachador view-only, Administrador manages (L9); one role group per capability in `http/shared.ts` |
-| 2 | Productos | not started | |
-| 3 | Clientes | not started | |
-| 4 | Proveedores | not started | |
-| 5 | Inventario | not started | |
-| 6 | Compras | not started | |
-| 7 | Administración | not started | |
-| 8 | Caja | not started | |
+| 2 | Productos | shipped; evidence in `odd/tasks/productos.md` | |
+| 3 | Clientes | shipped; evidence in `odd/tasks/clientes.md` | |
+| 4 | Proveedores | shipped, v0.24.0 (PR #205); `odd/tasks/proveedores.md` | |
+| 5 | Inventario | consulta shipped (1a) and the adjustment form; evidence in `odd/tasks/inventario-consulta.md` and `odd/tasks/inventario-ajuste.md` | |
+| 6 | Compras | shipped, v0.25.0 (PR #207); `odd/tasks/compras.md` | |
+| 7 | Administración | read-only shipped, v0.26.0 (PR #209); writes (roles, activate/deactivate) in v0.28.0, see `odd/tasks/administracion-writes.md`. Still deferred: user creation (operator-side), branch moves/management, company-wide listing, ITBIS reader | |
+| 8 | Caja | shipped, v0.27.0 (PR #211); `odd/tasks/caja.md` | |
 
 ## Open questions for the owner
 

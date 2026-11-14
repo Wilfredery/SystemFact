@@ -1,3 +1,21 @@
+## [0.28.0](https://github.com/Wilfredery/SystemFact/compare/v0.27.0...v0.28.0) (2026-11-14)
+
+### Features
+
+* **tenant:** the **Administración** screen can now **change a user's roles** and **activate or deactivate a user** (Step 7b), Administrador only. The Usuarios tab gets an `Acciones` column with "Cambiar roles" (one checkbox per active role, at least one required) and "Desactivar"/"Activar" (confirmation dialog). The new state is shown only after the server confirms it, the list is re-read so the next write carries the new `version`, and every refusal renders its catalog message (a version conflict reloads the row and asks for an explicit retry). Your own row is disabled. Operador and Despachador still see only the access message. **Out of scope on purpose:** creating users, passwords, branch moves and a company-wide listing; creation stays operator-side (`app/USER-PROVISIONING.md`), no service-role key in the app.
+* **tenant (backend):** `cambiarRolesUsuarioAction` and `cambiarEstadoUsuarioAction` behind `ROLES_GESTION_USUARIOS` (deny-by-default, `TEN_OPS_NO_AUTORIZADO`), strict input validation (ids bounded to int4), all inside `withTenantTransaction`. Inside the transaction: the target and the branch's active administrators are locked in id order, the actor is re-checked as an active Administrador under the lock, a stale `version` always conflicts (`TEN_CONCURRENCIA_CONFLICTO`), no self-deactivation or self-demotion (`TEN_AUTO_PROTECCION`), the branch always keeps an active Administrador (`TEN_ULTIMO_ADMINISTRADOR`), an unknown, foreign-tenant or other-branch id is `TEN_USUARIO_NO_ENCONTRADO` (no oracle), and an invalid role is `TEN_ROL_NO_VALIDO`. A repeat with the same effect is a no-op (no version bump, no audit row). Every real change appends one audit row with before and after. Users are never deleted. Deactivation takes effect on the user's next request.
+
+### Security
+
+* **rls (migration `20261114120000_usuario_writes_admin_only`):** writes on `USUARIO` and `USUARIO_ROL` are now **role-aware at the database**: INSERT, UPDATE and DELETE require `app.current_es_admin = 'true'` plus the tenant and branch scope (or bootstrap). Before, any same-branch session could write them at the DB level. SELECT policies are unchanged; `ROL` and audit are untouched. The login flow keeps its one exception, the lazy `authUserId` bind.
+* **rls (migration `20261114130000_usuario_login_flow_column_guard`):** a `BEFORE UPDATE` trigger lets the login flow change only `authUserId` (RLS cannot restrict columns; found by the native review of the previous migration). A drift test fails if `USUARIO` gains a column the guard does not list.
+
+### Tests
+
+* **unit:** domain invariants, use cases, validations and actions (76 new), the Usuarios list and roles catalog readers, and the RTL suite for the column, dialogs, error mapping, pending state and own row (29).
+* **integration (real Postgres, `systemfact_app` role):** the DB wall (Operador refused on UPDATE, INSERT and DELETE, cross-tenant, SELECT unchanged, login flow and bootstrap intact), the login-flow column guard, and the write use cases including a concurrency test on the last administrator and the audit rows.
+* **e2e:** `administracion.spec.ts` runs the write flow on a dedicated throwaway user (`e2e-gestion-objetivo`, seeded in the CI fixture) and restores it; Operador and Despachador see no controls. No test may skip.
+
 ## [0.27.0](https://github.com/Wilfredery/SystemFact/compare/v0.26.0...v0.27.0) (2026-11-14)
 
 ### Features
