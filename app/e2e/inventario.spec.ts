@@ -121,6 +121,10 @@ async function verInventario(
 
   // The adjust link is for the manage group only; nobody gets a row-actions column.
   await expect(page.getByRole("link", { name: "+ Ajustar" })).toHaveCount(veAjustar ? 1 : 0);
+  // The movement-history link follows the same manage group (inventario-historial S2).
+  await expect(page.getByRole("link", { name: "Ver historial de movimientos" })).toHaveCount(
+    veAjustar ? 1 : 0,
+  );
   await expect(page.getByRole("columnheader", { name: "Acciones" })).toHaveCount(0);
 }
 

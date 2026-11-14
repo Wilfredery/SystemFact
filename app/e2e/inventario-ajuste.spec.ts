@@ -32,6 +32,7 @@ test.afterAll(async () => {
 });
 
 const MENSAJE_SIN_PERMISO = "No tiene permisos para ajustar inventario.";
+const MENSAJE_SIN_PERMISO_HISTORIAL = "No tiene permisos para ver el historial de movimientos.";
 
 type Opcion = { codigo: string; stock: number };
 
@@ -231,6 +232,53 @@ test.describe("/inventario/ajuste (inventario-ajuste T3)", () => {
     expect(Number(movimientosTotales[1].movida)).toBe(-5);
     expect(Number(movimientosTotales[1].anterior)).toBe(x + 5);
     expect(Number(movimientosTotales[1].nueva)).toBe(x);
+
+    // --- Historial de movimientos (inventario-historial S1/S2/S7) ----------
+    // The two AJUSTE movements written above are today's newest rows of this branch.
+    await page.getByRole("link", { name: "Ver historial de movimientos" }).click();
+    await page.waitForURL("**/inventario/movimientos", { timeout: 20_000 });
+    await expect(page.getByRole("heading", { name: "Historial de movimientos" })).toBeVisible();
+    for (const columna of [
+      "Fecha",
+      "Producto",
+      "Tipo",
+      "Cantidad movida",
+      "Cantidad anterior",
+      "Cantidad nueva",
+      "Usuario",
+      "Motivo",
+    ]) {
+      await expect(page.getByRole("columnheader", { name: columna, exact: true })).toBeVisible();
+    }
+    await expect(page.getByRole("columnheader", { name: "Acciones" })).toHaveCount(0);
+    await expect(page.getByText(/^Página \d+ de \d+$/)).toBeVisible();
+
+    await page.getByLabel("Buscar producto").fill(codigo);
+    // `.first()` = the newest match, so a Playwright retry (which repeats the adjust) cannot break the count.
+    const filaRestauracion = page
+      .locator('[data-testid^="movimiento-fila-"]')
+      .filter({ hasText: "Corrección de error: e2e ajuste restore" })
+      .first();
+    const filaEntrada = page
+      .locator('[data-testid^="movimiento-fila-"]')
+      .filter({ hasText: "Conteo físico: e2e ajuste" })
+      .first();
+    await expect(filaRestauracion).toBeVisible();
+    await expect(filaEntrada).toBeVisible();
+    await expect(filaRestauracion).toContainText(codigo);
+    await expect(filaRestauracion).toContainText("Ajuste manual");
+    await expect(filaRestauracion).toContainText("-5");
+    await expect(filaEntrada).toContainText("+5");
+    // Newest first: the restoring Salida sits above the Entrada.
+    const motivos = await page.locator('[data-testid^="movimiento-fila-"]').allTextContents();
+    expect(motivos.findIndex((t) => t.includes("e2e ajuste restore"))).toBeLessThan(
+      motivos.findIndex((t) => t.includes("Conteo físico: e2e ajuste")),
+    );
+
+    // Nonsense search: the empty state, no write control anywhere.
+    await page.getByLabel("Buscar producto").fill("zz-sin-coincidencias-zz");
+    await expect(page.getByText("No hay movimientos que coincidan con los filtros.")).toBeVisible();
+    await expect(page.getByRole("button", { name: /ajustar|guardar|eliminar|anular/i })).toHaveCount(0);
   });
 
   for (const [rol, envUser] of [
@@ -247,12 +295,22 @@ test.describe("/inventario/ajuste (inventario-ajuste T3)", () => {
       await irAInventario(page);
       await expect(page.getByText("+ Ajustar")).toHaveCount(0);
       await expect(page.getByRole("link", { name: /Ajustar/ })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Ver historial de movimientos" })).toHaveCount(0);
 
       await page.goto("/inventario/ajuste");
       await expect(page.getByRole("alert").filter({ hasText: MENSAJE_SIN_PERMISO })).toBeVisible();
       await expect(page.getByRole("link", { name: "Volver a Inventario" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Confirmar Ajuste" })).toHaveCount(0);
       await expect(page.getByPlaceholder("Seleccionar producto...")).toHaveCount(0);
+
+      // The history is the manage group only: access message, never the table.
+      await page.goto("/inventario/movimientos");
+      await expect(
+        page.getByRole("alert").filter({ hasText: MENSAJE_SIN_PERMISO_HISTORIAL }),
+      ).toBeVisible();
+      await expect(page.getByRole("link", { name: "Volver a Inventario" })).toBeVisible();
+      await expect(page.getByRole("columnheader", { name: "Fecha", exact: true })).toHaveCount(0);
+      await expect(page.getByLabel("Desde")).toHaveCount(0);
     });
   }
 });
