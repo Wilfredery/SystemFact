@@ -78,10 +78,20 @@ export interface UsuarioAdministracionDto {
   readonly nombreUsuario: string;
   readonly nombre: string;
   readonly activo: boolean;
+  /** Optimistic-lock token the write actions take as `versionEsperada`. */
+  readonly version: number;
   readonly sucursalNombre: string;
   /** Session empresa display name (`EMPRESA.nombreComercial`, header seam). */
   readonly empresaNombre: string;
   readonly roles: readonly string[];
+  /** The user's role ids (catalog ids), to preselect the role dialog. */
+  readonly rolIds: readonly number[];
+}
+
+/** One active ROL catalog entry (role checkboxes of the write dialog). */
+export interface RolCatalogoDto {
+  readonly id: number;
+  readonly nombre: string;
 }
 
 export interface ListarUsuariosAdministracion {
@@ -89,6 +99,8 @@ export interface ListarUsuariosAdministracion {
   readonly total: number;
   readonly page: number;
   readonly pageSize: number;
+  /** Active ROL catalog (global), alongside the rows it is assigned to. */
+  readonly rolesCatalogo: readonly RolCatalogoDto[];
 }
 
 /** One branch row: exactly what the existing tenant use case exposes. */

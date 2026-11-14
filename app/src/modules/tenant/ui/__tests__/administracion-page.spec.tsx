@@ -12,7 +12,7 @@
  */
 
 import "@testing-library/jest-dom";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import AdministracionPage from "@/app/(app)/administracion/page";
 import {
   consultarConfiguracionAction,
@@ -28,6 +28,11 @@ jest.mock("@/lib/supabase/client", () => ({
 
 jest.mock("@/modules/tenant/infrastructure/tenant-runtime", () => ({
   getCurrentTenantContext: jest.fn(),
+}));
+
+jest.mock("@/modules/tenant/http/actions.usuarios", () => ({
+  cambiarRolesUsuarioAction: jest.fn(),
+  cambiarEstadoUsuarioAction: jest.fn(),
 }));
 
 jest.mock("@/modules/tenant/http/actions.administracion", () => ({
@@ -58,15 +63,24 @@ function usuario(parcial: Record<string, unknown> = {}) {
     nombreUsuario: "aperez",
     nombre: "Ana Pérez",
     activo: true,
+    version: 1,
     sucursalNombre: "Sucursal Central",
     empresaNombre: "Empresa Demo",
     roles: ["Administrador"],
+    rolIds: [1],
     ...parcial,
   };
 }
 
 function salidaUsuarios(parcial: Record<string, unknown> = {}) {
-  return { items: [usuario()], total: 1, page: 1, pageSize: 25, ...parcial };
+  return {
+    items: [usuario()],
+    total: 1,
+    page: 1,
+    pageSize: 25,
+    rolesCatalogo: [{ id: 1, nombre: "Administrador" }],
+    ...parcial,
+  };
 }
 
 async function renderizarPagina(
@@ -142,6 +156,40 @@ describe("AdministracionPage — access gate (S6)", () => {
       "No tiene permisos para ver la Administración.",
     );
     expect(screen.queryByTestId("usuario-fila-10")).not.toBeInTheDocument();
+  });
+});
+
+describe("AdministracionPage — write affordances (administracion-writes S11)", () => {
+  it("gives the Administrador the Acciones column, with the session user's own row disabled", async () => {
+    mockContexto.mockResolvedValue({
+      empresaId: 1,
+      sucursalId: 1,
+      usuarioId: 10,
+      esAdmin: true,
+    } as Awaited<ReturnType<typeof getCurrentTenantContext>>);
+    mockListar.mockResolvedValue({
+      ok: true,
+      data: salidaUsuarios({ items: [usuario(), usuario({ id: 11, nombreUsuario: "jperez" })], total: 2 }),
+    });
+
+    await renderizarPagina();
+
+    expect(screen.getByRole("columnheader", { name: "Acciones" })).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("usuario-fila-10")).getByRole("button", { name: "Cambiar roles" }),
+    ).toBeDisabled();
+    expect(
+      within(screen.getByTestId("usuario-fila-11")).getByRole("button", { name: "Cambiar roles" }),
+    ).toBeEnabled();
+  });
+
+  it("renders no controls at all for a caller the server does not permit (access message only)", async () => {
+    mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeVer: false } });
+
+    await renderizarPagina();
+
+    expect(screen.queryByRole("columnheader", { name: "Acciones" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
 

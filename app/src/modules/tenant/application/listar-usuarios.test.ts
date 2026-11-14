@@ -30,8 +30,10 @@ function makeRow(overrides: Partial<UsuarioListRow> = {}): UsuarioListRow {
     nombreUsuario: "maria",
     nombre: "María Pérez",
     activo: true,
+    version: 1,
     sucursalNombre: "Matriz",
     roles: ["Administrador"],
+    rolIds: [1],
     ...overrides,
   };
 }

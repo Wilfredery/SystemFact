@@ -7,8 +7,13 @@
  * (`tab`/`page`/`busqueda`/`activo`) and reads the CURRENT tab through the tenant
  * read actions T1 exposed.
  *
- * Read-only first (S1): this screen renders a directory; there is no create,
- * edit, role/branch assignment or activate/deactivate affordance.
+ * Writes (Step 7b, `odd/tasks/administracion-writes.md` S11): the Usuarios tab
+ * offers role assignment and activate/deactivate to the same Administrador the
+ * gate below lets in (`ROLES_GESTION_USUARIOS` and `ROLES_VER_ADMINISTRACION` are
+ * both Administrador today; if they ever diverge, give the screen its own probe).
+ * The session user id lets the UI disable the actions on one's own row. Both are
+ * UX only: every write action re-checks the role and RLS is the second wall.
+ * There is still no user/branch creation, and no branch move.
  *
  * Role gate (S3/S6): the Administrador group (`ROLES_VER_ADMINISTRACION`, read
  * through `obtenerPermisosAdministracionAction`) is the only way in. Anything
@@ -112,6 +117,8 @@ export default async function AdministracionPage({
           usuarios={usuarios}
           sucursales={sucursales}
           configuracion={configuracion}
+          puedeGestionar={puedeVer}
+          sesionUsuarioId={ctx.usuarioId}
         />
       ) : (
         <p

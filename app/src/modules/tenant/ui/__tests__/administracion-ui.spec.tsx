@@ -26,6 +26,11 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
 
+jest.mock("@/modules/tenant/http/actions.usuarios", () => ({
+  cambiarRolesUsuarioAction: jest.fn(),
+  cambiarEstadoUsuarioAction: jest.fn(),
+}));
+
 jest.mock("@/modules/tenant/http/actions.administracion", () => ({
   listarUsuariosAction: jest.fn(),
   listarSucursalesDeEmpresaAction: jest.fn(),
@@ -43,19 +48,25 @@ function usuario(parcial: Record<string, unknown> = {}) {
     nombreUsuario: "aperez",
     nombre: "Ana Pérez",
     activo: true,
+    version: 1,
     sucursalNombre: "Sucursal Central",
     empresaNombre: "Empresa Demo",
     roles: ["Administrador"],
+    rolIds: [1],
     ...parcial,
   };
 }
 
 function salidaUsuarios(parcial: Record<string, unknown> = {}) {
   return {
-    items: [usuario(), usuario({ id: 11, nombreUsuario: "jperez", nombre: "Juan Pérez", activo: false, roles: ["Operador"] })],
+    items: [usuario(), usuario({ id: 11, nombreUsuario: "jperez", nombre: "Juan Pérez", activo: false, roles: ["Operador"], rolIds: [2] })],
     total: 2,
     page: 1,
     pageSize: 25,
+    rolesCatalogo: [
+      { id: 1, nombre: "Administrador" },
+      { id: 2, nombre: "Operador" },
+    ],
     ...parcial,
   };
 }
@@ -86,6 +97,8 @@ function montar({
       usuarios={usuarios}
       sucursales={sucursales}
       configuracion={configuracion}
+      puedeGestionar={false}
+      sesionUsuarioId={1}
     />,
   );
 }
