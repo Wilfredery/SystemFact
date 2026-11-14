@@ -238,7 +238,7 @@ jobs:
   # levanta siempre, y si no levanta o si la suite se saltea un test, el job FALLA.
   e2e:
     name: E2E smoke (Playwright, local Supabase)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.57 has no chromium deps on ubuntu-26.04 (what ubuntu-latest became)
     env:
       E2E_USER: e2e-automation
       # Same names the provisioning script defaults to; spelled out so the job

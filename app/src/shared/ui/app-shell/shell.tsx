@@ -17,7 +17,7 @@ import { SidebarNav, type SidebarItemDef } from "./sidebar";
 
 const NAV_ITEMS: readonly SidebarItemDef[] = [
   { label: "Dashboard", href: "/dashboard" },
-  // The eight ratified modules in order (app-shell spec).
+  // The ten ratified modules in order (app-shell spec).
   { label: "Venta", href: "/venta" },
   { label: "Cobros", href: "/cobros" },
   { label: "Inventario", href: "/inventario" },
@@ -25,7 +25,7 @@ const NAV_ITEMS: readonly SidebarItemDef[] = [
   { label: "Clientes", href: "/clientes" },
   { label: "Proveedores", href: "/proveedores" },
   { label: "Compras", href: "/compras" },
-  { label: "Caja", disabled: true },
+  { label: "Caja", href: "/caja" },
   { label: "Reportes", href: "/reportes" },
   { label: "Administración", href: "/administracion" },
   { label: "Auditoría", href: "/auditoria" },
