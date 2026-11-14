@@ -14,6 +14,8 @@ import {
   NO_AUTORIZADO,
   LIMITE_PAGINACION_INVALIDO,
   PAGINA_INVALIDA,
+  RANGO_FECHAS_INVALIDO,
+  RANGO_FECHAS_EXCEDIDO,
   SESION_INVALIDA,
   VALIDATION_ERROR,
   STOCK_MAXIMO_EXCEDIDO,
@@ -34,6 +36,8 @@ describe("inventario error catalog", () => {
       NO_AUTORIZADO,
       LIMITE_PAGINACION_INVALIDO,
       PAGINA_INVALIDA,
+      RANGO_FECHAS_INVALIDO,
+      RANGO_FECHAS_EXCEDIDO,
       SESION_INVALIDA,
       VALIDATION_ERROR,
     ];
@@ -55,6 +59,8 @@ describe("inventario error catalog", () => {
     expect(messageFor(STOCK_INSUFICIENTE_BLOQUEO)).toContain("salida de venta");
     expect(messageFor(INVENTARIO_NO_ENCONTRADO)).toContain("inventario");
     expect(messageFor(NO_AUTORIZADO)).toContain("permisos");
+    expect(messageFor(RANGO_FECHAS_INVALIDO)).toContain("Desde");
+    expect(messageFor(RANGO_FECHAS_EXCEDIDO)).toContain("90 días");
   });
 
   it("InventarioDomainError carries the stable code and the catalog message", () => {

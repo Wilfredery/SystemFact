@@ -13,7 +13,9 @@ import {
   consultarInventarioAction,
   ajustarInventarioAction,
   obtenerPermisosInventarioAction,
+  listarMovimientosInventarioAction,
 } from "./actions";
+import { listarMovimientosInventario } from "../application/listar-movimientos-inventario";
 import { consultarInventario } from "../application/consultar-inventario";
 import { listarInventario } from "../application/listar-inventario";
 import { ajustarInventario } from "../application/ajustar-inventario";
@@ -24,6 +26,7 @@ import {
   SESION_INVALIDA,
   VALIDATION_ERROR,
   STOCK_INSUFICIENTE,
+  RANGO_FECHAS_EXCEDIDO,
   messageFor,
 } from "../domain/errors";
 
@@ -51,6 +54,10 @@ jest.mock("../application/consultar-inventario", () => ({
 
 jest.mock("../application/ajustar-inventario", () => ({
   ajustarInventario: jest.fn(),
+}));
+
+jest.mock("../application/listar-movimientos-inventario", () => ({
+  listarMovimientosInventario: jest.fn(),
 }));
 
 jest.mock("../infrastructure/inventario-repository", () => ({
@@ -354,5 +361,94 @@ describe("obtenerPermisosInventarioAction", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe(SESION_INVALIDA);
     expect(withTenantTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("listarMovimientosInventarioAction", () => {
+  const DATA = {
+    items: [],
+    total: 0,
+    page: 1,
+    limit: 25,
+    desde: "2026-10-16",
+    hasta: "2026-11-14",
+  };
+
+  // The role check answers from the group the action passes, like the real repository does.
+  function rolActual(nombre: string) {
+    (tieneRolPermitidoEnTx as jest.Mock).mockImplementation(
+      async (_tx: unknown, _u: number, _e: number, grupo: readonly string[]) => grupo.includes(nombre),
+    );
+  }
+
+  it("lists for the manage group (Administrador) inside the tenant transaction", async () => {
+    mockSession();
+    rolActual("Administrador");
+    (listarMovimientosInventario as jest.Mock).mockResolvedValue({ ok: true, data: DATA });
+
+    const result = await listarMovimientosInventarioAction({ page: 1, limit: 25, tipo: "AJUSTE" });
+
+    expect(result).toEqual({ ok: true, data: DATA });
+    expect(withTenantTransaction).toHaveBeenCalledTimes(1);
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(expect.anything(), 1, 1, ROLES_GESTION_INVENTARIO);
+    expect(listarMovimientosInventario).toHaveBeenCalledWith(expect.anything(), mockCtx, {
+      page: 1,
+      limit: 25,
+      tipo: "AJUSTE",
+    });
+  });
+
+  it.each(["Operador", "Despachador"])(
+    "%s gets NO_AUTORIZADO and the use case / repository are never called",
+    async (rol) => {
+      mockSession();
+      rolActual(rol);
+
+      const result = await listarMovimientosInventarioAction({ page: 1, limit: 25 });
+
+      expect(result).toEqual({
+        ok: false,
+        error: { code: NO_AUTORIZADO, message: expect.any(String) },
+      });
+      expect(listarMovimientosInventario).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects invalid input with VALIDATION_ERROR before touching the session", async () => {
+    const result = await listarMovimientosInventarioAction({ limit: 500 });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: VALIDATION_ERROR, message: messageFor(VALIDATION_ERROR) },
+    });
+    expect(getCurrentTenantContext).not.toHaveBeenCalled();
+    expect(withTenantTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing session with SESION_INVALIDA before opening a tx", async () => {
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
+
+    const result = await listarMovimientosInventarioAction({});
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(SESION_INVALIDA);
+    expect(withTenantTransaction).not.toHaveBeenCalled();
+  });
+
+  it("passes the typed range error through with its stable code", async () => {
+    mockSession();
+    rolActual("Administrador");
+    (listarMovimientosInventario as jest.Mock).mockResolvedValue({
+      ok: false,
+      code: RANGO_FECHAS_EXCEDIDO,
+      message: messageFor(RANGO_FECHAS_EXCEDIDO),
+    });
+
+    const result = await listarMovimientosInventarioAction({ desde: "2026-01-01", hasta: "2026-11-01" });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: RANGO_FECHAS_EXCEDIDO, message: messageFor(RANGO_FECHAS_EXCEDIDO) },
+    });
   });
 });

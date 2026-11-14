@@ -34,6 +34,9 @@ export const INVENTARIO_NO_ENCONTRADO = "INVENTARIO_NO_ENCONTRADO";
 export const NO_AUTORIZADO = "NO_AUTORIZADO";
 export const LIMITE_PAGINACION_INVALIDO = "LIMITE_PAGINACION_INVALIDO";
 export const PAGINA_INVALIDA = "PAGINA_INVALIDA";
+// History date range (odd/tasks/inventario-historial.md S4): inverted/malformed vs. wider than 90 days.
+export const RANGO_FECHAS_INVALIDO = "RANGO_FECHAS_INVALIDO";
+export const RANGO_FECHAS_EXCEDIDO = "RANGO_FECHAS_EXCEDIDO";
 export const SESION_INVALIDA = "SESION_INVALIDA";
 export const VALIDATION_ERROR = "VALIDATION_ERROR";
 
@@ -48,6 +51,8 @@ export type InventarioErrorCode =
   | typeof NO_AUTORIZADO
   | typeof LIMITE_PAGINACION_INVALIDO
   | typeof PAGINA_INVALIDA
+  | typeof RANGO_FECHAS_INVALIDO
+  | typeof RANGO_FECHAS_EXCEDIDO
   | typeof SESION_INVALIDA
   | typeof VALIDATION_ERROR;
 
@@ -63,6 +68,8 @@ export const INVENTARIO_ERROR_CODES: readonly InventarioErrorCode[] = [
   NO_AUTORIZADO,
   LIMITE_PAGINACION_INVALIDO,
   PAGINA_INVALIDA,
+  RANGO_FECHAS_INVALIDO,
+  RANGO_FECHAS_EXCEDIDO,
   SESION_INVALIDA,
   VALIDATION_ERROR,
 ];
@@ -83,6 +90,9 @@ const MESSAGES: Readonly<Record<InventarioErrorCode, string>> = {
   [NO_AUTORIZADO]: "No tiene permisos para realizar esta acción.",
   [LIMITE_PAGINACION_INVALIDO]: "El límite de paginación debe estar entre 1 y 100.",
   [PAGINA_INVALIDA]: "La página debe ser mayor o igual a 1.",
+  [RANGO_FECHAS_INVALIDO]:
+    "El rango de fechas no es válido: use fechas reales y que Desde no sea posterior a Hasta.",
+  [RANGO_FECHAS_EXCEDIDO]: "El rango de fechas no puede superar 90 días.",
   [SESION_INVALIDA]: "Sesión no válida o expirada.",
   [VALIDATION_ERROR]: "Datos de entrada inválidos.",
 };

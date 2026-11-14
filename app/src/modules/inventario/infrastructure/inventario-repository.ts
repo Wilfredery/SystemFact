@@ -70,7 +70,7 @@ export interface MovimientoAplicado {
  * navigation plus the concrete branch. `MOVIMIENTO_INVENTARIO` history reuses
  * the same anchor through its `inventario` relation.
  */
-function inventarioTenantWhere(ctx: TenantCtx): Prisma.InventarioWhereInput {
+export function inventarioTenantWhere(ctx: TenantCtx): Prisma.InventarioWhereInput {
   return {
     sucursalId: ctx.sucursalId,
     sucursal: { empresaId: ctx.empresaId },
@@ -191,7 +191,7 @@ function consultaBaseSql(ctx: TenantCtx): Prisma.Sql {
 }
 
 /** Escapes LIKE wildcards so the search box matches text literally. */
-function escaparLike(termino: string): string {
+export function escaparLike(termino: string): string {
   return termino.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 

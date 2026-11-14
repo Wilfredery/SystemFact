@@ -1,4 +1,5 @@
 import { z } from "@/lib/zod";
+import { TIPOS_MOVIMIENTO } from "../domain/movimientos";
 
 // Pagination for the stock listing (spec: default 25, max 100). Coercion lets
 // the action accept the string params a client may send.
@@ -49,3 +50,20 @@ export const zConsultarInventarioQuery = z.object({
 });
 
 export type ConsultarInventarioQueryDto = z.infer<typeof zConsultarInventarioQuery>;
+
+// Movement history (odd/tasks/inventario-historial.md S1/S4). Shape only: the
+// range rules (inverted, wider than 90 days, real calendar dates) belong to the
+// domain. Cleared form fields (empty string / null) mean "no filter". `page` is
+// bounded to int4 so `skip` stays a sane Postgres offset.
+const FECHA_SD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export const zListarMovimientosQuery = z.object({
+  page: z.coerce.number().int().min(1).max(MAX_ID_INT4).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  tipo: z.preprocess(vacioAUndefined, z.enum(TIPOS_MOVIMIENTO).optional()),
+  producto: z.preprocess(vacioAUndefined, z.string().trim().max(100).optional()),
+  desde: z.preprocess(vacioAUndefined, z.string().regex(FECHA_SD_RE).optional()),
+  hasta: z.preprocess(vacioAUndefined, z.string().regex(FECHA_SD_RE).optional()),
+});
+
+export type ListarMovimientosQueryDto = z.infer<typeof zListarMovimientosQuery>;
