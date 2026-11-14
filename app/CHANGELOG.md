@@ -1,3 +1,17 @@
+## [0.30.0](https://github.com/Wilfredery/SystemFact/compare/v0.29.0...v0.30.0) (2026-11-14)
+
+### Features
+
+* **inventario:** the **Historial de movimientos** (`/inventario/movimientos`), read-only, reached from a "Ver historial de movimientos" link on the stock list. Columns: Fecha (America/Santo_Domingo), Producto, Tipo, Cantidad movida, Cantidad anterior, Cantidad nueva, Usuario and Motivo. Filters: tipo de movimiento, producto (literal search over codigo/nombre) and a date range; 25 per page. **Administrador only** (`ROLES_GESTION_INVENTARIO`, deny-by-default; Operador and Despachador get the access message and no link), because the history shows who adjusted stock and why. **Session branch only**, filtered in the query itself on top of RLS. **Bounded by design:** the range is mandatory (default the last 30 days, maximum 90, typed errors `RANGO_FECHAS_INVALIDO` / `RANGO_FECHAS_EXCEDIDO`), one `findMany` plus one `count` with the same `where`, explicit select, ordered `fecha desc, id desc`. It never exposes the idempotency key or any cost. No migration, no RLS change, no write path, and no change to any writer of `MovimientoInventario`.
+
+### Known limitation
+
+* The **Usuario** column shows "—" when the author belongs to another branch: `USUARIO` is branch-scoped by RLS, so the name is not readable from this branch. Showing it needs the company-wide user listing (a separate RLS decision).
+
+### Tests
+
+* **unit:** the pure range rules and labels for all seven movement types, validations, repository, use case, action role gate, and the RTL table, filters, pagination, empty state, access message and link. **integration (real Postgres, `systemfact_app`):** only the session branch's rows (never another branch or empresa), exact Santo Domingo day boundaries, filters, pagination with total equal to count, ordering with a tie, default and maximum range, no `idempotencyKey` or cost. **e2e:** the Administrador opens the history after an adjustment and sees the two AJUSTE rows; Operador and Despachador see only the access message. No test may skip.
+
 ## [0.29.0](https://github.com/Wilfredery/SystemFact/compare/v0.28.1...v0.29.0) (2026-11-14)
 
 ### Features
