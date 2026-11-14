@@ -78,7 +78,21 @@ export async function cambiarSucursalActiva(
   //    remaining statements of this wrapper. Every NEXT request reads the
   //    updated row and comes out on the new branch, by construction.
   await liberarSucursalActivaEnTx(tx);
-  await reescribirSucursalUsuarioEnTx(tx, ctx.usuarioId, input.sucursalId);
+  const reescrito = await reescribirSucursalUsuarioEnTx(
+    tx,
+    ctx.empresaId,
+    ctx.usuarioId,
+    input.sucursalId,
+  );
+  if (!reescrito) {
+    // The session user is not a row of the caller empresa: nothing was
+    // rewritten, so the target branch must never be pinned. Fail closed.
+    return {
+      ok: false,
+      code: TEN_OPS_NO_AUTORIZADO,
+      message: messageFor(TEN_OPS_NO_AUTORIZADO),
+    };
+  }
   await activarSucursalEnTx(tx, input.sucursalId);
 
   return { ok: true };

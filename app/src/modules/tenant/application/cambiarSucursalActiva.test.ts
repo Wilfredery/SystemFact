@@ -89,6 +89,7 @@ describe("cambiarSucursalActiva", () => {
 
   it("TEN-SWITCH-04-A: happy path validates target then rewrites Usuario.sucursalId (version++, D1)", async () => {
     ports.leer.mockResolvedValue({ id: 101 });
+    ports.reescribir.mockResolvedValue(true);
     const tx = makeTx();
 
     const result = await cambiarSucursalActiva(ctx, { sucursalId: 101 }, tx);
@@ -97,11 +98,13 @@ describe("cambiarSucursalActiva", () => {
     expect(ports.leer).toHaveBeenCalledWith(tx, ctx.empresaId, 101);
     // One row, one rewrite; the version bump lives INSIDE the port.
     expect(ports.reescribir).toHaveBeenCalledTimes(1);
-    expect(ports.reescribir).toHaveBeenCalledWith(tx, ctx.usuarioId, 101);
+    // empresaId is pinned in the write itself (defense in depth), not only by RLS.
+    expect(ports.reescribir).toHaveBeenCalledWith(tx, ctx.empresaId, ctx.usuarioId, 101);
   });
 
   it("TEN-SWITCH-04-A: GUC blank → rewrite → re-pin target, all inside the wrapper's tx", async () => {
     ports.leer.mockResolvedValue({ id: 101 });
+    ports.reescribir.mockResolvedValue(true);
     const tx = makeTx();
 
     await cambiarSucursalActiva(ctx, { sucursalId: 101 }, tx);
@@ -114,6 +117,20 @@ describe("cambiarSucursalActiva", () => {
     expect(order[0]).toBeLessThan(order[1]);
     expect(order[1]).toBeLessThan(order[2]);
     expect(ports.activar).toHaveBeenCalledWith(tx, 101);
+  });
+
+  it("fails closed when the verified rewrite touches no row: typed denial, target branch never pinned", async () => {
+    ports.leer.mockResolvedValue({ id: 101 });
+    ports.reescribir.mockResolvedValue(false);
+
+    const result = await cambiarSucursalActiva(ctx, { sucursalId: 101 }, makeTx());
+
+    expect(result).toEqual({
+      ok: false,
+      code: TEN_OPS_NO_AUTORIZADO,
+      message: messageFor(TEN_OPS_NO_AUTORIZADO),
+    });
+    expect(ports.activar).not.toHaveBeenCalled();
   });
 
   it("the switch path performs ZERO audit writes (no auditoria port referenced)", async () => {
