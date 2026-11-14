@@ -15,11 +15,10 @@
  *     under that lock; reusing it keeps ONE reading of `NCF_SECUENCIA` instead
  *     of a second copy of the query in this module. The lock lives only for the
  *     duration of this read-only transaction (released at commit).
- *   - ITBIS rates: OMITTED. No existing tenant reader exposes a `TASA_ITBIS`
- *     rate with its validity window (`venta` validates the per-product
- *     `tasaItbis`/`itbisVigenteDesde` instead), and this module must not invent
- *     one or duplicate the active-window predicate. Tracked as a gap in
- *     odd/tasks/administracion.md.
+ *   - ITBIS rates IN USE: ONE `groupBy` over the empresa's ACTIVE products by
+ *     `tasaItbis` + validity window (`venta` validates the per-product rate the
+ *     same way; there is no `TASA_ITBIS` config key). Pure SQL aggregation, no
+ *     per-product loop; the rate stays a string (administracion-itbis S2/S3).
  */
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
@@ -30,6 +29,7 @@ import {
   CompraDomainError,
 } from "@/modules/compra/domain/errors";
 import { leerTasasRetencionEnTx } from "@/modules/compra/infrastructure/configuracion-repository";
+import type { TasaItbisEnUsoLeida } from "@/modules/tenant/domain/itbis-en-uso";
 import type { TipoNcf } from "@/modules/ncf/domain/ncf-rules";
 import { bloquearSecuenciaActivaEnTx } from "@/modules/ncf/infrastructure/ncf-repository";
 
@@ -60,6 +60,29 @@ export interface SecuenciaNcfLeida {
 export interface ConfiguracionAdministracionLeida {
   readonly retenciones: RetentionRates | null;
   readonly secuenciasNcf: readonly SecuenciaNcfLeida[];
+  readonly tasasItbis: readonly TasaItbisEnUsoLeida[];
+}
+
+/**
+ * The distinct ITBIS rate + validity window groups of the empresa's ACTIVE
+ * products with their product count. `empresaId` is pinned explicitly on top of
+ * RLS; the Decimal is rendered with the stored `Decimal(12,2)` scale.
+ */
+export async function leerTasasItbisEnUsoEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+): Promise<TasaItbisEnUsoLeida[]> {
+  const grupos = await tx.producto.groupBy({
+    by: ["tasaItbis", "itbisVigenteDesde", "itbisVigenteHasta"],
+    where: { empresaId, activo: true },
+    _count: { _all: true },
+  });
+  return grupos.map((g) => ({
+    tasaItbis: g.tasaItbis.toFixed(2),
+    vigenteDesde: g.itbisVigenteDesde,
+    vigenteHasta: g.itbisVigenteHasta,
+    productos: g._count._all,
+  }));
 }
 
 /**
@@ -106,5 +129,7 @@ export async function leerConfiguracionAdministracionEnTx(
     });
   }
 
-  return { retenciones, secuenciasNcf };
+  const tasasItbis = await leerTasasItbisEnUsoEnTx(tx, empresaId);
+
+  return { retenciones, secuenciasNcf, tasasItbis };
 }

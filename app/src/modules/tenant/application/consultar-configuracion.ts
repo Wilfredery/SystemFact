@@ -7,14 +7,15 @@
  *     when the tenant has them unconfigured (never a fabricated 0%);
  *   - each active NCF sequence is rendered with its range/pointer as decimal
  *     strings and `porcentajeUsado` from the pure domain rule.
- * ITBIS rates are NOT part of the output: no existing tenant reader exposes
- * them (see `infrastructure/administracion-config-repository.ts`), and this
- * layer must not invent data. The gap is tracked in odd/tasks/administracion.md.
+ * `itbisEnUso` lists the ITBIS rates the ACTIVE products actually use (ordered
+ * and flagged for today's SD business day by the pure domain); an empresa with
+ * no active products gets an empty list, never an invented rate.
  */
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { RetentionRates } from "@/modules/compra/domain/compra";
 import { calcularPorcentajeUsado } from "../domain/administracion";
+import { armarTasasItbisEnUso, type TasaItbisEnUso } from "../domain/itbis-en-uso";
 import {
   leerConfiguracionAdministracionEnTx,
   type SecuenciaNcfLeida,
@@ -33,6 +34,7 @@ export interface SecuenciaNcfAdministracion {
 export interface ConfiguracionAdministracion {
   readonly retenciones: RetentionRates | null;
   readonly ncf: readonly SecuenciaNcfAdministracion[];
+  readonly itbisEnUso: readonly TasaItbisEnUso[];
 }
 
 export type ConsultarConfiguracionResult = {
@@ -58,6 +60,7 @@ function toVista(fila: SecuenciaNcfLeida): SecuenciaNcfAdministracion {
 export async function consultarConfiguracion(
   tx: PrismaTx,
   empresaId: number,
+  ahora: Date = new Date(),
 ): Promise<ConsultarConfiguracionResult> {
   const leida = await leerConfiguracionAdministracionEnTx(tx, empresaId);
   return {
@@ -65,6 +68,7 @@ export async function consultarConfiguracion(
     data: {
       retenciones: leida.retenciones,
       ncf: leida.secuenciasNcf.map(toVista),
+      itbisEnUso: armarTasasItbisEnUso(leida.tasasItbis, ahora),
     },
   };
 }
