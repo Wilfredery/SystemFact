@@ -297,12 +297,14 @@ describe("USUARIO / USUARIO_ROL role-aware RLS (real DB)", () => {
           return fn(tx);
         });
 
-      // activo flip on an UNBOUND row (operador has no authUserId): refused (WITH CHECK).
+      // activo flip on an UNBOUND row (operador has no authUserId): refused. The
+      // column-guard trigger (20261114130000) fires BEFORE the WITH CHECK, so the
+      // refusal is either the trigger's or the policy's.
       await expect(
         pinned(fx.empresaA.id, (tx) =>
           (tx as typeof prisma).usuario.updateMany({ where: { id: operadorId }, data: { activo: false } }),
         ),
-      ).rejects.toThrow(RLS_VIOLATION);
+      ).rejects.toThrow(/login flow may only change|row-level security|violates|policy/i);
       // Rebind / unbind of an already bound row: zero rows (USING needs authUserId IS NULL).
       const rebind = await pinned(fx.empresaA.id, (tx) =>
         (tx as typeof prisma).usuario.updateMany({ where: { id: objetivoId }, data: { authUserId: randomUUID() } }),
