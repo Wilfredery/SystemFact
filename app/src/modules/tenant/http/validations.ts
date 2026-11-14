@@ -58,7 +58,9 @@ export type ListarUsuariosQuery = z.infer<typeof zListarUsuariosQuery>;
 
 // ─── Administración writes (Step 7b, S4/S5/S6) ───────────────────────────────
 
-const zIdPositivo = z.number().int().positive();
+/** Postgres int4 ceiling: a larger id/version is a transport error, never a DB overflow. */
+const INT4_MAX = 2_147_483_647;
+const zIdPositivo = z.number().int().positive().max(INT4_MAX);
 
 /** Safety bound on the role list: far above the real catalog, below abuse. */
 const MAX_ROLES_POR_USUARIO = 50;

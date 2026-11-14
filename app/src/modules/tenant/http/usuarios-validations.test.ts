@@ -45,4 +45,12 @@ describe("zCambiarEstadoUsuarioInput", () => {
   ])("rejects %s", (_n, payload) => {
     expect(zCambiarEstadoUsuarioInput.safeParse(payload).success).toBe(false);
   });
+
+  it("rejects an id or version above the int4 range (no DB overflow)", () => {
+    const base = { usuarioId: 1, rolIds: [1], versionEsperada: 1 };
+    expect(zCambiarRolesUsuarioInput.safeParse({ ...base, usuarioId: 2_147_483_648 }).success).toBe(false);
+    expect(zCambiarRolesUsuarioInput.safeParse({ ...base, rolIds: [2_147_483_648] }).success).toBe(false);
+    expect(zCambiarRolesUsuarioInput.safeParse({ ...base, versionEsperada: 2_147_483_648 }).success).toBe(false);
+    expect(zCambiarRolesUsuarioInput.safeParse({ ...base, usuarioId: 2_147_483_647 }).success).toBe(true);
+  });
 });
