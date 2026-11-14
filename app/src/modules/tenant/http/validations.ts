@@ -56,4 +56,45 @@ const zListarUsuariosQuery = z.object({
 
 export type ListarUsuariosQuery = z.infer<typeof zListarUsuariosQuery>;
 
-export { zCambiarSucursalInput, zListarUsuariosQuery };
+// ─── Administración writes (Step 7b, S4/S5/S6) ───────────────────────────────
+
+const zIdPositivo = z.number().int().positive();
+
+/** Safety bound on the role list: far above the real catalog, below abuse. */
+const MAX_ROLES_POR_USUARIO = 50;
+
+/**
+ * Strict on purpose: unknown keys are rejected, ids and the expected version
+ * are real positive integers (never coerced from strings) and `rolIds` is a
+ * non-empty, duplicate-free list. Whether each id is an ACTIVE catalog role is
+ * business (TEN_ROL_NO_VALIDO, the use case), not transport.
+ */
+const zCambiarRolesUsuarioInput = z
+  .object({
+    usuarioId: zIdPositivo,
+    rolIds: z
+      .array(zIdPositivo)
+      .min(1)
+      .max(MAX_ROLES_POR_USUARIO)
+      .refine((ids) => new Set(ids).size === ids.length),
+    versionEsperada: zIdPositivo,
+  })
+  .strict();
+
+const zCambiarEstadoUsuarioInput = z
+  .object({
+    usuarioId: zIdPositivo,
+    activo: z.boolean(),
+    versionEsperada: zIdPositivo,
+  })
+  .strict();
+
+export type CambiarRolesUsuarioInput = z.infer<typeof zCambiarRolesUsuarioInput>;
+export type CambiarEstadoUsuarioInput = z.infer<typeof zCambiarEstadoUsuarioInput>;
+
+export {
+  zCambiarEstadoUsuarioInput,
+  zCambiarRolesUsuarioInput,
+  zCambiarSucursalInput,
+  zListarUsuariosQuery,
+};

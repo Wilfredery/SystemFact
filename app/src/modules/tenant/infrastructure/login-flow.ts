@@ -20,12 +20,14 @@ import type { Prisma } from "@/generated/prisma/client";
  * TenantCtx exists.
  *
  * SCOPE WARNING — SELECT ONLY:
- *   `usuario_select` honors this flag; `usuario_modify` deliberately does NOT.
+ *   `usuario_select` honors this flag; the write policies (`usuario_insert`,
+ *   `usuario_update`, `usuario_delete`, `usuariorol_*`) deliberately do NOT,
+ *   except the one minimal `usuario_update` branch for the lazy `authUserId` bind.
  *   Any WRITE on USUARIO during the login flow must first pin
  *   `app.current_empresa_id` to the single resolved company (see
  *   `registrarAuditoriaSesion` and `enlazarAuthSub` in auth-service /
  *   auth-identity), otherwise RLS denies the statement. Widening
- *   `usuario_modify` with this flag would be a far larger hole than pinning one
+ *   the write policies with this flag would be a far larger hole than pinning one
  *   empresa GUC, which cannot reach another tenant.
  *
  * Solo debe usarse en:

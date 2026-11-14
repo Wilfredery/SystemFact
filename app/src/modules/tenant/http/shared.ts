@@ -31,6 +31,15 @@ import type { ConfiguracionAdministracion } from "../application/consultar-confi
 /** Read-only directory view group (S3): Administrador only. */
 export const ROLES_VER_ADMINISTRACION = ["Administrador"];
 
+/**
+ * User-management WRITES (Step 7b, S3): who may change roles / activate or
+ * deactivate users. The ONLY place a role name is written for this capability;
+ * the use cases receive the group as a parameter and the domain never names a
+ * role. RLS (`usuario_insert/update/delete`, `usuariorol_*`) is the second,
+ * independent wall behind this application guard.
+ */
+export const ROLES_GESTION_USUARIOS = ["Administrador"];
+
 export type AdministracionErrorCode =
   | TenantErrorCode
   | typeof VALIDATION_ERROR
