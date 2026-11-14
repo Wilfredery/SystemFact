@@ -12,6 +12,8 @@
  * boolean, which would silently mean `true`).
  */
 
+import { TEN_ERROR_CODES, messageFor } from "../domain/errors";
+
 /** Rows per page of the Usuarios list (AGENTS.md: 25 default, 100 max). */
 export const TAMANO_PAGINA = 25;
 
@@ -87,4 +89,19 @@ export function construirHrefAdministracion(
   if (filtros.activo !== "") params.set("activo", filtros.activo);
   if (page > 1) params.set("page", String(page));
   return `/administracion?${params.toString()}`;
+}
+
+/** Shown when a write action throws instead of answering (transport failure). */
+export const MENSAJE_FALLO_ACCION = "No se pudo completar la acción. Intente de nuevo.";
+
+/**
+ * The ONE code → Spanish message map of the user-management writes (S11): every
+ * tenant catalog code reads its message from the catalog (`messageFor`), so the
+ * component never spells a code or a text of its own. A transport code
+ * (`VALIDATION_ERROR`, `SESION_INVALIDA`) is not in the tenant catalog: its
+ * message is the server's, already Spanish and stable.
+ */
+export function mensajeErrorGestion(code: string, mensajeServidor: string): string {
+  const conocido = TEN_ERROR_CODES.find((c) => c === code);
+  return conocido === undefined ? mensajeServidor : messageFor(conocido);
 }

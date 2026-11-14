@@ -65,8 +65,9 @@ describe("listarUsuariosEnTx", () => {
       nombreUsuario: true,
       nombre: true,
       activo: true,
+      version: true,
       sucursal: { select: { nombre: true } },
-      roles: { select: { rol: { select: { nombre: true } } } },
+      roles: { select: { rol: { select: { id: true, nombre: true } } } },
     });
   });
 
@@ -123,8 +124,12 @@ describe("listarUsuariosEnTx", () => {
         nombreUsuario: "maria",
         nombre: "María Pérez",
         activo: true,
+        version: 4,
         sucursal: { nombre: "Matriz" },
-        roles: [{ rol: { nombre: "Administrador" } }, { rol: { nombre: "Operador" } }],
+        roles: [
+          { rol: { id: 1, nombre: "Administrador" } },
+          { rol: { id: 2, nombre: "Operador" } },
+        ],
       },
     ]);
     const rows = await listarUsuariosEnTx(tx, ctx, { offset: 0, limit: 25 });
@@ -135,8 +140,10 @@ describe("listarUsuariosEnTx", () => {
         nombreUsuario: "maria",
         nombre: "María Pérez",
         activo: true,
+        version: 4,
         sucursalNombre: "Matriz",
         roles: ["Administrador", "Operador"],
+        rolIds: [1, 2],
       },
     ]);
     // The raw Prisma row never crosses the repository boundary.

@@ -31,6 +31,15 @@ import type { ConfiguracionAdministracion } from "../application/consultar-confi
 /** Read-only directory view group (S3): Administrador only. */
 export const ROLES_VER_ADMINISTRACION = ["Administrador"];
 
+/**
+ * User-management WRITES (Step 7b, S3): who may change roles / activate or
+ * deactivate users. The ONLY place a role name is written for this capability;
+ * the use cases receive the group as a parameter and the domain never names a
+ * role. RLS (`usuario_insert/update/delete`, `usuariorol_*`) is the second,
+ * independent wall behind this application guard.
+ */
+export const ROLES_GESTION_USUARIOS = ["Administrador"];
+
 export type AdministracionErrorCode =
   | TenantErrorCode
   | typeof VALIDATION_ERROR
@@ -69,10 +78,20 @@ export interface UsuarioAdministracionDto {
   readonly nombreUsuario: string;
   readonly nombre: string;
   readonly activo: boolean;
+  /** Optimistic-lock token the write actions take as `versionEsperada`. */
+  readonly version: number;
   readonly sucursalNombre: string;
   /** Session empresa display name (`EMPRESA.nombreComercial`, header seam). */
   readonly empresaNombre: string;
   readonly roles: readonly string[];
+  /** The user's role ids (catalog ids), to preselect the role dialog. */
+  readonly rolIds: readonly number[];
+}
+
+/** One active ROL catalog entry (role checkboxes of the write dialog). */
+export interface RolCatalogoDto {
+  readonly id: number;
+  readonly nombre: string;
 }
 
 export interface ListarUsuariosAdministracion {
@@ -80,6 +99,8 @@ export interface ListarUsuariosAdministracion {
   readonly total: number;
   readonly page: number;
   readonly pageSize: number;
+  /** Active ROL catalog (global), alongside the rows it is assigned to. */
+  readonly rolesCatalogo: readonly RolCatalogoDto[];
 }
 
 /** One branch row: exactly what the existing tenant use case exposes. */

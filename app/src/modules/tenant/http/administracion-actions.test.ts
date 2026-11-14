@@ -17,6 +17,7 @@ import {
 import { ROLES_VER_ADMINISTRACION } from "./shared";
 import { listarUsuarios } from "../application/listar-usuarios";
 import { consultarConfiguracion } from "../application/consultar-configuracion";
+import { consultarRolesCatalogo } from "../application/consultar-roles-catalogo";
 import { listarSucursalesDeEmpresa } from "../application/listarSucursalesDeEmpresa";
 import { tieneRolPermitidoEnTx } from "../infrastructure/usuario-repository";
 import { createClient } from "@/lib/supabase/client";
@@ -36,6 +37,9 @@ jest.mock("@/modules/tenant/infrastructure/withTenantTransaction", () => ({
   ),
 }));
 jest.mock("../application/listar-usuarios", () => ({ listarUsuarios: jest.fn() }));
+jest.mock("../application/consultar-roles-catalogo", () => ({
+  consultarRolesCatalogo: jest.fn(),
+}));
 jest.mock("../application/consultar-configuracion", () => ({
   consultarConfiguracion: jest.fn(),
 }));
@@ -59,6 +63,7 @@ beforeEach(() => {
   (getCurrentTenantContext as jest.Mock).mockResolvedValue(ctx);
   (getCurrentTenantHeader as jest.Mock).mockResolvedValue(headerCtx);
   (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+  (consultarRolesCatalogo as jest.Mock).mockResolvedValue({ ok: true, data: [] });
 });
 
 describe("ROLES_VER_ADMINISTRACION (S3)", () => {
@@ -97,6 +102,7 @@ describe("listarUsuariosAction", () => {
       ROLES_VER_ADMINISTRACION,
     );
     expect(listarUsuarios).not.toHaveBeenCalled();
+    expect(consultarRolesCatalogo).not.toHaveBeenCalled();
   });
 
   it("returns rows carrying the empresa name from the session header seam", async () => {
@@ -110,14 +116,23 @@ describe("listarUsuariosAction", () => {
             nombreUsuario: "maria",
             nombre: "María Pérez",
             activo: true,
+            version: 3,
             sucursalNombre: "Matriz",
             roles: ["Administrador"],
+            rolIds: [1],
           },
         ],
         total: 1,
         page: 1,
         pageSize: 25,
       },
+    });
+    (consultarRolesCatalogo as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: [
+        { id: 1, nombre: "Administrador" },
+        { id: 2, nombre: "Operador" },
+      ],
     });
 
     const result = await listarUsuariosAction({ buscar: "maria" });
@@ -131,14 +146,20 @@ describe("listarUsuariosAction", () => {
             nombreUsuario: "maria",
             nombre: "María Pérez",
             activo: true,
+            version: 3,
             sucursalNombre: "Matriz",
             empresaNombre: "SystemFact Demo",
             roles: ["Administrador"],
+            rolIds: [1],
           },
         ],
         total: 1,
         page: 1,
         pageSize: 25,
+        rolesCatalogo: [
+          { id: 1, nombre: "Administrador" },
+          { id: 2, nombre: "Operador" },
+        ],
       },
     });
   });

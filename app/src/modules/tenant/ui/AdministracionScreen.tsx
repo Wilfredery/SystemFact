@@ -2,8 +2,13 @@
 
 /**
  * Administración screen (screens plan Step 7, `odd/tasks/administracion.md`
- * S2/S6). Read-only first (S1): NO creation, assignment, activation or any other
- * write — the wireframe's three tabs rendered as a directory only.
+ * S2/S6): the wireframe's three tabs. Sucursales and Configuración are read-only;
+ * the Usuarios tab gains the Step 7b writes (`odd/tasks/administracion-writes.md`
+ * S11) — role assignment and activate/deactivate — ONLY when the page says the
+ * caller may manage (`puedeGestionar`). That prop is UX: the actions re-check the
+ * role and RLS is the second wall. A write shows its result only after the server
+ * answered ok (no optimistic state) and then re-reads the page's rows, so the
+ * next write carries the fresh `version`.
  *
  * Client island for the interactivity only. The server page hands over the first
  * load of the CURRENT tab (already read through the tenant read actions) and
@@ -19,21 +24,38 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { listarUsuariosAction } from "@/modules/tenant/http/actions.administracion";
+import {
+  cambiarEstadoUsuarioAction,
+  cambiarRolesUsuarioAction,
+} from "@/modules/tenant/http/actions.usuarios";
 import type {
   ConfiguracionAdministracionDto,
   ListarUsuariosAdministracion,
   SucursalAdministracionDto,
+  UsuarioAdministracionDto,
 } from "@/modules/tenant/http/shared";
+import { TEN_CONCURRENCIA_CONFLICTO } from "@/modules/tenant/domain/errors";
 import { formatearFechaSD } from "@/shared/ui/format/date";
 import {
   DEBOUNCE_BUSQUEDA_MS,
   FILTROS_ACTIVO,
+  MENSAJE_FALLO_ACCION,
   TABS_ADMINISTRACION,
   construirHrefAdministracion,
   construirQueryUsuarios,
+  mensajeErrorGestion,
   type FiltrosUsuarios,
   type TabAdministracion,
 } from "./administracion-tabs";
+import { CambiarRolesDialog, ConfirmarEstadoUsuarioDialog } from "./GestionUsuarioDialogs";
+
+/** What the open dialog is doing; the user is looked up in the CURRENT rows. */
+type AccionUsuario =
+  | { readonly tipo: "roles"; readonly usuarioId: number }
+  | { readonly tipo: "estado"; readonly usuarioId: number };
+
+const TITULO_PROPIO_USUARIO =
+  "No puede modificar su propio usuario: pídalo a otro Administrador.";
 
 export type UsuariosInicial =
   | { readonly ok: true; readonly data: ListarUsuariosAdministracion }
@@ -75,12 +97,18 @@ export function AdministracionScreen({
   usuarios: usuariosInicial,
   sucursales: sucursalesInicial,
   configuracion: configuracionInicial,
+  puedeGestionar,
+  sesionUsuarioId,
 }: {
   readonly tab: TabAdministracion;
   readonly filtrosIniciales: FiltrosUsuarios;
   readonly usuarios: UsuariosInicial | null;
   readonly sucursales: SucursalesInicial | null;
   readonly configuracion: ConfiguracionInicial | null;
+  /** The server said the caller is an Administrador (UX only; actions re-check). */
+  readonly puedeGestionar: boolean;
+  /** Session user id, to disable the actions on one's own row (UX only). */
+  readonly sesionUsuarioId: number;
 }) {
   const router = useRouter();
   const [navegando, iniciarNavegacion] = useTransition();
@@ -94,6 +122,11 @@ export function AdministracionScreen({
   const [texto, setTexto] = useState(filtrosIniciales.busqueda);
   const [cargando, setCargando] = useState(false);
   const ultimaSolicitud = useRef(0);
+  const [accion, setAccion] = useState<AccionUsuario | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const enviandoRef = useRef(false);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  const [mensaje, setMensaje] = useState<string | null>(null);
 
   // Only the latest request may settle state: a slow earlier answer must not
   // overwrite a newer filter's rows.
@@ -125,6 +158,51 @@ export function AdministracionScreen({
     }, DEBOUNCE_BUSQUEDA_MS);
     return () => clearTimeout(timer);
   }, [texto, filtros, consultar]);
+
+  function abrirAccion(siguiente: AccionUsuario): void {
+    setMensaje(null);
+    setErrorAccion(null);
+    setAccion(siguiente);
+  }
+
+  function cerrarAccion(): void {
+    setAccion(null);
+    setErrorAccion(null);
+  }
+
+  /**
+   * One write: the pending flag blocks a second submit (the ref closes the gap
+   * before React re-renders), the dialog stays open on any refusal with the
+   * catalog message, and the new state is shown only after an ok answer plus a
+   * re-read. A conflict re-reads too but NEVER retries: the person retries.
+   */
+  async function ejecutarEscritura(
+    escribir: () => ReturnType<typeof cambiarRolesUsuarioAction>,
+    mensajeOk: string,
+  ): Promise<void> {
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
+    setEnviando(true);
+    setErrorAccion(null);
+    try {
+      const r = await escribir();
+      if (!r.ok) {
+        setErrorAccion(mensajeErrorGestion(r.error.code, r.error.message));
+        if (r.error.code === TEN_CONCURRENCIA_CONFLICTO) {
+          await consultar(filtros, data?.page ?? 1);
+        }
+        return;
+      }
+      setAccion(null);
+      setMensaje(r.data.cambio ? mensajeOk : "No había cambios que guardar.");
+      await consultar(filtros, data?.page ?? 1);
+    } catch {
+      setErrorAccion(MENSAJE_FALLO_ACCION);
+    } finally {
+      enviandoRef.current = false;
+      setEnviando(false);
+    }
+  }
 
   function cambiarTab(destino: TabAdministracion): void {
     if (destino === tab) return;
@@ -165,11 +243,93 @@ export function AdministracionScreen({
           onTexto={setTexto}
           onFiltrar={(next) => void consultar(next, 1)}
           onPagina={(page) => void consultar(filtros, page)}
+          puedeGestionar={puedeGestionar}
+          sesionUsuarioId={sesionUsuarioId}
+          enviando={enviando}
+          mensaje={mensaje}
+          onAccion={abrirAccion}
+        />
+      )}
+      {puedeGestionar && accion !== null && data !== null && (
+        <DialogoAccion
+          accion={accion}
+          data={data}
+          enviando={enviando}
+          error={errorAccion}
+          onCerrar={cerrarAccion}
+          onGuardarRoles={(usuario, rolIds) =>
+            void ejecutarEscritura(
+              () =>
+                cambiarRolesUsuarioAction({
+                  usuarioId: usuario.id,
+                  rolIds,
+                  versionEsperada: usuario.version,
+                }),
+              "Roles actualizados.",
+            )
+          }
+          onConfirmarEstado={(usuario, activar) =>
+            void ejecutarEscritura(
+              () =>
+                cambiarEstadoUsuarioAction({
+                  usuarioId: usuario.id,
+                  activo: activar,
+                  versionEsperada: usuario.version,
+                }),
+              activar ? "Usuario activado." : "Usuario desactivado.",
+            )
+          }
         />
       )}
       {tab === "sucursales" && <TablaSucursales inicial={sucursalesInicial} />}
       {tab === "configuracion" && <PanelConfiguracion inicial={configuracionInicial} />}
     </div>
+  );
+}
+
+function DialogoAccion({
+  accion,
+  data,
+  enviando,
+  error,
+  onCerrar,
+  onGuardarRoles,
+  onConfirmarEstado,
+}: {
+  readonly accion: AccionUsuario;
+  readonly data: ListarUsuariosAdministracion;
+  readonly enviando: boolean;
+  readonly error: string | null;
+  readonly onCerrar: () => void;
+  readonly onGuardarRoles: (usuario: UsuarioAdministracionDto, rolIds: number[]) => void;
+  readonly onConfirmarEstado: (usuario: UsuarioAdministracionDto, activar: boolean) => void;
+}) {
+  // Always the row from the LATEST read, so a retry after a conflict carries the
+  // reloaded `version`. A row that left the page's rows closes nothing visible.
+  const usuario = data.items.find((u) => u.id === accion.usuarioId);
+  if (usuario === undefined) return null;
+
+  if (accion.tipo === "roles") {
+    return (
+      <CambiarRolesDialog
+        usuario={usuario}
+        catalogo={data.rolesCatalogo}
+        enviando={enviando}
+        error={error}
+        onGuardar={(rolIds) => onGuardarRoles(usuario, rolIds)}
+        onCerrar={onCerrar}
+      />
+    );
+  }
+  return (
+    <ConfirmarEstadoUsuarioDialog
+      usuario={usuario}
+      activar={!usuario.activo}
+      enviando={enviando}
+      error={error}
+      onConfirmar={() => onConfirmarEstado(usuario, !usuario.activo)}
+      onCerrar={onCerrar}
+    />
   );
 }
 
@@ -182,6 +342,11 @@ function TablaUsuarios({
   onTexto,
   onFiltrar,
   onPagina,
+  puedeGestionar,
+  sesionUsuarioId,
+  enviando,
+  mensaje,
+  onAccion,
 }: {
   readonly data: ListarUsuariosAdministracion | null;
   readonly error: string | null;
@@ -191,6 +356,11 @@ function TablaUsuarios({
   readonly onTexto: (valor: string) => void;
   readonly onFiltrar: (filtros: FiltrosUsuarios) => void;
   readonly onPagina: (page: number) => void;
+  readonly puedeGestionar: boolean;
+  readonly sesionUsuarioId: number;
+  readonly enviando: boolean;
+  readonly mensaje: string | null;
+  readonly onAccion: (accion: AccionUsuario) => void;
 }) {
   if (data === null) {
     return (
@@ -208,6 +378,14 @@ function TablaUsuarios({
       {error !== null && (
         <p role="alert" className={CLASE_ALERTA}>
           {error}
+        </p>
+      )}
+      {mensaje !== null && (
+        <p
+          role="status"
+          className="rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+        >
+          {mensaje}
         </p>
       )}
 
@@ -250,6 +428,7 @@ function TablaUsuarios({
                 <th scope="col" className="px-4 py-2">Rol</th>
                 <th scope="col" className="px-4 py-2">Empresa/Sucursal</th>
                 <th scope="col" className="px-4 py-2">Estado</th>
+                {puedeGestionar && <th scope="col" className="px-4 py-2">Acciones</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -270,6 +449,16 @@ function TablaUsuarios({
                       {u.activo ? "Activo" : "Inactivo"}
                     </span>
                   </td>
+                  {puedeGestionar && (
+                    <td className="px-4 py-2">
+                      <AccionesUsuario
+                        usuario={u}
+                        propio={u.id === sesionUsuarioId}
+                        deshabilitado={enviando}
+                        onAccion={onAccion}
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -300,6 +489,44 @@ function TablaUsuarios({
           Siguiente
         </button>
       </nav>
+    </div>
+  );
+}
+
+function AccionesUsuario({
+  usuario,
+  propio,
+  deshabilitado,
+  onAccion,
+}: {
+  readonly usuario: UsuarioAdministracionDto;
+  /** The session user's own row: the server refuses it (TEN_AUTO_PROTECCION). */
+  readonly propio: boolean;
+  readonly deshabilitado: boolean;
+  readonly onAccion: (accion: AccionUsuario) => void;
+}) {
+  const bloqueado = propio || deshabilitado;
+  const titulo = propio ? TITULO_PROPIO_USUARIO : undefined;
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        disabled={bloqueado}
+        title={titulo}
+        onClick={() => onAccion({ tipo: "roles", usuarioId: usuario.id })}
+        className={CLASE_BOTON}
+      >
+        Cambiar roles
+      </button>
+      <button
+        type="button"
+        disabled={bloqueado}
+        title={titulo}
+        onClick={() => onAccion({ tipo: "estado", usuarioId: usuario.id })}
+        className={CLASE_BOTON}
+      >
+        {usuario.activo ? "Desactivar" : "Activar"}
+      </button>
     </div>
   );
 }

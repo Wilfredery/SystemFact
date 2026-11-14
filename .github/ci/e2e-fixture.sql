@@ -20,9 +20,16 @@
 --   e2e_operador_user      → nombreUsuario del usuario con rol Operador
 --   e2e_despachador_user   → nombreUsuario del usuario con rol Despachador
 --   e2e_product  → nombre del producto que el smoke agrega al carrito
+--
+-- Variable con valor por defecto (se fija abajo con set, no hace falta -v):
+--   e2e_gestion_objetivo → nombreUsuario del usuario DESCARTABLE que
+--     e2e/administracion.spec.ts modifica (roles / activo). Es una fila propia: el
+--     spec NO toca al admin E2E ni a operador/despachador (otros specs dependen de
+--     sus roles). Sin usuario de Auth: nunca inicia sesión.
 -- ============================================================
 
 \set ON_ERROR_STOP on
+\set e2e_gestion_objetivo 'e2e-gestion-objetivo'
 
 DO $$
 BEGIN
@@ -79,6 +86,30 @@ JOIN "ROL" r ON (
   (u."nombreUsuario" = :'e2e_operador_user' AND r."nombre" = 'Operador') OR
   (u."nombreUsuario" = :'e2e_despachador_user' AND r."nombre" = 'Despachador')
 );
+
+-- Usuario descartable para e2e/administracion.spec.ts (Administración, escrituras de
+-- Step 7b): sucursal del admin E2E, rol Operador, activo, sin usuario de Auth. El spec
+-- le cambia roles y estado y los restaura al terminar. Idempotente por nombreUsuario
+-- (único), igual que los roles de arriba.
+INSERT INTO "USUARIO" (
+  "empresaId", "sucursalId", "nombre", "nombreUsuario", "passwordHash", "activo", "updatedAt"
+)
+SELECT a."empresaId", a."sucursalId", :'e2e_gestion_objetivo', :'e2e_gestion_objetivo',
+       'ci-e2e-supabase-auth', true, now()
+FROM "USUARIO" a
+WHERE a."nombreUsuario" = :'e2e_user'
+  AND NOT EXISTS (
+    SELECT 1 FROM "USUARIO" x WHERE x."nombreUsuario" = :'e2e_gestion_objetivo'
+  );
+
+INSERT INTO "USUARIO_ROL" ("usuarioId", "rolId")
+SELECT u.id, r.id
+FROM "USUARIO" u
+JOIN "ROL" r ON r."nombre" = 'Operador'
+WHERE u."nombreUsuario" = :'e2e_gestion_objetivo'
+  AND NOT EXISTS (
+    SELECT 1 FROM "USUARIO_ROL" ur WHERE ur."usuarioId" = u.id AND ur."rolId" = r.id
+  );
 
 -- Cliente CREDITO demo. Tres specs lo buscan por nombre + tipoCliente +
 -- creditoHabilitado + activo (e2e/utils/venta-pos.ts idClienteCreditoDemo) y se

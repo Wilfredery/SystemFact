@@ -149,7 +149,8 @@ export async function buscarUsuarioPorNombreUsuario<TSelect extends Prisma.Usuar
  *     against, so nothing is bound → `AUTH_ENLACE_NO_RESUELTO`.
  *
  * RLS NOTE (load-bearing): `usuario_select` honors `app.is_login_flow`, but
- * `usuario_modify` deliberately does NOT, so this UPDATE pins
+ * the `usuario_update` policy only has ONE minimal login-flow branch (the
+ * `authUserId` NULL -> NOT NULL bind, empresa pinned), so this UPDATE pins
  * `app.current_empresa_id` to the one resolved company first — the same
  * defense-in-depth shape `registrarAuditoriaSesion` uses. The empresa GUC is
  * pinned to exactly this one company and never widened.

@@ -5,8 +5,9 @@
  * ONE `withTenantTransaction` check the named role group on the SERVER, then
  * delegate. Zero business logic, zero Prisma here.
  *
- * Everything is additive and READ-ONLY (S1): no user creation, no role or branch
- * assignment, no activate/deactivate, no RLS change. Writes are a later PR.
+ * Everything here is READ-ONLY: the role/estado writes live in
+ * `actions.usuarios.ts` (Step 7b). The Usuarios read also carries each row's
+ * `version`/role ids and the active ROL catalog, which the write dialogs need.
  *
  * Authorization is the server-side role-group check, never the UI: hiding a
  * button is not security, so each action re-checks even though the screen will
@@ -17,6 +18,7 @@
 
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { listarUsuarios } from "../application/listar-usuarios";
+import { consultarRolesCatalogo } from "../application/consultar-roles-catalogo";
 import { consultarConfiguracion } from "../application/consultar-configuracion";
 import { listarSucursalesDeEmpresa } from "../application/listarSucursalesDeEmpresa";
 import { tieneRolPermitidoEnTx } from "../infrastructure/usuario-repository";
@@ -69,20 +71,26 @@ export async function listarUsuariosAction(
     );
     if (!permitido) return error(TEN_OPS_NO_AUTORIZADO, NO_AUTORIZADO_MESSAGE);
 
-    const result = await listarUsuarios(tx, ctx, parsed.data);
+    const [result, catalogo] = await Promise.all([
+      listarUsuarios(tx, ctx, parsed.data),
+      consultarRolesCatalogo(tx),
+    ]);
     return ok({
       items: result.data.items.map((usuario) => ({
         id: usuario.id,
         nombreUsuario: usuario.nombreUsuario,
         nombre: usuario.nombre,
         activo: usuario.activo,
+        version: usuario.version,
         sucursalNombre: usuario.sucursalNombre,
         empresaNombre: ctx.empresaNombre,
         roles: usuario.roles,
+        rolIds: usuario.rolIds,
       })),
       total: result.data.total,
       page: result.data.page,
       pageSize: result.data.pageSize,
+      rolesCatalogo: catalogo.data,
     });
   });
 }

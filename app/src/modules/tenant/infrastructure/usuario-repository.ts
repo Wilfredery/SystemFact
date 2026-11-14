@@ -40,8 +40,12 @@ export interface UsuarioListRow {
   readonly nombreUsuario: string;
   readonly nombre: string;
   readonly activo: boolean;
+  /** Optimistic-lock token the write actions require (`versionEsperada`). */
+  readonly version: number;
   readonly sucursalNombre: string;
   readonly roles: readonly string[];
+  /** Same roles as `roles`, by catalog id (same order), to preselect the role dialog. */
+  readonly rolIds: readonly number[];
 }
 
 /** A blank/whitespace-only search term is not a filter (it would match all). */
@@ -90,8 +94,9 @@ export async function listarUsuariosEnTx(
       nombreUsuario: true,
       nombre: true,
       activo: true,
+      version: true,
       sucursal: { select: { nombre: true } },
-      roles: { select: { rol: { select: { nombre: true } } } },
+      roles: { select: { rol: { select: { id: true, nombre: true } } } },
     },
     orderBy: { nombreUsuario: "asc" },
     skip: query.offset,
@@ -103,8 +108,10 @@ export async function listarUsuariosEnTx(
     nombreUsuario: fila.nombreUsuario,
     nombre: fila.nombre,
     activo: fila.activo,
+    version: fila.version,
     sucursalNombre: fila.sucursal.nombre,
     roles: fila.roles.map((r) => r.rol.nombre),
+    rolIds: fila.roles.map((r) => r.rol.id),
   }));
 }
 
