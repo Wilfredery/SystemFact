@@ -1,3 +1,18 @@
+## [0.31.0](https://github.com/Wilfredery/SystemFact/compare/v0.30.0...v0.31.0) (2026-11-14)
+
+### Features
+
+* **tenant:** the **Usuarios** tab of Administración now lists the users of **every branch of the company** for the Administrador (it used to list the session branch only). A user of another branch is shown but its **Cambiar roles** and **Activar/Desactivar** buttons are disabled with an explanation, because the write policies stay pinned to the session branch (a branch move or branch management is a separate step). Other roles keep the branch-only scope.
+* **inventario:** the **Usuario** column of the movement history now shows the name of an author from another branch **for the Administrador** (one name-only lookup per page, inside the company-wide read widen). Operador and Despachador keep "—", exactly as before: no privacy change.
+
+### Notes
+
+* **No migration and no RLS change.** `usuario_select` already reads the whole company when the branch setting is blank; the existing `conSucursalAmpliadaEnTx` helper clears it for these two read-only calls only and restores it before the transaction continues, with the company setting never touched. This removes the "Known limitation" listed under 0.30.0.
+
+### Tests
+
+* **unit:** the use case widens only for an Administrador and takes its scope from the session, never from input; one name lookup per page, pinned to the company; the author fallback for every role; the disabled actions of another branch's row. **integration (real Postgres, `systemfact_app`):** an admin sees all branches of its company and never another company; a non-admin sees only its branch; a write right after the listing in the same transaction is still branch-pinned; the history author is resolved for an admin and stays null for a non-admin.
+
 ## [0.30.0](https://github.com/Wilfredery/SystemFact/compare/v0.29.0...v0.30.0) (2026-11-14)
 
 ### Features
