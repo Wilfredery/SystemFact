@@ -1,3 +1,9 @@
+## [0.34.4](https://github.com/Wilfredery/SystemFact/compare/v0.34.3...v0.34.4) (2026-11-15)
+
+### Maintenance
+
+* **lint:** removes 15 unused imports (0 warnings left in `src`): `auth/http/actions.login.ts` (3), `devolucion/http/actions.devolver.ts` (5), `devolucion/http/actions.shared.ts` (6) and one unused type in `venta/ui/__tests__/carro.spec.ts`. They were leftovers of the actions split in #82 (logout and current-user live in `actions.logout.ts` / `actions.user.ts`; the return action still checks the role, runs in `withTenantTransaction` and calls `crearDevolucion`). No behavior change.
+
 ## [0.34.3](https://github.com/Wilfredery/SystemFact/compare/v0.34.2...v0.34.3) (2026-11-15)
 
 ### Maintenance

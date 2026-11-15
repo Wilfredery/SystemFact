@@ -25,7 +25,6 @@ import {
   type CarroLinea,
   type ProductoOpcion,
 } from "../carro";
-import type { TeclaNumerica } from "@/components/ui/numeric-keypad";
 
 const ARROZ: ProductoOpcion = {
   id: 7,

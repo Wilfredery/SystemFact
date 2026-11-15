@@ -1,13 +1,11 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/client";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
-import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
 import { tieneRolPermitidoEnTx } from "../../venta/infrastructure/venta-repository";
-import { crearDevolucion, type DevolucionErrorCode, type DevolucionOutput, type DevolucionWarning } from "../application/crear-devolucion";
+import { crearDevolucion, type DevolucionOutput } from "../application/crear-devolucion";
 import { STOCK_MAXIMO_EXCEDIDO, VentaDomainError } from "../../venta/domain/errors";
 import { NO_AUTORIZADO, SESION_INVALIDA, VALIDATION_ERROR, mensajeTransporte, zDevolverVentaInput } from "./validations";
-import { ActionResult, DevolucionAccionesErrorCode, ok, fail, resolverCtx, ROLES_DEVOLUCION } from "./actions.shared";
+import { ActionResult, ok, fail, resolverCtx, ROLES_DEVOLUCION } from "./actions.shared";
 
 export async function devolverVentaAction(
   input: unknown,

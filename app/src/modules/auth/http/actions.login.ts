@@ -4,12 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { z } from "@/lib/zod";
 import { createClient } from "@/lib/supabase/client";
-import {
-  loginWithCredenciales,
-  logout,
-  getCurrentUser,
-  type CurrentUserContext,
-} from "@/modules/auth/infrastructure/auth-service";
+import { loginWithCredenciales } from "@/modules/auth/infrastructure/auth-service";
 import {
   AUTH_CAMPOS_REQUERIDOS,
   AUTH_INTENTOS_EXCEDIDOS,

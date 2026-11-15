@@ -28,22 +28,9 @@
  */
 
 import { createClient } from "@/lib/supabase/client";
-import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
-import { tieneRolPermitidoEnTx } from "../../venta/infrastructure/venta-repository";
-import {
-  crearDevolucion,
-  type DevolucionErrorCode,
-  type DevolucionOutput,
-  type DevolucionWarning,
-} from "../application/crear-devolucion";
-import {
-  NO_AUTORIZADO,
-  SESION_INVALIDA,
-  VALIDATION_ERROR,
-  mensajeTransporte,
-  zDevolverVentaInput,
-} from "./validations";
+import type { DevolucionErrorCode, DevolucionWarning } from "../application/crear-devolucion";
+import { NO_AUTORIZADO, SESION_INVALIDA, VALIDATION_ERROR } from "./validations";
 
 /** Returns are operational (Administrador + Operador) - mirrors ROLES_VENTA. */
 export const ROLES_DEVOLUCION = ["Administrador", "Operador"];
