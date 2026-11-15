@@ -26,6 +26,7 @@
  */
 
 import { Decimal } from "decimal.js";
+import { esTasaItbisPermitida } from "@/shared/domain/tasas-itbis";
 import {
   CANTIDAD_EXCEDE_ORIGINAL,
   DEVOLUCION_FUERA_DE_PLAZO,
@@ -55,9 +56,6 @@ export const TIPO_REPOSICION = {
   DANADO: "DANADO",
 } as const;
 export type TipoReposicion = (typeof TIPO_REPOSICION)[keyof typeof TIPO_REPOSICION];
-
-/** Accepted per-line ITBIS rates (Ley 30-26): 18 / 16 / 0 percent. */
-const TASAS_ITBIS_VALIDAS = new Set(["18", "16", "0"]);
 
 /** Round a Decimal to a 2dp money string, half-up (parity with venta calculators). */
 function round2(value: Decimal): string {
@@ -209,7 +207,7 @@ export function calcularTotalesNotaCredito(
     if (
       !/^\d{1,9}(\.\d{1,3})?$/.test(l.cantidad) ||
       !/^\d{1,9}(\.\d{1,2})?$/.test(l.precioUnitario) ||
-      !TASAS_ITBIS_VALIDAS.has(l.tasaItbis)
+      !esTasaItbisPermitida(l.tasaItbis)
     ) {
       throw new VentaDomainError(LINEA_INVALIDA, { productoId: l.productoId });
     }

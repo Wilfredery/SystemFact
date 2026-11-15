@@ -1,3 +1,5 @@
+import { mensajeTasaItbisInvalida } from "@/shared/domain/tasas-itbis";
+
 export const CODIGO_PRODUCTO_DUPLICADO = "CODIGO_PRODUCTO_DUPLICADO";
 export const TASA_ITBIS_INVALIDA = "TASA_ITBIS_INVALIDA";
 export const PRECIO_BASE_INVALIDO = "PRECIO_BASE_INVALIDO";
@@ -33,7 +35,7 @@ export type ProductoErrorCode =
 
 const MESSAGES: Record<ProductoErrorCode, string> = {
   [CODIGO_PRODUCTO_DUPLICADO]: "Ya existe un producto con ese código en la empresa",
-  [TASA_ITBIS_INVALIDA]: "La tasa de ITBIS debe ser 0%, 16% o 18%",
+  [TASA_ITBIS_INVALIDA]: mensajeTasaItbisInvalida(),
   [PRECIO_BASE_INVALIDO]: "El precio base debe ser un monto mayor o igual a cero con hasta 2 decimales",
   [VIGENCIA_INVALIDA]: "La fecha de vigencia hasta no puede ser menor que la fecha desde",
   [LIMITE_PAGINACION_INVALIDO]: "El límite de paginación debe estar entre 1 y 100",

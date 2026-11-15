@@ -1,4 +1,5 @@
 import { z } from "@/lib/zod";
+import { TASAS_ITBIS_PERMITIDAS } from "@/shared/domain/tasas-itbis";
 
 export const zCrearProductoInput = z.object({
   categoriaId: z.number().int().positive(),
@@ -13,7 +14,7 @@ export const zCrearProductoInput = z.object({
   precioVenta: z
     .string()
     .regex(/^\d{1,10}(\.\d{1,2})?$/, "Monto inválido (máx 10 enteros y 2 decimales)"),
-  itbisTasa: z.enum(["0", "16", "18"]),
+  itbisTasa: z.enum(TASAS_ITBIS_PERMITIDAS),
   // La pantalla no expone la fecha de vigencia: si no llega, el adaptador usa el
   // instante de creación. Un cliente que la envía conserva el control total.
   itbisVigenteDesde: z.coerce.date().optional(),
@@ -79,7 +80,7 @@ export const zActualizarProductoInput = z
       .string()
       .regex(/^\d{1,10}(\.\d{1,2})?$/, "Monto inválido (máx 10 enteros y 2 decimales)")
       .optional(),
-    itbisTasa: z.enum(["0", "16", "18"]).optional(),
+    itbisTasa: z.enum(TASAS_ITBIS_PERMITIDAS).optional(),
     itbisVigenteDesde: z.coerce.date().optional(),
     itbisVigenteHasta: z.coerce.date().nullable().optional(),
     itbisAplicaRetencionITBIS: z.boolean().optional(),
