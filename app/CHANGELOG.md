@@ -1,3 +1,9 @@
+## [0.34.5](https://github.com/Wilfredery/SystemFact/compare/v0.34.4...v0.34.5) (2026-11-15)
+
+### Maintenance
+
+* **itbis:** slice 1 of moving the allowed ITBIS rate list to the database (`odd/tasks/itbis-tasas-config.md`). The five hardcoded copies of the set `0 / 16 / 18` (product domain and zod validations, sale calculators, return calculators, product form options) now come from ONE shared pure constant, `app/src/shared/domain/tasas-itbis.ts`. **No behavior change:** same accepted rates, same error codes and message ("La tasa de ITBIS debe ser 0%, 16% o 18%"), same form options and order. Checked by a differential run of 20 input values through 5 validators on the old and the new code: byte-identical output. No migration, nothing stored differently. The next slices add the per-empresa `TASA_ITBIS` list in the database (owner applies that migration) and then make the application read it.
+
 ## [0.34.4](https://github.com/Wilfredery/SystemFact/compare/v0.34.3...v0.34.4) (2026-11-15)
 
 ### Maintenance
