@@ -12,6 +12,7 @@
 import {
   TEN_AUTO_PROTECCION,
   TEN_ULTIMO_ADMINISTRADOR,
+  TEN_USUARIO_SUCURSAL_INACTIVA,
   type TenantErrorCode,
 } from "./errors";
 
@@ -122,6 +123,12 @@ export interface DecidirCambioEstadoInput {
   readonly activoNuevo: boolean;
   readonly objetivoEsAdministrador: boolean;
   readonly administradoresActivos: number;
+  /**
+   * The target user's OWN branch is active, read under a share lock. Only
+   * consulted when the request ACTIVATES the user (L8): an inactive user may
+   * stay on a branch that is later deactivated, and must not come back to it.
+   */
+  readonly sucursalObjetivoActiva: boolean;
 }
 
 export function decidirCambioEstado(
@@ -139,6 +146,9 @@ export function decidirCambioEstado(
     input.administradoresActivos <= 1
   ) {
     return { tipo: "RECHAZAR", code: TEN_ULTIMO_ADMINISTRADOR };
+  }
+  if (!input.objetivoActivo && input.activoNuevo && !input.sucursalObjetivoActiva) {
+    return { tipo: "RECHAZAR", code: TEN_USUARIO_SUCURSAL_INACTIVA };
   }
   return { tipo: "APLICAR" };
 }

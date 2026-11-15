@@ -38,6 +38,10 @@ export const TEN_SUCURSAL_CON_DOCUMENTOS_ABIERTOS = "TEN_SUCURSAL_CON_DOCUMENTOS
 export const TEN_SUCURSAL_CON_SALDOS_PENDIENTES = "TEN_SUCURSAL_CON_SALDOS_PENDIENTES";
 export const TEN_SUCURSAL_PROPIA_NO_DESACTIVABLE = "TEN_SUCURSAL_PROPIA_NO_DESACTIVABLE";
 export const TEN_SUCURSAL_ULTIMA_ACTIVA = "TEN_SUCURSAL_ULTIMA_ACTIVA";
+// Activating a user whose own branch is inactive (L8): TEN_SUCURSAL_NO_VALIDA is
+// tenant-blind on purpose and its message cannot tell the admin what to do, so
+// this refusal has its own code (the admin sees the user's own branch anyway).
+export const TEN_USUARIO_SUCURSAL_INACTIVA = "TEN_USUARIO_SUCURSAL_INACTIVA";
 
 export const TEN_ERROR_CODES = [
   TEN_OPS_NO_AUTORIZADO,
@@ -54,6 +58,7 @@ export const TEN_ERROR_CODES = [
   TEN_SUCURSAL_CON_SALDOS_PENDIENTES,
   TEN_SUCURSAL_PROPIA_NO_DESACTIVABLE,
   TEN_SUCURSAL_ULTIMA_ACTIVA,
+  TEN_USUARIO_SUCURSAL_INACTIVA,
 ] as const;
 
 export type TenantErrorCode = (typeof TEN_ERROR_CODES)[number];
@@ -86,6 +91,8 @@ const TEN_ERROR_MESSAGES: Readonly<Record<TenantErrorCode, string>> = {
     "No puede desactivar la sucursal en la que está trabajando.",
   [TEN_SUCURSAL_ULTIMA_ACTIVA]:
     "No puede desactivar la última sucursal activa de la empresa.",
+  [TEN_USUARIO_SUCURSAL_INACTIVA]:
+    "La sucursal del usuario está inactiva: muévalo primero a una sucursal activa y después actívelo.",
 };
 
 export function messageFor(code: TenantErrorCode): string {

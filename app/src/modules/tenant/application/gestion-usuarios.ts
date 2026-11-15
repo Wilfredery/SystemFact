@@ -37,6 +37,7 @@ import {
   TEN_ROL_NO_VALIDO,
   TEN_SUCURSAL_NO_VALIDA,
   TEN_USUARIO_NO_ENCONTRADO,
+  TEN_USUARIO_SUCURSAL_INACTIVA,
   messageFor,
   type TenantErrorCode,
 } from "../domain/errors";
@@ -64,6 +65,7 @@ import {
   activarSucursalEnTx,
   leerSucursalActivaEnTx,
   leerSucursalActivaConBloqueoEnTx,
+  leerSucursalEstadoEnTx,
   liberarSucursalActivaEnTx,
 } from "../infrastructure/repo-sucursal";
 
@@ -201,12 +203,78 @@ export async function cambiarRolesUsuario(
   };
 }
 
+/** What the activation holds about the target's branch once the user rows are locked. */
+type SucursalDeActivacion =
+  | { readonly tipo: "NO_APLICA" }
+  | { readonly tipo: "BLOQUEADA"; readonly sucursalId: number }
+  | { readonly tipo: "NO_BLOQUEADA"; readonly sucursalId: number };
+
+/**
+ * L8, step 0 of an ACTIVATION (activo false -> true): share-lock the target
+ * user's OWN branch row BEFORE any user row is locked. Lock order, global:
+ * SUCURSAL first, then USUARIO rows. That is the order of `moverUsuarioDeSucursal`
+ * (destination branch FOR SHARE, then users) and of `cambiarEstadoSucursal`
+ * (branch FOR UPDATE, then plain count reads that take no row locks), so no
+ * pair of these paths can wait on each other in a cycle. Effect against a
+ * concurrent deactivation of that branch: whoever takes the branch row first
+ * wins; the deactivation after our commit counts the now-active user and
+ * refuses, and our read after its commit finds the branch inactive.
+ *
+ * The user's branch is only known from the row: a plain probe finds it, and the
+ * caller re-reads it after the user locks and refuses if it moved. The probe is
+ * skipped for a deactivation and for a user that already is active (the no-op
+ * reads no branch). An empty locked read is NOT decided here (it also happens
+ * to a non-admin, whose refusal belongs to the actor check that follows).
+ */
+async function bloquearSucursalDeActivacion(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  input: CambiarEstadoUsuarioInput,
+): Promise<SucursalDeActivacion> {
+  if (!input.activo) return { tipo: "NO_APLICA" };
+  const previo = await leerUsuarioParaMoverEnTx(tx, ctx.empresaId, input.usuarioId);
+  if (previo === null || previo.activo) return { tipo: "NO_APLICA" };
+  const bloqueada = await leerSucursalActivaConBloqueoEnTx(
+    tx,
+    ctx.empresaId,
+    previo.sucursalId,
+  );
+  return {
+    tipo: bloqueada === null ? "NO_BLOQUEADA" : "BLOQUEADA",
+    sucursalId: previo.sucursalId,
+  };
+}
+
+/**
+ * Decides, under the locks, whether the branch of the user being activated is
+ * usable: `true` = active and share-locked; otherwise the refusal code.
+ */
+async function sucursalDeActivacionUsable(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  usuarioId: number,
+  sucursal: SucursalDeActivacion,
+): Promise<true | TenantErrorCode> {
+  if (sucursal.tipo === "NO_APLICA") return true;
+  const actual = await leerUsuarioParaMoverEnTx(tx, ctx.empresaId, usuarioId);
+  if (actual === null || actual.sucursalId !== sucursal.sucursalId) {
+    return TEN_CONCURRENCIA_CONFLICTO;
+  }
+  if (sucursal.tipo === "BLOQUEADA") return true;
+  const visible = await leerSucursalEstadoEnTx(tx, ctx.empresaId, sucursal.sucursalId);
+  if (visible === null) return TEN_SUCURSAL_NO_VALIDA;
+  // Visible and active without the lock held: it was reactivated in between; the
+  // lock is what makes the decision safe, so ask for an explicit retry.
+  return visible.activa ? TEN_CONCURRENCIA_CONFLICTO : TEN_USUARIO_SUCURSAL_INACTIVA;
+}
+
 export async function cambiarEstadoUsuario(
   tx: PrismaTx,
   ctx: TenantCtx,
   input: CambiarEstadoUsuarioInput,
   rolesAdministrador: readonly string[],
 ): Promise<CambioUsuarioResult> {
+  const sucursalDeActivacion = await bloquearSucursalDeActivacion(tx, ctx, input);
   if (!(await bloquearYVerificarActor(tx, ctx, input.usuarioId, rolesAdministrador))) {
     return rechazo(TEN_OPS_NO_AUTORIZADO);
   }
@@ -219,6 +287,16 @@ export async function cambiarEstadoUsuario(
   if (objetivo === null) return rechazo(TEN_USUARIO_NO_ENCONTRADO);
   if (objetivo.version !== input.versionEsperada) {
     return rechazo(TEN_CONCURRENCIA_CONFLICTO);
+  }
+
+  // Only a real activation consults the branch (a deactivation or a no-op never
+  // refuses because of it).
+  const sucursalUsable =
+    !objetivo.activo && input.activo
+      ? await sucursalDeActivacionUsable(tx, ctx, objetivo.id, sucursalDeActivacion)
+      : true;
+  if (sucursalUsable !== true && sucursalUsable !== TEN_USUARIO_SUCURSAL_INACTIVA) {
+    return rechazo(sucursalUsable);
   }
 
   const administradoresActivos = await contarAdministradoresActivosEnTx(
@@ -235,6 +313,7 @@ export async function cambiarEstadoUsuario(
       rolesAdministrador.includes(rol.nombre),
     ),
     administradoresActivos,
+    sucursalObjetivoActiva: sucursalUsable === true,
   });
   if (decision.tipo === "RECHAZAR") return rechazo(decision.code);
   if (decision.tipo === "SIN_CAMBIO") {

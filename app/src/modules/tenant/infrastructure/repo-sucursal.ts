@@ -97,6 +97,22 @@ export async function leerSucursalActivaEnTx(
 }
 
 /**
+ * PLAIN read of one branch of the empresa WITH its `activa` flag. Classifies an
+ * empty `leerSucursalActivaConBloqueoEnTx` for the user activation (L8): `null`
+ * = unknown or foreign branch, `activa=false` = a real but inactive branch.
+ */
+export async function leerSucursalEstadoEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  sucursalId: number,
+): Promise<{ id: number; activa: boolean } | null> {
+  return tx.sucursal.findFirst({
+    where: { id: sucursalId, empresaId },
+    select: { id: true, activa: true },
+  });
+}
+
+/**
  * The D1 rewrite: moves `Usuario.sucursalId` to the target branch inside the
  * caller's transaction. `version` increments so the optimistic-locking ledger
  * stays coherent with every other USUARIO writer; the concurrent-single-user
