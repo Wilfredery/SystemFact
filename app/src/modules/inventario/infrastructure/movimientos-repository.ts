@@ -54,6 +54,8 @@ export interface MovimientoRow {
    * ledger row itself is still the session branch's).
    */
   readonly usuarioNombre: string | null;
+  /** Author id, so the use case can resolve a hidden name (Administrador only). */
+  readonly usuarioId: number;
   readonly motivo: string;
 }
 
@@ -62,6 +64,7 @@ const movimientoSelect = {
   fecha: true,
   tipoMovimiento: true,
   motivo: true,
+  usuarioId: true,
   cantidadMovida: true,
   cantidadAnterior: true,
   cantidadNueva: true,
@@ -112,6 +115,7 @@ function toMovimientoRow(row: MovimientoSelected): MovimientoRow {
     cantidadAnterior: new Prisma.Decimal(row.cantidadAnterior).toString(),
     cantidadNueva: new Prisma.Decimal(row.cantidadNueva).toString(),
     usuarioNombre: usuario?.nombre ?? null,
+    usuarioId: row.usuarioId,
     motivo: row.motivo,
   };
 }

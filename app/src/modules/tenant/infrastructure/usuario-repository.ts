@@ -2,16 +2,14 @@
  * Tenant repository — the USUARIO directory read for the Administración screen
  * (screens plan Step 7, S4/S5).
  *
- * S5 (RLS constraint, explicitly in scope as a CONSTRAINT): the listing shows the
- * users of the session branch, because the existing `usuario_select` policy
- * already restricts `USUARIO` to `empresaId` + `sucursalId` of the transaction's
- * GUCs. So this query pins `empresaId` (AGENTS.md defense-in-depth: never rely on
- * RLS alone) and deliberately does NOT add a `sucursalId` predicate: the branch
- * scope must stay owned by the policy, or this file would silently become the
- * authority on who is visible — and would have to be undone the day the
- * company-wide policy exists (that policy is DEFERRED, out of scope). The branch
- * GUC is never blanked here: blanking it is exactly the empresa-wide read this
- * step must not introduce.
+ * Scope (RLS constraint): `usuario_select` restricts `USUARIO` to `empresaId` +
+ * `sucursalId` of the transaction's GUCs, and lets a blank branch GUC read the
+ * whole empresa. So these queries pin `empresaId` (AGENTS.md defense-in-depth:
+ * never rely on RLS alone) and deliberately add NO `sucursalId` predicate: the
+ * branch scope stays owned by the policy. Whether a read is branch-wide or
+ * company-wide is decided by the CALLER (the use case runs the read inside
+ * `conSucursalAmpliadaEnTx`, Administrador only); this file never blanks the
+ * branch GUC itself.
  *
  * Reads only: no mutation, no role/branch assignment (read-only first, S1).
  */
@@ -42,6 +40,7 @@ export interface UsuarioListRow {
   readonly activo: boolean;
   /** Optimistic-lock token the write actions require (`versionEsperada`). */
   readonly version: number;
+  readonly sucursalId: number;
   readonly sucursalNombre: string;
   readonly roles: readonly string[];
   /** Same roles as `roles`, by catalog id (same order), to preselect the role dialog. */
@@ -95,6 +94,7 @@ export async function listarUsuariosEnTx(
       nombre: true,
       activo: true,
       version: true,
+      sucursalId: true,
       sucursal: { select: { nombre: true } },
       roles: { select: { rol: { select: { id: true, nombre: true } } } },
     },
@@ -109,10 +109,30 @@ export async function listarUsuariosEnTx(
     nombre: fila.nombre,
     activo: fila.activo,
     version: fila.version,
+    sucursalId: fila.sucursalId,
     sucursalNombre: fila.sucursal.nombre,
     roles: fila.roles.map((r) => r.rol.nombre),
     rolIds: fila.roles.map((r) => r.rol.id),
   }));
+}
+
+/**
+ * Display names of the given users (the author column of a ledger page): one
+ * query for the whole page, never one per row. Pins `empresaId`; the branch
+ * visibility is the caller's widen decision (see the file header). Ids RLS hides
+ * are simply absent from the map.
+ */
+export async function nombresUsuariosEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  ids: readonly number[],
+): Promise<ReadonlyMap<number, string>> {
+  if (ids.length === 0) return new Map();
+  const filas = await tx.usuario.findMany({
+    where: { empresaId: ctx.empresaId, id: { in: [...ids] } },
+    select: { id: true, nombre: true },
+  });
+  return new Map(filas.map((f) => [f.id, f.nombre]));
 }
 
 /** Total rows matching the same `where` (paginated list contract, S4). */

@@ -81,6 +81,12 @@ export interface UsuarioAdministracionDto {
   /** Optimistic-lock token the write actions take as `versionEsperada`. */
   readonly version: number;
   readonly sucursalNombre: string;
+  /**
+   * The user belongs to another branch than the session's. The listing is
+   * company-wide for an Administrador but the write policies stay pinned to the
+   * session branch, so the UI disables the actions of these rows.
+   */
+  readonly esDeOtraSucursal: boolean;
   /** Session empresa display name (`EMPRESA.nombreComercial`, header seam). */
   readonly empresaNombre: string;
   readonly roles: readonly string[];

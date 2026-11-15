@@ -15,6 +15,7 @@ import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import {
   contarUsuariosEnTx,
   listarUsuariosEnTx,
+  nombresUsuariosEnTx,
   tieneRolPermitidoEnTx,
 } from "./usuario-repository";
 
@@ -66,6 +67,7 @@ describe("listarUsuariosEnTx", () => {
       nombre: true,
       activo: true,
       version: true,
+      sucursalId: true,
       sucursal: { select: { nombre: true } },
       roles: { select: { rol: { select: { id: true, nombre: true } } } },
     });
@@ -125,6 +127,7 @@ describe("listarUsuariosEnTx", () => {
         nombre: "María Pérez",
         activo: true,
         version: 4,
+        sucursalId: 5,
         sucursal: { nombre: "Matriz" },
         roles: [
           { rol: { id: 1, nombre: "Administrador" } },
@@ -141,6 +144,7 @@ describe("listarUsuariosEnTx", () => {
         nombre: "María Pérez",
         activo: true,
         version: 4,
+        sucursalId: 5,
         sucursalNombre: "Matriz",
         roles: ["Administrador", "Operador"],
         rolIds: [1, 2],
@@ -194,5 +198,28 @@ describe("tieneRolPermitidoEnTx", () => {
     await expect(
       tieneRolPermitidoEnTx(tx, 3, 1, ["Administrador"]),
     ).resolves.toBe(false);
+  });
+});
+
+describe("nombresUsuariosEnTx", () => {
+  it("one name-only query for the whole id set, pinned to the empresa (no branch predicate)", async () => {
+    const tx = makeTx([{ id: 8, nombre: "Ana" }, { id: 9, nombre: "Luis" }]);
+    const nombres = await nombresUsuariosEnTx(tx, ctx, [8, 9]);
+
+    expect(tx.usuario.findMany).toHaveBeenCalledTimes(1);
+    expect((tx.usuario.findMany as jest.Mock).mock.calls[0][0]).toEqual({
+      where: { empresaId: 1, id: { in: [8, 9] } },
+      select: { id: true, nombre: true },
+    });
+    expect(nombres.get(8)).toBe("Ana");
+    expect(nombres.get(9)).toBe("Luis");
+  });
+
+  it("an empty id set issues no query", async () => {
+    const tx = makeTx();
+    const nombres = await nombresUsuariosEnTx(tx, ctx, []);
+
+    expect(tx.usuario.findMany).not.toHaveBeenCalled();
+    expect(nombres.size).toBe(0);
   });
 });
