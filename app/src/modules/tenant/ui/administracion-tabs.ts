@@ -12,7 +12,7 @@
  * boolean, which would silently mean `true`).
  */
 
-import { TEN_ERROR_CODES, messageFor } from "../domain/errors";
+import { TEN_AUTO_PROTECCION, TEN_ERROR_CODES, messageFor } from "../domain/errors";
 
 /** Rows per page of the Usuarios list (AGENTS.md: 25 default, 100 max). */
 export const TAMANO_PAGINA = 25;
@@ -93,6 +93,20 @@ export function construirHrefAdministracion(
 
 /** Shown when a write action throws instead of answering (transport failure). */
 export const MENSAJE_FALLO_ACCION = "No se pudo completar la acción. Intente de nuevo.";
+
+/**
+ * Moving a user: the catalog's self-protection text speaks of deactivation and
+ * of losing the Administrador role, which is wrong for a move, so that ONE code
+ * gets a move-specific message. Every other code keeps the catalog message.
+ */
+export const MENSAJE_AUTO_MOVER =
+  "No puede moverse a sí mismo: use el selector de sucursal para cambiar la suya.";
+
+export function mensajeErrorMover(code: string, mensajeServidor: string): string {
+  return code === TEN_AUTO_PROTECCION
+    ? MENSAJE_AUTO_MOVER
+    : mensajeErrorGestion(code, mensajeServidor);
+}
 
 /**
  * The ONE code → Spanish message map of the user-management writes (S11): every

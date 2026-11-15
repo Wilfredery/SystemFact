@@ -2,7 +2,8 @@
 
 /**
  * Administración user-management dialogs (Step 7b, `odd/tasks/administracion-writes.md`
- * S11): "Cambiar roles" and the Activar/Desactivar confirmation.
+ * S11): "Cambiar roles" and the Activar/Desactivar confirmation, plus the
+ * "Mover de sucursal" dialog (`odd/tasks/administracion-mover-usuario.md` S10).
  *
  * Presentational only — the screen owns the pending flag, the error text and the
  * action calls (server confirmation first, then a re-read; never optimistic).
@@ -22,7 +23,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { RolCatalogoDto, UsuarioAdministracionDto } from "@/modules/tenant/http/shared";
+import type {
+  RolCatalogoDto,
+  SucursalAdministracionDto,
+  UsuarioAdministracionDto,
+} from "@/modules/tenant/http/shared";
 
 const CLASE_ALERTA =
   "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
@@ -188,6 +193,128 @@ export function ConfirmarEstadoUsuarioDialog({
           >
             {accion}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** The company's active branches as the move dialog receives them. */
+export type SucursalesDestino =
+  | { readonly estado: "cargando" }
+  | { readonly estado: "error"; readonly mensaje: string }
+  | { readonly estado: "listo"; readonly sucursales: readonly SucursalAdministracionDto[] };
+
+export interface MoverUsuarioDialogProps {
+  readonly usuario: UsuarioAdministracionDto;
+  readonly destinos: SucursalesDestino;
+  readonly enviando: boolean;
+  readonly error: string | null;
+  /** The chosen destination branch id. */
+  readonly onConfirmar: (sucursalDestinoId: number) => void;
+  readonly onCerrar: () => void;
+}
+
+/**
+ * "Mover de sucursal": pick one of the OTHER active branches, read the explicit
+ * confirmation and confirm. Presentational: the screen owns the pending flag and
+ * the action call; the new branch is shown only after the server answered ok.
+ * Every rule here is UX (the server re-validates destination, last Administrador,
+ * self-move and version).
+ */
+export function MoverUsuarioDialog({
+  usuario,
+  destinos,
+  enviando,
+  error,
+  onConfirmar,
+  onCerrar,
+}: MoverUsuarioDialogProps) {
+  const [elegida, setElegida] = useState("");
+
+  const candidatas =
+    destinos.estado === "listo"
+      ? destinos.sucursales.filter((s) => s.id !== usuario.sucursalId)
+      : [];
+  const destino = candidatas.find((s) => String(s.id) === elegida);
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(abierto) => {
+        if (!abierto && !enviando) onCerrar();
+      }}
+    >
+      <DialogContent aria-label="Mover de sucursal">
+        <DialogHeader>
+          <DialogTitle>Mover de sucursal</DialogTitle>
+          <DialogDescription>
+            {`${descripcionUsuario(usuario)} · Sucursal actual: ${usuario.sucursalNombre}`}
+          </DialogDescription>
+        </DialogHeader>
+
+        {destinos.estado === "cargando" && (
+          <p role="status" className="text-sm text-zinc-500 dark:text-zinc-400">
+            Cargando sucursales...
+          </p>
+        )}
+        {destinos.estado === "error" && (
+          <p role="alert" className={CLASE_ALERTA}>
+            {destinos.mensaje}
+          </p>
+        )}
+        {destinos.estado === "listo" && candidatas.length === 0 && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            No hay otra sucursal activa a la que mover a este usuario.
+          </p>
+        )}
+        {candidatas.length > 0 && (
+          <>
+            <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Sucursal destino
+              <select
+                value={elegida}
+                onChange={(e) => setElegida(e.target.value)}
+                disabled={enviando}
+                className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+              >
+                <option value="">Seleccione una sucursal</option>
+                {candidatas.map((s) => (
+                  <option key={s.id} value={String(s.id)}>
+                    {s.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {destino !== undefined && (
+              <p className="text-sm text-zinc-700 dark:text-zinc-300">
+                {`Se moverá a ${descripcionUsuario(usuario)} de ${usuario.sucursalNombre} a ${destino.nombre}. Operará en la nueva sucursal desde su próxima solicitud; su historial se conserva en la sucursal donde se generó.`}
+              </p>
+            )}
+          </>
+        )}
+
+        {error !== null && (
+          <p role="alert" className={CLASE_ALERTA}>
+            {error}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onCerrar} disabled={enviando}>
+            Cancelar
+          </Button>
+          {candidatas.length > 0 && (
+            <Button
+              type="button"
+              onClick={() => {
+                if (destino !== undefined) onConfirmar(destino.id);
+              }}
+              disabled={enviando || destino === undefined}
+            >
+              Mover usuario
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

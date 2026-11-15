@@ -81,6 +81,8 @@ export interface UsuarioAdministracionDto {
   /** Optimistic-lock token the write actions take as `versionEsperada`. */
   readonly version: number;
   readonly sucursalNombre: string;
+  /** The user's current branch id: the "Mover de sucursal" select excludes it. */
+  readonly sucursalId: number;
   /**
    * The user belongs to another branch than the session's. The listing is
    * company-wide for an Administrador but the write policies stay pinned to the
