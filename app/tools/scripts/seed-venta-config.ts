@@ -59,6 +59,17 @@ export const RETROACTIVO_FECHA_VENTA_CLAVE = "RETROACTIVO_FECHA_VENTA_DIAS";
  */
 export const RETROACTIVO_FECHA_VENTA_SEED_VALOR = "7";
 
+/** The `ConfiguracionEmpresa` key holding the ITBIS rates allowed for NEW use. */
+export const TASA_ITBIS_CLAVE = "TASA_ITBIS";
+
+/**
+ * The allowed ITBIS rates, a comma list (percent, default rate first): exactly 18, 16
+ * and 0 (owner decision, odd/tasks/itbis-tasas-config.md S2). The seed migration
+ * `20261115140000_seed_tasa_itbis` stores the same value for existing empresas; a unit
+ * test pins that this list is the same SET as `TASAS_ITBIS_PERMITIDAS`.
+ */
+export const TASA_ITBIS_SEED_VALOR = "18,16,0";
+
 /**
  * Canonical validity window shared by every provisioned key (the same
  * long-dated span the fixtures use). Kept as ONE constant so no key can drift
@@ -165,8 +176,8 @@ async function seedClaveParaEmpresa(
 }
 
 /**
- * Seed the `DESC_MAX`, `PLAZO_DEVOLUCION` and `RETROACTIVO_FECHA_VENTA_DIAS` keys
- * for ONE empresa. Each key runs through the same demote + canonical upsert path,
+ * Seed the `DESC_MAX`, `PLAZO_DEVOLUCION`, `RETROACTIVO_FECHA_VENTA_DIAS` and
+ * `TASA_ITBIS` keys for ONE empresa. Each key runs through the same demote + canonical upsert path,
  * so a re-run never duplicates and stray duplicates are demoted.
  */
 export async function seedVentaConfigParaEmpresa(
@@ -181,6 +192,7 @@ export async function seedVentaConfigParaEmpresa(
     RETROACTIVO_FECHA_VENTA_CLAVE,
     RETROACTIVO_FECHA_VENTA_SEED_VALOR,
   );
+  await seedClaveParaEmpresa(db, empresaId, TASA_ITBIS_CLAVE, TASA_ITBIS_SEED_VALOR);
 }
 
 /**
@@ -212,7 +224,7 @@ async function main(): Promise<void> {
   try {
     const res = await seedVentaConfig(db);
     console.log(
-      `OK: seeded ${DESC_MAX_CLAVE}=${DESC_MAX_SEED_VALOR}, ${PLAZO_DEVOLUCION_CLAVE}=${PLAZO_DEVOLUCION_SEED_VALOR} and ${RETROACTIVO_FECHA_VENTA_CLAVE}=${RETROACTIVO_FECHA_VENTA_SEED_VALOR} for ${res.empresas} empresa(s) (idempotent).`,
+      `OK: seeded ${DESC_MAX_CLAVE}=${DESC_MAX_SEED_VALOR}, ${PLAZO_DEVOLUCION_CLAVE}=${PLAZO_DEVOLUCION_SEED_VALOR}, ${RETROACTIVO_FECHA_VENTA_CLAVE}=${RETROACTIVO_FECHA_VENTA_SEED_VALOR} and ${TASA_ITBIS_CLAVE}=${TASA_ITBIS_SEED_VALOR} for ${res.empresas} empresa(s) (idempotent).`,
     );
   } finally {
     await db.$disconnect();

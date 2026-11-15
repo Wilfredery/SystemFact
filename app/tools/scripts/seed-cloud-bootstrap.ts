@@ -31,7 +31,7 @@
  *   privileged connection style), in this order:
  *     pnpm seed:ncf        (B01/B02/B04 ranges â€” e2e needs B01/B02 AND B04)
  *     pnpm seed:retencion  (ISR/ITBIS retention keys)
- *     pnpm seed:venta      (DESC_MAX, PLAZO_DEVOLUCION, RETROACTIVO_FECHA_VENTA_DIAS)
+ *     pnpm seed:venta      (DESC_MAX, PLAZO_DEVOLUCION, RETROACTIVO_FECHA_VENTA_DIAS, TASA_ITBIS)
  *     pnpm seed:cliente    (per-empresa Consumidor Final)
  *     pnpm config:verify   (reads every provisioned key back)
  *   This script NEVER invokes them.

@@ -10,6 +10,9 @@
  * retention seed's constants are the single source the fixtures align to.
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   seedVentaConfigParaEmpresa,
   seedVentaConfig,
@@ -20,8 +23,11 @@ import {
   PLAZO_DEVOLUCION_CLAVE,
   RETROACTIVO_FECHA_VENTA_SEED_VALOR,
   RETROACTIVO_FECHA_VENTA_CLAVE,
+  TASA_ITBIS_SEED_VALOR,
+  TASA_ITBIS_CLAVE,
   CLAVE_SEED_VIGENCIA,
 } from "./seed-venta-config";
+import { TASAS_ITBIS_PERMITIDAS } from "@/shared/domain/tasas-itbis";
 
 // The seed module imports the generated Prisma client + pg adapter at the top for
 // its `main()` CLI path. In the CommonJS unit runner the generated client's
@@ -65,6 +71,11 @@ it("seeds the business defaults for the DESC_MAX, PLAZO_DEVOLUCION and RETROACTI
   // F5 (audit v2r-11): the sale-date band ships as 7 calendar days.
   expect(RETROACTIVO_FECHA_VENTA_CLAVE).toBe("RETROACTIVO_FECHA_VENTA_DIAS");
   expect(RETROACTIVO_FECHA_VENTA_SEED_VALOR).toBe("7");
+  // ITBIS rate list (odd/tasks/itbis-tasas-config.md S2, S5): exactly 18, 16 and 0,
+  // default rate first, the same SET the shared domain constant allows today.
+  expect(TASA_ITBIS_CLAVE).toBe("TASA_ITBIS");
+  expect(TASA_ITBIS_SEED_VALOR).toBe("18,16,0");
+  expect([...TASA_ITBIS_SEED_VALOR.split(",")].sort()).toEqual([...TASAS_ITBIS_PERMITIDAS].sort());
   expect(CLAVE_SEED_VIGENCIA.inicio.getUTCFullYear()).toBe(2000);
   expect(CLAVE_SEED_VIGENCIA.fin.getUTCFullYear()).toBe(2099);
 
@@ -72,8 +83,8 @@ it("seeds the business defaults for the DESC_MAX, PLAZO_DEVOLUCION and RETROACTI
   await seedVentaConfigParaEmpresa(db, 42);
 
   // One demote + one upsert PER KEY (idempotency strategy).
-  expect(calls.updateMany).toHaveLength(3);
-  expect(calls.upsert).toHaveLength(3);
+  expect(calls.updateMany).toHaveLength(4);
+  expect(calls.upsert).toHaveLength(4);
 
   const upserts = calls.upsert as {
     where: { empresaId_clave_vigenciaInicio: { empresaId: number; clave: string } };
@@ -84,6 +95,7 @@ it("seeds the business defaults for the DESC_MAX, PLAZO_DEVOLUCION and RETROACTI
     "DESC_MAX",
     "PLAZO_DEVOLUCION",
     "RETROACTIVO_FECHA_VENTA_DIAS",
+    "TASA_ITBIS",
   ]);
 
   const descMax = upserts.find(
@@ -106,6 +118,13 @@ it("seeds the business defaults for the DESC_MAX, PLAZO_DEVOLUCION and RETROACTI
   expect(retroactivo.where.empresaId_clave_vigenciaInicio.empresaId).toBe(42);
   expect(retroactivo.create.valor).toBe("7");
   expect(retroactivo.create.activa).toBe(true);
+
+  const tasas = upserts.find(
+    (u) => u.where.empresaId_clave_vigenciaInicio.clave === "TASA_ITBIS",
+  )!;
+  expect(tasas.where.empresaId_clave_vigenciaInicio.empresaId).toBe(42);
+  expect(tasas.create.valor).toBe("18,16,0");
+  expect(tasas.create.activa).toBe(true);
 });
 
 it("runs once per empresa on the company-wide pass", async () => {
@@ -164,6 +183,24 @@ it("R-V17: a single overlapping stray still self-heals via demote + canonical up
   // per key.
   const { db, calls } = makeFakeDb([], [W("2001-01-01", "2099-01-01")]);
   await seedVentaConfigParaEmpresa(db, 42);
-  expect(calls.updateMany).toHaveLength(3);
-  expect(calls.upsert).toHaveLength(3);
+  expect(calls.updateMany).toHaveLength(4);
+  expect(calls.upsert).toHaveLength(4);
+});
+
+// --- ITBIS rate list: the data migration and the seed must say the same thing ----
+
+it("the TASA_ITBIS seed migration stores the same key and value as the seed and is idempotent", () => {
+  const sql = readFileSync(
+    join(process.cwd(), "prisma", "migrations", "20261115140000_seed_tasa_itbis", "migration.sql"),
+    "utf8",
+  );
+  const codigo = sql
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("--"))
+    .join("\n");
+  expect(codigo).toContain(`'${TASA_ITBIS_CLAVE}', '${TASA_ITBIS_SEED_VALOR}'`);
+  expect(codigo).toContain('ON CONFLICT ("empresaId", "clave", "vigenciaInicio") DO NOTHING');
+  expect(codigo).toContain('FROM "EMPRESA"');
+  // Never rewrites existing rows: no UPDATE or DELETE in the data migration.
+  expect(codigo).not.toMatch(/\b(UPDATE|DELETE)\b/i);
 });
