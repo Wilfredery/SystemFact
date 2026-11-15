@@ -224,7 +224,7 @@ async function main(): Promise<void> {
   try {
     const res = await seedVentaConfig(db);
     console.log(
-      `OK: seeded ${DESC_MAX_CLAVE}=${DESC_MAX_SEED_VALOR}, ${PLAZO_DEVOLUCION_CLAVE}=${PLAZO_DEVOLUCION_SEED_VALOR} and ${RETROACTIVO_FECHA_VENTA_CLAVE}=${RETROACTIVO_FECHA_VENTA_SEED_VALOR} for ${res.empresas} empresa(s) (idempotent).`,
+      `OK: seeded ${DESC_MAX_CLAVE}=${DESC_MAX_SEED_VALOR}, ${PLAZO_DEVOLUCION_CLAVE}=${PLAZO_DEVOLUCION_SEED_VALOR}, ${RETROACTIVO_FECHA_VENTA_CLAVE}=${RETROACTIVO_FECHA_VENTA_SEED_VALOR} and ${TASA_ITBIS_CLAVE}=${TASA_ITBIS_SEED_VALOR} for ${res.empresas} empresa(s) (idempotent).`,
     );
   } finally {
     await db.$disconnect();
