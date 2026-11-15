@@ -1,3 +1,9 @@
+## [0.34.6](https://github.com/Wilfredery/SystemFact/compare/v0.34.5...v0.34.6) (2026-11-15)
+
+### Features
+
+* **itbis:** slice 2 of moving the allowed ITBIS rate list to the database (`odd/tasks/itbis-tasas-config.md`). A data migration, `20261115140000_seed_tasa_itbis`, provisions the `TASA_ITBIS` key (`18,16,0`: exactly the rates allowed today) for every existing empresa in `CONFIGURACION_EMPRESA`, idempotent (`ON CONFLICT DO NOTHING`, never updates or demotes an existing row). `pnpm seed:venta` provisions the same key for new environments and `pnpm config:verify` now checks it. **Nothing reads the new row yet** (slice 3), so applying it changes no behavior. The migration must run as a role that bypasses row-level security (production `postgres` does); verify after applying that the `TASA_ITBIS` row count equals the empresa count.
+
 ## [0.34.5](https://github.com/Wilfredery/SystemFact/compare/v0.34.4...v0.34.5) (2026-11-15)
 
 ### Maintenance
