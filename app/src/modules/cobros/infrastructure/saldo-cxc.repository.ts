@@ -210,6 +210,33 @@ export async function contarSaldoCxcEnTx(
 }
 
 /**
+ * How many VIGENTE invoices of ONE branch still carry a derived balance above
+ * zero (`saldoPendiente > 0`) — the "unpaid customer balances" blocker of a
+ * branch deactivation. ONE aggregate over the canonical fragment verbatim
+ * (ADR-017: no second balance formula; only `COBRO`/`APLICADO` payments reduce
+ * a balance, so an invoice whose payments are only `REGISTRADO` still counts as
+ * unpaid). The branch narrowing joins the invoice by id and pins `empresaId`.
+ *
+ * RLS pins FACTURA/PAGO/NOTA_* to the session branch: a caller that counts a
+ * branch OTHER than its own must run this under the company-wide widen.
+ */
+export async function contarFacturasConSaldoDeSucursalEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  sucursalId: number,
+): Promise<number> {
+  const rows = await tx.$queryRaw<{ total: number }[]>`
+    SELECT COUNT(*)::int AS "total"
+    FROM (${saldoCxcFragmentoCanonico(ctx)}) s
+    JOIN "FACTURA" f
+      ON f."id" = s."facturaId"
+      AND f."empresaId" = ${ctx.empresaId}
+    WHERE f."sucursalId" = ${sucursalId}
+      AND s."saldoPendiente"::numeric > 0`;
+  return rows[0]?.total ?? 0;
+}
+
+/**
  * One OPEN receivable with the SQL-computed SD past-due day count that orders
  * the aging page (design D2's computed-field case). The aging MATH itself stays
  * pure — `construirFilaAging` recomputes day/date/bucket on the page rows — so

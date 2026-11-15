@@ -120,14 +120,23 @@ const zEditarSucursalInput = z
   })
   .strict();
 
+const zCambiarEstadoSucursalInput = z
+  .object({
+    sucursalId: zIdPositivo,
+    versionEsperada: zIdPositivo,
+  })
+  .strict();
+
 export type CrearSucursalInput = z.infer<typeof zCrearSucursalInput>;
 export type EditarSucursalInput = z.infer<typeof zEditarSucursalInput>;
 
+export type CambiarEstadoSucursalActionInput = z.infer<typeof zCambiarEstadoSucursalInput>;
 export type MoverUsuarioDeSucursalInput = z.infer<typeof zMoverUsuarioDeSucursalInput>;
 export type CambiarRolesUsuarioInput = z.infer<typeof zCambiarRolesUsuarioInput>;
 export type CambiarEstadoUsuarioInput = z.infer<typeof zCambiarEstadoUsuarioInput>;
 
 export {
+  zCambiarEstadoSucursalInput,
   zCrearSucursalInput,
   zEditarSucursalInput,
   zCambiarEstadoUsuarioInput,

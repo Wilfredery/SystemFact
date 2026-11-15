@@ -4,9 +4,15 @@
  * gate BEFORE any use case, deny-by-default, typed results forwarded.
  */
 
-import { crearSucursalAction, editarSucursalAction } from "./actions.sucursal";
+import {
+  activarSucursalAction,
+  crearSucursalAction,
+  desactivarSucursalAction,
+  editarSucursalAction,
+} from "./actions.sucursal";
 import { ROLES_GESTION_SUCURSALES } from "./shared";
 import { crearSucursal, editarSucursal } from "../application/gestion-sucursales";
+import { cambiarEstadoSucursal } from "../application/estado-sucursal";
 import { tieneRolPermitidoEnTx } from "../infrastructure/usuario-repository";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
@@ -28,6 +34,9 @@ jest.mock("../application/cambiarSucursalActiva", () => ({
 jest.mock("../application/gestion-sucursales", () => ({
   crearSucursal: jest.fn(),
   editarSucursal: jest.fn(),
+}));
+jest.mock("../application/estado-sucursal", () => ({
+  cambiarEstadoSucursal: jest.fn(),
 }));
 jest.mock("../infrastructure/usuario-repository", () => ({
   tieneRolPermitidoEnTx: jest.fn(),
@@ -118,6 +127,100 @@ describe.each([
     expect(await action(input)).toEqual({
       ok: false,
       error: { code: "TEN_SUCURSAL_NOMBRE_DUPLICADO", message: "msg" },
+    });
+  });
+});
+
+describe.each([
+  ["desactivarSucursalAction", desactivarSucursalAction, false],
+  ["activarSucursalAction", activarSucursalAction, true],
+] as const)("%s", (_nombre, action, activa) => {
+  const input = { sucursalId: 7, versionEsperada: 3 };
+  const cambio = { sucursalId: 7, activa, version: 4, cambio: true };
+
+  beforeEach(() => {
+    (cambiarEstadoSucursal as jest.Mock).mockResolvedValue({ ok: true, data: cambio });
+  });
+
+  it.each([
+    ["missing version", { sucursalId: 7 }],
+    ["zero id", { sucursalId: 0, versionEsperada: 3 }],
+    ["fractional version", { sucursalId: 7, versionEsperada: 1.5 }],
+    ["string version", { sucursalId: 7, versionEsperada: "3" }],
+    ["unknown extra key (activa)", { ...input, activa: true }],
+    ["unknown extra key (empresaId)", { ...input, empresaId: 2 }],
+  ])("rejects invalid input (%s) before touching the session", async (_caso, malo) => {
+    expect(await action(malo)).toEqual({
+      ok: false,
+      error: { code: "VALIDATION_ERROR", message: expect.any(String) },
+    });
+    expect(getCurrentTenantContext).not.toHaveBeenCalled();
+    expect(cambiarEstadoSucursal).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing session with SESION_INVALIDA and no DB access", async () => {
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
+    expect(await action(input)).toEqual({
+      ok: false,
+      error: { code: "SESION_INVALIDA", message: expect.any(String) },
+    });
+    expect(withTenantTransaction).not.toHaveBeenCalled();
+    expect(cambiarEstadoSucursal).not.toHaveBeenCalled();
+  });
+
+  it("a caller outside the role group => TEN_OPS_NO_AUTORIZADO and NO use case call", async () => {
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+    expect(await action(input)).toEqual({
+      ok: false,
+      error: { code: "TEN_OPS_NO_AUTORIZADO", message: expect.any(String) },
+    });
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_GESTION_SUCURSALES,
+    );
+    expect(cambiarEstadoSucursal).not.toHaveBeenCalled();
+  });
+
+  it("delegates with the REQUESTED state fixed by the action (never client input) and returns the data", async () => {
+    expect(await action(input)).toEqual({ ok: true, data: cambio });
+    expect(cambiarEstadoSucursal).toHaveBeenCalledWith(expect.anything(), ctx, {
+      sucursalId: 7,
+      versionEsperada: 3,
+      activa,
+    });
+  });
+
+  it("forwards a plain business error with code and message only", async () => {
+    (cambiarEstadoSucursal as jest.Mock).mockResolvedValue({
+      ok: false,
+      code: "TEN_CONCURRENCIA_CONFLICTO",
+      message: "msg",
+    });
+    expect(await action(input)).toEqual({
+      ok: false,
+      error: { code: "TEN_CONCURRENCIA_CONFLICTO", message: "msg" },
+    });
+  });
+
+  it("forwards a blocker refusal WITH its counts and every code", async () => {
+    const detalle = {
+      usuarios: 3,
+      stock: 0,
+      documentosAbiertos: 1,
+      saldos: 0,
+      codigos: ["TEN_SUCURSAL_CON_USUARIOS", "TEN_SUCURSAL_CON_DOCUMENTOS_ABIERTOS"],
+    };
+    (cambiarEstadoSucursal as jest.Mock).mockResolvedValue({
+      ok: false,
+      code: "TEN_SUCURSAL_CON_USUARIOS",
+      message: "msg",
+      detalle,
+    });
+    expect(await action(input)).toEqual({
+      ok: false,
+      error: { code: "TEN_SUCURSAL_CON_USUARIOS", message: "msg", detalle },
     });
   });
 });

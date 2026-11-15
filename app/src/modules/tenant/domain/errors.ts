@@ -30,6 +30,14 @@ export const TEN_AUTO_PROTECCION = "TEN_AUTO_PROTECCION";
 // Branch names are unique per empresa (trimmed, case-insensitive) and INACTIVE
 // branches count too: the admin list shows active branches only.
 export const TEN_SUCURSAL_NOMBRE_DUPLICADO = "TEN_SUCURSAL_NOMBRE_DUPLICADO";
+// Deactivating a branch (odd/tasks/administracion-sucursales-activar.md S3/S4):
+// one code per refusal reason; all reasons that apply are reported together.
+export const TEN_SUCURSAL_CON_USUARIOS = "TEN_SUCURSAL_CON_USUARIOS";
+export const TEN_SUCURSAL_CON_STOCK = "TEN_SUCURSAL_CON_STOCK";
+export const TEN_SUCURSAL_CON_DOCUMENTOS_ABIERTOS = "TEN_SUCURSAL_CON_DOCUMENTOS_ABIERTOS";
+export const TEN_SUCURSAL_CON_SALDOS_PENDIENTES = "TEN_SUCURSAL_CON_SALDOS_PENDIENTES";
+export const TEN_SUCURSAL_PROPIA_NO_DESACTIVABLE = "TEN_SUCURSAL_PROPIA_NO_DESACTIVABLE";
+export const TEN_SUCURSAL_ULTIMA_ACTIVA = "TEN_SUCURSAL_ULTIMA_ACTIVA";
 
 export const TEN_ERROR_CODES = [
   TEN_OPS_NO_AUTORIZADO,
@@ -40,6 +48,12 @@ export const TEN_ERROR_CODES = [
   TEN_ULTIMO_ADMINISTRADOR,
   TEN_AUTO_PROTECCION,
   TEN_SUCURSAL_NOMBRE_DUPLICADO,
+  TEN_SUCURSAL_CON_USUARIOS,
+  TEN_SUCURSAL_CON_STOCK,
+  TEN_SUCURSAL_CON_DOCUMENTOS_ABIERTOS,
+  TEN_SUCURSAL_CON_SALDOS_PENDIENTES,
+  TEN_SUCURSAL_PROPIA_NO_DESACTIVABLE,
+  TEN_SUCURSAL_ULTIMA_ACTIVA,
 ] as const;
 
 export type TenantErrorCode = (typeof TEN_ERROR_CODES)[number];
@@ -60,6 +74,18 @@ const TEN_ERROR_MESSAGES: Readonly<Record<TenantErrorCode, string>> = {
     "No puede desactivarse ni quitarse el rol de Administrador a sí mismo.",
   [TEN_SUCURSAL_NOMBRE_DUPLICADO]:
     "Ya existe una sucursal con ese nombre. No se distinguen mayúsculas ni espacios al inicio o al final, y las sucursales inactivas también cuentan.",
+  [TEN_SUCURSAL_CON_USUARIOS]:
+    "La sucursal tiene usuarios activos: muévalos a otra sucursal o desactívelos antes.",
+  [TEN_SUCURSAL_CON_STOCK]:
+    "La sucursal tiene productos con existencias: traslade o ajuste el inventario antes.",
+  [TEN_SUCURSAL_CON_DOCUMENTOS_ABIERTOS]:
+    "La sucursal tiene ventas o compras abiertas (borradores o pendientes): ciérrelas o cancélelas antes.",
+  [TEN_SUCURSAL_CON_SALDOS_PENDIENTES]:
+    "La sucursal tiene facturas con saldo pendiente de cobro: cóbrelas o regularícelas antes.",
+  [TEN_SUCURSAL_PROPIA_NO_DESACTIVABLE]:
+    "No puede desactivar la sucursal en la que está trabajando.",
+  [TEN_SUCURSAL_ULTIMA_ACTIVA]:
+    "No puede desactivar la última sucursal activa de la empresa.",
 };
 
 export function messageFor(code: TenantErrorCode): string {

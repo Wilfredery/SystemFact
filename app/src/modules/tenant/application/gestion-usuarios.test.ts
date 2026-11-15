@@ -31,6 +31,7 @@ jest.mock("../infrastructure/usuario-gestion-repository", () => ({
 }));
 jest.mock("../infrastructure/repo-sucursal", () => ({
   leerSucursalActivaEnTx: jest.fn(),
+  leerSucursalActivaConBloqueoEnTx: jest.fn(),
   liberarSucursalActivaEnTx: jest.fn(),
   activarSucursalEnTx: jest.fn(),
 }));
@@ -50,7 +51,8 @@ const m = {
   bloquearSucursales: repo.bloquearUsuarioYAdministradoresDeSucursalesEnTx as jest.Mock,
   contarOrigen: repo.contarAdministradoresActivosDeSucursalEnTx as jest.Mock,
   mover: repo.moverUsuarioASucursalEnTx as jest.Mock,
-  destino: repoSucursal.leerSucursalActivaEnTx as jest.Mock,
+  destino: repoSucursal.leerSucursalActivaConBloqueoEnTx as jest.Mock,
+  destinoVisible: repoSucursal.leerSucursalActivaEnTx as jest.Mock,
   liberar: repoSucursal.liberarSucursalActivaEnTx as jest.Mock,
   activar: repoSucursal.activarSucursalEnTx as jest.Mock,
 };
@@ -301,7 +303,13 @@ describe("moverUsuarioDeSucursal", () => {
   });
 
   it.each([
-    ["foreign / inactive / unknown destination", () => m.destino.mockResolvedValue(null)],
+    [
+      "foreign / inactive / unknown destination",
+      () => {
+        m.destino.mockResolvedValue(null);
+        m.destinoVisible.mockResolvedValue(null);
+      },
+    ],
   ])("%s => TEN_SUCURSAL_NO_VALIDA, nothing widened or written", async (_n, preparar) => {
     preparar();
     const result = await moverUsuarioDeSucursal(tx, ctx, input, GRUPO);
@@ -309,6 +317,19 @@ describe("moverUsuarioDeSucursal", () => {
       ok: false,
       code: TEN_SUCURSAL_NO_VALIDA,
       message: messageFor(TEN_SUCURSAL_NO_VALIDA),
+    });
+    expect(m.liberar).not.toHaveBeenCalled();
+    sinEscrituras();
+  });
+
+  it("a locked read that comes back empty for a branch the caller CAN see (RLS withheld the row lock: not an admin) => TEN_OPS_NO_AUTORIZADO", async () => {
+    m.destino.mockResolvedValue(null);
+    m.destinoVisible.mockResolvedValue({ id: 6 });
+    const result = await moverUsuarioDeSucursal(tx, ctx, input, GRUPO);
+    expect(result).toEqual({
+      ok: false,
+      code: TEN_OPS_NO_AUTORIZADO,
+      message: messageFor(TEN_OPS_NO_AUTORIZADO),
     });
     expect(m.liberar).not.toHaveBeenCalled();
     sinEscrituras();

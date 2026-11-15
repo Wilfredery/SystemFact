@@ -19,7 +19,8 @@ import { ACCION_AUDITORIA } from "@/modules/auditoria/domain/auditoria";
 import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "../domain/tenant";
-import type { DatosSucursal } from "../domain/sucursal-gestion";
+import type { ConteosBloqueoSucursal, DatosSucursal } from "../domain/sucursal-gestion";
+import { contarFacturasConSaldoDeSucursalEnTx } from "@/modules/cobros/infrastructure/saldo-cxc.repository";
 import {
   abrirSavepoint,
   liberarSavepoint,
@@ -31,6 +32,9 @@ export interface SucursalGestionable extends DatosSucursal {
   readonly activa: boolean;
   readonly version: number;
 }
+
+/** Fields a branch write may change: the three free-text fields and/or `activa`. */
+export type CambiosSucursal = Partial<DatosSucursal> & { readonly activa?: boolean };
 
 const sucursalSelect = {
   id: true,
@@ -162,7 +166,7 @@ export async function actualizarSucursalEnTx(
   empresaId: number,
   sucursalId: number,
   versionEsperada: number,
-  cambios: Partial<DatosSucursal>,
+  cambios: CambiosSucursal,
 ): Promise<ResultadoActualizarSucursal> {
   const resultado = await escribirGuardado(tx, () =>
     tx.sucursal.updateMany({
@@ -199,8 +203,8 @@ export async function registrarAuditSucursalActualizadaEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
   sucursalId: number,
-  antes: Partial<DatosSucursal>,
-  despues: Partial<DatosSucursal>,
+  antes: CambiosSucursal,
+  despues: CambiosSucursal,
 ): Promise<void> {
   await registrarEventoAuditoriaEnTx(tx, ctx, {
     accion: ACCION_AUDITORIA.ACTUALIZAR,
@@ -209,5 +213,105 @@ export async function registrarAuditSucursalActualizadaEnTx(
     sucursalId: null,
     valorAnterior: JSON.stringify(antes),
     valorNuevo: JSON.stringify(despues),
+  });
+}
+
+/**
+ * Takes `SELECT ... FOR UPDATE` on the branch row of the session empresa (S5a).
+ * It is the FIRST statement of a deactivation: it queues behind every in-flight
+ * user move/switch into this branch (they hold `FOR SHARE`) and blocks new ones
+ * until commit. `false` = no row was locked: unknown/foreign id, OR the row was
+ * filtered out by the admin-only UPDATE policy (a non-admin) — the caller tells
+ * them apart with a plain read.
+ */
+export async function bloquearSucursalEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  sucursalId: number,
+): Promise<boolean> {
+  const filas = await tx.$queryRaw<{ id: number }[]>`
+    SELECT s."id"
+    FROM "SUCURSAL" s
+    WHERE s."id" = ${sucursalId}
+      AND s."empresaId" = ${empresaId}
+    FOR UPDATE`;
+  return filas.length > 0;
+}
+
+/** Active branches of the empresa (the "last active branch" fact). */
+export async function contarSucursalesActivasEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+): Promise<number> {
+  return tx.sucursal.count({ where: { empresaId, activa: true } });
+}
+
+/**
+ * The four deactivation blockers of ONE branch, as SQL aggregates (no loops):
+ * active users, INVENTARIO rows with stock above zero, open documents (VENTA in
+ * BORRADOR + COMPRA in BORRADOR/PENDIENTE) and VIGENTE invoices with a derived
+ * balance above zero (the canonical ADR-017 query of cobros, never a new formula).
+ * Every statement pins `empresaId`. RLS pins branch-scoped tables to the session
+ * branch, so the CALLER must run this under the company-wide widen (blank branch
+ * GUC) or it would silently count zero for any other branch.
+ */
+export async function contarBloqueosSucursalEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  sucursalId: number,
+): Promise<ConteosBloqueoSucursal> {
+  const filas = await tx.$queryRaw<
+    { usuarios: number; stock: number; documentosAbiertos: number }[]
+  >`
+    SELECT
+      (
+        SELECT COUNT(*) FROM "USUARIO" u
+        WHERE u."empresaId" = ${ctx.empresaId}
+          AND u."sucursalId" = ${sucursalId}
+          AND u."activo" = true
+      )::int AS "usuarios",
+      (
+        SELECT COUNT(*) FROM "INVENTARIO" i
+        JOIN "SUCURSAL" s ON s."id" = i."sucursalId"
+        WHERE s."empresaId" = ${ctx.empresaId}
+          AND i."sucursalId" = ${sucursalId}
+          AND i."cantidad" > 0
+      )::int AS "stock",
+      (
+        (
+          SELECT COUNT(*) FROM "VENTA" v
+          WHERE v."empresaId" = ${ctx.empresaId}
+            AND v."sucursalId" = ${sucursalId}
+            AND v."estado" = 'BORRADOR'
+        )
+        + (
+          SELECT COUNT(*) FROM "COMPRA" c
+          WHERE c."empresaId" = ${ctx.empresaId}
+            AND c."sucursalId" = ${sucursalId}
+            AND c."estado" IN ('BORRADOR', 'PENDIENTE')
+        )
+      )::int AS "documentosAbiertos"`;
+  const fila = filas[0] ?? { usuarios: 0, stock: 0, documentosAbiertos: 0 };
+  return {
+    usuarios: fila.usuarios,
+    stock: fila.stock,
+    documentosAbiertos: fila.documentosAbiertos,
+    saldos: await contarFacturasConSaldoDeSucursalEnTx(tx, ctx, sucursalId),
+  };
+}
+
+/**
+ * ALL branches of the empresa, active AND inactive, for the Administración tab
+ * (S7). Admin-only by the use case; the active-only readers are unchanged.
+ */
+export async function listarSucursalesConEstadoEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+): Promise<SucursalGestionable[]> {
+  return tx.sucursal.findMany({
+    where: { empresaId },
+    select: sucursalSelect,
+    orderBy: [{ nombre: "asc" }, { id: "asc" }],
+    take: 100,
   });
 }

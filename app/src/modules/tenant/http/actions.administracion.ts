@@ -21,6 +21,7 @@ import { listarUsuarios } from "../application/listar-usuarios";
 import { consultarRolesCatalogo } from "../application/consultar-roles-catalogo";
 import { consultarConfiguracion } from "../application/consultar-configuracion";
 import { listarSucursalesDeEmpresa } from "../application/listarSucursalesDeEmpresa";
+import { listarSucursalesAdministracion } from "../application/listarSucursalesAdministracion";
 import { tieneRolPermitidoEnTx } from "../infrastructure/usuario-repository";
 import { TEN_OPS_NO_AUTORIZADO, messageFor } from "../domain/errors";
 import {
@@ -39,6 +40,7 @@ import {
   type ConfiguracionAdministracionDto,
   type ListarUsuariosAdministracion,
   type SucursalAdministracionDto,
+  type SucursalGestionDto,
 } from "./shared";
 
 const NO_AUTORIZADO_MESSAGE = messageFor(TEN_OPS_NO_AUTORIZADO);
@@ -121,6 +123,36 @@ export async function listarSucursalesDeEmpresaAction(): Promise<
         nombre: sucursal.nombre,
         direccion: sucursal.direccion,
         telefono: sucursal.telefono,
+        version: sucursal.version,
+      })),
+    );
+  });
+}
+
+/**
+ * ALL the caller-empresa's branches, active AND inactive, for the Sucursales tab
+ * (activate/deactivate slice S7). A sibling of `listarSucursalesDeEmpresaAction`,
+ * which stays ACTIVE-ONLY (the move dialog's source): admin-only gate inside the
+ * use case, scope from the session only.
+ */
+export async function listarSucursalesAdministracionAction(): Promise<
+  ActionResult<readonly SucursalGestionDto[]>
+> {
+  const ctx = await resolverCtx();
+  if (ctx === null) {
+    return error(SESION_INVALIDA, mensajeTransporte(SESION_INVALIDA));
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const result = await listarSucursalesAdministracion(ctx, tx);
+    if (!result.ok) return error(result.code, result.message);
+    return ok(
+      result.sucursales.map((sucursal) => ({
+        id: sucursal.id,
+        nombre: sucursal.nombre,
+        direccion: sucursal.direccion,
+        telefono: sucursal.telefono,
+        activa: sucursal.activa,
         version: sucursal.version,
       })),
     );

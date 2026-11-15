@@ -63,6 +63,7 @@ import {
 import {
   activarSucursalEnTx,
   leerSucursalActivaEnTx,
+  leerSucursalActivaConBloqueoEnTx,
   liberarSucursalActivaEnTx,
 } from "../infrastructure/repo-sucursal";
 
@@ -362,8 +363,11 @@ async function moverBajoSucursalAmpliada(
 /**
  * Move a user to another ACTIVE branch of the same empresa (Administrador only,
  * gated by the action). The destination must be an active branch of the
- * session empresa (one code for foreign/inactive/unknown). Same-branch =
- * idempotent no-op: no write, no version bump, no audit.
+ * session empresa (one code for foreign/inactive/unknown), read FOR SHARE: the
+ * lock lasts until commit, so a deactivation of that branch waits for this move
+ * (and then refuses: it counts the moved user) or commits first (and this read
+ * comes back empty). Same-branch = idempotent no-op: no write, no version bump,
+ * no audit.
  */
 export async function moverUsuarioDeSucursal(
   tx: PrismaTx,
@@ -371,12 +375,19 @@ export async function moverUsuarioDeSucursal(
   input: MoverUsuarioDeSucursalInput,
   rolesAdministrador: readonly string[],
 ): Promise<CambioUsuarioResult> {
-  const destino = await leerSucursalActivaEnTx(
+  const destino = await leerSucursalActivaConBloqueoEnTx(
     tx,
     ctx.empresaId,
     input.sucursalDestinoId,
   );
-  if (destino === null) return rechazo(TEN_SUCURSAL_NO_VALIDA);
+  if (destino === null) {
+    // The locked read is also empty for a non-admin (RLS grants the row lock only
+    // to who may UPDATE the branch): a plain read tells "not allowed" from "not
+    // available". A deactivation that commits between the two reads reads as
+    // not available, which is right.
+    const visible = await leerSucursalActivaEnTx(tx, ctx.empresaId, input.sucursalDestinoId);
+    return rechazo(visible === null ? TEN_SUCURSAL_NO_VALIDA : TEN_OPS_NO_AUTORIZADO);
+  }
 
   const resultado = await moverBajoSucursalAmpliada(
     tx,
