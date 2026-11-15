@@ -142,3 +142,40 @@ export function decidirCambioEstado(
   }
   return { tipo: "APLICAR" };
 }
+
+export interface DecidirMovimientoUsuarioInput {
+  readonly actorId: number;
+  readonly objetivoId: number;
+  readonly sucursalOrigenId: number;
+  readonly sucursalDestinoId: number;
+  /** The target is ACTIVE and holds a role of the Administrador group. */
+  readonly objetivoEsAdministradorActivo: boolean;
+  /**
+   * ACTIVE administrators of the SOURCE branch (explicitly that branch, not
+   * "the branch seen under RLS"), counted under the lock, target included.
+   */
+  readonly administradoresActivosOrigen: number;
+}
+
+/**
+ * Move one user to another branch. Order: same branch => no-op (nothing
+ * changes, nothing to protect), then self-move (the branch switch exists for
+ * that), then the SOURCE branch must keep an ACTIVE Administrador.
+ */
+export function decidirMovimientoUsuario(
+  input: DecidirMovimientoUsuarioInput,
+): DecisionCambio {
+  if (input.sucursalOrigenId === input.sucursalDestinoId) {
+    return { tipo: "SIN_CAMBIO" };
+  }
+  if (input.actorId === input.objetivoId) {
+    return { tipo: "RECHAZAR", code: TEN_AUTO_PROTECCION };
+  }
+  if (
+    input.objetivoEsAdministradorActivo &&
+    input.administradoresActivosOrigen <= 1
+  ) {
+    return { tipo: "RECHAZAR", code: TEN_ULTIMO_ADMINISTRADOR };
+  }
+  return { tipo: "APLICAR" };
+}

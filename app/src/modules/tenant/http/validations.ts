@@ -91,6 +91,15 @@ const zCambiarEstadoUsuarioInput = z
   })
   .strict();
 
+const zMoverUsuarioDeSucursalInput = z
+  .object({
+    usuarioId: zIdPositivo,
+    sucursalDestinoId: zIdPositivo,
+    versionEsperada: zIdPositivo,
+  })
+  .strict();
+
+export type MoverUsuarioDeSucursalInput = z.infer<typeof zMoverUsuarioDeSucursalInput>;
 export type CambiarRolesUsuarioInput = z.infer<typeof zCambiarRolesUsuarioInput>;
 export type CambiarEstadoUsuarioInput = z.infer<typeof zCambiarEstadoUsuarioInput>;
 
@@ -99,4 +108,5 @@ export {
   zCambiarRolesUsuarioInput,
   zCambiarSucursalInput,
   zListarUsuariosQuery,
+  zMoverUsuarioDeSucursalInput,
 };

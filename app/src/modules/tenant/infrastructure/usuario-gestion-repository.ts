@@ -169,3 +169,113 @@ export async function registrarAuditUsuarioEnTx(
     valorNuevo: JSON.stringify(despues),
   });
 }
+
+export interface UsuarioParaMover {
+  readonly id: number;
+  readonly sucursalId: number;
+  readonly activo: boolean;
+  readonly version: number;
+  readonly roles: readonly RolCatalogo[];
+}
+
+/**
+ * The move target as ANY branch of the empresa holds it. Meant to run under the
+ * branch widen (blank branch GUC); `empresaId` is pinned in the statement.
+ * `null` = unknown or foreign empresa.
+ */
+export async function leerUsuarioParaMoverEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  usuarioId: number,
+): Promise<UsuarioParaMover | null> {
+  const fila = await tx.usuario.findFirst({
+    where: { id: usuarioId, empresaId },
+    select: {
+      id: true,
+      sucursalId: true,
+      activo: true,
+      version: true,
+      roles: { select: { rol: { select: { id: true, nombre: true } } } },
+    },
+  });
+  if (fila === null) return null;
+  return {
+    id: fila.id,
+    sucursalId: fila.sucursalId,
+    activo: fila.activo,
+    version: fila.version,
+    roles: fila.roles.map((r) => ({ id: r.rol.id, nombre: r.rol.nombre })),
+  };
+}
+
+/**
+ * Lock the target user plus every ACTIVE administrator of the given branches
+ * (source and destination), ONE statement ordered by id (same lock order as
+ * `bloquearUsuarioYAdministradoresEnTx`, so concurrent moves serialize instead
+ * of deadlocking). Meant to run under the branch widen.
+ */
+export async function bloquearUsuarioYAdministradoresDeSucursalesEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  usuarioId: number,
+  sucursalIds: readonly number[],
+  rolesAdministrador: readonly string[],
+): Promise<void> {
+  await tx.$queryRaw`
+    SELECT u."id"
+    FROM "USUARIO" u
+    WHERE u."empresaId" = ${empresaId}
+      AND (
+        u."id" = ${usuarioId}
+        OR (
+          u."sucursalId" = ANY(${[...sucursalIds]}::int[])
+          AND u."activo" = true
+          AND EXISTS (
+            SELECT 1
+            FROM "USUARIO_ROL" ur
+            JOIN "ROL" r ON r."id" = ur."rolId"
+            WHERE ur."usuarioId" = u."id"
+              AND r."nombre" = ANY(${[...rolesAdministrador]}::text[])
+          )
+        )
+      )
+    ORDER BY u."id"
+    FOR UPDATE OF u`;
+}
+
+/** ACTIVE administrators of ONE explicit branch (the move's SOURCE), whatever the branch GUC says. */
+export async function contarAdministradoresActivosDeSucursalEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  sucursalId: number,
+  rolesAdministrador: readonly string[],
+): Promise<number> {
+  return tx.usuario.count({
+    where: {
+      empresaId,
+      sucursalId,
+      activo: true,
+      roles: { some: { rol: { nombre: { in: [...rolesAdministrador] } } } },
+    },
+  });
+}
+
+/**
+ * Verified UPDATE of the move: `WHERE id AND empresaId AND version = esperada`,
+ * writing ONLY `sucursalId` and the version bump. `aplicado=false` = stale
+ * version (0 rows). Meant to run under the branch widen (RLS `usuario_update`).
+ */
+export async function moverUsuarioASucursalEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  usuarioId: number,
+  versionEsperada: number,
+  sucursalDestinoId: number,
+): Promise<{ aplicado: boolean; version: number }> {
+  const resultado = await tx.usuario.updateMany({
+    where: { id: usuarioId, empresaId, version: versionEsperada },
+    data: { sucursalId: sucursalDestinoId, version: { increment: 1 } },
+  });
+  if (resultado.count === 0) return { aplicado: false, version: versionEsperada };
+  return { aplicado: true, version: versionEsperada + 1 };
+}

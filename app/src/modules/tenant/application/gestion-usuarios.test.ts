@@ -5,11 +5,16 @@ import {
   TEN_CONCURRENCIA_CONFLICTO,
   TEN_OPS_NO_AUTORIZADO,
   TEN_ROL_NO_VALIDO,
+  TEN_SUCURSAL_NO_VALIDA,
   TEN_ULTIMO_ADMINISTRADOR,
   TEN_USUARIO_NO_ENCONTRADO,
   messageFor,
 } from "../domain/errors";
-import { cambiarEstadoUsuario, cambiarRolesUsuario } from "./gestion-usuarios";
+import {
+  cambiarEstadoUsuario,
+  cambiarRolesUsuario,
+  moverUsuarioDeSucursal,
+} from "./gestion-usuarios";
 
 jest.mock("../infrastructure/usuario-gestion-repository", () => ({
   bloquearUsuarioYAdministradoresEnTx: jest.fn(),
@@ -19,9 +24,19 @@ jest.mock("../infrastructure/usuario-gestion-repository", () => ({
   aplicarCambioUsuarioEnTx: jest.fn(),
   reemplazarRolesEnTx: jest.fn(),
   registrarAuditUsuarioEnTx: jest.fn(),
+  leerUsuarioParaMoverEnTx: jest.fn(),
+  bloquearUsuarioYAdministradoresDeSucursalesEnTx: jest.fn(),
+  contarAdministradoresActivosDeSucursalEnTx: jest.fn(),
+  moverUsuarioASucursalEnTx: jest.fn(),
+}));
+jest.mock("../infrastructure/repo-sucursal", () => ({
+  leerSucursalActivaEnTx: jest.fn(),
+  liberarSucursalActivaEnTx: jest.fn(),
+  activarSucursalEnTx: jest.fn(),
 }));
 
 import * as repo from "../infrastructure/usuario-gestion-repository";
+import * as repoSucursal from "../infrastructure/repo-sucursal";
 
 const m = {
   bloquear: repo.bloquearUsuarioYAdministradoresEnTx as jest.Mock,
@@ -31,6 +46,13 @@ const m = {
   aplicar: repo.aplicarCambioUsuarioEnTx as jest.Mock,
   reemplazar: repo.reemplazarRolesEnTx as jest.Mock,
   audit: repo.registrarAuditUsuarioEnTx as jest.Mock,
+  leerMover: repo.leerUsuarioParaMoverEnTx as jest.Mock,
+  bloquearSucursales: repo.bloquearUsuarioYAdministradoresDeSucursalesEnTx as jest.Mock,
+  contarOrigen: repo.contarAdministradoresActivosDeSucursalEnTx as jest.Mock,
+  mover: repo.moverUsuarioASucursalEnTx as jest.Mock,
+  destino: repoSucursal.leerSucursalActivaEnTx as jest.Mock,
+  liberar: repoSucursal.liberarSucursalActivaEnTx as jest.Mock,
+  activar: repoSucursal.activarSucursalEnTx as jest.Mock,
 };
 
 const ctx: TenantCtx = { empresaId: 1, sucursalId: 5, usuarioId: 10, esAdmin: true };
@@ -238,5 +260,144 @@ describe("cambiarEstadoUsuario", () => {
     const result = await cambiarEstadoUsuario(tx, ctx, { ...input, activo: true }, GRUPO);
     expect(result).toMatchObject({ ok: true, data: { cambio: true } });
     expect(m.audit).toHaveBeenCalledWith(tx, ctx, 20, { activo: false }, { activo: true });
+  });
+});
+
+describe("moverUsuarioDeSucursal", () => {
+  const input = { usuarioId: 20, sucursalDestinoId: 6, versionEsperada: 3 };
+  // The target sits in branch 7 (the session branch is 5, the destination 6).
+  const enSucursal7 = (over: Record<string, unknown> = {}) => ({
+    id: 20,
+    sucursalId: 7,
+    activo: true,
+    version: 3,
+    roles: [OPER],
+    ...over,
+  });
+
+  beforeEach(() => {
+    m.destino.mockResolvedValue({ id: 6 });
+    m.leerMover.mockResolvedValue(enSucursal7());
+    m.leer.mockResolvedValue(ACTOR);
+    m.contarOrigen.mockResolvedValue(2);
+    m.mover.mockResolvedValue({ aplicado: true, version: 4 });
+  });
+
+  it("widens, locks (source + destination), writes, RESTORES the session branch, THEN audits once", async () => {
+    const result = await moverUsuarioDeSucursal(tx, ctx, input, GRUPO);
+
+    expect(result).toEqual({ ok: true, data: { usuarioId: 20, version: 4, cambio: true } });
+    expect(m.bloquearSucursales).toHaveBeenCalledWith(tx, 1, 20, [7, 6], GRUPO);
+    expect(m.contarOrigen).toHaveBeenCalledWith(tx, 1, 7, GRUPO);
+    expect(m.mover).toHaveBeenCalledWith(tx, 1, 20, 3, 6);
+    expect(m.activar).toHaveBeenCalledWith(tx, 5);
+    expect(m.audit).toHaveBeenCalledTimes(1);
+    expect(m.audit).toHaveBeenCalledWith(tx, ctx, 20, { sucursalId: 7 }, { sucursalId: 6 });
+    const orden = (f: jest.Mock) => f.mock.invocationCallOrder[0];
+    expect(orden(m.liberar)).toBeLessThan(orden(m.bloquearSucursales));
+    expect(orden(m.bloquearSucursales)).toBeLessThan(orden(m.mover));
+    expect(orden(m.mover)).toBeLessThan(orden(m.activar));
+    expect(orden(m.activar)).toBeLessThan(orden(m.audit));
+  });
+
+  it.each([
+    ["foreign / inactive / unknown destination", () => m.destino.mockResolvedValue(null)],
+  ])("%s => TEN_SUCURSAL_NO_VALIDA, nothing widened or written", async (_n, preparar) => {
+    preparar();
+    const result = await moverUsuarioDeSucursal(tx, ctx, input, GRUPO);
+    expect(result).toEqual({
+      ok: false,
+      code: TEN_SUCURSAL_NO_VALIDA,
+      message: messageFor(TEN_SUCURSAL_NO_VALIDA),
+    });
+    expect(m.liberar).not.toHaveBeenCalled();
+    sinEscrituras();
+  });
+
+  it("unknown / foreign user => TEN_USUARIO_NO_ENCONTRADO, branch restored, nothing written", async () => {
+    m.leerMover.mockResolvedValue(null);
+    expect(await moverUsuarioDeSucursal(tx, ctx, input, GRUPO)).toMatchObject({
+      ok: false,
+      code: TEN_USUARIO_NO_ENCONTRADO,
+    });
+    expect(m.activar).toHaveBeenCalledWith(tx, 5);
+    expect(m.mover).not.toHaveBeenCalled();
+    sinEscrituras();
+  });
+
+  it("an actor who is no longer an active Administrador => TEN_OPS_NO_AUTORIZADO", async () => {
+    m.leer.mockResolvedValue({ ...ACTOR, activo: false });
+    expect(await moverUsuarioDeSucursal(tx, ctx, input, GRUPO)).toMatchObject({
+      ok: false,
+      code: TEN_OPS_NO_AUTORIZADO,
+    });
+    expect(m.mover).not.toHaveBeenCalled();
+    sinEscrituras();
+  });
+
+  it("stale version => TEN_CONCURRENCIA_CONFLICTO, nothing written", async () => {
+    expect(
+      await moverUsuarioDeSucursal(tx, ctx, { ...input, versionEsperada: 2 }, GRUPO),
+    ).toMatchObject({ ok: false, code: TEN_CONCURRENCIA_CONFLICTO });
+    expect(m.mover).not.toHaveBeenCalled();
+    sinEscrituras();
+  });
+
+  it("the target changed branch between the probe and the lock => TEN_CONCURRENCIA_CONFLICTO", async () => {
+    m.leerMover
+      .mockResolvedValueOnce(enSucursal7())
+      .mockResolvedValueOnce(enSucursal7({ sucursalId: 8 }));
+    expect(await moverUsuarioDeSucursal(tx, ctx, input, GRUPO)).toMatchObject({
+      ok: false,
+      code: TEN_CONCURRENCIA_CONFLICTO,
+    });
+    expect(m.mover).not.toHaveBeenCalled();
+  });
+
+  it("self-move => TEN_AUTO_PROTECCION", async () => {
+    m.leerMover.mockResolvedValue(enSucursal7({ id: 10 }));
+    expect(
+      await moverUsuarioDeSucursal(tx, ctx, { ...input, usuarioId: 10 }, GRUPO),
+    ).toMatchObject({ ok: false, code: TEN_AUTO_PROTECCION });
+    expect(m.mover).not.toHaveBeenCalled();
+    sinEscrituras();
+  });
+
+  it("the last active Administrador of the SOURCE branch => TEN_ULTIMO_ADMINISTRADOR", async () => {
+    m.leerMover.mockResolvedValue(enSucursal7({ roles: [ADMIN] }));
+    m.contarOrigen.mockResolvedValue(1);
+    expect(await moverUsuarioDeSucursal(tx, ctx, input, GRUPO)).toMatchObject({
+      ok: false,
+      code: TEN_ULTIMO_ADMINISTRADOR,
+    });
+    expect(m.mover).not.toHaveBeenCalled();
+    sinEscrituras();
+  });
+
+  it("same branch => ok cambio=false: no write, no version bump, NO audit", async () => {
+    m.leerMover.mockResolvedValue(enSucursal7({ sucursalId: 6 }));
+    expect(await moverUsuarioDeSucursal(tx, ctx, input, GRUPO)).toEqual({
+      ok: true,
+      data: { usuarioId: 20, version: 3, cambio: false },
+    });
+    expect(m.mover).not.toHaveBeenCalled();
+    sinEscrituras();
+  });
+
+  it("a lost race on the verified UPDATE => TEN_CONCURRENCIA_CONFLICTO and NO audit", async () => {
+    m.mover.mockResolvedValue({ aplicado: false, version: 3 });
+    expect(await moverUsuarioDeSucursal(tx, ctx, input, GRUPO)).toMatchObject({
+      ok: false,
+      code: TEN_CONCURRENCIA_CONFLICTO,
+    });
+    expect(m.audit).not.toHaveBeenCalled();
+    expect(m.activar).toHaveBeenCalledWith(tx, 5);
+  });
+
+  it("restores the session branch even when a repository call throws", async () => {
+    m.mover.mockRejectedValue(new Error("db down"));
+    await expect(moverUsuarioDeSucursal(tx, ctx, input, GRUPO)).rejects.toThrow("db down");
+    expect(m.activar).toHaveBeenCalledWith(tx, 5);
+    expect(m.audit).not.toHaveBeenCalled();
   });
 });

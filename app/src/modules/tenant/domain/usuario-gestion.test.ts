@@ -6,6 +6,7 @@ import {
 import {
   decidirCambioEstado,
   decidirCambioRoles,
+  decidirMovimientoUsuario,
   esAdministradorActivo,
   mismoConjuntoDeIds,
   validarConjuntoRoles,
@@ -186,5 +187,59 @@ describe("esAdministradorActivo", () => {
     expect(esAdministradorActivo({ activo: true, roles: [ADMIN, OPER] }, GRUPO)).toBe(true);
     expect(esAdministradorActivo({ activo: false, roles: [ADMIN] }, GRUPO)).toBe(false);
     expect(esAdministradorActivo({ activo: true, roles: [OPER] }, GRUPO)).toBe(false);
+  });
+});
+
+describe("decidirMovimientoUsuario (move to another branch)", () => {
+  const base = {
+    actorId: 10,
+    objetivoId: 20,
+    sucursalOrigenId: 1,
+    sucursalDestinoId: 2,
+    objetivoEsAdministradorActivo: false,
+    administradoresActivosOrigen: 1,
+  };
+
+  it("a plain user moves (APLICAR) even when the source has a single administrator", () => {
+    expect(decidirMovimientoUsuario(base)).toEqual({ tipo: "APLICAR" });
+  });
+
+  it("same branch => SIN_CAMBIO (idempotent no-op), before any guard", () => {
+    expect(
+      decidirMovimientoUsuario({ ...base, sucursalDestinoId: 1, actorId: 20 }),
+    ).toEqual({ tipo: "SIN_CAMBIO" });
+  });
+
+  it("self-move => TEN_AUTO_PROTECCION", () => {
+    expect(decidirMovimientoUsuario({ ...base, actorId: 20 })).toEqual({
+      tipo: "RECHAZAR",
+      code: TEN_AUTO_PROTECCION,
+    });
+  });
+
+  it("moving the last ACTIVE administrator of the SOURCE branch => TEN_ULTIMO_ADMINISTRADOR", () => {
+    expect(
+      decidirMovimientoUsuario({
+        ...base,
+        objetivoEsAdministradorActivo: true,
+        administradoresActivosOrigen: 1,
+      }),
+    ).toEqual({ tipo: "RECHAZAR", code: TEN_ULTIMO_ADMINISTRADOR });
+  });
+
+  it("an administrator moves when the source keeps another active one", () => {
+    expect(
+      decidirMovimientoUsuario({
+        ...base,
+        objetivoEsAdministradorActivo: true,
+        administradoresActivosOrigen: 2,
+      }),
+    ).toEqual({ tipo: "APLICAR" });
+  });
+
+  it("a user who is not an active administrator never trips the last-admin rule", () => {
+    expect(
+      decidirMovimientoUsuario({ ...base, administradoresActivosOrigen: 0 }),
+    ).toEqual({ tipo: "APLICAR" });
   });
 });
