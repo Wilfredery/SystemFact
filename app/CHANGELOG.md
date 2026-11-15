@@ -1,3 +1,10 @@
+## [0.34.2](https://github.com/Wilfredery/SystemFact/compare/v0.34.1...v0.34.2) (2026-11-15)
+
+### Maintenance
+
+* **engines:** `engines.node` is now `>=24.0.0`, the version CI, Vercel and `@types/node` already use (Playwright 1.65 no longer tests Node 20). Anyone installing on Node 20 or 22 now gets the engines warning.
+* **ui:** `formatearFechaHoraSD` moves from `auditoria/ui/format` to `shared/ui/format` (the Inventario movements screen was importing it from another module). Same output (`15/09/2026, 00:00:00`), now with two unit tests; no visible change.
+
 ## [0.34.1](https://github.com/Wilfredery/SystemFact/compare/v0.34.0...v0.34.1) (2026-11-15)
 
 ### Maintenance

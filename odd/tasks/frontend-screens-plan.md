@@ -128,7 +128,7 @@ CSP is enforced, so new screens must not need inline scripts or `eval` (the loca
 | Step | Screen | State | PR / evidence |
 |---|---|---|---|
 | 0 | Housekeeping | **dead `/cobros` link DONE** (PR #192, v0.19.7, deployed, prod-smoke 7 passed); role names half-decided: Despachador views products (yes), the meaning of `Operador` is not explicitly confirmed (the code treats it as the sales operator) | `787d13f`, `tools/config/nav-routes.test.ts` |
-| 1 | **Inventario / Productos list** (replaces the stand-alone Categorías screen; owner confirmed 2026-11-08, L7) | **1a (consulta) SHIPPED**: PR #196 (`d28f1cc`), v0.20.0, deployed, prod-smoke 7/7, prod-demo 5/5; tracker `odd/tasks/inventario-consulta.md`. **1b (adjust form `04-Inventario-Ajuste`, Administrador only) not started** | Owner 2026-11-08: Operador and Despachador view-only, Administrador manages (L9); one role group per capability in `http/shared.ts` |
+| 1 | **Inventario / Productos list** (replaces the stand-alone Categorías screen; owner confirmed 2026-11-08, L7) | **1a (consulta) SHIPPED**: PR #196 (`d28f1cc`), v0.20.0, deployed, prod-smoke 7/7, prod-demo 5/5; tracker `odd/tasks/inventario-consulta.md`. **1b (adjust form `04-Inventario-Ajuste`, Administrador only) SHIPPED**: tracker `odd/tasks/inventario-ajuste.md` | Owner 2026-11-08: Operador and Despachador view-only, Administrador manages (L9); one role group per capability in `http/shared.ts` |
 | 2 | Productos | shipped; evidence in `odd/tasks/productos.md` | |
 | 3 | Clientes | shipped; evidence in `odd/tasks/clientes.md` | |
 | 4 | Proveedores | shipped, v0.24.0 (PR #205); `odd/tasks/proveedores.md` | |
