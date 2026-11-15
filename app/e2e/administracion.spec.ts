@@ -648,6 +648,8 @@ test.describe("/administracion (administracion T3)", () => {
     const { empresaId, sucursalId: sucursalPropiaId } = await usuarioPrecond(pool, nombreUsuario);
     await desactivarSucursalesCreadas();
     expect(await leerSucursalesPorNombre(empresaId, nombre), "the name is unique to this run").toHaveLength(0);
+    // The move dialog needs one OTHER active branch to render its select (a fresh CI database has none).
+    await asegurarSucursalDestino(empresaId);
 
     try {
       await login(page, { user: nombreUsuario, password });
@@ -721,6 +723,7 @@ test.describe("/administracion (administracion T3)", () => {
       const dialogoMover = page.getByRole("dialog", { name: "Mover de sucursal" });
       const select = dialogoMover.getByRole("combobox", { name: "Sucursal destino" });
       await expect(select).toBeVisible();
+      await expect(select.getByRole("option", { name: SUCURSAL_DESTINO })).toHaveCount(1);
       await expect(select.getByRole("option", { name: nombre, exact: true })).toHaveCount(0);
       await dialogoMover.getByRole("button", { name: "Cancelar" }).click();
       await expect(dialogoMover).toBeHidden();
