@@ -154,7 +154,16 @@ export function AdministracionScreen({
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [destinos, setDestinos] = useState<SucursalesDestino>({ estado: "cargando" });
   const moviendo = accion !== null && accion.tipo === "mover";
-  const [sucursales, setSucursales] = useState<SucursalesInicial | null>(sucursalesInicial);
+  // The branch list is DERIVED from the server prop: `useState(prop)` would seed it once and
+  // ignore the list the server sends when the person switches tabs (the Usuarios tab passes
+  // null). Only a list re-read after a write is kept locally, tied to the prop it was read
+  // against: a newer server list (new prop) always wins.
+  const [recargada, setRecargada] = useState<{
+    readonly base: SucursalesInicial | null;
+    readonly valor: SucursalesInicial;
+  } | null>(null);
+  const sucursales =
+    recargada !== null && recargada.base === sucursalesInicial ? recargada.valor : sucursalesInicial;
   const [accionSucursal, setAccionSucursal] = useState<AccionSucursal | null>(null);
   const [mensajeSucursal, setMensajeSucursal] = useState<string | null>(null);
   const [errorRecarga, setErrorRecarga] = useState<string | null>(null);
@@ -275,7 +284,7 @@ export function AdministracionScreen({
     try {
       const r = await listarSucursalesDeEmpresaAction();
       if (r.ok) {
-        setSucursales({ ok: true, data: r.data });
+        setRecargada({ base: sucursalesInicial, valor: { ok: true, data: r.data } });
         setErrorRecarga(null);
       } else {
         setErrorRecarga(mensajeErrorGestion(r.error.code, r.error.message));

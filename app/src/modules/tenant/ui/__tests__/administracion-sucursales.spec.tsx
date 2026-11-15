@@ -552,3 +552,50 @@ describe("refusals (S9)", () => {
     expect(screen.queryByTestId("sucursal-fila-3")).not.toBeInTheDocument();
   });
 });
+
+describe("tab navigation keeps the server branch list in sync (review R3)", () => {
+  it("shows the branches after switching from the Usuarios tab (which had none) to Sucursales", () => {
+    const props = {
+      filtrosIniciales: { busqueda: "", activo: "" as const },
+      usuarios: null,
+      configuracion: null,
+      puedeGestionar: true,
+      sesionUsuarioId: 99,
+    };
+    const { rerender } = render(<AdministracionScreen tab="usuarios" sucursales={null} {...props} />);
+
+    rerender(
+      <AdministracionScreen
+        tab="sucursales"
+        sucursales={{ ok: true, data: [CENTRAL, NORTE] }}
+        {...props}
+      />,
+    );
+
+    expect(screen.getByTestId(`sucursal-fila-${CENTRAL.id}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`sucursal-fila-${NORTE.id}`)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Nueva sucursal" })).toBeInTheDocument();
+  });
+
+  it("a newer server list replaces a list re-read after a write", async () => {
+    const props = {
+      filtrosIniciales: { busqueda: "", activo: "" as const },
+      usuarios: null,
+      configuracion: null,
+      puedeGestionar: true,
+      sesionUsuarioId: 99,
+    };
+    const { rerender } = render(
+      <AdministracionScreen tab="sucursales" sucursales={{ ok: true, data: [CENTRAL] }} {...props} />,
+    );
+    rerender(
+      <AdministracionScreen
+        tab="sucursales"
+        sucursales={{ ok: true, data: [CENTRAL, NORTE] }}
+        {...props}
+      />,
+    );
+
+    expect(screen.getByTestId(`sucursal-fila-${NORTE.id}`)).toBeInTheDocument();
+  });
+});
