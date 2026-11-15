@@ -15,6 +15,7 @@
  */
 
 import { Decimal } from "decimal.js";
+import { esTasaItbisPermitida } from "@/shared/domain/tasas-itbis";
 import {
   LINEA_INVALIDA,
   VentaDomainError,
@@ -31,9 +32,6 @@ import {
 
 /** Canonical zero amount for the `Decimal(12,2)` money columns. */
 export const MONTO_CERO = "0.00";
-
-/** Accepted per-line ITBIS rates (Ley 30-26): 18 / 16 / 0 percent. */
-const TASAS_ITBIS_VALIDAS = new Set(["18", "16", "0"]);
 
 /** Round a Decimal to a 2dp money string, half-up (decimal.js default). */
 function round2(value: Decimal): string {
@@ -55,7 +53,7 @@ export function validarLineaVenta(
   if (!/^\d{1,9}(\.\d{1,2})?$/.test(input.precioUnitario)) return LINEA_INVALIDA;
   if (new Decimal(input.cantidad).lessThanOrEqualTo(0)) return LINEA_INVALIDA;
   if (new Decimal(input.precioUnitario).lessThan(0)) return LINEA_INVALIDA;
-  if (!TASAS_ITBIS_VALIDAS.has(tasaItbis)) return LINEA_INVALIDA;
+  if (!esTasaItbisPermitida(tasaItbis)) return LINEA_INVALIDA;
   return null;
 }
 

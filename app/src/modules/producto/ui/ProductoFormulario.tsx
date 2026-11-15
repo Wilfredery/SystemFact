@@ -19,6 +19,7 @@ import {
 } from "@/modules/producto/http/actions";
 import type { ProductoConsultaItem } from "@/modules/producto/application/producto-consulta-projection";
 import type { TasaItbis } from "@/modules/producto/domain/producto";
+import { TASAS_ITBIS_PERMITIDAS } from "@/shared/domain/tasas-itbis";
 import {
   Button,
 } from "@/components/ui/button";
@@ -43,11 +44,16 @@ const CLASE_CONTROL =
 const CLASE_ALERTA =
   "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
 
-const TASAS: readonly { valor: TasaItbis; etiqueta: string }[] = [
-  { valor: "18", etiqueta: "18%" },
-  { valor: "16", etiqueta: "16%" },
-  { valor: "0", etiqueta: "0% (exento)" },
-];
+const ETIQUETAS_TASA: Record<TasaItbis, string> = {
+  "18": "18%",
+  "16": "16%",
+  "0": "0% (exento)",
+};
+
+// Display order stays 18, 16, 0 (the shared tuple is ordered 0, 16, 18).
+const TASAS: readonly { valor: TasaItbis; etiqueta: string }[] = [...TASAS_ITBIS_PERMITIDAS]
+  .reverse()
+  .map((valor) => ({ valor, etiqueta: ETIQUETAS_TASA[valor] }));
 
 export interface ProductoFormularioProps {
   readonly producto: ProductoConsultaItem | null;

@@ -1,4 +1,9 @@
 import type { Decimal } from "decimal.js";
+import {
+  TASAS_ITBIS_PERMITIDAS,
+  esTasaItbisPermitida,
+  type TasaItbis as TasaItbisPermitida,
+} from "@/shared/domain/tasas-itbis";
 import { ProductoDomainError, VIGENCIA_INVALIDA } from "./errors";
 
 /**
@@ -15,10 +20,10 @@ import { ProductoDomainError, VIGENCIA_INVALIDA } from "./errors";
  * itbisVigenteDesde/itbisVigenteHasta). Parametrizing the enumeration would
  * break domain purity (async DB read on every validation) and add a failure
  * surface (missing param row blocks product creation) to guard a decadal
- * event. A future rate requires: enum + TASAS_ITBIS_VALIDAS update,
+ * event. A future rate requires: update of shared/domain/tasas-itbis.ts,
  * Prisma migration, and PARAMETRO seed — tracked in the SDD change.
  */
-export type TasaItbis = "0" | "16" | "18";
+export type TasaItbis = TasaItbisPermitida;
 
 /**
  * Valor objeto con la tasa ITBIS aplicable a un producto y su ventana de vigencia.
@@ -79,11 +84,11 @@ export function esProductoExento(itbis: ProductoItbis): boolean {
 /**
  * Lista ordenada de tasas válidas (útil para validaciones).
  */
-export const TASAS_ITBIS_VALIDAS: readonly TasaItbis[] = ["0", "16", "18"];
+export const TASAS_ITBIS_VALIDAS: readonly TasaItbis[] = TASAS_ITBIS_PERMITIDAS;
 
 /**
  * Verifica si un string es una tasa ITBIS válida.
  */
 export function esTasaItbisValida(value: string): value is TasaItbis {
-  return (TASAS_ITBIS_VALIDAS as readonly string[]).includes(value);
+  return esTasaItbisPermitida(value);
 }
