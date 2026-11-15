@@ -37,7 +37,7 @@ const tx = {} as PrismaTx;
 const ctx: TenantCtx = { empresaId: 7, sucursalId: 3, usuarioId: 11, esAdmin: true };
 const AHORA = new Date("2026-11-14T16:00:00.000Z");
 
-const FILA = {
+const FILA_SALIDA = {
   id: 1,
   fecha: "2026-11-05T15:00:00.000Z",
   tipo: "AJUSTE" as const,
@@ -47,9 +47,10 @@ const FILA = {
   cantidadAnterior: "10",
   cantidadNueva: "15",
   usuarioNombre: "Ana",
-  usuarioId: 11,
   motivo: "Conteo",
 };
+// What the repository returns: the same row plus the internal author id.
+const FILA = { ...FILA_SALIDA, usuarioId: 11 };
 
 beforeEach(() => {
   jest.resetAllMocks();
@@ -67,7 +68,7 @@ describe("listarMovimientosInventario", () => {
     expect(r).toEqual({
       ok: true,
       data: {
-        items: [FILA],
+        items: [FILA_SALIDA],
         total: 61,
         page: 1,
         limit: 25,
@@ -141,6 +142,7 @@ describe("listarMovimientosInventario — author names of other branches", () =>
     expect(conSucursalAmpliadaEnTx).toHaveBeenCalledTimes(1);
     expect(nombresUsuariosEnTx).toHaveBeenCalledTimes(1);
     expect(nombresUsuariosEnTx).toHaveBeenCalledWith(tx, ctx, [99]);
+    expect(r.ok && r.data.items.every((i) => !("usuarioId" in i))).toBe(true);
     expect(r.ok && r.data.items.map((i) => i.usuarioNombre)).toEqual([
       "Ana",
       "Luis Otra Sucursal",
@@ -172,5 +174,6 @@ describe("listarMovimientosInventario — author names of other branches", () =>
     expect(conSucursalAmpliadaEnTx).not.toHaveBeenCalled();
     expect(nombresUsuariosEnTx).not.toHaveBeenCalled();
     expect(r.ok && r.data.items[0].usuarioNombre).toBeNull();
+    expect(r.ok && "usuarioId" in r.data.items[0]).toBe(false);
   });
 });

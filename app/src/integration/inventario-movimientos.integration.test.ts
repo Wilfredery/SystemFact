@@ -258,7 +258,6 @@ describe("listarMovimientosInventario (real DB, app role + RLS)", () => {
       cantidadAnterior: "12.5",
       cantidadNueva: "10",
       usuarioNombre: "Admin A",
-      usuarioId: fixture.usuarios.adminA.id,
       motivo: "a1-ajuste",
     });
     expect(JSON.stringify(r.data)).not.toMatch(/idempotencyKey|secret-|costo|precio/i);

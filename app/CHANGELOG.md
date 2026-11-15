@@ -1,3 +1,13 @@
+## [0.31.1](https://github.com/Wilfredery/SystemFact/compare/v0.31.0...v0.31.1) (2026-11-14)
+
+### Bug Fixes
+
+* **inventario:** the movement history no longer sends the author's internal numeric user id to anyone. Since 0.31.0 every row carried it so the Administrador's name lookup could work, which meant an Operador or Despachador received that id for authors of another branch (same company, no name). The id is now dropped from every row inside the use case, for every role; what each role sees on screen is unchanged. This makes the 0.31.0 statement that other roles keep the dash with no privacy change exact.
+
+### Tests
+
+* **unit and integration (real Postgres):** no returned row has a `usuarioId` property, for an Administrador with a resolved name, for a name that stays unresolved, and for a non-admin.
+
 ## [0.31.0](https://github.com/Wilfredery/SystemFact/compare/v0.30.0...v0.31.0) (2026-11-14)
 
 ### Features

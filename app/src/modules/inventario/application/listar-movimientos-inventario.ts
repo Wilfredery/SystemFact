@@ -39,7 +39,8 @@ export interface ListarMovimientosQuery {
   readonly hasta?: string;
 }
 
-export type MovimientoListItem = MovimientoRow;
+/** What leaves the server: the repository row WITHOUT the internal author id. */
+export type MovimientoListItem = Omit<MovimientoRow, "usuarioId">;
 
 export interface ListarMovimientosOutput {
   readonly items: MovimientoListItem[];
@@ -63,19 +64,26 @@ function buildError(code: InventarioErrorCode): { ok: false; code: InventarioErr
  * RLS pins USUARIO to the session branch, so the author of a movement made in
  * another branch reads as null. An Administrador gets those names through ONE
  * name-only lookup for the page, widened to the empresa for that read alone.
- * Everyone else keeps null (no privacy change). The ledger page itself stays on
- * the session branch.
+ * Everyone else keeps null. The ledger page itself stays on the session branch.
+ * The internal author id is dropped from EVERY row here, so no role ever receives
+ * it (it only served this lookup).
  */
 async function completarAutores(
   tx: PrismaTx,
   ctx: TenantCtx,
   items: MovimientoRow[],
-): Promise<MovimientoRow[]> {
-  if (!ctx.esAdmin) return items;
-  const faltantes = [...new Set(items.filter((i) => i.usuarioNombre === null).map((i) => i.usuarioId))];
-  if (faltantes.length === 0) return items;
-  const nombres = await conSucursalAmpliadaEnTx(tx, ctx, (t) => nombresUsuariosEnTx(t, ctx, faltantes));
-  return items.map((i) => (i.usuarioNombre === null ? { ...i, usuarioNombre: nombres.get(i.usuarioId) ?? null } : i));
+): Promise<MovimientoListItem[]> {
+  const faltantes = ctx.esAdmin
+    ? [...new Set(items.filter((i) => i.usuarioNombre === null).map((i) => i.usuarioId))]
+    : [];
+  const nombres =
+    faltantes.length === 0
+      ? new Map<number, string>()
+      : await conSucursalAmpliadaEnTx(tx, ctx, (t) => nombresUsuariosEnTx(t, ctx, faltantes));
+  return items.map(({ usuarioId, ...fila }) => ({
+    ...fila,
+    usuarioNombre: fila.usuarioNombre ?? nombres.get(usuarioId) ?? null,
+  }));
 }
 
 export async function listarMovimientosInventario(
