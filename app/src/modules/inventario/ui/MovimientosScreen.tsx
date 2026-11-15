@@ -19,7 +19,7 @@ import {
   etiquetaTipoMovimiento,
   type TipoMovimientoInventario,
 } from "@/modules/inventario/domain/movimientos";
-import { formatearFechaHoraSD } from "@/modules/auditoria/ui/format";
+import { formatearFechaHoraSD } from "@/shared/ui/format";
 import { TAMANO_PAGINA } from "./paginacion";
 
 const DEBOUNCE_BUSQUEDA_MS = 300;

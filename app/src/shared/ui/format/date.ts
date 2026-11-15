@@ -39,3 +39,20 @@ export function formatearFechaSD(valor: string | Date): string {
   if (Number.isNaN(fecha.getTime())) return "—";
   return formatInTimeZone(fecha, ZONA_SD, FORMATO_DIA);
 }
+
+/** SD wall-clock display for a UTC instant (`es-DO`, 24-hour, no manual offset math). */
+const FORMATO_FECHA_HORA_SD = new Intl.DateTimeFormat("es-DO", {
+  timeZone: ZONA_SD,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+/** A persisted UTC `Date` → its Santo-Domingo date and time (`15/09/2026, 00:00:00`, as `Intl` es-DO renders it). */
+export function formatearFechaHoraSD(fecha: Date): string {
+  return FORMATO_FECHA_HORA_SD.format(fecha);
+}
