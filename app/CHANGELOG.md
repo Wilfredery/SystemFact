@@ -1,3 +1,20 @@
+## [0.32.0](https://github.com/Wilfredery/SystemFact/compare/v0.31.1...v0.32.0) (2026-11-14)
+
+### Features
+
+* **tenant:** the Administrador can **move a user to another active branch** of the company: a new **Mover de sucursal** action in the Usuarios table of Administración, available on every row except your own (use the branch selector to change yours). The dialog lists the company's active branches except the user's current one and asks for explicit confirmation; the new state is shown only after the server confirms. Rows of other branches keep their role and activate/deactivate buttons disabled, as before; only the move is enabled on them.
+* **Safeguards, all enforced on the server inside one transaction:** a user cannot move themselves; a move that would leave the **source** branch without an active Administrador is refused (the count is of the source branch, not of the session branch); the destination must be an active branch of the same company; a stale screen (the user changed meanwhile) is refused with the usual conflict message and nothing changes; moving a user to the branch they already have is a no-op that writes nothing and no audit row. A successful move appends one audit row (who, the user, branch before and after) and takes effect on the moved user's next request.
+* History stays where it was made: sales, invoices, payments, purchases and stock movements keep their own branch; only the user's branch changes.
+
+### Notes
+
+* **No migration and no RLS change.** The existing write policy already lets an Administrador update a user when the branch setting is blank; the move clears that setting only around the lock, the source-branch administrator count and the single version-checked update, restores it before writing the audit row, and never touches the company setting. The Operador and Despachador are refused at the action and, with the action bypassed, by the database.
+* **Still open (need a SUCURSAL policy migration):** creating and renaming branches, and activating/deactivating them. When branch deactivation lands, the move must lock the destination branch row (review advisory) so a concurrent deactivation cannot leave a user on an inactive branch.
+
+### Tests
+
+* **unit:** the pure move decision (self, same branch, last Administrador of the source), the use case (order of checks, source re-read under the lock, restore of the branch setting), the action (gate, input), and the dialog, the new button on every row, the own-row title, the empty state and every error message. **integration (real Postgres, `systemfact_app`):** move across branches, other-empresa and inactive destinations refused, last Administrador of the source refused, self-move, stale version and replay, no-op without audit or version bump, exactly one audit row, the branch setting restored after both a successful and a refused move, the moved user's next context on the new branch, the database wall for an Operador, and two parallel moves of a branch's two administrators (at most one succeeds). **e2e:** the Administrador moves a fixture user to a second branch and sees it in the list; it must not skip.
+
 ## [0.31.1](https://github.com/Wilfredery/SystemFact/compare/v0.31.0...v0.31.1) (2026-11-14)
 
 ### Bug Fixes
