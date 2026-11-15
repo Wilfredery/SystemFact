@@ -17,6 +17,7 @@ import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenan
 import {
   cambiarEstadoUsuario,
   cambiarRolesUsuario,
+  moverUsuarioDeSucursal,
   type CambioUsuarioData,
   type CambioUsuarioResult,
 } from "../application/gestion-usuarios";
@@ -28,6 +29,7 @@ import {
   mensajeTransporte,
   zCambiarEstadoUsuarioInput,
   zCambiarRolesUsuarioInput,
+  zMoverUsuarioDeSucursalInput,
 } from "./validations";
 import {
   ROLES_GESTION_USUARIOS,
@@ -97,6 +99,36 @@ export async function cambiarEstadoUsuarioAction(
     }
     return aActionResult(
       await cambiarEstadoUsuario(tx, ctx, parsed.data, ROLES_GESTION_USUARIOS),
+    );
+  });
+}
+
+/** Move a user to another ACTIVE branch of the empresa. Administrador only. */
+export async function moverUsuarioDeSucursalAction(
+  input: unknown,
+): Promise<ActionResult<CambioUsuarioData>> {
+  const parsed = zMoverUsuarioDeSucursalInput.safeParse(input);
+  if (!parsed.success) {
+    return error(VALIDATION_ERROR, mensajeTransporte(VALIDATION_ERROR));
+  }
+
+  const ctx = await resolverCtx();
+  if (ctx === null) {
+    return error(SESION_INVALIDA, mensajeTransporte(SESION_INVALIDA));
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const permitido = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_GESTION_USUARIOS,
+    );
+    if (!permitido) {
+      return error(TEN_OPS_NO_AUTORIZADO, messageFor(TEN_OPS_NO_AUTORIZADO));
+    }
+    return aActionResult(
+      await moverUsuarioDeSucursal(tx, ctx, parsed.data, ROLES_GESTION_USUARIOS),
     );
   });
 }

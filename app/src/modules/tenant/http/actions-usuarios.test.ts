@@ -5,9 +5,17 @@
  * results forwarded without Prisma errors or stack traces.
  */
 
-import { cambiarEstadoUsuarioAction, cambiarRolesUsuarioAction } from "./actions.usuarios";
+import {
+  cambiarEstadoUsuarioAction,
+  cambiarRolesUsuarioAction,
+  moverUsuarioDeSucursalAction,
+} from "./actions.usuarios";
 import { ROLES_GESTION_USUARIOS } from "./shared";
-import { cambiarEstadoUsuario, cambiarRolesUsuario } from "../application/gestion-usuarios";
+import {
+  cambiarEstadoUsuario,
+  cambiarRolesUsuario,
+  moverUsuarioDeSucursal,
+} from "../application/gestion-usuarios";
 import { tieneRolPermitidoEnTx } from "../infrastructure/usuario-repository";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
@@ -26,6 +34,7 @@ jest.mock("@/modules/tenant/infrastructure/withTenantTransaction", () => ({
 jest.mock("../application/gestion-usuarios", () => ({
   cambiarRolesUsuario: jest.fn(),
   cambiarEstadoUsuario: jest.fn(),
+  moverUsuarioDeSucursal: jest.fn(),
 }));
 jest.mock("../infrastructure/usuario-repository", () => ({
   tieneRolPermitidoEnTx: jest.fn(),
@@ -34,6 +43,7 @@ jest.mock("../infrastructure/usuario-repository", () => ({
 const ctx = { empresaId: 1, sucursalId: 5, usuarioId: 10, esAdmin: true };
 const rolesInput = { usuarioId: 20, rolIds: [1, 2], versionEsperada: 3 };
 const estadoInput = { usuarioId: 20, activo: false, versionEsperada: 3 };
+const moverInput = { usuarioId: 20, sucursalDestinoId: 6, versionEsperada: 3 };
 const exito = { ok: true, data: { usuarioId: 20, version: 4, cambio: true } };
 
 beforeEach(() => {
@@ -43,6 +53,7 @@ beforeEach(() => {
   (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
   (cambiarRolesUsuario as jest.Mock).mockResolvedValue(exito);
   (cambiarEstadoUsuario as jest.Mock).mockResolvedValue(exito);
+  (moverUsuarioDeSucursal as jest.Mock).mockResolvedValue(exito);
 });
 
 describe("ROLES_GESTION_USUARIOS (S3)", () => {
@@ -54,6 +65,7 @@ describe("ROLES_GESTION_USUARIOS (S3)", () => {
 describe.each([
   ["cambiarRolesUsuarioAction", cambiarRolesUsuarioAction, cambiarRolesUsuario, rolesInput],
   ["cambiarEstadoUsuarioAction", cambiarEstadoUsuarioAction, cambiarEstadoUsuario, estadoInput],
+  ["moverUsuarioDeSucursalAction", moverUsuarioDeSucursalAction, moverUsuarioDeSucursal, moverInput],
 ] as const)("%s", (_nombre, action, useCase, input) => {
   it("rejects invalid input before touching the session", async () => {
     const result = await action({ ...input, usuarioId: -1 });

@@ -149,6 +149,7 @@ describe("listarUsuariosAction", () => {
             activo: true,
             version: 3,
             sucursalNombre: "Matriz",
+            sucursalId: 1,
             esDeOtraSucursal: false,
             empresaNombre: "SystemFact Demo",
             roles: ["Administrador"],

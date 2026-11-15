@@ -83,6 +83,7 @@ export async function listarUsuariosAction(
         activo: usuario.activo,
         version: usuario.version,
         sucursalNombre: usuario.sucursalNombre,
+        sucursalId: usuario.sucursalId,
         esDeOtraSucursal: usuario.sucursalId !== ctx.sucursalId,
         empresaNombre: ctx.empresaNombre,
         roles: usuario.roles,

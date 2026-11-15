@@ -4,7 +4,8 @@
  * Administración screen (screens plan Step 7, `odd/tasks/administracion.md`
  * S2/S6): the wireframe's three tabs. Sucursales and Configuración are read-only;
  * the Usuarios tab gains the Step 7b writes (`odd/tasks/administracion-writes.md`
- * S11) — role assignment and activate/deactivate — ONLY when the page says the
+ * S11) — role assignment and activate/deactivate — plus "Mover de sucursal"
+ * (`odd/tasks/administracion-mover-usuario.md` S10) ONLY when the page says the
  * caller may manage (`puedeGestionar`). That prop is UX: the actions re-check the
  * role and RLS is the second wall. A write shows its result only after the server
  * answered ok (no optimistic state) and then re-reads the page's rows, so the
@@ -23,10 +24,14 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { listarUsuariosAction } from "@/modules/tenant/http/actions.administracion";
+import {
+  listarSucursalesDeEmpresaAction,
+  listarUsuariosAction,
+} from "@/modules/tenant/http/actions.administracion";
 import {
   cambiarEstadoUsuarioAction,
   cambiarRolesUsuarioAction,
+  moverUsuarioDeSucursalAction,
 } from "@/modules/tenant/http/actions.usuarios";
 import type {
   ConfiguracionAdministracionDto,
@@ -44,15 +49,22 @@ import {
   construirHrefAdministracion,
   construirQueryUsuarios,
   mensajeErrorGestion,
+  mensajeErrorMover,
   type FiltrosUsuarios,
   type TabAdministracion,
 } from "./administracion-tabs";
-import { CambiarRolesDialog, ConfirmarEstadoUsuarioDialog } from "./GestionUsuarioDialogs";
+import {
+  CambiarRolesDialog,
+  ConfirmarEstadoUsuarioDialog,
+  MoverUsuarioDialog,
+  type SucursalesDestino,
+} from "./GestionUsuarioDialogs";
 
 /** What the open dialog is doing; the user is looked up in the CURRENT rows. */
 type AccionUsuario =
   | { readonly tipo: "roles"; readonly usuarioId: number }
-  | { readonly tipo: "estado"; readonly usuarioId: number };
+  | { readonly tipo: "estado"; readonly usuarioId: number }
+  | { readonly tipo: "mover"; readonly usuarioId: number };
 
 const TITULO_PROPIO_USUARIO =
   "No puede modificar su propio usuario: pídalo a otro Administrador.";
@@ -70,6 +82,7 @@ export type ConfiguracionInicial =
   | { readonly ok: false; readonly message: string };
 
 const MENSAJE_FALLO_CARGA = "No se pudo cargar la lista de usuarios. Intente de nuevo.";
+const MENSAJE_FALLO_SUCURSALES = "No se pudieron cargar las sucursales. Intente de nuevo.";
 
 const CLASE_CONTROL =
   "min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
@@ -127,6 +140,30 @@ export function AdministracionScreen({
   const enviandoRef = useRef(false);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
+  const [destinos, setDestinos] = useState<SucursalesDestino>({ estado: "cargando" });
+  const moviendo = accion !== null && accion.tipo === "mover";
+
+  // The move dialog reads the company's active branches (existing branch list
+  // use case) every time it opens, so the select is never a stale list.
+  useEffect(() => {
+    if (!moviendo || !puedeGestionar) return;
+    let vigente = true;
+    listarSucursalesDeEmpresaAction()
+      .then((r) => {
+        if (!vigente) return;
+        setDestinos(
+          r.ok
+            ? { estado: "listo", sucursales: r.data }
+            : { estado: "error", mensaje: mensajeErrorMover(r.error.code, r.error.message) },
+        );
+      })
+      .catch(() => {
+        if (vigente) setDestinos({ estado: "error", mensaje: MENSAJE_FALLO_SUCURSALES });
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [moviendo, puedeGestionar]);
 
   // Only the latest request may settle state: a slow earlier answer must not
   // overwrite a newer filter's rows.
@@ -162,6 +199,7 @@ export function AdministracionScreen({
   function abrirAccion(siguiente: AccionUsuario): void {
     setMensaje(null);
     setErrorAccion(null);
+    if (siguiente.tipo === "mover") setDestinos({ estado: "cargando" });
     setAccion(siguiente);
   }
 
@@ -179,6 +217,7 @@ export function AdministracionScreen({
   async function ejecutarEscritura(
     escribir: () => ReturnType<typeof cambiarRolesUsuarioAction>,
     mensajeOk: string,
+    mensajeDeError: (code: string, mensajeServidor: string) => string = mensajeErrorGestion,
   ): Promise<void> {
     if (enviandoRef.current) return;
     enviandoRef.current = true;
@@ -187,7 +226,7 @@ export function AdministracionScreen({
     try {
       const r = await escribir();
       if (!r.ok) {
-        setErrorAccion(mensajeErrorGestion(r.error.code, r.error.message));
+        setErrorAccion(mensajeDeError(r.error.code, r.error.message));
         if (r.error.code === TEN_CONCURRENCIA_CONFLICTO) {
           await consultar(filtros, data?.page ?? 1);
         }
@@ -256,7 +295,20 @@ export function AdministracionScreen({
           data={data}
           enviando={enviando}
           error={errorAccion}
+          destinos={destinos}
           onCerrar={cerrarAccion}
+          onMover={(usuario, sucursalDestinoId, nombreDestino) =>
+            void ejecutarEscritura(
+              () =>
+                moverUsuarioDeSucursalAction({
+                  usuarioId: usuario.id,
+                  sucursalDestinoId,
+                  versionEsperada: usuario.version,
+                }),
+              `Usuario movido a ${nombreDestino}.`,
+              mensajeErrorMover,
+            )
+          }
           onGuardarRoles={(usuario, rolIds) =>
             void ejecutarEscritura(
               () =>
@@ -292,7 +344,9 @@ function DialogoAccion({
   data,
   enviando,
   error,
+  destinos,
   onCerrar,
+  onMover,
   onGuardarRoles,
   onConfirmarEstado,
 }: {
@@ -300,7 +354,13 @@ function DialogoAccion({
   readonly data: ListarUsuariosAdministracion;
   readonly enviando: boolean;
   readonly error: string | null;
+  readonly destinos: SucursalesDestino;
   readonly onCerrar: () => void;
+  readonly onMover: (
+    usuario: UsuarioAdministracionDto,
+    sucursalDestinoId: number,
+    nombreDestino: string,
+  ) => void;
   readonly onGuardarRoles: (usuario: UsuarioAdministracionDto, rolIds: number[]) => void;
   readonly onConfirmarEstado: (usuario: UsuarioAdministracionDto, activar: boolean) => void;
 }) {
@@ -309,6 +369,21 @@ function DialogoAccion({
   const usuario = data.items.find((u) => u.id === accion.usuarioId);
   if (usuario === undefined) return null;
 
+  if (accion.tipo === "mover") {
+    const nombreDe = (id: number): string =>
+      (destinos.estado === "listo" ? destinos.sucursales.find((s) => s.id === id)?.nombre : undefined) ??
+      "la nueva sucursal";
+    return (
+      <MoverUsuarioDialog
+        usuario={usuario}
+        destinos={destinos}
+        enviando={enviando}
+        error={error}
+        onConfirmar={(sucursalDestinoId) => onMover(usuario, sucursalDestinoId, nombreDe(sucursalDestinoId))}
+        onCerrar={onCerrar}
+      />
+    );
+  }
   if (accion.tipo === "roles") {
     return (
       <CambiarRolesDialog
@@ -534,6 +609,17 @@ function AccionesUsuario({
         className={CLASE_BOTON}
       >
         {usuario.activo ? "Desactivar" : "Activar"}
+      </button>
+      {/* Moving works on rows of ANY branch (the server widens the branch scope
+          for this one write); only the session user's own row is refused. */}
+      <button
+        type="button"
+        disabled={propio || deshabilitado}
+        title={propio ? TITULO_PROPIO_USUARIO : undefined}
+        onClick={() => onAccion({ tipo: "mover", usuarioId: usuario.id })}
+        className={CLASE_BOTON}
+      >
+        Mover de sucursal
       </button>
     </div>
   );

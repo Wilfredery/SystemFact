@@ -25,6 +25,14 @@
  * No test here may skip: a missing env var FAILS the test (a skip in the local
  * lane reads as coverage it does not have; see assert-no-skips.mjs).
  *
+ * MOVE (administracion-mover-usuario T2, S10/S11): the move test also uses the
+ * throwaway user only. The fixture seeds ONE branch, so the test creates a second
+ * ACTIVE branch ("${SUCURSAL_DESTINO}") for the empresa with a superuser insert
+ * (find-or-create by name, never deleted: branches are never deleted) and the
+ * restore puts the user back in the admin's branch and DEACTIVATES that extra
+ * branch, so later specs (the branch selector lists active branches) see the
+ * fixture's single branch again.
+ *
  * ENV: E2E_USER (Administrador), E2E_OPERADOR_USER, E2E_DESPACHADOR_USER,
  * E2E_PASSWORD (shared by the three identities on the ephemeral local stack)
  * and DIRECT_URL/DATABASE_URL (superuser read for ASSERTIONS; the ONLY write it
@@ -41,6 +49,9 @@ const pool = openDb();
 
 /** The fixture's throwaway target of the write test (e2e-fixture.sql). */
 const OBJETIVO = "e2e-gestion-objetivo";
+
+/** Second active branch the move test creates for the fixture empresa. */
+const SUCURSAL_DESTINO = "E2E Sucursal Destino";
 
 test.afterAll(async () => {
   try {
@@ -82,18 +93,48 @@ async function usuariosDeLaSucursal(
   return res.rows as { id: number; nombreUsuario: string }[];
 }
 
-type EstadoObjetivo = { activo: boolean; version: number; roles: string[] };
+type EstadoObjetivo = {
+  activo: boolean;
+  version: number;
+  roles: string[];
+  sucursalId: number;
+  sucursalNombre: string;
+};
+
+/**
+ * Makes sure the empresa has a second, ACTIVE branch named SUCURSAL_DESTINO
+ * (insert when missing, re-activate when a previous run deactivated it) and
+ * returns its id. The only other write this spec's superuser connection does.
+ */
+async function asegurarSucursalDestino(empresaId: number): Promise<number> {
+  const existente = await pool.query(
+    `select id from "SUCURSAL" where "empresaId" = $1 and nombre = $2`,
+    [empresaId, SUCURSAL_DESTINO],
+  );
+  if (existente.rowCount === 0) {
+    const nueva = await pool.query(
+      `insert into "SUCURSAL" ("empresaId", nombre, direccion, telefono, "updatedAt")
+       values ($1, $2, 'Av. CI 2', '8090000001', now()) returning id`,
+      [empresaId, SUCURSAL_DESTINO],
+    );
+    return (nueva.rows[0] as { id: number }).id;
+  }
+  const id = (existente.rows[0] as { id: number }).id;
+  await pool.query(`update "SUCURSAL" set activa = true where id = $1`, [id]);
+  return id;
+}
 
 /** The throwaway user's real state (superuser read: `activo` is NOT filtered). */
 async function leerObjetivo(): Promise<EstadoObjetivo> {
   const res = await pool.query(
-    `select u.activo, u.version,
+    `select u.activo, u.version, u."sucursalId", s.nombre as "sucursalNombre",
             coalesce(array_agg(r.nombre order by r.nombre) filter (where r.nombre is not null), '{}') as roles
        from "USUARIO" u
        left join "USUARIO_ROL" ur on ur."usuarioId" = u.id
        left join "ROL" r on r.id = ur."rolId"
+       join "SUCURSAL" s on s.id = u."sucursalId"
       where u."nombreUsuario" = $1
-      group by u.id`,
+      group by u.id, s.nombre`,
     [OBJETIVO],
   );
   expect(res.rowCount, `the fixture seeds ${OBJETIVO}`).toBe(1);
@@ -121,9 +162,19 @@ async function restaurarObjetivo(): Promise<void> {
         where u."nombreUsuario" = $1`,
       [OBJETIVO],
     );
-    await cliente.query(`update "USUARIO" set activo = true where "nombreUsuario" = $1`, [
-      OBJETIVO,
-    ]);
+    // Back in the admin's branch (a failed move test must leave no drift) and the
+    // extra branch of the move test inactive again.
+    await cliente.query(
+      `update "USUARIO" set activo = true,
+              "sucursalId" = (select "sucursalId" from "USUARIO" where "nombreUsuario" = $2)
+        where "nombreUsuario" = $1`,
+      [OBJETIVO, requireEnv("E2E_USER")],
+    );
+    await cliente.query(
+      `update "SUCURSAL" set activa = false where nombre = $1 and "empresaId" =
+         (select "empresaId" from "USUARIO" where "nombreUsuario" = $2)`,
+      [SUCURSAL_DESTINO, requireEnv("E2E_USER")],
+    );
     await cliente.query("commit");
   } catch (e) {
     await cliente.query("rollback");
@@ -209,6 +260,7 @@ test.describe("/administracion (administracion T3)", () => {
       const botones = [
         filaUsuario.getByRole("button", { name: "Cambiar roles" }),
         filaUsuario.getByRole("button", { name: /^(Desactivar|Activar)$/ }),
+        filaUsuario.getByRole("button", { name: "Mover de sucursal" }),
       ];
       for (const boton of botones) {
         await expect(boton).toBeVisible();
@@ -351,6 +403,76 @@ test.describe("/administracion (administracion T3)", () => {
     const final = await leerObjetivo();
     expect(final.roles).toEqual(["Operador"]);
     expect(final.activo).toBe(true);
+  });
+
+  test("Administrador moves the throwaway user to another branch and sees it in the list", async ({
+    page,
+  }) => {
+    const nombreUsuario = requireEnv("E2E_USER");
+    const password = requireEnv("E2E_PASSWORD");
+
+    await restaurarObjetivo(); // known start (own branch, active, Operador)
+    const { empresaId } = await usuarioPrecond(pool, nombreUsuario);
+    const destinoId = await asegurarSucursalDestino(empresaId);
+    const inicial = await leerObjetivo();
+    expect(inicial.sucursalId).not.toBe(destinoId);
+    expect(inicial.sucursalNombre).not.toBe(SUCURSAL_DESTINO);
+
+    await login(page, { user: nombreUsuario, password });
+    await irAAdministracion(page);
+
+    await page.getByLabel("Buscar usuario").fill(OBJETIVO);
+    const fila = page.locator(FILAS_USUARIO).filter({ hasText: OBJETIVO });
+    await expect(page.locator(FILAS_USUARIO)).toHaveCount(1);
+    await expect(fila).toContainText(inicial.sucursalNombre);
+
+    await fila.getByRole("button", { name: "Mover de sucursal" }).click();
+    const dialogo = page.getByRole("dialog", { name: "Mover de sucursal" });
+    const select = dialogo.getByRole("combobox", { name: "Sucursal destino" });
+    await expect(select).toBeVisible();
+    // The select lists the other active branches only: never the user's current one.
+    await expect(select.getByRole("option", { name: inicial.sucursalNombre })).toHaveCount(0);
+    await expect(select.getByRole("option", { name: SUCURSAL_DESTINO })).toHaveCount(1);
+    await expect(dialogo.getByRole("button", { name: "Mover usuario" })).toBeDisabled();
+
+    await select.selectOption({ label: SUCURSAL_DESTINO });
+    await expect(
+      dialogo.getByText(
+        `Se moverá a ${OBJETIVO} (${OBJETIVO}) de ${inicial.sucursalNombre} a ${SUCURSAL_DESTINO}.`,
+      ),
+    ).toBeVisible();
+    await dialogo.getByRole("button", { name: "Mover usuario" }).click();
+    await expect(dialogo).toBeHidden();
+
+    // Shown only after the server answered: the list re-read carries the new branch.
+    await expect(fila).toContainText(SUCURSAL_DESTINO);
+    await expect(page.locator("main").getByRole("status")).toHaveText(
+      `Usuario movido a ${SUCURSAL_DESTINO}.`,
+    );
+    // Another branch's row: roles/estado stay disabled, Mover stays enabled.
+    await expect(fila.getByRole("button", { name: "Cambiar roles" })).toBeDisabled();
+    await expect(fila.getByRole("button", { name: "Desactivar" })).toBeDisabled();
+    await expect(fila.getByRole("button", { name: "Mover de sucursal" })).toBeEnabled();
+
+    const trasMover = await leerObjetivo();
+    expect(trasMover.sucursalId).toBe(destinoId);
+    expect(trasMover.version, "version bumped by the move").toBe(inicial.version + 1);
+    expect(trasMover.activo).toBe(true);
+    expect(trasMover.roles, "a move never touches the roles").toEqual(inicial.roles);
+
+    // --- Move it back through the UI (the destination now excludes ITS branch) ---
+    await fila.getByRole("button", { name: "Mover de sucursal" }).click();
+    const dialogoVuelta = page.getByRole("dialog", { name: "Mover de sucursal" });
+    const selectVuelta = dialogoVuelta.getByRole("combobox", { name: "Sucursal destino" });
+    await expect(selectVuelta.getByRole("option", { name: SUCURSAL_DESTINO })).toHaveCount(0);
+    await selectVuelta.selectOption({ label: inicial.sucursalNombre });
+    await dialogoVuelta.getByRole("button", { name: "Mover usuario" }).click();
+    await expect(dialogoVuelta).toBeHidden();
+    await expect(fila).toContainText(inicial.sucursalNombre);
+
+    const final = await leerObjetivo();
+    expect(final.sucursalId).toBe(inicial.sucursalId);
+    expect(final.version).toBe(trasMover.version + 1);
   });
 
   for (const [rol, envUser] of [

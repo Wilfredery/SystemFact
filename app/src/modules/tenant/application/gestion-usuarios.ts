@@ -35,6 +35,7 @@ import {
   TEN_CONCURRENCIA_CONFLICTO,
   TEN_OPS_NO_AUTORIZADO,
   TEN_ROL_NO_VALIDO,
+  TEN_SUCURSAL_NO_VALIDA,
   TEN_USUARIO_NO_ENCONTRADO,
   messageFor,
   type TenantErrorCode,
@@ -42,22 +43,38 @@ import {
 import {
   decidirCambioEstado,
   decidirCambioRoles,
+  decidirMovimientoUsuario,
   esAdministradorActivo,
   validarConjuntoRoles,
 } from "../domain/usuario-gestion";
 import {
   aplicarCambioUsuarioEnTx,
+  bloquearUsuarioYAdministradoresDeSucursalesEnTx,
   bloquearUsuarioYAdministradoresEnTx,
+  contarAdministradoresActivosDeSucursalEnTx,
   contarAdministradoresActivosEnTx,
   leerRolesActivosPorIdEnTx,
   leerUsuarioGestionableEnTx,
+  leerUsuarioParaMoverEnTx,
+  moverUsuarioASucursalEnTx,
   reemplazarRolesEnTx,
   registrarAuditUsuarioEnTx,
 } from "../infrastructure/usuario-gestion-repository";
+import {
+  activarSucursalEnTx,
+  leerSucursalActivaEnTx,
+  liberarSucursalActivaEnTx,
+} from "../infrastructure/repo-sucursal";
 
 export interface CambiarRolesUsuarioInput {
   readonly usuarioId: number;
   readonly rolIds: readonly number[];
+  readonly versionEsperada: number;
+}
+
+export interface MoverUsuarioDeSucursalInput {
+  readonly usuarioId: number;
+  readonly sucursalDestinoId: number;
   readonly versionEsperada: number;
 }
 
@@ -245,5 +262,145 @@ export async function cambiarEstadoUsuario(
   return {
     ok: true,
     data: { usuarioId: objetivo.id, version: aplicado.version, cambio: true },
+  };
+}
+
+type ResultadoMovimiento =
+  | {
+      readonly tipo: "MOVIDO";
+      readonly version: number;
+      readonly sucursalOrigenId: number;
+    }
+  | { readonly tipo: "SIN_CAMBIO"; readonly version: number }
+  | { readonly tipo: "RECHAZADO"; readonly code: TenantErrorCode };
+
+/**
+ * Everything of the move that needs the company-wide view: lock, re-prove the
+ * actor, read the target, version check, source-branch admin count, decision
+ * and the version-checked UPDATE. The branch GUC is blank ONLY inside this
+ * function (restored in `finally`, the empresa GUC is never touched), so the
+ * audit insert and everything after run pinned to the session branch again.
+ */
+async function moverBajoSucursalAmpliada(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  input: MoverUsuarioDeSucursalInput,
+  rolesAdministrador: readonly string[],
+): Promise<ResultadoMovimiento> {
+  await liberarSucursalActivaEnTx(tx);
+  try {
+    // The source branch is only known from the row itself: probe it, lock with
+    // it, then re-read under the lock and refuse if it moved in between.
+    const previo = await leerUsuarioParaMoverEnTx(tx, ctx.empresaId, input.usuarioId);
+    if (previo === null) {
+      return { tipo: "RECHAZADO", code: TEN_USUARIO_NO_ENCONTRADO };
+    }
+    await bloquearUsuarioYAdministradoresDeSucursalesEnTx(
+      tx,
+      ctx.empresaId,
+      input.usuarioId,
+      [previo.sucursalId, input.sucursalDestinoId],
+      rolesAdministrador,
+    );
+
+    const actor = await leerUsuarioGestionableEnTx(tx, ctx.empresaId, ctx.usuarioId);
+    if (actor === null || !esAdministradorActivo(actor, rolesAdministrador)) {
+      return { tipo: "RECHAZADO", code: TEN_OPS_NO_AUTORIZADO };
+    }
+
+    const objetivo = await leerUsuarioParaMoverEnTx(tx, ctx.empresaId, input.usuarioId);
+    if (objetivo === null) {
+      return { tipo: "RECHAZADO", code: TEN_USUARIO_NO_ENCONTRADO };
+    }
+    if (
+      objetivo.version !== input.versionEsperada ||
+      objetivo.sucursalId !== previo.sucursalId
+    ) {
+      return { tipo: "RECHAZADO", code: TEN_CONCURRENCIA_CONFLICTO };
+    }
+
+    const decision = decidirMovimientoUsuario({
+      actorId: ctx.usuarioId,
+      objetivoId: objetivo.id,
+      sucursalOrigenId: objetivo.sucursalId,
+      sucursalDestinoId: input.sucursalDestinoId,
+      objetivoEsAdministradorActivo: esAdministradorActivo(objetivo, rolesAdministrador),
+      administradoresActivosOrigen: await contarAdministradoresActivosDeSucursalEnTx(
+        tx,
+        ctx.empresaId,
+        objetivo.sucursalId,
+        rolesAdministrador,
+      ),
+    });
+    if (decision.tipo === "RECHAZAR") {
+      return { tipo: "RECHAZADO", code: decision.code };
+    }
+    if (decision.tipo === "SIN_CAMBIO") {
+      return { tipo: "SIN_CAMBIO", version: objetivo.version };
+    }
+
+    const aplicado = await moverUsuarioASucursalEnTx(
+      tx,
+      ctx.empresaId,
+      objetivo.id,
+      input.versionEsperada,
+      input.sucursalDestinoId,
+    );
+    if (!aplicado.aplicado) {
+      return { tipo: "RECHAZADO", code: TEN_CONCURRENCIA_CONFLICTO };
+    }
+    return {
+      tipo: "MOVIDO",
+      version: aplicado.version,
+      sucursalOrigenId: objetivo.sucursalId,
+    };
+  } finally {
+    await activarSucursalEnTx(tx, ctx.sucursalId);
+  }
+}
+
+/**
+ * Move a user to another ACTIVE branch of the same empresa (Administrador only,
+ * gated by the action). The destination must be an active branch of the
+ * session empresa (one code for foreign/inactive/unknown). Same-branch =
+ * idempotent no-op: no write, no version bump, no audit.
+ */
+export async function moverUsuarioDeSucursal(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  input: MoverUsuarioDeSucursalInput,
+  rolesAdministrador: readonly string[],
+): Promise<CambioUsuarioResult> {
+  const destino = await leerSucursalActivaEnTx(
+    tx,
+    ctx.empresaId,
+    input.sucursalDestinoId,
+  );
+  if (destino === null) return rechazo(TEN_SUCURSAL_NO_VALIDA);
+
+  const resultado = await moverBajoSucursalAmpliada(
+    tx,
+    ctx,
+    input,
+    rolesAdministrador,
+  );
+  if (resultado.tipo === "RECHAZADO") return rechazo(resultado.code);
+  if (resultado.tipo === "SIN_CAMBIO") {
+    return {
+      ok: true,
+      data: { usuarioId: input.usuarioId, version: resultado.version, cambio: false },
+    };
+  }
+
+  await registrarAuditUsuarioEnTx(
+    tx,
+    ctx,
+    input.usuarioId,
+    { sucursalId: resultado.sucursalOrigenId },
+    { sucursalId: input.sucursalDestinoId },
+  );
+  return {
+    ok: true,
+    data: { usuarioId: input.usuarioId, version: resultado.version, cambio: true },
   };
 }
