@@ -50,8 +50,10 @@ describe("listarSucursalesDeEmpresa (real DB)", () => {
     expect(nombres).toEqual(["A1", "A2"].sort());
     expect(result.sucursales.map((s) => s.id)).not.toContain(sucursalA3Inactiva.id);
     expect(result.sucursales.map((s) => s.id)).not.toContain(fixture.sucursalB1.id);
-    // Narrow select: no deep tenant data escapes.
-    expect(Object.keys(result.sucursales[0] ?? {})).toEqual(["id", "nombre"]);
+    // Narrow select (S8): id, nombre and the three edit-dialog fields, nothing deeper.
+    expect(Object.keys(result.sucursales[0] ?? {}).sort()).toEqual(
+      ["direccion", "id", "nombre", "telefono", "version"].sort(),
+    );
   });
 
   it("TEN-LIST-01-C: non-admin ctx denied BEFORE any read — no row data", async () => {

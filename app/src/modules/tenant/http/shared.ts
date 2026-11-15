@@ -40,6 +40,12 @@ export const ROLES_VER_ADMINISTRACION = ["Administrador"];
  */
 export const ROLES_GESTION_USUARIOS = ["Administrador"];
 
+/**
+ * Branch-management WRITES (create / edit a SUCURSAL): Administrador only. RLS
+ * (`sucursal_insert/update`, admin-only) is the second, independent wall.
+ */
+export const ROLES_GESTION_SUCURSALES = ["Administrador"];
+
 export type AdministracionErrorCode =
   | TenantErrorCode
   | typeof VALIDATION_ERROR
@@ -115,6 +121,10 @@ export interface ListarUsuariosAdministracion {
 export interface SucursalAdministracionDto {
   readonly id: number;
   readonly nombre: string;
+  readonly direccion: string;
+  readonly telefono: string;
+  /** Optimistic-lock token the edit action takes as `versionEsperada`. */
+  readonly version: number;
 }
 
 /** Configuración tab payload (S2c) — no invented ITBIS family (see infra doc). */

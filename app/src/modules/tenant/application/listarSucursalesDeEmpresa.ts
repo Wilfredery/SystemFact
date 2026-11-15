@@ -16,16 +16,16 @@ import {
   type TenantErrorCode,
 } from "../domain/errors";
 import {
-  listarSucursalesActivas as listarSucursalesActivasPorDefecto,
-  type SucursalResumen,
+  listarSucursalesActivasConDetalle as listarSucursalesActivasPorDefecto,
+  type SucursalDetalle,
 } from "../infrastructure/repo-sucursal";
 
 export type ListarSucursalesResult =
-  | { ok: true; sucursales: readonly SucursalResumen[] }
+  | { ok: true; sucursales: readonly SucursalDetalle[] }
   | { ok: false; code: TenantErrorCode; message: string };
 
 const defaultDeps = {
-  listarSucursalesActivas: listarSucursalesActivasPorDefecto,
+  listarSucursalesActivasConDetalle: listarSucursalesActivasPorDefecto,
 };
 
 /**
@@ -36,7 +36,7 @@ export async function listarSucursalesDeEmpresa(
   ctx: TenantCtx,
   tx: PrismaTx,
   deps: {
-    readonly listarSucursalesActivas: typeof listarSucursalesActivasPorDefecto;
+    readonly listarSucursalesActivasConDetalle: typeof listarSucursalesActivasPorDefecto;
   } = defaultDeps,
 ): Promise<ListarSucursalesResult> {
   if (!ctx.esAdmin) {
@@ -48,6 +48,6 @@ export async function listarSucursalesDeEmpresa(
   }
   return {
     ok: true,
-    sucursales: await deps.listarSucursalesActivas(tx, ctx.empresaId),
+    sucursales: await deps.listarSucursalesActivasConDetalle(tx, ctx.empresaId),
   };
 }

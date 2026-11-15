@@ -27,6 +27,9 @@ export const TEN_CONCURRENCIA_CONFLICTO = "TEN_CONCURRENCIA_CONFLICTO";
 export const TEN_ROL_NO_VALIDO = "TEN_ROL_NO_VALIDO";
 export const TEN_ULTIMO_ADMINISTRADOR = "TEN_ULTIMO_ADMINISTRADOR";
 export const TEN_AUTO_PROTECCION = "TEN_AUTO_PROTECCION";
+// Branch names are unique per empresa (trimmed, case-insensitive) and INACTIVE
+// branches count too: the admin list shows active branches only.
+export const TEN_SUCURSAL_NOMBRE_DUPLICADO = "TEN_SUCURSAL_NOMBRE_DUPLICADO";
 
 export const TEN_ERROR_CODES = [
   TEN_OPS_NO_AUTORIZADO,
@@ -36,6 +39,7 @@ export const TEN_ERROR_CODES = [
   TEN_ROL_NO_VALIDO,
   TEN_ULTIMO_ADMINISTRADOR,
   TEN_AUTO_PROTECCION,
+  TEN_SUCURSAL_NOMBRE_DUPLICADO,
 ] as const;
 
 export type TenantErrorCode = (typeof TEN_ERROR_CODES)[number];
@@ -54,6 +58,8 @@ const TEN_ERROR_MESSAGES: Readonly<Record<TenantErrorCode, string>> = {
     "La sucursal debe conservar al menos un Administrador activo.",
   [TEN_AUTO_PROTECCION]:
     "No puede desactivarse ni quitarse el rol de Administrador a sí mismo.",
+  [TEN_SUCURSAL_NOMBRE_DUPLICADO]:
+    "Ya existe una sucursal con ese nombre. No se distinguen mayúsculas ni espacios al inicio o al final, y las sucursales inactivas también cuentan.",
 };
 
 export function messageFor(code: TenantErrorCode): string {

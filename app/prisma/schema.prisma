@@ -214,6 +214,9 @@ model Empresa {
   @@map("EMPRESA")
 }
 
+// NOTE: the functional UNIQUE index "SUCURSAL_empresaId_nombre_lower_key" on
+// ("empresaId", lower(btrim("nombre"))) lives ONLY in migration
+// 20261115120000_sucursal_writes_admin_only (Prisma cannot express it).
 model Sucursal {
   id        Int      @id @default(autoincrement())
   empresaId Int
@@ -221,6 +224,7 @@ model Sucursal {
   direccion String   @db.VarChar(255)
   telefono  String   @db.VarChar(255)
   activa    Boolean  @default(true)
+  version   Int      @default(1) // optimistic locking (Directiva §10)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 

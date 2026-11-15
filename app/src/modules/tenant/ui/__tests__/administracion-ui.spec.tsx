@@ -31,6 +31,11 @@ jest.mock("@/modules/tenant/http/actions.usuarios", () => ({
   cambiarEstadoUsuarioAction: jest.fn(),
 }));
 
+jest.mock("@/modules/tenant/http/actions.sucursal", () => ({
+  crearSucursalAction: jest.fn(),
+  editarSucursalAction: jest.fn(),
+}));
+
 jest.mock("@/modules/tenant/http/actions.administracion", () => ({
   listarUsuariosAction: jest.fn(),
   listarSucursalesDeEmpresaAction: jest.fn(),
@@ -222,8 +227,8 @@ describe("AdministracionScreen — tabs (S2/S6)", () => {
       sucursales: {
         ok: true,
         data: [
-          { id: 1, nombre: "Sucursal Central" },
-          { id: 2, nombre: "Sucursal Norte" },
+          { id: 1, nombre: "Sucursal Central", direccion: "Calle 1", telefono: "809-555-0001", version: 1 },
+          { id: 2, nombre: "Sucursal Norte", direccion: "Calle 2", telefono: "809-555-0002", version: 1 },
         ],
       },
     });

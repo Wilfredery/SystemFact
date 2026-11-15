@@ -6,14 +6,14 @@ import {
   TEN_SUCURSAL_NO_VALIDA,
   messageFor,
 } from "../domain/errors";
-import type { SucursalResumen } from "../infrastructure/repo-sucursal";
+import type { SucursalDetalle } from "../infrastructure/repo-sucursal";
 
 jest.mock("../infrastructure/repo-sucursal", () => ({
-  listarSucursalesActivas: jest.fn(),
+  listarSucursalesActivasConDetalle: jest.fn(),
   __esModule: true,
 }));
 
-import { listarSucursalesActivas } from "../infrastructure/repo-sucursal";
+import { listarSucursalesActivasConDetalle as listarSucursalesActivas } from "../infrastructure/repo-sucursal";
 
 const ctx: TenantCtx = {
   empresaId: 1,
@@ -26,8 +26,15 @@ function makeTx(): PrismaTx {
   return {} as unknown as PrismaTx;
 }
 
-function makeSucursal(overrides: Partial<SucursalResumen> = {}): SucursalResumen {
-  return { id: 10, nombre: "Matriz", ...overrides };
+function makeSucursal(overrides: Partial<SucursalDetalle> = {}): SucursalDetalle {
+  return {
+    id: 10,
+    nombre: "Matriz",
+    direccion: "Calle 1",
+    telefono: "8095550000",
+    version: 1,
+    ...overrides,
+  };
 }
 
 describe("listarSucursalesDeEmpresa", () => {
@@ -44,6 +51,14 @@ describe("listarSucursalesDeEmpresa", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.sucursales).toHaveLength(2);
+      // S8: the edit dialog needs address, phone and the optimistic-lock version.
+      expect(result.sucursales[0]).toEqual({
+        id: 10,
+        nombre: "Matriz",
+        direccion: "Calle 1",
+        telefono: "8095550000",
+        version: 1,
+      });
     }
     // TEN-LIST-01-B: the ONLY empresaId in the where-clause comes from ctx.
     expect(port).toHaveBeenCalledWith(expect.anything(), ctx.empresaId);

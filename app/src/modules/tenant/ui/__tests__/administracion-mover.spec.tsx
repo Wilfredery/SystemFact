@@ -28,6 +28,11 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(async () => undefined) }),
 }));
 
+jest.mock("@/modules/tenant/http/actions.sucursal", () => ({
+  crearSucursalAction: jest.fn(),
+  editarSucursalAction: jest.fn(),
+}));
+
 jest.mock("@/modules/tenant/http/actions.administracion", () => ({
   listarUsuariosAction: jest.fn(),
   listarSucursalesDeEmpresaAction: jest.fn(),
@@ -48,9 +53,9 @@ const mockMover = jest.mocked(moverUsuarioDeSucursalAction);
 type ResultadoCambio = Awaited<ReturnType<typeof moverUsuarioDeSucursalAction>>;
 
 const SUCURSALES = [
-  { id: 1, nombre: "Sucursal Central" },
-  { id: 2, nombre: "Sucursal Norte" },
-  { id: 3, nombre: "Sucursal Sur" },
+  { id: 1, nombre: "Sucursal Central", direccion: "Calle 1", telefono: "809-555-0001", version: 1 },
+  { id: 2, nombre: "Sucursal Norte", direccion: "Calle 2", telefono: "809-555-0002", version: 1 },
+  { id: 3, nombre: "Sucursal Sur", direccion: "Calle 3", telefono: "809-555-0003", version: 1 },
 ];
 
 function usuario(parcial: Record<string, unknown> = {}) {

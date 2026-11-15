@@ -1,3 +1,22 @@
+## [0.33.0](https://github.com/Wilfredery/SystemFact/compare/v0.32.0...v0.33.0) (2026-11-15)
+
+### Features
+
+* **tenant:** the Administrador can **create and edit branches** from the Sucursales tab of Administración: a **Nueva sucursal** button and an **Editar** action on each row, with one dialog for both (nombre, dirección, teléfono; each required, trimmed, up to 255 characters). The table now shows Nombre, Dirección, Teléfono and Estado. A new branch is active at once and appears in the branch switch and in the **Mover de sucursal** dialog; it needs no stock setup (stock rows are created on first movement).
+* **Rules, enforced on the server:** only the Administrador can write branches (Operador and Despachador are refused at the action and by the database). A branch name is unique per company, ignoring case and surrounding spaces, **and inactive branches count too** (the message says so, since the admin only sees active ones); a concurrent double create of the same name returns the same clear error instead of a crash. Editing uses optimistic locking: if someone changed the branch meanwhile you get the usual conflict message, the list reloads and nothing is overwritten; sending the same values again is a no-op that writes nothing. Each create and each real edit appends one audit row.
+
+### Database (migration — apply to production BEFORE deploying)
+
+* `20261115120000_sucursal_writes_admin_only`: the single `FOR ALL` policy on `SUCURSAL` is replaced by a read policy identical to the old one plus admin-only insert/update policies, and a delete policy that only the seed/provisioning path can pass (branches are never deleted); it also adds the `version` column (default 1) and a unique index on the company and the trimmed, lower-cased name. Production was checked read-only: one company, one branch, no duplicate names. Additive and compatible with the previous release (it never writes branches). **Deploy order: apply the migration first, then the code**, because the new code reads the `version` column.
+
+### Notes
+
+* Still open: activating and deactivating branches. When that lands, the user move must also lock the destination branch row (review advisory) so a concurrent deactivation cannot leave a user on an inactive branch.
+
+### Tests
+
+* **unit:** the pure branch rules (trimming, case-insensitive name, no-op detection, rename to the same name with different case), the use cases and actions, and 32 UI tests (buttons only for who can manage, validation, create/edit calls, errors, conflict reload, no retry, new branch in the move dialog). **integration (real Postgres, `systemfact_app`):** Operador refused for insert/update/delete, Administrador insert/update, cross-company refused, bootstrap insert, reads unchanged, the unique index (exact, case and space variants, other company allowed), create/edit/stale/no-op/audit, a parallel double create (exactly one wins). **e2e:** the Administrador creates a branch through the UI, sees it with its address and phone, edits it, a case/space variant of the name is refused, and it appears in the move dialog; it cleans up and must not skip.
+
 ## [0.32.0](https://github.com/Wilfredery/SystemFact/compare/v0.31.1...v0.32.0) (2026-11-14)
 
 ### Features

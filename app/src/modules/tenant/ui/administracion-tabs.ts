@@ -91,6 +91,23 @@ export function construirHrefAdministracion(
   return `/administracion?${params.toString()}`;
 }
 
+/** Column limit of `SUCURSAL.nombre/direccion/telefono` (`VarChar(255)`), same as the server's zod rule. */
+export const MAX_TEXTO_SUCURSAL = 255;
+
+/**
+ * Inline validation of one branch field, mirroring the server schema
+ * (`z.string().trim().min(1).max(255)`). `null` = valid. UX only: the action
+ * validates again.
+ */
+export function validarTextoSucursal(valor: string): string | null {
+  const texto = valor.trim();
+  if (texto.length === 0) return "Este campo es obligatorio.";
+  if (texto.length > MAX_TEXTO_SUCURSAL) {
+    return `Máximo ${MAX_TEXTO_SUCURSAL} caracteres.`;
+  }
+  return null;
+}
+
 /** Shown when a write action throws instead of answering (transport failure). */
 export const MENSAJE_FALLO_ACCION = "No se pudo completar la acción. Intente de nuevo.";
 

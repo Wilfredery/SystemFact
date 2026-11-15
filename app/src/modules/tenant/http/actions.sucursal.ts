@@ -9,6 +9,11 @@
  *      `/dashboard` on success (design D2).
  *
  * Only stable catalog codes cross the boundary; Prisma/DB errors never leak.
+ * The branch-management writes (`crearSucursalAction`, `editarSucursalAction`,
+ * odd/tasks/administracion-sucursales-crear-editar.md S3-S7) follow the sibling
+ * `actions.usuarios.ts` shape: parse, session, then INSIDE the one transaction
+ * the Administrador-only role gate BEFORE any use case (deny-by-default).
+ *
  * Constants/types live in `./validations.ts` — a `"use server"` file may only
  * export async functions (devolucion/actions.shared.ts precedent).
  */
@@ -20,11 +25,29 @@ import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenan
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
 import { cambiarSucursalActiva } from "../application/cambiarSucursalActiva";
 import {
+  crearSucursal,
+  editarSucursal,
+  type EditarSucursalData,
+  type ResultadoSucursal,
+} from "../application/gestion-sucursales";
+import type { SucursalGestionable } from "../infrastructure/sucursal-gestion-repository";
+import { tieneRolPermitidoEnTx } from "../infrastructure/usuario-repository";
+import { TEN_OPS_NO_AUTORIZADO, messageFor } from "../domain/errors";
+import {
   VALIDATION_ERROR,
   SESION_INVALIDA,
   mensajeTransporte,
   zCambiarSucursalInput,
+  zCrearSucursalInput,
+  zEditarSucursalInput,
 } from "./validations";
+import {
+  ROLES_GESTION_SUCURSALES,
+  error,
+  ok,
+  resolverCtx,
+  type ActionResult,
+} from "./shared";
 
 export type CambiarSucursalActionCode =
   | import("../domain/errors").TenantErrorCode
@@ -60,4 +83,64 @@ export async function cambiarSucursalActivaAction(
   return withTenantTransaction(ctx, (tx) =>
     cambiarSucursalActiva(ctx, parsed.data, tx),
   );
+}
+
+function aActionResult<T>(result: ResultadoSucursal<T>): ActionResult<T> {
+  return result.ok ? ok(result.data) : error(result.code, result.message);
+}
+
+/** Create a branch (Administrador only). `empresaId` always comes from the session. */
+export async function crearSucursalAction(
+  input: unknown,
+): Promise<ActionResult<SucursalGestionable>> {
+  const parsed = zCrearSucursalInput.safeParse(input);
+  if (!parsed.success) {
+    return error(VALIDATION_ERROR, mensajeTransporte(VALIDATION_ERROR));
+  }
+
+  const ctx = await resolverCtx();
+  if (ctx === null) {
+    return error(SESION_INVALIDA, mensajeTransporte(SESION_INVALIDA));
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const permitido = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_GESTION_SUCURSALES,
+    );
+    if (!permitido) {
+      return error(TEN_OPS_NO_AUTORIZADO, messageFor(TEN_OPS_NO_AUTORIZADO));
+    }
+    return aActionResult(await crearSucursal(tx, ctx, parsed.data));
+  });
+}
+
+/** Edit a branch's name, address and phone with optimistic locking (Administrador only). */
+export async function editarSucursalAction(
+  input: unknown,
+): Promise<ActionResult<EditarSucursalData>> {
+  const parsed = zEditarSucursalInput.safeParse(input);
+  if (!parsed.success) {
+    return error(VALIDATION_ERROR, mensajeTransporte(VALIDATION_ERROR));
+  }
+
+  const ctx = await resolverCtx();
+  if (ctx === null) {
+    return error(SESION_INVALIDA, mensajeTransporte(SESION_INVALIDA));
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const permitido = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_GESTION_SUCURSALES,
+    );
+    if (!permitido) {
+      return error(TEN_OPS_NO_AUTORIZADO, messageFor(TEN_OPS_NO_AUTORIZADO));
+    }
+    return aActionResult(await editarSucursal(tx, ctx, parsed.data));
+  });
 }

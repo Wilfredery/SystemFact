@@ -35,6 +35,11 @@ jest.mock("@/modules/tenant/http/actions.usuarios", () => ({
   cambiarEstadoUsuarioAction: jest.fn(),
 }));
 
+jest.mock("@/modules/tenant/http/actions.sucursal", () => ({
+  crearSucursalAction: jest.fn(),
+  editarSucursalAction: jest.fn(),
+}));
+
 jest.mock("@/modules/tenant/http/actions.administracion", () => ({
   listarUsuariosAction: jest.fn(),
   listarSucursalesDeEmpresaAction: jest.fn(),
@@ -108,7 +113,7 @@ beforeEach(() => {
   mockListar.mockResolvedValue({ ok: true, data: salidaUsuarios() });
   mockSucursales.mockResolvedValue({
     ok: true,
-    data: [{ id: 1, nombre: "Sucursal Central" }],
+    data: [{ id: 1, nombre: "Sucursal Central", direccion: "Calle 1", telefono: "809-555-0001", version: 1 }],
   });
   mockConfiguracion.mockResolvedValue({
     ok: true,

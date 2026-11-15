@@ -14,6 +14,15 @@ export type SucursalResumen = {
   readonly nombre: string;
 };
 
+/** Active branch as the Administración tab shows it (S8): the edit dialog needs all of it. */
+export type SucursalDetalle = {
+  readonly id: number;
+  readonly nombre: string;
+  readonly direccion: string;
+  readonly telefono: string;
+  readonly version: number;
+};
+
 /**
  * Branch-GUC control inside a `withTenantTransaction` (`set_config(..., true)`
  * — the established mechanism, same as `withTenantTransaction`/`enlazarAuthSub`).
@@ -85,6 +94,18 @@ export async function reescribirSucursalUsuarioEnTx(
  * Lists the caller-empresa's ACTIVE branches, ordered by nombre ascending.
  * Scope must be the session `empresaId` (P6 — never a client-provided filter).
  */
+export async function listarSucursalesActivasConDetalle(
+  tx: PrismaTx,
+  empresaId: number,
+): Promise<SucursalDetalle[]> {
+  return tx.sucursal.findMany({
+    where: { empresaId, activa: true },
+    select: { id: true, nombre: true, direccion: true, telefono: true, version: true },
+    orderBy: { nombre: "asc" },
+    take: 100,
+  });
+}
+
 export async function listarSucursalesActivas(
   tx: PrismaTx,
   empresaId: number,
