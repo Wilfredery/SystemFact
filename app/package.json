@@ -1,6 +1,6 @@
 {
   "name": "systemfact",
-  "version": "0.34.0",
+  "version": "0.34.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -56,7 +56,7 @@
     "@babel/plugin-transform-export-namespace-from": "7.29.7",
     "@babel/plugin-transform-modules-commonjs": "7.29.7",
     "@babel/preset-typescript": "7.29.7",
-    "@playwright/test": "1.57.0",
+    "@playwright/test": "1.65.1",
     "@tailwindcss/postcss": "4",
     "@testing-library/dom": "10.4.1",
     "@testing-library/jest-dom": "6.9.1",
