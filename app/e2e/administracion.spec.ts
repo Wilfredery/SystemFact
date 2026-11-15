@@ -648,8 +648,6 @@ test.describe("/administracion (administracion T3)", () => {
     const { empresaId, sucursalId: sucursalPropiaId } = await usuarioPrecond(pool, nombreUsuario);
     await desactivarSucursalesCreadas();
     expect(await leerSucursalesPorNombre(empresaId, nombre), "the name is unique to this run").toHaveLength(0);
-    // The move dialog needs one OTHER active branch to render its select (a fresh CI database has none).
-    await asegurarSucursalDestino(empresaId);
 
     try {
       await login(page, { user: nombreUsuario, password });
@@ -701,6 +699,9 @@ test.describe("/administracion (administracion T3)", () => {
 
       // The blocker is gone: the throwaway user goes back to the admin's branch.
       await restaurarObjetivo();
+      // restaurarObjetivo also deactivates the destination branch; the move dialog below needs one
+      // OTHER active branch to render its select, so seed it after the restore.
+      await asegurarSucursalDestino(empresaId);
 
       // --- Deactivate through the UI ------------------------------------------------------
       await fila.getByRole("button", { name: "Desactivar" }).click();
