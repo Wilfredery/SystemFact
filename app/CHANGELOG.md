@@ -1,3 +1,9 @@
+## [0.34.1](https://github.com/Wilfredery/SystemFact/compare/v0.34.0...v0.34.1) (2026-11-15)
+
+### Maintenance
+
+* **ci:** Playwright **1.57.0 → 1.65.1** (exact pin, lockfile touches only `@playwright/test`, `playwright`, `playwright-core`; the optional `fsevents` is dropped upstream). Playwright supports Ubuntu 26.04 since 1.61.0 (release notes: "Playwright now supports Ubuntu 26.04"), so the three Playwright workflows (`ci.yml` e2e job, `prod-smoke.yml`, `prod-demo.yml`) go back from the `ubuntu-24.04` pin to `ubuntu-latest`. Upstream breaking changes between 1.57 and 1.65 reviewed against this suite: none applies (no page-object classes, `tsconfig` target ES2020, `test.skip(condition, reason)` unchanged, Node 24 in CI); 1.64 now forwards `screen` from `devices["Desktop Chrome"]`. Runtime code is unchanged. `pnpm audit --prod --audit-level high`: no known vulnerabilities.
+
 ## [0.34.0](https://github.com/Wilfredery/SystemFact/compare/v0.33.0...v0.34.0) (2026-11-15)
 
 ### Features

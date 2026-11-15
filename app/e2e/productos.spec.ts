@@ -138,7 +138,8 @@ test.describe("/productos (productos T1/T2)", () => {
     await confirmar.getByRole("button", { name: "Desactivar" }).click();
 
     await expect(page.getByRole("status")).toHaveText("Producto desactivado.");
-    expect(await filaDelProducto(page, codigo).count(), "the inactive row leaves the active list").toBe(0);
+    // Web-first (retrying): the list is re-read after the status message, a one-shot count() races it.
+    await expect(filaDelProducto(page, codigo), "the inactive row leaves the active list").toHaveCount(0);
     const despuesDesactivar = await productoEnDb(empresaId, codigo);
     expect(despuesDesactivar.activo, "PRODUCTO.activo after deactivate").toBe(false);
     expect(Number(despuesDesactivar.precio), "the price history is preserved").toBe(249.5);
