@@ -1,3 +1,9 @@
+## [0.34.3](https://github.com/Wilfredery/SystemFact/compare/v0.34.2...v0.34.3) (2026-11-15)
+
+### Maintenance
+
+* **deps:** dev-scope security advisories **35 -> 4** with patch/minor-level overrides in `app/pnpm-workspace.yaml`, one selector per vulnerable major with an upper bound (brace-expansion 1/2/5, handlebars 4 [2 critical], undici 7, systeminformation 5, body-parser 2, hono 4, @hono/node-server 2, qs 6, js-yaml 4), each with its GHSA ids in a comment. None of these packages is in the production dependency graph (`pnpm ls --prod` empty, `pnpm audit --prod --audit-level high` clean before and after), so production code is unchanged. Four advisories stay on purpose, documented in the same file: zod 3.x (patched only in 4.x), deepmerge (no patched version), glob 10 and minimatch 9/10 (patched only in a new major of the consumer). Verified: tsc, eslint, jest 225 suites / 2423 tests and the production build all pass.
+
 ## [0.34.2](https://github.com/Wilfredery/SystemFact/compare/v0.34.1...v0.34.2) (2026-11-15)
 
 ### Maintenance
