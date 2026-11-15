@@ -76,7 +76,6 @@ const DATA = {
       cantidadAnterior: "10",
       cantidadNueva: "15",
       usuarioNombre: "Ana",
-      usuarioId: 1,
       motivo: "Conteo",
     },
   ],

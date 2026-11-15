@@ -117,7 +117,10 @@ describe("movement history author across branches (real DB, app role + RLS)", ()
       listarMovimientosInventario(tx, ctx, { page: 1, limit: 100, ...RANGO }, AHORA),
     );
     if (!r.ok) throw new Error("unreachable");
-    return r.data.items.find((i) => i.motivo === "a1-autor-a2")?.usuarioNombre;
+    const fila = r.data.items.find((i) => i.motivo === "a1-autor-a2");
+    expect(fila).toBeDefined();
+    expect(fila).not.toHaveProperty("usuarioId");
+    return fila?.usuarioNombre;
   }
 
   it("an Administrador sees the name of an author of another branch", async () => {
