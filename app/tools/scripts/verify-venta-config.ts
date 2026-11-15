@@ -53,6 +53,7 @@ import {
   DESC_MAX_CLAVE,
   PLAZO_DEVOLUCION_CLAVE,
   RETROACTIVO_FECHA_VENTA_CLAVE,
+  TASA_ITBIS_CLAVE,
 } from "./seed-venta-config";
 
 /**
@@ -64,6 +65,7 @@ const CLAVES_REQUERIDAS: readonly string[] = [
   DESC_MAX_CLAVE,
   PLAZO_DEVOLUCION_CLAVE,
   RETROACTIVO_FECHA_VENTA_CLAVE,
+  TASA_ITBIS_CLAVE,
 ];
 
 type ConfigRow = {
