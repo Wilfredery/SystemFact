@@ -13,7 +13,10 @@
  * both Administrador today; if they ever diverge, give the screen its own probe).
  * The session user id lets the UI disable the actions on one's own row. Both are
  * UX only: every write action re-checks the role and RLS is the second wall.
- * There is still no user/branch creation, and no branch move.
+ * The Sucursales tab reads ALL the branches (`listarSucursalesAdministracionAction`,
+ * active and inactive) and gets the session branch id from the same tenant context,
+ * so "Desactivar" is disabled on one's own branch (UX only; the server re-checks).
+ * The "Mover de sucursal" dialog keeps its own active-only read.
  *
  * Role gate (S3/S6): the Administrador group (`ROLES_VER_ADMINISTRACION`, read
  * through `obtenerPermisosAdministracionAction`) is the only way in. Anything
@@ -30,7 +33,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
 import {
   consultarConfiguracionAction,
-  listarSucursalesDeEmpresaAction,
+  listarSucursalesAdministracionAction,
   listarUsuariosAction,
   obtenerPermisosAdministracionAction,
 } from "@/modules/tenant/http/actions.administracion";
@@ -82,7 +85,7 @@ export default async function AdministracionPage({
     tab === "usuarios"
       ? listarUsuariosAction(construirQueryUsuarios(filtros, page))
       : tab === "sucursales"
-        ? listarSucursalesDeEmpresaAction()
+        ? listarSucursalesAdministracionAction()
         : consultarConfiguracionAction(),
   ]);
 
@@ -98,7 +101,7 @@ export default async function AdministracionPage({
     const r = lectura as Awaited<ReturnType<typeof listarUsuariosAction>>;
     usuarios = r.ok ? { ok: true, data: r.data } : { ok: false, message: r.error.message };
   } else if (tab === "sucursales") {
-    const r = lectura as Awaited<ReturnType<typeof listarSucursalesDeEmpresaAction>>;
+    const r = lectura as Awaited<ReturnType<typeof listarSucursalesAdministracionAction>>;
     sucursales = r.ok ? { ok: true, data: r.data } : { ok: false, message: r.error.message };
   } else {
     const r = lectura as Awaited<ReturnType<typeof consultarConfiguracionAction>>;
@@ -119,6 +122,7 @@ export default async function AdministracionPage({
           configuracion={configuracion}
           puedeGestionar={puedeVer}
           sesionUsuarioId={ctx.usuarioId}
+          sesionSucursalId={ctx.sucursalId}
         />
       ) : (
         <p

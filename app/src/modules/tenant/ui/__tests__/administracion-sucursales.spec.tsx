@@ -17,13 +17,14 @@ import "@testing-library/jest-dom";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { AdministracionScreen, type SucursalesInicial } from "../AdministracionScreen";
 import {
+  listarSucursalesAdministracionAction,
   listarSucursalesDeEmpresaAction,
   listarUsuariosAction,
 } from "@/modules/tenant/http/actions.administracion";
 import { crearSucursalAction, editarSucursalAction } from "@/modules/tenant/http/actions.sucursal";
 import { moverUsuarioDeSucursalAction } from "@/modules/tenant/http/actions.usuarios";
 import { messageFor } from "@/modules/tenant/domain/errors";
-import type { ListarUsuariosAdministracion, SucursalAdministracionDto } from "@/modules/tenant/http/shared";
+import type { ListarUsuariosAdministracion, SucursalGestionDto } from "@/modules/tenant/http/shared";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(async () => undefined) }),
@@ -32,6 +33,7 @@ jest.mock("next/navigation", () => ({
 jest.mock("@/modules/tenant/http/actions.administracion", () => ({
   listarUsuariosAction: jest.fn(),
   listarSucursalesDeEmpresaAction: jest.fn(),
+  listarSucursalesAdministracionAction: jest.fn(),
   consultarConfiguracionAction: jest.fn(),
   obtenerPermisosAdministracionAction: jest.fn(),
 }));
@@ -49,41 +51,45 @@ jest.mock("@/modules/tenant/http/actions.usuarios", () => ({
 
 const mockListarUsuarios = jest.mocked(listarUsuariosAction);
 const mockSucursales = jest.mocked(listarSucursalesDeEmpresaAction);
+const mockTodas = jest.mocked(listarSucursalesAdministracionAction);
 const mockCrear = jest.mocked(crearSucursalAction);
 const mockEditar = jest.mocked(editarSucursalAction);
 
 type ResultadoCrear = Awaited<ReturnType<typeof crearSucursalAction>>;
 
-const CENTRAL: SucursalAdministracionDto = {
+const CENTRAL: SucursalGestionDto = {
   id: 1,
   nombre: "Sucursal Central",
   direccion: "Calle 1",
   telefono: "809-555-0001",
+  activa: true,
   version: 1,
 };
-const NORTE: SucursalAdministracionDto = {
+const NORTE: SucursalGestionDto = {
   id: 2,
   nombre: "Sucursal Norte",
   direccion: "Calle 2",
   telefono: "809-555-0002",
+  activa: true,
   version: 4,
 };
-const NUEVA: SucursalAdministracionDto = {
+const NUEVA: SucursalGestionDto = {
   id: 3,
   nombre: "Sucursal Sur",
   direccion: "Av. Sur 3",
   telefono: "809-555-0003",
+  activa: true,
   version: 1,
 };
 
-function gestionable(s: SucursalAdministracionDto) {
-  return { id: s.id, nombre: s.nombre, direccion: s.direccion, telefono: s.telefono, activa: true, version: s.version };
+function gestionable(s: SucursalGestionDto) {
+  return { id: s.id, nombre: s.nombre, direccion: s.direccion, telefono: s.telefono, activa: s.activa, version: s.version };
 }
 
 function montar({
   puedeGestionar = true,
   sucursales = [CENTRAL, NORTE],
-}: { puedeGestionar?: boolean; sucursales?: SucursalAdministracionDto[] } = {}) {
+}: { puedeGestionar?: boolean; sucursales?: SucursalGestionDto[] } = {}) {
   const inicial: SucursalesInicial = { ok: true, data: sucursales };
   return render(
     <AdministracionScreen
@@ -94,6 +100,7 @@ function montar({
       configuracion={null}
       puedeGestionar={puedeGestionar}
       sesionUsuarioId={99}
+      sesionSucursalId={1}
     />,
   );
 }
@@ -133,6 +140,7 @@ async function confirmar(dialogo: HTMLElement, nombre: string) {
 
 beforeEach(() => {
   jest.resetAllMocks();
+  mockTodas.mockResolvedValue({ ok: true, data: [CENTRAL, NORTE] });
   mockSucursales.mockResolvedValue({ ok: true, data: [CENTRAL, NORTE] });
 });
 
@@ -224,7 +232,7 @@ describe("Nueva sucursal dialog (S9)", () => {
 
   it("confirm sends the three trimmed values", async () => {
     mockCrear.mockResolvedValue({ ok: true, data: gestionable(NUEVA) });
-    mockSucursales.mockResolvedValue({ ok: true, data: [CENTRAL, NORTE, NUEVA] });
+    mockTodas.mockResolvedValue({ ok: true, data: [CENTRAL, NORTE, NUEVA] });
     montar();
     const dialogo = await abrirCrear();
 
@@ -242,7 +250,7 @@ describe("Nueva sucursal dialog (S9)", () => {
   it("while pending: disables everything, shows no new state, re-reads nothing and sends once", async () => {
     let resolver: (v: ResultadoCrear) => void = () => {};
     mockCrear.mockImplementationOnce(() => new Promise<ResultadoCrear>((r) => (resolver = r)));
-    mockSucursales.mockResolvedValue({ ok: true, data: [CENTRAL, NORTE, NUEVA] });
+    mockTodas.mockResolvedValue({ ok: true, data: [CENTRAL, NORTE, NUEVA] });
     montar();
     const dialogo = await abrirCrear();
     llenar(dialogo, "Sucursal Sur", "Av. Sur 3", "809-555-0003");
@@ -253,7 +261,7 @@ describe("Nueva sucursal dialog (S9)", () => {
     expect(within(dialogo).getByRole("button", { name: "Cancelar" })).toBeDisabled();
     expect(within(dialogo).getByLabelText("Nombre")).toBeDisabled();
     expect(screen.queryByTestId("sucursal-fila-3")).not.toBeInTheDocument();
-    expect(mockSucursales).not.toHaveBeenCalled();
+    expect(mockTodas).not.toHaveBeenCalled();
 
     fireEvent.click(within(dialogo).getByRole("button", { name: "Crear sucursal" }));
     expect(mockCrear).toHaveBeenCalledTimes(1);
@@ -265,7 +273,7 @@ describe("Nueva sucursal dialog (S9)", () => {
 
   it("on ok: closes the dialog, re-reads the list and shows the new branch", async () => {
     mockCrear.mockResolvedValue({ ok: true, data: gestionable(NUEVA) });
-    mockSucursales.mockResolvedValue({ ok: true, data: [CENTRAL, NORTE, NUEVA] });
+    mockTodas.mockResolvedValue({ ok: true, data: [CENTRAL, NORTE, NUEVA] });
     montar();
     const dialogo = await abrirCrear();
     llenar(dialogo, "Sucursal Sur", "Av. Sur 3", "809-555-0003");
@@ -273,7 +281,7 @@ describe("Nueva sucursal dialog (S9)", () => {
     await confirmar(dialogo, "Crear sucursal");
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(mockSucursales).toHaveBeenCalledTimes(1);
+    expect(mockTodas).toHaveBeenCalledTimes(1);
     expect(fila(3)).toHaveTextContent("Sucursal Sur");
     expect(fila(3)).toHaveTextContent("Av. Sur 3");
     expect(fila(3)).toHaveTextContent("809-555-0003");
@@ -322,6 +330,7 @@ describe("Nueva sucursal dialog (S9)", () => {
         configuracion={null}
         puedeGestionar
         sesionUsuarioId={99}
+        sesionSucursalId={1}
       />,
     );
     const abrirMover = async () => {
@@ -346,6 +355,8 @@ describe("Nueva sucursal dialog (S9)", () => {
       expect(within(select).getByRole("option", { name: "Sucursal Sur" })).toBeInTheDocument(),
     );
     expect(mockSucursales).toHaveBeenCalledTimes(2);
+    // The tab's all-branches read is never what feeds the move dialog.
+    expect(mockTodas).not.toHaveBeenCalled();
     expect(jest.mocked(moverUsuarioDeSucursalAction)).not.toHaveBeenCalled();
   });
 });
@@ -401,7 +412,7 @@ describe("Editar dialog (S9)", () => {
       ok: true,
       data: { ...gestionable({ ...NORTE, direccion: "Av. Nueva 9", version: 5 }), cambio: true },
     });
-    mockSucursales.mockResolvedValue({
+    mockTodas.mockResolvedValue({
       ok: true,
       data: [CENTRAL, { ...NORTE, direccion: "Av. Nueva 9", version: 5 }],
     });
@@ -412,7 +423,7 @@ describe("Editar dialog (S9)", () => {
     await confirmar(dialogo, "Guardar cambios");
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(mockSucursales).toHaveBeenCalledTimes(1);
+    expect(mockTodas).toHaveBeenCalledTimes(1);
     expect(fila(2)).toHaveTextContent("Av. Nueva 9");
     expect(fila(2)).not.toHaveTextContent("Calle 2");
     expect(screen.getByRole("status")).toHaveTextContent("Sucursal Sucursal Norte actualizada.");
@@ -441,7 +452,7 @@ describe("Editar dialog (S9)", () => {
 
     expect(within(dialogo).getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
     expect(fila(2)).toHaveTextContent("Calle 2");
-    expect(mockSucursales).not.toHaveBeenCalled();
+    expect(mockTodas).not.toHaveBeenCalled();
     fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar cambios" }));
     expect(mockEditar).toHaveBeenCalledTimes(1);
 
@@ -455,7 +466,7 @@ describe("Editar dialog (S9)", () => {
       ok: false,
       error: { code: "TEN_CONCURRENCIA_CONFLICTO", message: "x" },
     });
-    mockSucursales.mockResolvedValue({ ok: true, data: [CENTRAL, { ...NORTE, version: 5 }] });
+    mockTodas.mockResolvedValue({ ok: true, data: [CENTRAL, { ...NORTE, version: 5 }] });
     montar();
     const dialogo = await abrirEditar(2);
     escribir(dialogo, "Dirección", "Av. Nueva 9");
@@ -465,7 +476,7 @@ describe("Editar dialog (S9)", () => {
     expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent(
       messageFor("TEN_CONCURRENCIA_CONFLICTO"),
     );
-    expect(mockSucursales).toHaveBeenCalledTimes(1);
+    expect(mockTodas).toHaveBeenCalledTimes(1);
     expect(mockEditar).toHaveBeenCalledTimes(1);
     // What the person typed survives the reload.
     expect(within(dialogo).getByLabelText("Dirección")).toHaveValue("Av. Nueva 9");
@@ -516,7 +527,7 @@ describe("refusals (S9)", () => {
     await confirmar(dialogo, "Guardar cambios");
 
     expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent(esperado);
-    expect(mockSucursales).not.toHaveBeenCalled();
+    expect(mockTodas).not.toHaveBeenCalled();
   });
 
   it("the duplicate message says that inactive branches count", () => {
@@ -534,12 +545,12 @@ describe("refusals (S9)", () => {
     expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent(
       "No se pudo completar la acción. Intente de nuevo.",
     );
-    expect(mockSucursales).not.toHaveBeenCalled();
+    expect(mockTodas).not.toHaveBeenCalled();
   });
 
   it("after an ok write whose re-read fails, shows the failure and keeps the old rows (no fabricated state)", async () => {
     mockCrear.mockResolvedValue({ ok: true, data: gestionable(NUEVA) });
-    mockSucursales.mockRejectedValue(new Error("boom"));
+    mockTodas.mockRejectedValue(new Error("boom"));
     montar();
     const dialogo = await abrirCrear();
     llenar(dialogo, "Sucursal Sur", "Av. Sur 3", "809-555-0003");
@@ -561,6 +572,7 @@ describe("tab navigation keeps the server branch list in sync (review R3)", () =
       configuracion: null,
       puedeGestionar: true,
       sesionUsuarioId: 99,
+      sesionSucursalId: 1,
     };
     const { rerender } = render(<AdministracionScreen tab="usuarios" sucursales={null} {...props} />);
 
@@ -584,6 +596,7 @@ describe("tab navigation keeps the server branch list in sync (review R3)", () =
       configuracion: null,
       puedeGestionar: true,
       sesionUsuarioId: 99,
+      sesionSucursalId: 1,
     };
     const { rerender } = render(
       <AdministracionScreen tab="sucursales" sucursales={{ ok: true, data: [CENTRAL] }} {...props} />,

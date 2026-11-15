@@ -12,7 +12,14 @@
  * boolean, which would silently mean `true`).
  */
 
-import { TEN_AUTO_PROTECCION, TEN_ERROR_CODES, messageFor } from "../domain/errors";
+import type { DetalleBloqueoSucursal } from "../application/estado-sucursal";
+import {
+  TEN_AUTO_PROTECCION,
+  TEN_ERROR_CODES,
+  TEN_SUCURSAL_PROPIA_NO_DESACTIVABLE,
+  TEN_SUCURSAL_ULTIMA_ACTIVA,
+  messageFor,
+} from "../domain/errors";
 
 /** Rows per page of the Usuarios list (AGENTS.md: 25 default, 100 max). */
 export const TAMANO_PAGINA = 25;
@@ -135,4 +142,50 @@ export function mensajeErrorMover(code: string, mensajeServidor: string): string
 export function mensajeErrorGestion(code: string, mensajeServidor: string): string {
   const conocido = TEN_ERROR_CODES.find((c) => c === code);
   return conocido === undefined ? mensajeServidor : messageFor(conocido);
+}
+
+function cantidad(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
+/**
+ * ONE sentence listing EVERY blocker of a refused branch deactivation with its
+ * count, zero counts skipped (activate/deactivate slice S8). `saldos` counts
+ * INVOICES, not clients. `null` when no count is above zero.
+ */
+export function mensajeBloqueosSucursal(
+  conteos: Pick<DetalleBloqueoSucursal, "usuarios" | "stock" | "documentosAbiertos" | "saldos">,
+): string | null {
+  const partes: string[] = [];
+  if (conteos.usuarios > 0) partes.push(cantidad(conteos.usuarios, "usuario activo", "usuarios activos"));
+  if (conteos.stock > 0) {
+    partes.push(cantidad(conteos.stock, "producto con existencias", "productos con existencias"));
+  }
+  if (conteos.documentosAbiertos > 0) {
+    partes.push(cantidad(conteos.documentosAbiertos, "documento abierto", "documentos abiertos"));
+  }
+  if (conteos.saldos > 0) {
+    partes.push(cantidad(conteos.saldos, "factura con saldo pendiente", "facturas con saldo pendiente"));
+  }
+  return partes.length === 0 ? null : `No se puede desactivar: ${partes.join(", ")}.`;
+}
+
+/**
+ * The message of a failed branch activate/deactivate. The own-branch and
+ * last-active-branch refusals read their catalog text (they cannot be cleared by
+ * the person); a deactivation blocked by data lists every blocker with its count
+ * from `detalle`; every other code goes through the shared catalog mapping.
+ */
+export function mensajeErrorCambioEstadoSucursal(error: {
+  readonly code: string;
+  readonly message: string;
+  readonly detalle?: DetalleBloqueoSucursal;
+}): string {
+  const codigos: readonly string[] = error.detalle?.codigos ?? [error.code];
+  if (codigos.includes(TEN_SUCURSAL_PROPIA_NO_DESACTIVABLE)) {
+    return messageFor(TEN_SUCURSAL_PROPIA_NO_DESACTIVABLE);
+  }
+  if (codigos.includes(TEN_SUCURSAL_ULTIMA_ACTIVA)) return messageFor(TEN_SUCURSAL_ULTIMA_ACTIVA);
+  const bloqueos = error.detalle === undefined ? null : mensajeBloqueosSucursal(error.detalle);
+  return bloqueos ?? mensajeErrorGestion(error.code, error.message);
 }

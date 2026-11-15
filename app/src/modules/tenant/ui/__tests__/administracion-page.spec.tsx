@@ -16,7 +16,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import AdministracionPage from "@/app/(app)/administracion/page";
 import {
   consultarConfiguracionAction,
-  listarSucursalesDeEmpresaAction,
+  listarSucursalesAdministracionAction,
   listarUsuariosAction,
   obtenerPermisosAdministracionAction,
 } from "@/modules/tenant/http/actions.administracion";
@@ -43,6 +43,7 @@ jest.mock("@/modules/tenant/http/actions.sucursal", () => ({
 jest.mock("@/modules/tenant/http/actions.administracion", () => ({
   listarUsuariosAction: jest.fn(),
   listarSucursalesDeEmpresaAction: jest.fn(),
+  listarSucursalesAdministracionAction: jest.fn(),
   consultarConfiguracionAction: jest.fn(),
   obtenerPermisosAdministracionAction: jest.fn(),
 }));
@@ -57,7 +58,7 @@ jest.mock("next/navigation", () => ({
 }));
 
 const mockListar = jest.mocked(listarUsuariosAction);
-const mockSucursales = jest.mocked(listarSucursalesDeEmpresaAction);
+const mockSucursales = jest.mocked(listarSucursalesAdministracionAction);
 const mockConfiguracion = jest.mocked(consultarConfiguracionAction);
 const mockPermisos = jest.mocked(obtenerPermisosAdministracionAction);
 const mockContexto = jest.mocked(getCurrentTenantContext);
@@ -113,7 +114,7 @@ beforeEach(() => {
   mockListar.mockResolvedValue({ ok: true, data: salidaUsuarios() });
   mockSucursales.mockResolvedValue({
     ok: true,
-    data: [{ id: 1, nombre: "Sucursal Central", direccion: "Calle 1", telefono: "809-555-0001", version: 1 }],
+    data: [{ id: 1, nombre: "Sucursal Central", direccion: "Calle 1", telefono: "809-555-0001", activa: true, version: 1 }],
   });
   mockConfiguracion.mockResolvedValue({
     ok: true,
@@ -245,6 +246,20 @@ describe("AdministracionPage — URL contract (S6)", () => {
     expect(mockSucursales).toHaveBeenCalled();
     expect(mockListar).not.toHaveBeenCalled();
     expect(screen.getByTestId("sucursal-fila-1")).toBeInTheDocument();
+  });
+
+  it("passes the session branch from the tenant context: Desactivar is disabled on it", async () => {
+    mockSucursales.mockResolvedValue({
+      ok: true,
+      data: [
+        { id: 1, nombre: "Sucursal Central", direccion: "Calle 1", telefono: "809-555-0001", activa: true, version: 1 },
+        { id: 2, nombre: "Sucursal Norte", direccion: "Calle 2", telefono: "809-555-0002", activa: true, version: 1 },
+      ],
+    });
+    await renderizarPagina({ tab: "sucursales" });
+
+    expect(within(screen.getByTestId("sucursal-fila-1")).getByRole("button", { name: "Desactivar" })).toBeDisabled();
+    expect(within(screen.getByTestId("sucursal-fila-2")).getByRole("button", { name: "Desactivar" })).toBeEnabled();
   });
 
   it("reads the Configuración tab through its own action", async () => {
