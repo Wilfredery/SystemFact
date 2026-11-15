@@ -1,2 +1,2 @@
 export { formatearMonto } from "./money";
-export { formatearFechaSD } from "./date";
+export { formatearFechaHoraSD, formatearFechaSD } from "./date";

@@ -1,4 +1,4 @@
-import { formatearFechaSD } from "./date";
+import { formatearFechaHoraSD, formatearFechaSD } from "./date";
 
 /**
  * Behavioural LOCK for the shared `formatearFechaSD` (F0.3). The four spec
@@ -36,5 +36,16 @@ describe("formatearFechaSD (America/Santo_Domingo display, shared F0.3)", () => 
 
   it("falls back to an em-dash for an invalid Date instance", () => {
     expect(formatearFechaSD(new Date("not-a-date"))).toBe("—");
+  });
+});
+
+describe("formatearFechaHoraSD (SD wall clock, shared)", () => {
+  it("renders a UTC instant as the Santo Domingo date and 24-hour time", () => {
+    // 2026-09-15T04:00Z = 15/09/2026 00:00:00 in Santo Domingo (UTC-4, no DST).
+    expect(formatearFechaHoraSD(new Date("2026-09-15T04:00:00Z"))).toBe("15/09/2026, 00:00:00");
+  });
+
+  it("crosses the day boundary backwards (UTC next day, SD previous evening)", () => {
+    expect(formatearFechaHoraSD(new Date("2026-01-01T02:30:45Z"))).toBe("31/12/2025, 22:30:45");
   });
 });

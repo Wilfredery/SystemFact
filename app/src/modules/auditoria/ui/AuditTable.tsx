@@ -22,12 +22,8 @@ import type {
   AuditoriaPagina,
   AuditoriaFiltroEntrada,
 } from "../domain/auditoria";
-import {
-  ETIQUETA_ACCION,
-  detalleFila,
-  formatearFechaHoraSD,
-  tonoAccion,
-} from "./format";
+import { formatearFechaHoraSD } from "@/shared/ui/format";
+import { ETIQUETA_ACCION, detalleFila, tonoAccion } from "./format";
 import { construirHref } from "./url";
 
 const CABECERA = [

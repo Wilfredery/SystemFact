@@ -15,23 +15,6 @@
 
 import type { AccionAuditoria } from "../domain/auditoria";
 
-/** SD wall-clock display for a UTC instant (`es-DO`, 24-hour, no manual offset math). */
-const FORMATO_FECHA_HORA_SD = new Intl.DateTimeFormat("es-DO", {
-  timeZone: "America/Santo_Domingo",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
-});
-
-/** A persisted UTC `Date` → its Santo-Domingo calendar rendering for the table. */
-export function formatearFechaHoraSD(fecha: Date): string {
-  return FORMATO_FECHA_HORA_SD.format(fecha);
-}
-
 /** Spanish end-user label for each audit action (matches the cobros UI language). */
 export const ETIQUETA_ACCION: Record<AccionAuditoria, string> = {
   CREAR: "Crear",
