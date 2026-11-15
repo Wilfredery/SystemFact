@@ -99,11 +99,37 @@ const zMoverUsuarioDeSucursalInput = z
   })
   .strict();
 
+/** Required free text, like Cliente/Proveedor (columns are VarChar(255) NOT NULL). */
+const zTextoSucursal = z.string().trim().min(1).max(255);
+
+const zCrearSucursalInput = z
+  .object({
+    nombre: zTextoSucursal,
+    direccion: zTextoSucursal,
+    telefono: zTextoSucursal,
+  })
+  .strict();
+
+const zEditarSucursalInput = z
+  .object({
+    sucursalId: zIdPositivo,
+    nombre: zTextoSucursal,
+    direccion: zTextoSucursal,
+    telefono: zTextoSucursal,
+    versionEsperada: zIdPositivo,
+  })
+  .strict();
+
+export type CrearSucursalInput = z.infer<typeof zCrearSucursalInput>;
+export type EditarSucursalInput = z.infer<typeof zEditarSucursalInput>;
+
 export type MoverUsuarioDeSucursalInput = z.infer<typeof zMoverUsuarioDeSucursalInput>;
 export type CambiarRolesUsuarioInput = z.infer<typeof zCambiarRolesUsuarioInput>;
 export type CambiarEstadoUsuarioInput = z.infer<typeof zCambiarEstadoUsuarioInput>;
 
 export {
+  zCrearSucursalInput,
+  zEditarSucursalInput,
   zCambiarEstadoUsuarioInput,
   zCambiarRolesUsuarioInput,
   zCambiarSucursalInput,

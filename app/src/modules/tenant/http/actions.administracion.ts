@@ -119,6 +119,9 @@ export async function listarSucursalesDeEmpresaAction(): Promise<
       result.sucursales.map((sucursal) => ({
         id: sucursal.id,
         nombre: sucursal.nombre,
+        direccion: sucursal.direccion,
+        telefono: sucursal.telefono,
+        version: sucursal.version,
       })),
     );
   });

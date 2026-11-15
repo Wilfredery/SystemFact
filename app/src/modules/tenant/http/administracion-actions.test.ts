@@ -212,12 +212,19 @@ describe("listarSucursalesDeEmpresaAction", () => {
   it("delegates to the existing use case and returns its branches", async () => {
     (listarSucursalesDeEmpresa as jest.Mock).mockResolvedValue({
       ok: true,
-      sucursales: [{ id: 10, nombre: "Matriz" }],
+      sucursales: [
+        { id: 10, nombre: "Matriz", direccion: "Calle 1", telefono: "8095550000", version: 2 },
+      ],
     });
 
     const result = await listarSucursalesDeEmpresaAction();
 
-    expect(result).toEqual({ ok: true, data: [{ id: 10, nombre: "Matriz" }] });
+    expect(result).toEqual({
+      ok: true,
+      data: [
+        { id: 10, nombre: "Matriz", direccion: "Calle 1", telefono: "8095550000", version: 2 },
+      ],
+    });
     expect(listarSucursalesDeEmpresa).toHaveBeenCalledWith(ctx, {});
   });
 
