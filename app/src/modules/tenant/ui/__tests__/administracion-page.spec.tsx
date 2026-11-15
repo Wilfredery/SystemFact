@@ -35,6 +35,11 @@ jest.mock("@/modules/tenant/http/actions.usuarios", () => ({
   cambiarEstadoUsuarioAction: jest.fn(),
 }));
 
+jest.mock("@/modules/tenant/http/actions.sucursal", () => ({
+  crearSucursalAction: jest.fn(),
+  editarSucursalAction: jest.fn(),
+}));
+
 jest.mock("@/modules/tenant/http/actions.administracion", () => ({
   listarUsuariosAction: jest.fn(),
   listarSucursalesDeEmpresaAction: jest.fn(),

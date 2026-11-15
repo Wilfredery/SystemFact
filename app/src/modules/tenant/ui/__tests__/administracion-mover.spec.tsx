@@ -28,6 +28,11 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(async () => undefined) }),
 }));
 
+jest.mock("@/modules/tenant/http/actions.sucursal", () => ({
+  crearSucursalAction: jest.fn(),
+  editarSucursalAction: jest.fn(),
+}));
+
 jest.mock("@/modules/tenant/http/actions.administracion", () => ({
   listarUsuariosAction: jest.fn(),
   listarSucursalesDeEmpresaAction: jest.fn(),

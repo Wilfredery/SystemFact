@@ -2,7 +2,9 @@
 
 /**
  * Administración screen (screens plan Step 7, `odd/tasks/administracion.md`
- * S2/S6): the wireframe's three tabs. Sucursales and Configuración are read-only;
+ * S2/S6): the wireframe's three tabs. Configuración is read-only; Sucursales gains
+ * "Nueva sucursal" and "Editar" (`odd/tasks/administracion-sucursales-crear-editar.md`
+ * S9) under the same `puedeGestionar` flag and the same rules as the user writes;
  * the Usuarios tab gains the Step 7b writes (`odd/tasks/administracion-writes.md`
  * S11) — role assignment and activate/deactivate — plus "Mover de sucursal"
  * (`odd/tasks/administracion-mover-usuario.md` S10) ONLY when the page says the
@@ -29,6 +31,10 @@ import {
   listarUsuariosAction,
 } from "@/modules/tenant/http/actions.administracion";
 import {
+  crearSucursalAction,
+  editarSucursalAction,
+} from "@/modules/tenant/http/actions.sucursal";
+import {
   cambiarEstadoUsuarioAction,
   cambiarRolesUsuarioAction,
   moverUsuarioDeSucursalAction,
@@ -53,6 +59,7 @@ import {
   type FiltrosUsuarios,
   type TabAdministracion,
 } from "./administracion-tabs";
+import { SucursalDialog, type DatosSucursalFormulario } from "./GestionSucursalDialog";
 import {
   CambiarRolesDialog,
   ConfirmarEstadoUsuarioDialog,
@@ -65,6 +72,11 @@ type AccionUsuario =
   | { readonly tipo: "roles"; readonly usuarioId: number }
   | { readonly tipo: "estado"; readonly usuarioId: number }
   | { readonly tipo: "mover"; readonly usuarioId: number };
+
+/** What the open branch dialog is doing; the branch is looked up in the CURRENT rows. */
+type AccionSucursal =
+  | { readonly tipo: "crear" }
+  | { readonly tipo: "editar"; readonly sucursalId: number };
 
 const TITULO_PROPIO_USUARIO =
   "No puede modificar su propio usuario: pídalo a otro Administrador.";
@@ -142,6 +154,10 @@ export function AdministracionScreen({
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [destinos, setDestinos] = useState<SucursalesDestino>({ estado: "cargando" });
   const moviendo = accion !== null && accion.tipo === "mover";
+  const [sucursales, setSucursales] = useState<SucursalesInicial | null>(sucursalesInicial);
+  const [accionSucursal, setAccionSucursal] = useState<AccionSucursal | null>(null);
+  const [mensajeSucursal, setMensajeSucursal] = useState<string | null>(null);
+  const [errorRecarga, setErrorRecarga] = useState<string | null>(null);
 
   // The move dialog reads the company's active branches (existing branch list
   // use case) every time it opens, so the select is never a stale list.
@@ -243,6 +259,87 @@ export function AdministracionScreen({
     }
   }
 
+  function abrirAccionSucursal(siguiente: AccionSucursal): void {
+    setMensajeSucursal(null);
+    setErrorAccion(null);
+    setAccionSucursal(siguiente);
+  }
+
+  function cerrarAccionSucursal(): void {
+    setAccionSucursal(null);
+    setErrorAccion(null);
+  }
+
+  /** Re-reads the branch list (the existing admin-only read) after a write. */
+  async function recargarSucursales(): Promise<void> {
+    try {
+      const r = await listarSucursalesDeEmpresaAction();
+      if (r.ok) {
+        setSucursales({ ok: true, data: r.data });
+        setErrorRecarga(null);
+      } else {
+        setErrorRecarga(mensajeErrorGestion(r.error.code, r.error.message));
+      }
+    } catch {
+      setErrorRecarga(MENSAJE_FALLO_SUCURSALES);
+    }
+  }
+
+  /**
+   * One branch write: same rules as `ejecutarEscritura` (pending flag with a ref
+   * guard, dialog stays open with the catalog message on any refusal, new state
+   * only after an ok answer plus a re-read, a conflict re-reads but NEVER retries).
+   */
+  async function ejecutarEscrituraSucursal(
+    escribir: () => ReturnType<typeof crearSucursalAction> | ReturnType<typeof editarSucursalAction>,
+    mensajeOk: string,
+  ): Promise<void> {
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
+    setEnviando(true);
+    setErrorAccion(null);
+    try {
+      const r = await escribir();
+      if (!r.ok) {
+        setErrorAccion(mensajeErrorGestion(r.error.code, r.error.message));
+        if (r.error.code === TEN_CONCURRENCIA_CONFLICTO) await recargarSucursales();
+        return;
+      }
+      setAccionSucursal(null);
+      setMensajeSucursal("cambio" in r.data && !r.data.cambio ? "No había cambios que guardar." : mensajeOk);
+      await recargarSucursales();
+    } catch {
+      setErrorAccion(MENSAJE_FALLO_ACCION);
+    } finally {
+      enviandoRef.current = false;
+      setEnviando(false);
+    }
+  }
+
+  function guardarSucursal(
+    accionActual: AccionSucursal,
+    sucursal: SucursalAdministracionDto | undefined,
+    datos: DatosSucursalFormulario,
+  ): void {
+    if (accionActual.tipo === "crear") {
+      void ejecutarEscrituraSucursal(
+        () => crearSucursalAction(datos),
+        `Sucursal ${datos.nombre} creada.`,
+      );
+      return;
+    }
+    if (sucursal === undefined) return;
+    void ejecutarEscrituraSucursal(
+      () =>
+        editarSucursalAction({
+          sucursalId: sucursal.id,
+          ...datos,
+          versionEsperada: sucursal.version,
+        }),
+      `Sucursal ${datos.nombre} actualizada.`,
+    );
+  }
+
   function cambiarTab(destino: TabAdministracion): void {
     if (destino === tab) return;
     iniciarNavegacion(async () => {
@@ -333,7 +430,30 @@ export function AdministracionScreen({
           }
         />
       )}
-      {tab === "sucursales" && <TablaSucursales inicial={sucursalesInicial} />}
+      {tab === "sucursales" && (
+        <TablaSucursales
+          inicial={sucursales}
+          puedeGestionar={puedeGestionar}
+          enviando={enviando}
+          mensaje={mensajeSucursal}
+          errorRecarga={errorRecarga}
+          onAccion={abrirAccionSucursal}
+        />
+      )}
+      {tab === "sucursales" &&
+        puedeGestionar &&
+        accionSucursal !== null &&
+        sucursales !== null &&
+        sucursales.ok && (
+          <DialogoSucursal
+            accion={accionSucursal}
+            sucursales={sucursales.data}
+            enviando={enviando}
+            error={errorAccion}
+            onCerrar={cerrarAccionSucursal}
+            onGuardar={guardarSucursal}
+          />
+        )}
       {tab === "configuracion" && <PanelConfiguracion inicial={configuracionInicial} />}
     </div>
   );
@@ -625,7 +745,56 @@ function AccionesUsuario({
   );
 }
 
-function TablaSucursales({ inicial }: { readonly inicial: SucursalesInicial | null }) {
+function DialogoSucursal({
+  accion,
+  sucursales,
+  enviando,
+  error,
+  onCerrar,
+  onGuardar,
+}: {
+  readonly accion: AccionSucursal;
+  readonly sucursales: readonly SucursalAdministracionDto[];
+  readonly enviando: boolean;
+  readonly error: string | null;
+  readonly onCerrar: () => void;
+  readonly onGuardar: (
+    accion: AccionSucursal,
+    sucursal: SucursalAdministracionDto | undefined,
+    datos: DatosSucursalFormulario,
+  ) => void;
+}) {
+  // Always the row from the LATEST read, so a retry after a conflict carries the
+  // reloaded `version`.
+  const sucursal =
+    accion.tipo === "editar" ? sucursales.find((s) => s.id === accion.sucursalId) : undefined;
+  if (accion.tipo === "editar" && sucursal === undefined) return null;
+  return (
+    <SucursalDialog
+      sucursal={sucursal ?? null}
+      enviando={enviando}
+      error={error}
+      onConfirmar={(datos) => onGuardar(accion, sucursal, datos)}
+      onCerrar={onCerrar}
+    />
+  );
+}
+
+function TablaSucursales({
+  inicial,
+  puedeGestionar,
+  enviando,
+  mensaje,
+  errorRecarga,
+  onAccion,
+}: {
+  readonly inicial: SucursalesInicial | null;
+  readonly puedeGestionar: boolean;
+  readonly enviando: boolean;
+  readonly mensaje: string | null;
+  readonly errorRecarga: string | null;
+  readonly onAccion: (accion: AccionSucursal) => void;
+}) {
   if (inicial === null) {
     return <p className={CLASE_ALERTA} role="alert">No hay datos de sucursales.</p>;
   }
@@ -634,28 +803,72 @@ function TablaSucursales({ inicial }: { readonly inicial: SucursalesInicial | nu
   }
 
   return (
-    <div className={CLASE_TABLA}>
-      <table className="w-full text-left text-sm">
-        <thead className={CLASE_CABECERA}>
-          <tr>
-            <th scope="col" className="px-4 py-2">Sucursal</th>
-            <th scope="col" className="px-4 py-2">Estado</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-          {inicial.data.map((s) => (
-            <tr key={s.id} data-testid={`sucursal-fila-${s.id}`}>
-              <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">{s.nombre}</td>
-              <td className="px-4 py-2">
-                {/* The existing use case returns active branches only (S4 gap). */}
-                <span className="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                  Activa
-                </span>
-              </td>
+    <div className="flex flex-col gap-4">
+      {errorRecarga !== null && (
+        <p role="alert" className={CLASE_ALERTA}>
+          {errorRecarga}
+        </p>
+      )}
+      {mensaje !== null && (
+        <p
+          role="status"
+          className="rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+        >
+          {mensaje}
+        </p>
+      )}
+      {puedeGestionar && (
+        <div>
+          <button
+            type="button"
+            disabled={enviando}
+            onClick={() => onAccion({ tipo: "crear" })}
+            className={CLASE_BOTON}
+          >
+            Nueva sucursal
+          </button>
+        </div>
+      )}
+      <div className={CLASE_TABLA}>
+        <table className="w-full text-left text-sm">
+          <thead className={CLASE_CABECERA}>
+            <tr>
+              <th scope="col" className="px-4 py-2">Nombre</th>
+              <th scope="col" className="px-4 py-2">Dirección</th>
+              <th scope="col" className="px-4 py-2">Teléfono</th>
+              <th scope="col" className="px-4 py-2">Estado</th>
+              {puedeGestionar && <th scope="col" className="px-4 py-2">Acciones</th>}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            {inicial.data.map((s) => (
+              <tr key={s.id} data-testid={`sucursal-fila-${s.id}`}>
+                <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">{s.nombre}</td>
+                <td className="px-4 py-2">{s.direccion}</td>
+                <td className="px-4 py-2">{s.telefono}</td>
+                <td className="px-4 py-2">
+                  {/* The existing use case returns active branches only (S4 gap). */}
+                  <span className="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                    Activa
+                  </span>
+                </td>
+                {puedeGestionar && (
+                  <td className="px-4 py-2">
+                    <button
+                      type="button"
+                      disabled={enviando}
+                      onClick={() => onAccion({ tipo: "editar", sucursalId: s.id })}
+                      className={CLASE_BOTON}
+                    >
+                      Editar
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

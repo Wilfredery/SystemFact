@@ -33,6 +33,14 @@
  * branch, so later specs (the branch selector lists active branches) see the
  * fixture's single branch again.
  *
+ * BRANCH WRITES (administracion-sucursales-crear-editar T3, S9/S10): the create/
+ * edit test makes a branch whose name is UNIQUE per run (`${PREFIJO_SUCURSAL_CREADA}`
+ * + timestamp), because the database refuses a duplicate name per empresa even for
+ * inactive branches and branches are never deleted. The afterAll (and the end of
+ * the test) DEACTIVATE every branch of that prefix with superuser SQL, never DELETE
+ * (the DELETE policy is bootstrap-only), so later specs see the fixture's single
+ * active branch again.
+ *
  * ENV: E2E_USER (Administrador), E2E_OPERADOR_USER, E2E_DESPACHADOR_USER,
  * E2E_PASSWORD (shared by the three identities on the ephemeral local stack)
  * and DIRECT_URL/DATABASE_URL (superuser read for ASSERTIONS; the ONLY write it
@@ -53,9 +61,13 @@ const OBJETIVO = "e2e-gestion-objetivo";
 /** Second active branch the move test creates for the fixture empresa. */
 const SUCURSAL_DESTINO = "E2E Sucursal Destino";
 
+/** Name prefix of the branches the create/edit test makes (one unique name per run). */
+const PREFIJO_SUCURSAL_CREADA = "E2E Sucursal Crear";
+
 test.afterAll(async () => {
   try {
     await restaurarObjetivo();
+    await desactivarSucursalesCreadas();
   } finally {
     await pool.end();
   }
@@ -122,6 +134,31 @@ async function asegurarSucursalDestino(empresaId: number): Promise<number> {
   const id = (existente.rows[0] as { id: number }).id;
   await pool.query(`update "SUCURSAL" set activa = true where id = $1`, [id]);
   return id;
+}
+
+/**
+ * Deactivates every branch the create/edit test made (name prefix, the admin's
+ * empresa). Idempotent; never deletes (branches are never deleted).
+ */
+async function desactivarSucursalesCreadas(): Promise<void> {
+  await pool.query(
+    `update "SUCURSAL" set activa = false
+      where nombre like $1 and "empresaId" =
+        (select "empresaId" from "USUARIO" where "nombreUsuario" = $2)`,
+    [`${PREFIJO_SUCURSAL_CREADA}%`, requireEnv("E2E_USER")],
+  );
+}
+
+type EstadoSucursal = { activa: boolean; version: number; direccion: string; telefono: string };
+
+/** Real rows of a branch by trimmed, case-insensitive name (superuser read; inactive ones too). */
+async function leerSucursalesPorNombre(empresaId: number, nombre: string): Promise<EstadoSucursal[]> {
+  const res = await pool.query(
+    `select activa, version, direccion, telefono from "SUCURSAL"
+      where "empresaId" = $1 and lower(btrim(nombre)) = lower(btrim($2))`,
+    [empresaId, nombre],
+  );
+  return res.rows as EstadoSucursal[];
 }
 
 /** The throwaway user's real state (superuser read: `activo` is NOT filtered). */
@@ -283,7 +320,10 @@ test.describe("/administracion (administracion T3)", () => {
       "aria-selected",
       "true",
     );
-    await expect(page.getByRole("columnheader", { name: "Sucursal", exact: true })).toBeVisible();
+    for (const columna of ["Nombre", "Dirección", "Teléfono", "Estado", "Acciones"]) {
+      await expect(page.getByRole("columnheader", { name: columna, exact: true })).toBeVisible();
+    }
+    await expect(page.getByRole("button", { name: "Nueva sucursal" })).toBeVisible();
     await expect(page.locator(FILAS_SUCURSAL).first()).toBeVisible();
     await expect(page.locator(FILAS_SUCURSAL).first()).toContainText("Activa");
 
@@ -473,6 +513,106 @@ test.describe("/administracion (administracion T3)", () => {
     const final = await leerObjetivo();
     expect(final.sucursalId).toBe(inicial.sucursalId);
     expect(final.version).toBe(trasMover.version + 1);
+  });
+
+  test("Administrador creates a branch, sees it with its data, edits it and the duplicate name is refused", async ({
+    page,
+  }) => {
+    const nombreUsuario = requireEnv("E2E_USER");
+    const password = requireEnv("E2E_PASSWORD");
+    const nombre = `${PREFIJO_SUCURSAL_CREADA} ${Date.now()}`;
+    const direccion = "Av. E2E Crear 100";
+    const telefono = "8095550100";
+    const direccionNueva = "Av. E2E Editada 200";
+
+    const { empresaId } = await usuarioPrecond(pool, nombreUsuario);
+    await desactivarSucursalesCreadas(); // known start even after an aborted earlier run
+    expect(await leerSucursalesPorNombre(empresaId, nombre), "the name is unique to this run").toHaveLength(0);
+
+    try {
+      await login(page, { user: nombreUsuario, password });
+      await irAAdministracion(page);
+      await page.getByRole("tab", { name: "Sucursales" }).click();
+      await expect(page).toHaveURL(/tab=sucursales/);
+      await expect(page.getByRole("button", { name: "Nueva sucursal" })).toBeVisible();
+
+      // --- Create through the UI ------------------------------------------------
+      await page.getByRole("button", { name: "Nueva sucursal" }).click();
+      const dialogo = page.getByRole("dialog", { name: "Nueva sucursal" });
+      const confirmarCrear = dialogo.getByRole("button", { name: "Crear sucursal" });
+      await expect(confirmarCrear).toBeDisabled();
+      await dialogo.getByLabel("Nombre").fill(`  ${nombre}  `);
+      await dialogo.getByLabel("Dirección").fill(direccion);
+      await expect(confirmarCrear).toBeDisabled(); // phone still empty
+      await dialogo.getByLabel("Teléfono").fill(telefono);
+      await expect(confirmarCrear).toBeEnabled();
+      await confirmarCrear.click();
+      await expect(dialogo).toBeHidden();
+
+      // Shown only after the server answered: the re-read list carries the branch.
+      const fila = page.locator(FILAS_SUCURSAL).filter({ hasText: nombre });
+      await expect(fila).toHaveCount(1);
+      await expect(fila).toContainText(direccion);
+      await expect(fila).toContainText(telefono);
+      await expect(fila).toContainText("Activa");
+      await expect(page.locator("main").getByRole("status")).toHaveText(`Sucursal ${nombre} creada.`);
+
+      const creada = await leerSucursalesPorNombre(empresaId, nombre);
+      expect(creada).toHaveLength(1);
+      expect(creada[0]).toMatchObject({ activa: true, version: 1, direccion, telefono });
+
+      // --- Edit its dirección through the UI --------------------------------------
+      await fila.getByRole("button", { name: "Editar" }).click();
+      const dialogoEditar = page.getByRole("dialog", { name: "Editar sucursal" });
+      await expect(dialogoEditar.getByLabel("Nombre")).toHaveValue(nombre);
+      await expect(dialogoEditar.getByLabel("Dirección")).toHaveValue(direccion);
+      await expect(dialogoEditar.getByLabel("Teléfono")).toHaveValue(telefono);
+      const confirmarEditar = dialogoEditar.getByRole("button", { name: "Guardar cambios" });
+      await expect(confirmarEditar).toBeDisabled(); // nothing changed yet
+      await dialogoEditar.getByLabel("Dirección").fill(direccionNueva);
+      await expect(confirmarEditar).toBeEnabled();
+      await confirmarEditar.click();
+      await expect(dialogoEditar).toBeHidden();
+
+      await expect(fila).toContainText(direccionNueva);
+      await expect(fila).not.toContainText(direccion);
+      await expect(page.locator("main").getByRole("status")).toHaveText(
+        `Sucursal ${nombre} actualizada.`,
+      );
+      const editada = await leerSucursalesPorNombre(empresaId, nombre);
+      expect(editada).toHaveLength(1);
+      expect(editada[0]).toMatchObject({ activa: true, version: 2, direccion: direccionNueva, telefono });
+
+      // --- A case/space variant of an existing name is a duplicate ------------------
+      await page.getByRole("button", { name: "Nueva sucursal" }).click();
+      const dialogoDuplicado = page.getByRole("dialog", { name: "Nueva sucursal" });
+      await dialogoDuplicado.getByLabel("Nombre").fill(`  ${nombre.toUpperCase()} `);
+      await dialogoDuplicado.getByLabel("Dirección").fill("Av. Otra 1");
+      await dialogoDuplicado.getByLabel("Teléfono").fill("8095550101");
+      await dialogoDuplicado.getByRole("button", { name: "Crear sucursal" }).click();
+      await expect(dialogoDuplicado.getByRole("alert")).toContainText(
+        "Ya existe una sucursal con ese nombre.",
+      );
+      await expect(dialogoDuplicado.getByRole("alert")).toContainText("inactivas");
+      await expect(dialogoDuplicado).toBeVisible(); // stays open: the person can fix it
+      await dialogoDuplicado.getByRole("button", { name: "Cancelar" }).click();
+      await expect(dialogoDuplicado).toBeHidden();
+      expect(await leerSucursalesPorNombre(empresaId, nombre), "no second row").toHaveLength(1);
+
+      // --- The new branch is selectable in the slice-A move dialog -------------------
+      await page.getByRole("tab", { name: "Usuarios" }).click();
+      await page.getByLabel("Buscar usuario").fill(OBJETIVO);
+      const filaUsuario = page.locator(FILAS_USUARIO).filter({ hasText: OBJETIVO });
+      await expect(page.locator(FILAS_USUARIO)).toHaveCount(1);
+      await filaUsuario.getByRole("button", { name: "Mover de sucursal" }).click();
+      const dialogoMover = page.getByRole("dialog", { name: "Mover de sucursal" });
+      const select = dialogoMover.getByRole("combobox", { name: "Sucursal destino" });
+      await expect(select.getByRole("option", { name: nombre, exact: true })).toHaveCount(1);
+      await dialogoMover.getByRole("button", { name: "Cancelar" }).click();
+      await expect(dialogoMover).toBeHidden();
+    } finally {
+      await desactivarSucursalesCreadas();
+    }
   });
 
   for (const [rol, envUser] of [
