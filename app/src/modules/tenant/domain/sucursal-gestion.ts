@@ -79,3 +79,67 @@ export function decidirEdicionSucursal(
       claveNombreSucursal(actualLimpio.nombre) !== claveNombreSucursal(nuevo.nombre),
   };
 }
+
+/** Why a deactivation is refused (S3/S4). One entry per reason, all reported together. */
+export type MotivoRechazoDesactivacion =
+  | "SUCURSAL_PROPIA"
+  | "ULTIMA_ACTIVA"
+  | "USUARIOS"
+  | "STOCK"
+  | "DOCUMENTOS_ABIERTOS"
+  | "SALDOS";
+
+/** Blocker counts of one branch, as the use case read them (SQL aggregates). */
+export interface ConteosBloqueoSucursal {
+  /** Active users assigned to the branch. */
+  readonly usuarios: number;
+  /** INVENTARIO rows of the branch with quantity above zero. */
+  readonly stock: number;
+  /** VENTA in BORRADOR + COMPRA in BORRADOR/PENDIENTE of the branch. */
+  readonly documentosAbiertos: number;
+  /** Confirmed (VIGENTE) invoices of the branch with a derived balance above zero. */
+  readonly saldos: number;
+}
+
+export interface HechosCambioEstadoSucursal {
+  readonly sucursalId: number;
+  readonly activaActual: boolean;
+  readonly activaSolicitada: boolean;
+  readonly conteos: ConteosBloqueoSucursal;
+  /** The branch the acting session is pinned to. */
+  readonly sucursalSesionId: number;
+  /** Active branches of the empresa right now (including this one). */
+  readonly sucursalesActivas: number;
+}
+
+export type DecisionCambioEstadoSucursal =
+  | { readonly tipo: "SIN_CAMBIO" }
+  | { readonly tipo: "APLICAR" }
+  | {
+      readonly tipo: "RECHAZAR";
+      readonly motivos: readonly MotivoRechazoDesactivacion[];
+    };
+
+/**
+ * Decide an activate/deactivate request from facts the use case already read.
+ * A branch already in the requested state is the idempotent no-op (checked
+ * first: nothing else matters then). Reactivation is never refused. A
+ * deactivation collects EVERY reason (own branch, last active branch, then the
+ * four blocker counts) so the screen can list them all in one message.
+ */
+export function decidirCambioEstadoSucursal(
+  hechos: HechosCambioEstadoSucursal,
+): DecisionCambioEstadoSucursal {
+  if (hechos.activaActual === hechos.activaSolicitada) return { tipo: "SIN_CAMBIO" };
+  if (hechos.activaSolicitada) return { tipo: "APLICAR" };
+
+  const motivos: MotivoRechazoDesactivacion[] = [];
+  if (hechos.sucursalId === hechos.sucursalSesionId) motivos.push("SUCURSAL_PROPIA");
+  if (hechos.sucursalesActivas <= 1) motivos.push("ULTIMA_ACTIVA");
+  if (hechos.conteos.usuarios > 0) motivos.push("USUARIOS");
+  if (hechos.conteos.stock > 0) motivos.push("STOCK");
+  if (hechos.conteos.documentosAbiertos > 0) motivos.push("DOCUMENTOS_ABIERTOS");
+  if (hechos.conteos.saldos > 0) motivos.push("SALDOS");
+
+  return motivos.length === 0 ? { tipo: "APLICAR" } : { tipo: "RECHAZAR", motivos };
+}

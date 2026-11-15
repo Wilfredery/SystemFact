@@ -10,6 +10,7 @@
 
 import {
   consultarConfiguracionAction,
+  listarSucursalesAdministracionAction,
   listarSucursalesDeEmpresaAction,
   listarUsuariosAction,
   obtenerPermisosAdministracionAction,
@@ -19,6 +20,7 @@ import { listarUsuarios } from "../application/listar-usuarios";
 import { consultarConfiguracion } from "../application/consultar-configuracion";
 import { consultarRolesCatalogo } from "../application/consultar-roles-catalogo";
 import { listarSucursalesDeEmpresa } from "../application/listarSucursalesDeEmpresa";
+import { listarSucursalesAdministracion } from "../application/listarSucursalesAdministracion";
 import { tieneRolPermitidoEnTx } from "../infrastructure/usuario-repository";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -45,6 +47,9 @@ jest.mock("../application/consultar-configuracion", () => ({
 }));
 jest.mock("../application/listarSucursalesDeEmpresa", () => ({
   listarSucursalesDeEmpresa: jest.fn(),
+}));
+jest.mock("../application/listarSucursalesAdministracion", () => ({
+  listarSucursalesAdministracion: jest.fn(),
 }));
 jest.mock("../infrastructure/usuario-repository", () => ({
   tieneRolPermitidoEnTx: jest.fn(),
@@ -252,6 +257,56 @@ describe("listarSucursalesDeEmpresaAction", () => {
     const result = await listarSucursalesDeEmpresaAction();
 
     expect(result.ok === false && result.error.code).toBe("SESION_INVALIDA");
+  });
+});
+
+describe("listarSucursalesAdministracionAction", () => {
+  it("returns ALL branches with their activa flag and version, from the sibling use case", async () => {
+    (listarSucursalesAdministracion as jest.Mock).mockResolvedValue({
+      ok: true,
+      sucursales: [
+        { id: 10, nombre: "Matriz", direccion: "A", telefono: "1", activa: true, version: 2 },
+        { id: 11, nombre: "Cerrada", direccion: "B", telefono: "2", activa: false, version: 7 },
+      ],
+    });
+
+    const result = await listarSucursalesAdministracionAction();
+
+    expect(result).toEqual({
+      ok: true,
+      data: [
+        { id: 10, nombre: "Matriz", direccion: "A", telefono: "1", activa: true, version: 2 },
+        { id: 11, nombre: "Cerrada", direccion: "B", telefono: "2", activa: false, version: 7 },
+      ],
+    });
+    expect(listarSucursalesAdministracion).toHaveBeenCalledWith(ctx, {});
+    // The active-only reader the move dialog uses is NOT involved.
+    expect(listarSucursalesDeEmpresa).not.toHaveBeenCalled();
+  });
+
+  it("forwards the use case's admin-only denial", async () => {
+    (listarSucursalesAdministracion as jest.Mock).mockResolvedValue({
+      ok: false,
+      code: "TEN_OPS_NO_AUTORIZADO",
+      message: "No tienes permiso para esta operación.",
+    });
+
+    expect(await listarSucursalesAdministracionAction()).toEqual({
+      ok: false,
+      error: {
+        code: "TEN_OPS_NO_AUTORIZADO",
+        message: "No tienes permiso para esta operación.",
+      },
+    });
+  });
+
+  it("fails closed with SESION_INVALIDA when there is no session", async () => {
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
+
+    const result = await listarSucursalesAdministracionAction();
+
+    expect(result.ok === false && result.error.code).toBe("SESION_INVALIDA");
+    expect(listarSucursalesAdministracion).not.toHaveBeenCalled();
   });
 });
 

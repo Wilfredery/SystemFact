@@ -24,12 +24,17 @@ import {
   cambiarRolesUsuario,
 } from "@/modules/tenant/application/gestion-usuarios";
 import {
+  activarSucursalEnTx,
+  liberarSucursalActivaEnTx,
+} from "@/modules/tenant/infrastructure/repo-sucursal";
+import {
   TEN_AUTO_PROTECCION,
   TEN_CONCURRENCIA_CONFLICTO,
   TEN_OPS_NO_AUTORIZADO,
   TEN_ROL_NO_VALIDO,
   TEN_ULTIMO_ADMINISTRADOR,
   TEN_USUARIO_NO_ENCONTRADO,
+  TEN_USUARIO_SUCURSAL_INACTIVA,
 } from "@/modules/tenant/domain/errors";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { ROLES_GESTION_USUARIOS } from "@/modules/tenant/http/shared";
@@ -485,6 +490,155 @@ describe("cambiarRolesUsuario / cambiarEstadoUsuario (real DB)", () => {
       expect(result).toMatchObject({ ok: false, code: TEN_OPS_NO_AUTORIZADO });
       expect(await estado(objetivoId)).toEqual(antes);
       expect(await auditoriaUsuario(objetivoId)).toHaveLength(0);
+    });
+  });
+
+  describe("L8 activating a user needs an ACTIVE branch", () => {
+    let xId: number; // branch of the user under test
+    let adminXId: number; // active Administrador of X (the acting session)
+    let inactivoXId: number; // INACTIVE Operador of X
+    let ctxX: TenantCtx;
+
+    async function sembrarSucursalX(activa: boolean): Promise<void> {
+      xId = (
+        await db().sucursal.create({
+          data: {
+            empresaId: fx.empresaA.id,
+            nombre: `L8-${randomUUID()}`,
+            direccion: "x",
+            telefono: "0",
+          },
+        })
+      ).id;
+      adminXId = await crearUsuario(fx.empresaA.id, xId, "adminX", rolAdminId);
+      inactivoXId = await crearUsuario(fx.empresaA.id, xId, "inactivoX", rolOperadorId);
+      await db().usuario.update({ where: { id: inactivoXId }, data: { activo: false } });
+      // The harness superuser makes X inactive (the deactivation use case would
+      // refuse while an active user is on it), like the slice C test.
+      if (!activa) await db().sucursal.update({ where: { id: xId }, data: { activa: false } });
+      ctxX = { ...ctxAdmin, sucursalId: xId, usuarioId: adminXId };
+    }
+
+    it("activating a user of an INACTIVE branch is refused with its own code and changes nothing", async () => {
+      await sembrarSucursalX(false);
+      const antes = await estado(inactivoXId);
+      const result = await activo(ctxX, {
+        usuarioId: inactivoXId,
+        activo: true,
+        versionEsperada: antes.version,
+      });
+      expect(result).toMatchObject({ ok: false, code: TEN_USUARIO_SUCURSAL_INACTIVA });
+      expect(await estado(inactivoXId)).toEqual(antes);
+      expect(await auditoriaUsuario(inactivoXId)).toHaveLength(0);
+    });
+
+    it("activating a user of an ACTIVE branch still works (version +1, one audit row)", async () => {
+      await sembrarSucursalX(true);
+      const result = await activo(ctxX, { usuarioId: inactivoXId, activo: true, versionEsperada: 1 });
+      expect(result).toEqual({
+        ok: true,
+        data: { usuarioId: inactivoXId, version: 2, cambio: true },
+      });
+      expect(await estado(inactivoXId)).toMatchObject({ activo: true, version: 2 });
+      expect(await auditoriaUsuario(inactivoXId)).toHaveLength(1);
+    });
+
+    it("deactivating a user of an inactive branch, and the no-op on an already-active one, still work", async () => {
+      await sembrarSucursalX(false);
+      const extraId = await crearUsuario(fx.empresaA.id, xId, "extraX", rolOperadorId);
+      const baja = await activo(ctxX, { usuarioId: extraId, activo: false, versionEsperada: 1 });
+      expect(baja).toEqual({ ok: true, data: { usuarioId: extraId, version: 2, cambio: true } });
+      expect((await estado(extraId)).activo).toBe(false);
+
+      const sinCambio = await activo(ctxX, {
+        usuarioId: adminXId,
+        activo: true,
+        versionEsperada: 1,
+      });
+      expect(sinCambio).toEqual({
+        ok: true,
+        data: { usuarioId: adminXId, version: 1, cambio: false },
+      });
+      expect(await auditoriaUsuario(adminXId)).toHaveLength(0);
+    });
+
+    it("an Operador cannot activate even a user of an active branch (refusal kept, nothing written)", async () => {
+      await sembrarSucursalX(true);
+      const operadorXId = await crearUsuario(fx.empresaA.id, xId, "operadorX", rolOperadorId);
+      const ctxOperadorX: TenantCtx = { ...ctxX, usuarioId: operadorXId, esAdmin: false };
+      const result = await activo(ctxOperadorX, {
+        usuarioId: inactivoXId,
+        activo: true,
+        versionEsperada: 1,
+      });
+      expect(result).toMatchObject({ ok: false, code: TEN_OPS_NO_AUTORIZADO });
+      expect(await estado(inactivoXId)).toMatchObject({ activo: false, version: 1 });
+    });
+
+    /**
+     * A deactivation that already passed its blockers, as `cambiarEstadoSucursal`
+     * does: branch row FOR UPDATE first, then (widened, empresa-wide) the count of
+     * ACTIVE users on it, then the write. The acting administrator of X is the
+     * only active user the real use case would ALSO count, so it is left out here
+     * (the real use case would always refuse on it, which would hide the race);
+     * what this pins is the LOCK between the two transactions.
+     */
+    const bajaDeX = () =>
+      withTenantTransaction(ctxAdmin, async (tx) => {
+        await tx.$queryRaw`SELECT s."id" FROM "SUCURSAL" s WHERE s."id" = ${xId} AND s."empresaId" = ${fx.empresaA.id} FOR UPDATE`;
+        await liberarSucursalActivaEnTx(tx);
+        let activos: number;
+        try {
+          activos = await tx.usuario.count({
+            where: {
+              empresaId: fx.empresaA.id,
+              sucursalId: xId,
+              activo: true,
+              id: { not: adminXId },
+            },
+          });
+        } finally {
+          await activarSucursalEnTx(tx, ctxAdmin.sucursalId);
+        }
+        if (activos > 0) return { ok: false as const };
+        const escrito = await tx.sucursal.updateMany({
+          where: { id: xId, empresaId: fx.empresaA.id },
+          data: { activa: false, version: { increment: 1 } },
+        });
+        return { ok: escrito.count === 1 };
+      });
+
+    it("RACE: activating the user vs deactivating its branch — exactly one wins, never an ACTIVE user on an inactive branch", async () => {
+      for (let i = 0; i < 5; i += 1) {
+        await sembrarSucursalX(true);
+        const alta = () =>
+          activo(ctxX, { usuarioId: inactivoXId, activo: true, versionEsperada: 1 });
+        const [resAlta, resBaja] =
+          i % 2 === 0
+            ? await Promise.all([alta(), bajaDeX()])
+            : await Promise.all([bajaDeX(), alta()]).then(([b, a]) => [a, b] as const);
+
+        expect([resAlta.ok, resBaja.ok].filter(Boolean)).toHaveLength(1);
+        const sucursal = await db().sucursal.findUniqueOrThrow({
+          where: { id: xId },
+          select: { activa: true },
+        });
+        if (resAlta.ok) {
+          expect(resBaja.ok).toBe(false);
+          expect(sucursal.activa).toBe(true);
+          expect((await estado(inactivoXId)).activo).toBe(true);
+        } else {
+          expect(resAlta).toMatchObject({ ok: false, code: TEN_USUARIO_SUCURSAL_INACTIVA });
+          expect(sucursal.activa).toBe(false);
+          expect(await estado(inactivoXId)).toMatchObject({ activo: false, version: 1 });
+          expect(await auditoriaUsuario(inactivoXId)).toHaveLength(0);
+        }
+        expect(
+          await db().usuario.count({
+            where: { id: inactivoXId, activo: true, sucursal: { activa: false } },
+          }),
+        ).toBe(0);
+      }
     });
   });
 

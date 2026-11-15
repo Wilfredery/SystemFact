@@ -31,7 +31,7 @@ import {
 import {
   activarSucursalEnTx,
   liberarSucursalActivaEnTx,
-  leerSucursalActivaEnTx,
+  leerSucursalActivaConBloqueoEnTx,
   reescribirSucursalUsuarioEnTx,
 } from "../infrastructure/repo-sucursal";
 
@@ -60,7 +60,10 @@ export async function cambiarSucursalActiva(
 
   // 3. Target validation inside the empresa scope + activa; a foreign-empresa
   //    branch and an inactive own branch are unobservable — one shared code.
-  const target = await leerSucursalActivaEnTx(
+  //    The read is FOR SHARE (held to commit): a concurrent deactivation of the
+  //    target waits for this switch and then refuses (it counts this admin), or
+  //    commits first and this read comes back empty (activar-sucursal S5).
+  const target = await leerSucursalActivaConBloqueoEnTx(
     tx,
     ctx.empresaId,
     input.sucursalId,

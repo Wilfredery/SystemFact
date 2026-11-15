@@ -23,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { SucursalAdministracionDto } from "@/modules/tenant/http/shared";
+import type { SucursalAdministracionDto, SucursalGestionDto } from "@/modules/tenant/http/shared";
 import { validarTextoSucursal } from "./administracion-tabs";
 
 const CLASE_ALERTA =
@@ -163,6 +163,83 @@ export function SucursalDialog({
           </Button>
           <Button type="button" onClick={() => onConfirmar(recortados)} disabled={!puedeConfirmar}>
             {editando ? "Guardar cambios" : "Crear sucursal"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export interface ConfirmarEstadoSucursalDialogProps {
+  readonly sucursal: SucursalGestionDto;
+  /** The state the confirmation would set. */
+  readonly activar: boolean;
+  readonly enviando: boolean;
+  readonly error: string | null;
+  readonly onConfirmar: () => void;
+  readonly onCerrar: () => void;
+}
+
+/**
+ * Confirmation of "Desactivar" / "Activar" a branch (activate/deactivate slice S8):
+ * names the branch and states the effect. Presentational: the screen owns the
+ * pending flag and the action call; the new state is shown only after the server
+ * answered ok and the list was re-read.
+ */
+export function ConfirmarEstadoSucursalDialog({
+  sucursal,
+  activar,
+  enviando,
+  error,
+  onConfirmar,
+  onCerrar,
+}: ConfirmarEstadoSucursalDialogProps) {
+  const accion = activar ? "Activar" : "Desactivar";
+  const titulo = `${accion} sucursal`;
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(abierto) => {
+        if (!abierto && !enviando) onCerrar();
+      }}
+    >
+      <DialogContent aria-label={titulo}>
+        <DialogHeader>
+          <DialogTitle>{titulo}</DialogTitle>
+          <DialogDescription>{`Sucursal: ${sucursal.nombre}`}</DialogDescription>
+        </DialogHeader>
+
+        <p className="text-sm text-zinc-700 dark:text-zinc-300">
+          {activar
+            ? `Se activará la sucursal ${sucursal.nombre}: volverá a estar disponible para elegirla y mover usuarios a ella.`
+            : `Se desactivará la sucursal ${sucursal.nombre}: dejará de estar disponible para elegirla y para mover usuarios a ella.`}
+        </p>
+        {!activar && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            No se elimina: la sucursal queda inactiva, su historial se conserva y puede activarse de nuevo. Solo
+            se puede desactivar sin usuarios activos, existencias, documentos abiertos ni facturas con saldo
+            pendiente.
+          </p>
+        )}
+
+        {error !== null && (
+          <p role="alert" className={CLASE_ALERTA}>
+            {error}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onCerrar} disabled={enviando}>
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            variant={activar ? "default" : "destructive"}
+            onClick={onConfirmar}
+            disabled={enviando}
+          >
+            {accion}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,3 +1,13 @@
+## [0.34.0](https://github.com/Wilfredery/SystemFact/compare/v0.33.0...v0.34.0) (2026-11-15)
+
+### Features
+
+* **tenant:** the Administrador can **deactivate and reactivate branches** from the Sucursales tab of Administración (**Desactivar** / **Activar**, with an **Inactiva** badge). A branch cannot be deactivated while it has active users, stock above zero, draft sales or draft/pending purchases, or customers with an unpaid balance; the message lists every blocker with its count. The current branch and the last active branch cannot be deactivated. Deactivation is serialized with user moves and branch switches (row locks) and uses optimistic locking; every change writes one audit row. No migration.
+
+### Bug Fixes
+
+* **tenant:** activating a user whose branch is inactive is now refused (`TEN_USUARIO_SUCURSAL_INACTIVA`).
+
 ## [0.33.0](https://github.com/Wilfredery/SystemFact/compare/v0.32.0...v0.33.0) (2026-11-15)
 
 ### Features

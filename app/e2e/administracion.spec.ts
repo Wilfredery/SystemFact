@@ -41,6 +41,16 @@
  * (the DELETE policy is bootstrap-only), so later specs see the fixture's single
  * active branch again.
  *
+ * BRANCH ACTIVATE/DEACTIVATE (administracion-sucursales-activar T2, S8/S9): the
+ * state test makes ITS OWN throwaway branch (unique name per run, prefix
+ * `${PREFIJO_SUCURSAL_ESTADO}`), deactivates and reactivates it through the UI and
+ * checks the move dialog never offers it while inactive. The blocked case seeds
+ * ONE active user into that branch with superuser SQL (the fixture's throwaway
+ * user, moved back by `restaurarObjetivo`) and asserts the blocker message. The
+ * admin's OWN branch cannot be refused through the UI (the button is disabled with
+ * a title); the server message for it is covered by the use-case and integration
+ * tests. Cleanup deactivates every branch of both prefixes with SQL, never DELETE.
+ *
  * ENV: E2E_USER (Administrador), E2E_OPERADOR_USER, E2E_DESPACHADOR_USER,
  * E2E_PASSWORD (shared by the three identities on the ephemeral local stack)
  * and DIRECT_URL/DATABASE_URL (superuser read for ASSERTIONS; the ONLY write it
@@ -63,6 +73,9 @@ const SUCURSAL_DESTINO = "E2E Sucursal Destino";
 
 /** Name prefix of the branches the create/edit test makes (one unique name per run). */
 const PREFIJO_SUCURSAL_CREADA = "E2E Sucursal Crear";
+
+/** Name prefix of the branches the activate/deactivate test makes (one unique name per run). */
+const PREFIJO_SUCURSAL_ESTADO = "E2E Sucursal Estado";
 
 test.afterAll(async () => {
   try {
@@ -137,24 +150,31 @@ async function asegurarSucursalDestino(empresaId: number): Promise<number> {
 }
 
 /**
- * Deactivates every branch the create/edit test made (name prefix, the admin's
- * empresa). Idempotent; never deletes (branches are never deleted).
+ * Deactivates every branch the create/edit and the activate/deactivate tests made
+ * (name prefixes, the admin's empresa). Idempotent; never deletes (branches are
+ * never deleted).
  */
 async function desactivarSucursalesCreadas(): Promise<void> {
   await pool.query(
     `update "SUCURSAL" set activa = false
-      where nombre like $1 and "empresaId" =
-        (select "empresaId" from "USUARIO" where "nombreUsuario" = $2)`,
-    [`${PREFIJO_SUCURSAL_CREADA}%`, requireEnv("E2E_USER")],
+      where (nombre like $1 or nombre like $2) and "empresaId" =
+        (select "empresaId" from "USUARIO" where "nombreUsuario" = $3)`,
+    [`${PREFIJO_SUCURSAL_CREADA}%`, `${PREFIJO_SUCURSAL_ESTADO}%`, requireEnv("E2E_USER")],
   );
 }
 
-type EstadoSucursal = { activa: boolean; version: number; direccion: string; telefono: string };
+type EstadoSucursal = {
+  id: number;
+  activa: boolean;
+  version: number;
+  direccion: string;
+  telefono: string;
+};
 
 /** Real rows of a branch by trimmed, case-insensitive name (superuser read; inactive ones too). */
 async function leerSucursalesPorNombre(empresaId: number, nombre: string): Promise<EstadoSucursal[]> {
   const res = await pool.query(
-    `select activa, version, direccion, telefono from "SUCURSAL"
+    `select id, activa, version, direccion, telefono from "SUCURSAL"
       where "empresaId" = $1 and lower(btrim(nombre)) = lower(btrim($2))`,
     [empresaId, nombre],
   );
@@ -325,7 +345,9 @@ test.describe("/administracion (administracion T3)", () => {
     }
     await expect(page.getByRole("button", { name: "Nueva sucursal" })).toBeVisible();
     await expect(page.locator(FILAS_SUCURSAL).first()).toBeVisible();
-    await expect(page.locator(FILAS_SUCURSAL).first()).toContainText("Activa");
+    // Inactive branches (earlier runs' throwaways) are listed too: assert on the
+    // session's own branch, which is always active.
+    await expect(page.getByTestId(`sucursal-fila-${sucursalId}`)).toContainText("Activa");
 
     // --- Configuración (S2c) ---------------------------------------------
     await page.getByRole("tab", { name: "Configuración" }).click();
@@ -611,6 +633,117 @@ test.describe("/administracion (administracion T3)", () => {
       await dialogoMover.getByRole("button", { name: "Cancelar" }).click();
       await expect(dialogoMover).toBeHidden();
     } finally {
+      await desactivarSucursalesCreadas();
+    }
+  });
+
+  test("Administrador deactivates a branch, sees Inactiva and it leaves the move dialog, a blocker is explained, then reactivates it", async ({
+    page,
+  }) => {
+    const nombreUsuario = requireEnv("E2E_USER");
+    const password = requireEnv("E2E_PASSWORD");
+    const nombre = `${PREFIJO_SUCURSAL_ESTADO} ${Date.now()}`;
+
+    await restaurarObjetivo(); // known start: the throwaway user in the admin's branch
+    const { empresaId, sucursalId: sucursalPropiaId } = await usuarioPrecond(pool, nombreUsuario);
+    await desactivarSucursalesCreadas();
+    expect(await leerSucursalesPorNombre(empresaId, nombre), "the name is unique to this run").toHaveLength(0);
+
+    try {
+      await login(page, { user: nombreUsuario, password });
+      await irAAdministracion(page);
+      await page.getByRole("tab", { name: "Sucursales" }).click();
+      await expect(page).toHaveURL(/tab=sucursales/);
+
+      // The session's own branch cannot be deactivated: disabled, with the reason.
+      const propia = page.getByTestId(`sucursal-fila-${sucursalPropiaId}`);
+      await expect(propia.getByRole("button", { name: "Desactivar" })).toBeDisabled();
+      await expect(propia.getByRole("button", { name: "Desactivar" })).toHaveAttribute(
+        "title",
+        /en la que está trabajando/,
+      );
+
+      // --- A throwaway branch through the UI ----------------------------------------
+      await page.getByRole("button", { name: "Nueva sucursal" }).click();
+      const dialogoCrear = page.getByRole("dialog", { name: "Nueva sucursal" });
+      await dialogoCrear.getByLabel("Nombre").fill(nombre);
+      await dialogoCrear.getByLabel("Dirección").fill("Av. E2E Estado 1");
+      await dialogoCrear.getByLabel("Teléfono").fill("8095550200");
+      await dialogoCrear.getByRole("button", { name: "Crear sucursal" }).click();
+      await expect(dialogoCrear).toBeHidden();
+      const fila = page.locator(FILAS_SUCURSAL).filter({ hasText: nombre });
+      await expect(fila).toHaveCount(1);
+      await expect(fila).toContainText("Activa");
+      const creada = await leerSucursalesPorNombre(empresaId, nombre);
+      expect(creada).toHaveLength(1);
+      const sucursalNuevaId = creada[0].id;
+
+      // --- Blocked: an ACTIVE user lives in that branch (superuser seed) ----------------
+      await pool.query(`update "USUARIO" set "sucursalId" = $2 where "nombreUsuario" = $1`, [
+        OBJETIVO,
+        sucursalNuevaId,
+      ]);
+      await fila.getByRole("button", { name: "Desactivar" }).click();
+      const dialogoBloqueo = page.getByRole("dialog", { name: "Desactivar sucursal" });
+      await expect(dialogoBloqueo).toContainText(nombre);
+      await dialogoBloqueo.getByRole("button", { name: "Desactivar" }).click();
+      await expect(dialogoBloqueo.getByRole("alert")).toContainText(
+        /^No se puede desactivar: 1 usuario activo/,
+      );
+      await expect(dialogoBloqueo).toBeVisible(); // a refusal never closes it
+      const trasRechazo = await leerSucursalesPorNombre(empresaId, nombre);
+      expect(trasRechazo[0]).toMatchObject({ activa: true, version: creada[0].version });
+      await dialogoBloqueo.getByRole("button", { name: "Cancelar" }).click();
+      await expect(dialogoBloqueo).toBeHidden();
+      await expect(fila).toContainText("Activa");
+
+      // The blocker is gone: the throwaway user goes back to the admin's branch.
+      await restaurarObjetivo();
+      // restaurarObjetivo also deactivates the destination branch; the move dialog below needs one
+      // OTHER active branch to render its select, so seed it after the restore.
+      await asegurarSucursalDestino(empresaId);
+
+      // --- Deactivate through the UI ------------------------------------------------------
+      await fila.getByRole("button", { name: "Desactivar" }).click();
+      const dialogoDesactivar = page.getByRole("dialog", { name: "Desactivar sucursal" });
+      await dialogoDesactivar.getByRole("button", { name: "Desactivar" }).click();
+      await expect(dialogoDesactivar).toBeHidden();
+      await expect(fila).toContainText("Inactiva");
+      await expect(fila.getByRole("button", { name: "Activar" })).toBeVisible();
+      await expect(fila.getByRole("button", { name: "Editar" })).toBeVisible();
+      await expect(page.locator("main").getByRole("status")).toHaveText(`Sucursal ${nombre} desactivada.`);
+      const inactiva = await leerSucursalesPorNombre(empresaId, nombre);
+      expect(inactiva[0]).toMatchObject({ activa: false, version: creada[0].version + 1 });
+
+      // --- An inactive branch is NOT offered in the Mover de sucursal dialog ----------------
+      await page.getByRole("tab", { name: "Usuarios" }).click();
+      await page.getByLabel("Buscar usuario").fill(OBJETIVO);
+      const filaUsuario = page.locator(FILAS_USUARIO).filter({ hasText: OBJETIVO });
+      await expect(page.locator(FILAS_USUARIO)).toHaveCount(1);
+      await filaUsuario.getByRole("button", { name: "Mover de sucursal" }).click();
+      const dialogoMover = page.getByRole("dialog", { name: "Mover de sucursal" });
+      const select = dialogoMover.getByRole("combobox", { name: "Sucursal destino" });
+      await expect(select).toBeVisible();
+      await expect(select.getByRole("option", { name: SUCURSAL_DESTINO })).toHaveCount(1);
+      await expect(select.getByRole("option", { name: nombre, exact: true })).toHaveCount(0);
+      await dialogoMover.getByRole("button", { name: "Cancelar" }).click();
+      await expect(dialogoMover).toBeHidden();
+
+      // --- Back on the tab (server read): still Inactiva; reactivate ------------------------
+      await page.getByRole("tab", { name: "Sucursales" }).click();
+      await expect(page).toHaveURL(/tab=sucursales/);
+      await expect(fila).toContainText("Inactiva");
+      await fila.getByRole("button", { name: "Activar" }).click();
+      const dialogoActivar = page.getByRole("dialog", { name: "Activar sucursal" });
+      await dialogoActivar.getByRole("button", { name: "Activar" }).click();
+      await expect(dialogoActivar).toBeHidden();
+      await expect(fila).toContainText("Activa");
+      await expect(fila).not.toContainText("Inactiva");
+      await expect(page.locator("main").getByRole("status")).toHaveText(`Sucursal ${nombre} activada.`);
+      const reactivada = await leerSucursalesPorNombre(empresaId, nombre);
+      expect(reactivada[0]).toMatchObject({ activa: true, version: creada[0].version + 2 });
+    } finally {
+      await restaurarObjetivo();
       await desactivarSucursalesCreadas();
     }
   });

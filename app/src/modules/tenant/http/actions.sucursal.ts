@@ -24,6 +24,7 @@ import { createClient } from "@/lib/supabase/client";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
 import { cambiarSucursalActiva } from "../application/cambiarSucursalActiva";
+import { cambiarEstadoSucursal } from "../application/estado-sucursal";
 import {
   crearSucursal,
   editarSucursal,
@@ -37,6 +38,7 @@ import {
   VALIDATION_ERROR,
   SESION_INVALIDA,
   mensajeTransporte,
+  zCambiarEstadoSucursalInput,
   zCambiarSucursalInput,
   zCrearSucursalInput,
   zEditarSucursalInput,
@@ -47,6 +49,7 @@ import {
   ok,
   resolverCtx,
   type ActionResult,
+  type CambioEstadoSucursalActionResult,
 } from "./shared";
 
 export type CambiarSucursalActionCode =
@@ -143,4 +146,60 @@ export async function editarSucursalAction(
     }
     return aActionResult(await editarSucursal(tx, ctx, parsed.data));
   });
+}
+
+/**
+ * Shared adapter of the two state writes: parse, session, then INSIDE the one
+ * transaction the Administrador-only role gate BEFORE the use case. A refused
+ * deactivation forwards the blocker counts and every applicable code (`detalle`).
+ */
+async function cambiarEstadoSucursalAction(
+  input: unknown,
+  activa: boolean,
+): Promise<CambioEstadoSucursalActionResult> {
+  const parsed = zCambiarEstadoSucursalInput.safeParse(input);
+  if (!parsed.success) {
+    return error(VALIDATION_ERROR, mensajeTransporte(VALIDATION_ERROR));
+  }
+
+  const ctx = await resolverCtx();
+  if (ctx === null) {
+    return error(SESION_INVALIDA, mensajeTransporte(SESION_INVALIDA));
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const permitido = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_GESTION_SUCURSALES,
+    );
+    if (!permitido) {
+      return error(TEN_OPS_NO_AUTORIZADO, messageFor(TEN_OPS_NO_AUTORIZADO));
+    }
+    const result = await cambiarEstadoSucursal(tx, ctx, { ...parsed.data, activa });
+    if (result.ok) return ok(result.data);
+    return {
+      ok: false,
+      error: {
+        code: result.code,
+        message: result.message,
+        ...(result.detalle === undefined ? {} : { detalle: result.detalle }),
+      },
+    };
+  });
+}
+
+/** Deactivate a branch with optimistic locking (Administrador only). */
+export async function desactivarSucursalAction(
+  input: unknown,
+): Promise<CambioEstadoSucursalActionResult> {
+  return cambiarEstadoSucursalAction(input, false);
+}
+
+/** Reactivate a branch with optimistic locking (Administrador only). */
+export async function activarSucursalAction(
+  input: unknown,
+): Promise<CambioEstadoSucursalActionResult> {
+  return cambiarEstadoSucursalAction(input, true);
 }

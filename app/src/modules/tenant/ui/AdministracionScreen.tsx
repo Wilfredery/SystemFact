@@ -27,11 +27,14 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  listarSucursalesAdministracionAction,
   listarSucursalesDeEmpresaAction,
   listarUsuariosAction,
 } from "@/modules/tenant/http/actions.administracion";
 import {
+  activarSucursalAction,
   crearSucursalAction,
+  desactivarSucursalAction,
   editarSucursalAction,
 } from "@/modules/tenant/http/actions.sucursal";
 import {
@@ -42,7 +45,7 @@ import {
 import type {
   ConfiguracionAdministracionDto,
   ListarUsuariosAdministracion,
-  SucursalAdministracionDto,
+  SucursalGestionDto,
   UsuarioAdministracionDto,
 } from "@/modules/tenant/http/shared";
 import { TEN_CONCURRENCIA_CONFLICTO } from "@/modules/tenant/domain/errors";
@@ -54,12 +57,17 @@ import {
   TABS_ADMINISTRACION,
   construirHrefAdministracion,
   construirQueryUsuarios,
+  mensajeErrorCambioEstadoSucursal,
   mensajeErrorGestion,
   mensajeErrorMover,
   type FiltrosUsuarios,
   type TabAdministracion,
 } from "./administracion-tabs";
-import { SucursalDialog, type DatosSucursalFormulario } from "./GestionSucursalDialog";
+import {
+  ConfirmarEstadoSucursalDialog,
+  SucursalDialog,
+  type DatosSucursalFormulario,
+} from "./GestionSucursalDialog";
 import {
   CambiarRolesDialog,
   ConfirmarEstadoUsuarioDialog,
@@ -76,17 +84,20 @@ type AccionUsuario =
 /** What the open branch dialog is doing; the branch is looked up in the CURRENT rows. */
 type AccionSucursal =
   | { readonly tipo: "crear" }
-  | { readonly tipo: "editar"; readonly sucursalId: number };
+  | { readonly tipo: "editar"; readonly sucursalId: number }
+  | { readonly tipo: "estado"; readonly sucursalId: number; readonly activar: boolean };
 
 const TITULO_PROPIO_USUARIO =
   "No puede modificar su propio usuario: pídalo a otro Administrador.";
+const TITULO_SUCURSAL_PROPIA =
+  "No puede desactivar la sucursal en la que está trabajando: cambie primero a otra sucursal.";
 
 export type UsuariosInicial =
   | { readonly ok: true; readonly data: ListarUsuariosAdministracion }
   | { readonly ok: false; readonly message: string };
 
 export type SucursalesInicial =
-  | { readonly ok: true; readonly data: readonly SucursalAdministracionDto[] }
+  | { readonly ok: true; readonly data: readonly SucursalGestionDto[] }
   | { readonly ok: false; readonly message: string };
 
 export type ConfiguracionInicial =
@@ -124,6 +135,7 @@ export function AdministracionScreen({
   configuracion: configuracionInicial,
   puedeGestionar,
   sesionUsuarioId,
+  sesionSucursalId,
 }: {
   readonly tab: TabAdministracion;
   readonly filtrosIniciales: FiltrosUsuarios;
@@ -134,6 +146,8 @@ export function AdministracionScreen({
   readonly puedeGestionar: boolean;
   /** Session user id, to disable the actions on one's own row (UX only). */
   readonly sesionUsuarioId: number;
+  /** Session branch id, to disable "Desactivar" on one's own branch (UX only; the server re-checks). */
+  readonly sesionSucursalId: number;
 }) {
   const router = useRouter();
   const [navegando, iniciarNavegacion] = useTransition();
@@ -279,10 +293,10 @@ export function AdministracionScreen({
     setErrorAccion(null);
   }
 
-  /** Re-reads the branch list (the existing admin-only read) after a write. */
+  /** Re-reads ALL the branches (active and inactive, the admin tab's read) after a write. */
   async function recargarSucursales(): Promise<void> {
     try {
-      const r = await listarSucursalesDeEmpresaAction();
+      const r = await listarSucursalesAdministracionAction();
       if (r.ok) {
         setRecargada({ base: sucursalesInicial, valor: { ok: true, data: r.data } });
         setErrorRecarga(null);
@@ -300,8 +314,16 @@ export function AdministracionScreen({
    * only after an ok answer plus a re-read, a conflict re-reads but NEVER retries).
    */
   async function ejecutarEscrituraSucursal(
-    escribir: () => ReturnType<typeof crearSucursalAction> | ReturnType<typeof editarSucursalAction>,
+    escribir: () =>
+      | ReturnType<typeof crearSucursalAction>
+      | ReturnType<typeof editarSucursalAction>
+      | ReturnType<typeof desactivarSucursalAction>,
     mensajeOk: string,
+    mensajeDeError: (error: {
+      readonly code: string;
+      readonly message: string;
+      readonly detalle?: Parameters<typeof mensajeErrorCambioEstadoSucursal>[0]["detalle"];
+    }) => string = (e) => mensajeErrorGestion(e.code, e.message),
   ): Promise<void> {
     if (enviandoRef.current) return;
     enviandoRef.current = true;
@@ -310,7 +332,7 @@ export function AdministracionScreen({
     try {
       const r = await escribir();
       if (!r.ok) {
-        setErrorAccion(mensajeErrorGestion(r.error.code, r.error.message));
+        setErrorAccion(mensajeDeError(r.error));
         if (r.error.code === TEN_CONCURRENCIA_CONFLICTO) await recargarSucursales();
         return;
       }
@@ -327,9 +349,10 @@ export function AdministracionScreen({
 
   function guardarSucursal(
     accionActual: AccionSucursal,
-    sucursal: SucursalAdministracionDto | undefined,
+    sucursal: SucursalGestionDto | undefined,
     datos: DatosSucursalFormulario,
   ): void {
+    if (accionActual.tipo === "estado") return;
     if (accionActual.tipo === "crear") {
       void ejecutarEscrituraSucursal(
         () => crearSucursalAction(datos),
@@ -346,6 +369,16 @@ export function AdministracionScreen({
           versionEsperada: sucursal.version,
         }),
       `Sucursal ${datos.nombre} actualizada.`,
+    );
+  }
+
+  /** Activate / deactivate: same write rules, plus the multi-blocker message of a refused deactivation. */
+  function confirmarEstadoSucursal(sucursal: SucursalGestionDto, activar: boolean): void {
+    const entrada = { sucursalId: sucursal.id, versionEsperada: sucursal.version };
+    void ejecutarEscrituraSucursal(
+      () => (activar ? activarSucursalAction(entrada) : desactivarSucursalAction(entrada)),
+      activar ? `Sucursal ${sucursal.nombre} activada.` : `Sucursal ${sucursal.nombre} desactivada.`,
+      mensajeErrorCambioEstadoSucursal,
     );
   }
 
@@ -443,6 +476,7 @@ export function AdministracionScreen({
         <TablaSucursales
           inicial={sucursales}
           puedeGestionar={puedeGestionar}
+          sesionSucursalId={sesionSucursalId}
           enviando={enviando}
           mensaje={mensajeSucursal}
           errorRecarga={errorRecarga}
@@ -461,6 +495,7 @@ export function AdministracionScreen({
             error={errorAccion}
             onCerrar={cerrarAccionSucursal}
             onGuardar={guardarSucursal}
+            onConfirmarEstado={confirmarEstadoSucursal}
           />
         )}
       {tab === "configuracion" && <PanelConfiguracion inicial={configuracionInicial} />}
@@ -761,23 +796,37 @@ function DialogoSucursal({
   error,
   onCerrar,
   onGuardar,
+  onConfirmarEstado,
 }: {
   readonly accion: AccionSucursal;
-  readonly sucursales: readonly SucursalAdministracionDto[];
+  readonly sucursales: readonly SucursalGestionDto[];
   readonly enviando: boolean;
   readonly error: string | null;
   readonly onCerrar: () => void;
   readonly onGuardar: (
     accion: AccionSucursal,
-    sucursal: SucursalAdministracionDto | undefined,
+    sucursal: SucursalGestionDto | undefined,
     datos: DatosSucursalFormulario,
   ) => void;
+  readonly onConfirmarEstado: (sucursal: SucursalGestionDto, activar: boolean) => void;
 }) {
   // Always the row from the LATEST read, so a retry after a conflict carries the
   // reloaded `version`.
   const sucursal =
-    accion.tipo === "editar" ? sucursales.find((s) => s.id === accion.sucursalId) : undefined;
-  if (accion.tipo === "editar" && sucursal === undefined) return null;
+    accion.tipo === "crear" ? undefined : sucursales.find((s) => s.id === accion.sucursalId);
+  if (accion.tipo !== "crear" && sucursal === undefined) return null;
+  if (accion.tipo === "estado" && sucursal !== undefined) {
+    return (
+      <ConfirmarEstadoSucursalDialog
+        sucursal={sucursal}
+        activar={accion.activar}
+        enviando={enviando}
+        error={error}
+        onConfirmar={() => onConfirmarEstado(sucursal, accion.activar)}
+        onCerrar={onCerrar}
+      />
+    );
+  }
   return (
     <SucursalDialog
       sucursal={sucursal ?? null}
@@ -792,6 +841,7 @@ function DialogoSucursal({
 function TablaSucursales({
   inicial,
   puedeGestionar,
+  sesionSucursalId,
   enviando,
   mensaje,
   errorRecarga,
@@ -799,6 +849,7 @@ function TablaSucursales({
 }: {
   readonly inicial: SucursalesInicial | null;
   readonly puedeGestionar: boolean;
+  readonly sesionSucursalId: number;
   readonly enviando: boolean;
   readonly mensaje: string | null;
   readonly errorRecarga: string | null;
@@ -856,21 +907,38 @@ function TablaSucursales({
                 <td className="px-4 py-2">{s.direccion}</td>
                 <td className="px-4 py-2">{s.telefono}</td>
                 <td className="px-4 py-2">
-                  {/* The existing use case returns active branches only (S4 gap). */}
-                  <span className="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                    Activa
+                  <span
+                    className={`rounded px-2 py-1 text-xs font-medium ${
+                      s.activa
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                        : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                    }`}
+                  >
+                    {s.activa ? "Activa" : "Inactiva"}
                   </span>
                 </td>
                 {puedeGestionar && (
                   <td className="px-4 py-2">
-                    <button
-                      type="button"
-                      disabled={enviando}
-                      onClick={() => onAccion({ tipo: "editar", sucursalId: s.id })}
-                      className={CLASE_BOTON}
-                    >
-                      Editar
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={enviando}
+                        onClick={() => onAccion({ tipo: "editar", sucursalId: s.id })}
+                        className={CLASE_BOTON}
+                      >
+                        Editar
+                      </button>
+                      {/* UX only: the server refuses the session's own branch too. */}
+                      <button
+                        type="button"
+                        disabled={enviando || (s.activa && s.id === sesionSucursalId)}
+                        title={s.activa && s.id === sesionSucursalId ? TITULO_SUCURSAL_PROPIA : undefined}
+                        onClick={() => onAccion({ tipo: "estado", sucursalId: s.id, activar: !s.activa })}
+                        className={CLASE_BOTON}
+                      >
+                        {s.activa ? "Desactivar" : "Activar"}
+                      </button>
+                    </div>
                   </td>
                 )}
               </tr>

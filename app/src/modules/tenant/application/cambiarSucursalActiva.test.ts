@@ -12,14 +12,14 @@ import {
 jest.mock("../infrastructure/repo-sucursal", () => ({
   liberarSucursalActivaEnTx: jest.fn(),
   activarSucursalEnTx: jest.fn(),
-  leerSucursalActivaEnTx: jest.fn(),
+  leerSucursalActivaConBloqueoEnTx: jest.fn(),
   reescribirSucursalUsuarioEnTx: jest.fn(),
 }));
 
 import {
   activarSucursalEnTx,
   liberarSucursalActivaEnTx,
-  leerSucursalActivaEnTx,
+  leerSucursalActivaConBloqueoEnTx,
   reescribirSucursalUsuarioEnTx,
 } from "../infrastructure/repo-sucursal";
 
@@ -33,7 +33,7 @@ const ctx: TenantCtx = {
 const ports = {
   liberar: liberarSucursalActivaEnTx as jest.Mock,
   activar: activarSucursalEnTx as jest.Mock,
-  leer: leerSucursalActivaEnTx as jest.Mock,
+  leer: leerSucursalActivaConBloqueoEnTx as jest.Mock,
   reescribir: reescribirSucursalUsuarioEnTx as jest.Mock,
 };
 

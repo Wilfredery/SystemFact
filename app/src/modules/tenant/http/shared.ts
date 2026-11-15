@@ -27,6 +27,10 @@ import type { TenantCtx } from "../domain/tenant";
 import type { TenantErrorCode } from "../domain/errors";
 import { SESION_INVALIDA, VALIDATION_ERROR } from "./validations";
 import type { ConfiguracionAdministracion } from "../application/consultar-configuracion";
+import type {
+  CambioEstadoSucursalData,
+  DetalleBloqueoSucursal,
+} from "../application/estado-sucursal";
 
 /** Read-only directory view group (S3): Administrador only. */
 export const ROLES_VER_ADMINISTRACION = ["Administrador"];
@@ -126,6 +130,31 @@ export interface SucursalAdministracionDto {
   /** Optimistic-lock token the edit action takes as `versionEsperada`. */
   readonly version: number;
 }
+
+/**
+ * One row of the Administración > Sucursales tab: ALL the empresa's branches,
+ * active and inactive. A sibling of `SucursalAdministracionDto` (which stays
+ * active-only for the move dialog's consumers and is unchanged).
+ */
+export interface SucursalGestionDto extends SucursalAdministracionDto {
+  readonly activa: boolean;
+}
+
+/**
+ * Envelope of the branch activate/deactivate actions. Same `error` shape as
+ * `ActionResult`, plus `detalle` (counts and every applicable code) when a
+ * deactivation is refused for blockers, so the screen can list them all.
+ */
+export type CambioEstadoSucursalActionResult =
+  | { ok: true; data: CambioEstadoSucursalData }
+  | {
+      ok: false;
+      error: {
+        code: AdministracionErrorCode;
+        message: string;
+        detalle?: DetalleBloqueoSucursal;
+      };
+    };
 
 /** Configuración tab payload (S2c) — no invented ITBIS family (see infra doc). */
 export type ConfiguracionAdministracionDto = ConfiguracionAdministracion;

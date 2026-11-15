@@ -2,6 +2,7 @@ import {
   TEN_AUTO_PROTECCION,
   TEN_ROL_NO_VALIDO,
   TEN_ULTIMO_ADMINISTRADOR,
+  TEN_USUARIO_SUCURSAL_INACTIVA,
 } from "./errors";
 import {
   decidirCambioEstado,
@@ -130,7 +131,28 @@ describe("decidirCambioEstado", () => {
     activoNuevo: false,
     objetivoEsAdministrador: false,
     administradoresActivos: 2,
+    sucursalObjetivoActiva: true,
   };
+
+  it("activating a user whose branch is NOT active => TEN_USUARIO_SUCURSAL_INACTIVA (L8)", () => {
+    expect(
+      decidirCambioEstado({
+        ...base,
+        objetivoActivo: false,
+        activoNuevo: true,
+        sucursalObjetivoActiva: false,
+      }),
+    ).toEqual({ tipo: "RECHAZAR", code: TEN_USUARIO_SUCURSAL_INACTIVA });
+  });
+
+  it("an inactive branch never blocks a deactivation nor the no-op", () => {
+    expect(
+      decidirCambioEstado({ ...base, sucursalObjetivoActiva: false }),
+    ).toEqual({ tipo: "APLICAR" });
+    expect(
+      decidirCambioEstado({ ...base, activoNuevo: true, sucursalObjetivoActiva: false }),
+    ).toEqual({ tipo: "SIN_CAMBIO" });
+  });
 
   it("same state => SIN_CAMBIO (S5 idempotent)", () => {
     expect(decidirCambioEstado({ ...base, activoNuevo: true })).toEqual({

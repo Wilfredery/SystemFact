@@ -51,10 +51,39 @@ export async function activarSucursalEnTx(
 }
 
 /**
- * Target-branch probe for the switch use case (S2 gate 3): the row must be
- * the caller-empresa's AND active. Foreign-empresa and inactive targets are
- * indistinguishable by construction (P6 filter + RLS) — the caller maps null
- * to the single `TEN_SUCURSAL_NO_VALIDA` code.
+ * Destination-branch read for every path that PUTS a user in a branch (the user
+ * move and the branch switch; odd/tasks/administracion-sucursales-activar.md S5b).
+ * The row must be the caller-empresa's AND active, and it is read
+ * `FOR SHARE`: the lock is held until the transaction ends, so a concurrent
+ * deactivation (`FOR UPDATE`) waits for the move/switch to commit and then counts
+ * the moved user; if the deactivation committed first, the re-evaluated row is
+ * inactive and this returns `null` (READ COMMITTED re-checks the predicate after
+ * the wait). Foreign-empresa and inactive targets are indistinguishable by
+ * construction (P6 filter + RLS) — the caller maps null to the single
+ * `TEN_SUCURSAL_NO_VALIDA` code. `FOR SHARE` needs only SELECT.
+ */
+export async function leerSucursalActivaConBloqueoEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  sucursalId: number,
+): Promise<{ id: number } | null> {
+  const filas = await tx.$queryRaw<{ id: number }[]>`
+    SELECT s."id"
+    FROM "SUCURSAL" s
+    WHERE s."id" = ${sucursalId}
+      AND s."empresaId" = ${empresaId}
+      AND s."activa" = true
+    FOR SHARE`;
+  return filas[0] ?? null;
+}
+
+/**
+ * PLAIN (unlocked) active-branch probe. It exists only to CLASSIFY a refused
+ * `leerSucursalActivaConBloqueoEnTx`: `FOR SHARE` takes a row lock, which RLS
+ * only grants to rows the caller may UPDATE (admin-only `sucursal_update`), so a
+ * non-admin gets no row from the locked read even for an active branch of its
+ * own empresa. This read, which needs only SELECT, tells that apart from a
+ * branch that is really unavailable (unknown, foreign or inactive).
  */
 export async function leerSucursalActivaEnTx(
   tx: PrismaTx,
@@ -64,6 +93,22 @@ export async function leerSucursalActivaEnTx(
   return tx.sucursal.findFirst({
     where: { id: sucursalId, empresaId, activa: true },
     select: { id: true },
+  });
+}
+
+/**
+ * PLAIN read of one branch of the empresa WITH its `activa` flag. Classifies an
+ * empty `leerSucursalActivaConBloqueoEnTx` for the user activation (L8): `null`
+ * = unknown or foreign branch, `activa=false` = a real but inactive branch.
+ */
+export async function leerSucursalEstadoEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  sucursalId: number,
+): Promise<{ id: number; activa: boolean } | null> {
+  return tx.sucursal.findFirst({
+    where: { id: sucursalId, empresaId },
+    select: { id: true, activa: true },
   });
 }
 

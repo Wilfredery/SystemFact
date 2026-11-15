@@ -8,6 +8,7 @@ import {
   TEN_SUCURSAL_NO_VALIDA,
   TEN_ULTIMO_ADMINISTRADOR,
   TEN_USUARIO_NO_ENCONTRADO,
+  TEN_USUARIO_SUCURSAL_INACTIVA,
   messageFor,
 } from "../domain/errors";
 import {
@@ -31,6 +32,8 @@ jest.mock("../infrastructure/usuario-gestion-repository", () => ({
 }));
 jest.mock("../infrastructure/repo-sucursal", () => ({
   leerSucursalActivaEnTx: jest.fn(),
+  leerSucursalEstadoEnTx: jest.fn(),
+  leerSucursalActivaConBloqueoEnTx: jest.fn(),
   liberarSucursalActivaEnTx: jest.fn(),
   activarSucursalEnTx: jest.fn(),
 }));
@@ -50,7 +53,9 @@ const m = {
   bloquearSucursales: repo.bloquearUsuarioYAdministradoresDeSucursalesEnTx as jest.Mock,
   contarOrigen: repo.contarAdministradoresActivosDeSucursalEnTx as jest.Mock,
   mover: repo.moverUsuarioASucursalEnTx as jest.Mock,
-  destino: repoSucursal.leerSucursalActivaEnTx as jest.Mock,
+  destino: repoSucursal.leerSucursalActivaConBloqueoEnTx as jest.Mock,
+  destinoVisible: repoSucursal.leerSucursalActivaEnTx as jest.Mock,
+  sucursalEstado: repoSucursal.leerSucursalEstadoEnTx as jest.Mock,
   liberar: repoSucursal.liberarSucursalActivaEnTx as jest.Mock,
   activar: repoSucursal.activarSucursalEnTx as jest.Mock,
 };
@@ -255,11 +260,123 @@ describe("cambiarEstadoUsuario", () => {
     sinEscrituras();
   });
 
-  it("reactivating an inactive user is allowed and audited", async () => {
-    usarObjetivo(objetivo({ activo: false }));
-    const result = await cambiarEstadoUsuario(tx, ctx, { ...input, activo: true }, GRUPO);
-    expect(result).toMatchObject({ ok: true, data: { cambio: true } });
-    expect(m.audit).toHaveBeenCalledWith(tx, ctx, 20, { activo: false }, { activo: true });
+  describe("activating a user (L8: the user's branch must be active)", () => {
+    const activar = { usuarioId: 20, activo: true, versionEsperada: 3 };
+    const enSucursal = (sucursalId: number, activo = false) => ({
+      id: 20,
+      sucursalId,
+      activo,
+      version: 3,
+      roles: [OPER],
+    });
+
+    beforeEach(() => {
+      usarObjetivo(objetivo({ activo: false }));
+      m.leerMover.mockResolvedValue(enSucursal(5));
+      m.destino.mockResolvedValue({ id: 5 });
+    });
+
+    it("reactivating a user of an ACTIVE branch is allowed and audited; the branch is share-locked BEFORE the user rows", async () => {
+      const result = await cambiarEstadoUsuario(tx, ctx, activar, GRUPO);
+      expect(result).toMatchObject({ ok: true, data: { cambio: true } });
+      expect(m.audit).toHaveBeenCalledWith(tx, ctx, 20, { activo: false }, { activo: true });
+      expect(m.destino).toHaveBeenCalledWith(tx, 1, 5);
+      expect(m.destino.mock.invocationCallOrder[0]).toBeLessThan(
+        m.bloquear.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("the branch is the TARGET USER's, not the session's", async () => {
+      m.leerMover.mockResolvedValue(enSucursal(7));
+      m.destino.mockResolvedValue({ id: 7 });
+      await cambiarEstadoUsuario(tx, ctx, activar, GRUPO);
+      expect(m.destino).toHaveBeenCalledWith(tx, 1, 7);
+    });
+
+    it("inactive branch => TEN_USUARIO_SUCURSAL_INACTIVA, nothing written", async () => {
+      m.destino.mockResolvedValue(null);
+      m.sucursalEstado.mockResolvedValue({ id: 5, activa: false });
+      expect(await cambiarEstadoUsuario(tx, ctx, activar, GRUPO)).toEqual({
+        ok: false,
+        code: TEN_USUARIO_SUCURSAL_INACTIVA,
+        message: messageFor(TEN_USUARIO_SUCURSAL_INACTIVA),
+      });
+      expect(messageFor(TEN_USUARIO_SUCURSAL_INACTIVA)).toMatch(/sucursal activa/);
+      sinEscrituras();
+    });
+
+    it("branch not visible (foreign / unknown) => TEN_SUCURSAL_NO_VALIDA, nothing written", async () => {
+      m.destino.mockResolvedValue(null);
+      m.sucursalEstado.mockResolvedValue(null);
+      expect(await cambiarEstadoUsuario(tx, ctx, activar, GRUPO)).toMatchObject({
+        ok: false,
+        code: TEN_SUCURSAL_NO_VALIDA,
+      });
+      sinEscrituras();
+    });
+
+    it("empty locked read but the branch reads active (lock not held) => conflict, nothing written", async () => {
+      m.destino.mockResolvedValue(null);
+      m.sucursalEstado.mockResolvedValue({ id: 5, activa: true });
+      expect(await cambiarEstadoUsuario(tx, ctx, activar, GRUPO)).toMatchObject({
+        ok: false,
+        code: TEN_CONCURRENCIA_CONFLICTO,
+      });
+      sinEscrituras();
+    });
+
+    it("the user moved to another branch between the probe and the lock => conflict, nothing written", async () => {
+      m.leerMover
+        .mockResolvedValueOnce(enSucursal(5))
+        .mockResolvedValueOnce(enSucursal(6));
+      expect(await cambiarEstadoUsuario(tx, ctx, activar, GRUPO)).toMatchObject({
+        ok: false,
+        code: TEN_CONCURRENCIA_CONFLICTO,
+      });
+      sinEscrituras();
+    });
+
+    it("an inactive branch does not mask the actor / not-found / version refusals", async () => {
+      m.destino.mockResolvedValue(null);
+      m.sucursalEstado.mockResolvedValue({ id: 5, activa: false });
+      usarObjetivo(null);
+      expect(await cambiarEstadoUsuario(tx, ctx, activar, GRUPO)).toMatchObject({
+        code: TEN_USUARIO_NO_ENCONTRADO,
+      });
+      usarObjetivo(objetivo({ activo: false }));
+      expect(
+        await cambiarEstadoUsuario(tx, ctx, { ...activar, versionEsperada: 1 }, GRUPO),
+      ).toMatchObject({ code: TEN_CONCURRENCIA_CONFLICTO });
+    });
+
+    it("unknown target on the probe => no branch lock, TEN_USUARIO_NO_ENCONTRADO", async () => {
+      m.leerMover.mockResolvedValue(null);
+      usarObjetivo(null);
+      expect(await cambiarEstadoUsuario(tx, ctx, activar, GRUPO)).toMatchObject({
+        ok: false,
+        code: TEN_USUARIO_NO_ENCONTRADO,
+      });
+      expect(m.destino).not.toHaveBeenCalled();
+    });
+
+    it("an already-active user (no-op) reads no branch at all", async () => {
+      m.leerMover.mockResolvedValue(enSucursal(5, true));
+      usarObjetivo(objetivo({ activo: true }));
+      const result = await cambiarEstadoUsuario(tx, ctx, activar, GRUPO);
+      expect(result).toEqual({ ok: true, data: { usuarioId: 20, version: 3, cambio: false } });
+      expect(m.destino).not.toHaveBeenCalled();
+      expect(m.sucursalEstado).not.toHaveBeenCalled();
+      sinEscrituras();
+    });
+
+    it("deactivating never reads a branch (an inactive one included)", async () => {
+      usarObjetivo(objetivo({ activo: true }));
+      const result = await cambiarEstadoUsuario(tx, ctx, { ...activar, activo: false }, GRUPO);
+      expect(result).toMatchObject({ ok: true, data: { cambio: true } });
+      expect(m.leerMover).not.toHaveBeenCalled();
+      expect(m.destino).not.toHaveBeenCalled();
+      expect(m.sucursalEstado).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -301,7 +418,13 @@ describe("moverUsuarioDeSucursal", () => {
   });
 
   it.each([
-    ["foreign / inactive / unknown destination", () => m.destino.mockResolvedValue(null)],
+    [
+      "foreign / inactive / unknown destination",
+      () => {
+        m.destino.mockResolvedValue(null);
+        m.destinoVisible.mockResolvedValue(null);
+      },
+    ],
   ])("%s => TEN_SUCURSAL_NO_VALIDA, nothing widened or written", async (_n, preparar) => {
     preparar();
     const result = await moverUsuarioDeSucursal(tx, ctx, input, GRUPO);
@@ -309,6 +432,19 @@ describe("moverUsuarioDeSucursal", () => {
       ok: false,
       code: TEN_SUCURSAL_NO_VALIDA,
       message: messageFor(TEN_SUCURSAL_NO_VALIDA),
+    });
+    expect(m.liberar).not.toHaveBeenCalled();
+    sinEscrituras();
+  });
+
+  it("a locked read that comes back empty for a branch the caller CAN see (RLS withheld the row lock: not an admin) => TEN_OPS_NO_AUTORIZADO", async () => {
+    m.destino.mockResolvedValue(null);
+    m.destinoVisible.mockResolvedValue({ id: 6 });
+    const result = await moverUsuarioDeSucursal(tx, ctx, input, GRUPO);
+    expect(result).toEqual({
+      ok: false,
+      code: TEN_OPS_NO_AUTORIZADO,
+      message: messageFor(TEN_OPS_NO_AUTORIZADO),
     });
     expect(m.liberar).not.toHaveBeenCalled();
     sinEscrituras();

@@ -10,6 +10,7 @@ import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransac
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { listarSucursalesDeEmpresa } from "@/modules/tenant/application/listarSucursalesDeEmpresa";
+import { listarSucursalesAdministracion } from "@/modules/tenant/application/listarSucursalesAdministracion";
 import { TEN_OPS_NO_AUTORIZADO } from "@/modules/tenant/domain/errors";
 import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
@@ -60,6 +61,70 @@ describe("listarSucursalesDeEmpresa (real DB)", () => {
     const ctxNoAdmin: TenantCtx = { ...ctxA, esAdmin: false };
     const result = await withTenantTransaction(ctxNoAdmin, (tx: PrismaTx) =>
       listarSucursalesDeEmpresa(ctxNoAdmin, tx),
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      code: TEN_OPS_NO_AUTORIZADO,
+      message: expect.any(String),
+    });
+  });
+});
+
+describe("listarSucursalesAdministracion (real DB) — the admin tab's ALL-branches reader", () => {
+  let fixture: TenantFixture;
+  let ctxA: TenantCtx;
+
+  beforeEach(async () => {
+    fixture = await seedTenantFixture();
+    ctxA = {
+      empresaId: fixture.empresaA.id,
+      sucursalId: fixture.sucursalA1.id,
+      usuarioId: fixture.usuarios.adminA.id,
+      esAdmin: true,
+    };
+  });
+
+  it("returns active AND inactive branches of the empresa with activa and version; the active-only reader is unchanged", async () => {
+    const inactiva = await getHarnessDb().sucursal.create({
+      data: {
+        empresaId: fixture.empresaA.id,
+        nombre: "A3",
+        direccion: "Calle 3",
+        telefono: "3",
+        activa: false,
+        version: 4,
+      },
+    });
+
+    const todas = await withTenantTransaction(ctxA, (tx: PrismaTx) =>
+      listarSucursalesAdministracion(ctxA, tx),
+    );
+    const activas = await withTenantTransaction(ctxA, (tx: PrismaTx) =>
+      listarSucursalesDeEmpresa(ctxA, tx),
+    );
+
+    expect(todas.ok).toBe(true);
+    if (!todas.ok || !activas.ok) return;
+    expect(todas.sucursales.map((s) => s.nombre)).toEqual(["A1", "A2", "A3"]);
+    expect(todas.sucursales.find((s) => s.id === inactiva.id)).toEqual({
+      id: inactiva.id,
+      nombre: "A3",
+      direccion: "Calle 3",
+      telefono: "3",
+      activa: false,
+      version: 4,
+    });
+    expect(todas.sucursales.filter((s) => s.activa).map((s) => s.nombre)).toEqual(["A1", "A2"]);
+    expect(todas.sucursales.map((s) => s.id)).not.toContain(fixture.sucursalB1.id);
+    // The selector / move dialog / login reader keeps showing ACTIVE branches only.
+    expect(activas.sucursales.map((s) => s.nombre)).toEqual(["A1", "A2"]);
+  });
+
+  it("denies a non-admin ctx before any read", async () => {
+    const ctxNoAdmin: TenantCtx = { ...ctxA, esAdmin: false };
+    const result = await withTenantTransaction(ctxNoAdmin, (tx: PrismaTx) =>
+      listarSucursalesAdministracion(ctxNoAdmin, tx),
     );
 
     expect(result).toEqual({

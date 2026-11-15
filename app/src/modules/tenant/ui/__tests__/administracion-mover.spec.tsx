@@ -119,6 +119,7 @@ function montar({
       configuracion={null}
       puedeGestionar={puedeGestionar}
       sesionUsuarioId={sesionUsuarioId}
+      sesionSucursalId={1}
     />,
   );
 }

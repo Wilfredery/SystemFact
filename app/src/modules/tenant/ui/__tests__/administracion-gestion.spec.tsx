@@ -109,6 +109,7 @@ function montar({
       configuracion={null}
       puedeGestionar={puedeGestionar}
       sesionUsuarioId={sesionUsuarioId}
+      sesionSucursalId={1}
     />,
   );
 }
@@ -459,5 +460,27 @@ describe("Activar / Desactivar confirmation (S11)", () => {
     );
     expect(mockListar).toHaveBeenCalledTimes(1);
     expect(mockEstado).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Activar a user whose branch is inactive (activate-branch L8)", () => {
+  it("shows the catalog message that tells the admin to move the user first, and keeps the dialog open", async () => {
+    mockEstado.mockResolvedValue({
+      ok: false,
+      error: { code: "TEN_USUARIO_SUCURSAL_INACTIVA", message: "mensaje del servidor" },
+    });
+    montar({ items: [usuario({ id: 12, nombreUsuario: "inactivo", activo: false, version: 3 })] });
+    fireEvent.click(within(fila(12)).getByRole("button", { name: "Activar" }));
+    const dialogo = screen.getByRole("dialog");
+
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Activar" }));
+    });
+
+    const alerta = within(screen.getByRole("dialog")).getByRole("alert");
+    expect(alerta).toHaveTextContent(messageFor("TEN_USUARIO_SUCURSAL_INACTIVA"));
+    expect(alerta).toHaveTextContent(/muévalo primero a una sucursal activa/);
+    expect(mockEstado).toHaveBeenCalledWith({ usuarioId: 12, activo: true, versionEsperada: 3 });
+    expect(mockListar).not.toHaveBeenCalled();
   });
 });
