@@ -6,8 +6,7 @@ import {
 } from "@/generated/prisma/client";
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
-import type { Producto, TasaItbis } from "../domain/producto";
-import { esTasaItbisValida } from "../domain/producto";
+import type { Producto } from "../domain/producto";
 import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
 import {
   CODIGO_PRODUCTO_DUPLICADO,
@@ -22,7 +21,7 @@ export interface CrearProductoInput {
   readonly nombre: string;
   readonly descripcion?: string | null;
   readonly precioVenta: Prisma.Decimal;
-  readonly itbisTasa: TasaItbis;
+  readonly itbisTasa: string;
   readonly itbisVigenteDesde: Date;
   readonly itbisVigenteHasta: Date | null;
   readonly itbisAplicaRetencionITBIS: boolean;
@@ -57,9 +56,7 @@ type ProductoRow = Prisma.ProductoGetPayload<{
 
 function toDomainProducto(row: ProductoRow): Producto {
   const tasaString = new Prisma.Decimal(row.tasaItbis).toString();
-  if (!esTasaItbisValida(tasaString)) {
-    throw new Error(`Tasa ITBIS inválida en base de datos: ${tasaString}`);
-  }
+  // A stored rate is read as-is, even a retired one (S4: reads never crash).
   return {
     id: row.id,
     empresaId: row.empresaId,
@@ -302,7 +299,7 @@ export interface ActualizarProductoData {
   unidadMedida?: string;
   descripcion?: string | null;
   precioVenta?: Prisma.Decimal;
-  tasaItbis?: TasaItbis;
+  tasaItbis?: string;
   itbisVigenteDesde?: Date;
   itbisVigenteHasta?: Date | null;
   itbisAplicaRetencionITBIS?: boolean;

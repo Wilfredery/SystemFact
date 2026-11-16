@@ -12,6 +12,8 @@ jest.mock("../infrastructure/producto-repository", () => ({
   obtenerProductoDetalleEnTx: jest.fn(),
 }));
 
+const TASAS = ["18", "16", "0"];
+
 const ctx: TenantCtx = {
   empresaId: 1,
   sucursalId: 1,
@@ -50,7 +52,7 @@ describe("obtenerProductoDetalle", () => {
   it("S1: returns the full detail including the row version for the edit dialog", async () => {
     (obtenerProductoDetalleEnTx as jest.Mock).mockResolvedValue(fila());
 
-    const result = await obtenerProductoDetalle(makeTx(), ctx, { id: 10 });
+    const result = await obtenerProductoDetalle(makeTx(), ctx, { id: 10 }, TASAS);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -64,6 +66,7 @@ describe("obtenerProductoDetalle", () => {
       unidadMedida: "Unidad",
       precioVenta: "55000.00",
       tasaItbis: "18",
+      tasaVigente: true,
       itbisVigenteDesde: "2026-01-01T00:00:00.000Z",
       itbisVigenteHasta: null,
       itbisAplicaRetencionITBIS: false,
@@ -74,17 +77,26 @@ describe("obtenerProductoDetalle", () => {
     expect(obtenerProductoDetalleEnTx).toHaveBeenCalledWith(expect.anything(), 1, 10);
   });
 
+  it("S4: a stored rate outside the list is returned, not thrown, with tasaVigente false", async () => {
+    (obtenerProductoDetalleEnTx as jest.Mock).mockResolvedValue({ ...fila(), tasaItbis: new Decimal("7") });
+
+    const result = await obtenerProductoDetalle(makeTx(), ctx, { id: 10 }, TASAS);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.producto).toMatchObject({ tasaItbis: "7", tasaVigente: false });
+  });
+
   it("S4: a missing or foreign-tenant id is PRODUCTO_NO_ENCONTRADO", async () => {
     (obtenerProductoDetalleEnTx as jest.Mock).mockResolvedValue(null);
 
-    const result = await obtenerProductoDetalle(makeTx(), ctx, { id: 99 });
+    const result = await obtenerProductoDetalle(makeTx(), ctx, { id: 99 }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(PRODUCTO_NO_ENCONTRADO);
   });
 
   it("S4: rejects a non-positive id before any database access", async () => {
-    const result = await obtenerProductoDetalle(makeTx(), ctx, { id: 0 });
+    const result = await obtenerProductoDetalle(makeTx(), ctx, { id: 0 }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(VALIDATION_ERROR);

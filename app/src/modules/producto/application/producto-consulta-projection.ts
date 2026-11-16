@@ -8,7 +8,7 @@
  */
 
 import { Decimal } from "decimal.js";
-import { esTasaItbisValida, type TasaItbis } from "../domain/producto";
+import { esTasaEnLista } from "@/shared/domain/tasas-itbis";
 import type { ProductoConsultaFila } from "../infrastructure/producto-repository";
 
 export interface ProductoConsultaItem {
@@ -21,7 +21,9 @@ export interface ProductoConsultaItem {
   readonly unidadMedida: string;
   /** Decimal(12,2)-compatible string. */
   readonly precioVenta: string;
-  readonly tasaItbis: TasaItbis;
+  readonly tasaItbis: string;
+  /** False when the stored rate is no longer in the company's list (retired, S4). */
+  readonly tasaVigente: boolean;
   readonly itbisVigenteDesde: string;
   readonly itbisVigenteHasta: string | null;
   readonly itbisAplicaRetencionITBIS: boolean;
@@ -30,13 +32,12 @@ export interface ProductoConsultaItem {
   readonly version: number;
 }
 
-export function mapearProductoConsulta(fila: ProductoConsultaFila): ProductoConsultaItem {
+export function mapearProductoConsulta(
+  fila: ProductoConsultaFila,
+  tasasPermitidas: readonly string[],
+): ProductoConsultaItem {
+  // A stored rate outside the list is legacy data, never an error (S4).
   const tasa = new Decimal(fila.tasaItbis).toString();
-  if (!esTasaItbisValida(tasa)) {
-    // Same contract as the domain mapper: a stored rate outside the closed
-    // DGII set is corrupt data, not a user error.
-    throw new Error(`Tasa ITBIS inválida en base de datos: ${tasa}`);
-  }
   return {
     id: fila.id,
     codigo: fila.codigo,
@@ -47,6 +48,7 @@ export function mapearProductoConsulta(fila: ProductoConsultaFila): ProductoCons
     unidadMedida: fila.unidadMedida,
     precioVenta: fila.precioVenta.toFixed(2),
     tasaItbis: tasa,
+    tasaVigente: esTasaEnLista(tasa, tasasPermitidas),
     itbisVigenteDesde: fila.itbisVigenteDesde.toISOString(),
     itbisVigenteHasta:
       fila.itbisVigenteHasta === null ? null : fila.itbisVigenteHasta.toISOString(),

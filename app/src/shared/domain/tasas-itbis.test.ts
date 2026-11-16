@@ -4,6 +4,7 @@ import {
   MENSAJE_TASA_ITBIS_CONFIG_FALTANTE,
   TasasItbisConfigError,
   esTasaItbisFormatoValido,
+  esTasaEnLista,
   etiquetaTasaItbis,
   mensajeTasaItbisInvalidaDe,
   parsearListaTasasItbis,
@@ -127,5 +128,24 @@ describe("TasasItbisConfigError", () => {
     expect(e.motivo).toBe("valor_invalido");
     expect(e.detalle).toBe("valor vacío");
     expect(new TasasItbisConfigError("ausente").detalle).toBeUndefined();
+  });
+});
+
+describe("esTasaEnLista", () => {
+  const lista = ["18", "16", "0"];
+  it("is true for a member and compares numerically", () => {
+    expect(esTasaEnLista("18", lista)).toBe(true);
+    expect(esTasaEnLista("18.00", lista)).toBe(true);
+    expect(esTasaEnLista("0.0", lista)).toBe(true);
+    expect(esTasaEnLista("16", ["16.00"])).toBe(true);
+  });
+  it("is false for a rate outside the list or an empty list", () => {
+    expect(esTasaEnLista("7", lista)).toBe(false);
+    expect(esTasaEnLista("18", ["16", "0"])).toBe(false);
+    expect(esTasaEnLista("18", [])).toBe(false);
+  });
+  it("is false (never throws) for text that is not a decimal", () => {
+    expect(esTasaEnLista("abc", lista)).toBe(false);
+    expect(esTasaEnLista("", lista)).toBe(false);
   });
 });

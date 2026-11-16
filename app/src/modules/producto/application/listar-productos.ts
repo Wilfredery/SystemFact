@@ -7,6 +7,7 @@ import {
   type ProductoErrorCode,
 } from "../domain/errors";
 import type { Producto } from "../domain/producto";
+import { esTasaEnLista } from "@/shared/domain/tasas-itbis";
 import type { ListarProductosQuery } from "../infrastructure/producto-repository";
 import {
   contarProductos,
@@ -14,8 +15,14 @@ import {
   registrarProductoListadoEnTx,
 } from "../infrastructure/producto-repository";
 
+export type ProductoListado = Producto & {
+  /** False when the stored rate is no longer in the company's list (retired, S4). */
+  readonly tasaVigente: boolean;
+};
+
 export interface ListarProductosOutput {
-  readonly items: Producto[];
+  readonly items: ProductoListado[];
+  readonly tasasItbis: readonly string[];
   readonly total: number;
   readonly page: number;
 }
@@ -34,6 +41,7 @@ export async function listarProductos(
   tx: PrismaTx,
   ctx: TenantCtx,
   query: ListarProductosQuery,
+  tasasPermitidas: readonly string[],
 ): Promise<ListarProductosResult> {
   if (query.limit < 1 || query.limit > 100) {
     return buildError(LIMITE_PAGINACION_INVALIDO);
@@ -51,6 +59,14 @@ export async function listarProductos(
 
   return {
     ok: true,
-    data: { items, total, page: query.page },
+    data: {
+      items: items.map((p) => ({
+        ...p,
+        tasaVigente: esTasaEnLista(p.itbis.tasa, tasasPermitidas),
+      })),
+      tasasItbis: tasasPermitidas,
+      total,
+      page: query.page,
+    },
   };
 }

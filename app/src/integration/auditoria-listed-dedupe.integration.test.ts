@@ -53,6 +53,9 @@ function listarRows(empresaId: number) {
   });
 }
 
+// The per-empresa ITBIS list the read use cases now receive (fixtures provision 18,16,0).
+const TASAS = ["18", "16", "0"] as const;
+
 describe("M4 producto.listed dedupe + M2 canonical writer (real DB, RLS on)", () => {
   beforeEach(async () => {
     fixture = await seedTenantFixture();
@@ -63,7 +66,7 @@ describe("M4 producto.listed dedupe + M2 canonical writer (real DB, RLS on)", ()
     // Empresa A seeds exactly 2 active products; limit 1 serves 1 item but
     // reports total 2 — the payload must carry total 2 (obs-1069 semantics).
     await withTenantTransaction(adminA(f), (tx) =>
-      listarProductos(tx, adminA(f), { page: 1, limit: 1 }),
+      listarProductos(tx, adminA(f), { page: 1, limit: 1 }, TASAS),
     ).then((r) => {
       expect(r.ok).toBe(true);
       if (r.ok) expect(r.data.items).toHaveLength(1);
@@ -80,12 +83,12 @@ describe("M4 producto.listed dedupe + M2 canonical writer (real DB, RLS on)", ()
   it("second listing by the SAME actor inside the window appends NOTHING (no retro-merge)", async () => {
     const f = fixture!;
     await withTenantTransaction(adminA(f), (tx) =>
-      listarProductos(tx, adminA(f), { page: 1, limit: 25 }),
+      listarProductos(tx, adminA(f), { page: 1, limit: 25 }, TASAS),
     );
     expect(await listarRows(f.empresaA.id)).toHaveLength(1);
 
     await withTenantTransaction(adminA(f), (tx) =>
-      listarProductos(tx, adminA(f), { page: 2, limit: 25 }),
+      listarProductos(tx, adminA(f), { page: 2, limit: 25 }, TASAS),
     );
 
     const rows = await listarRows(f.empresaA.id);
@@ -97,11 +100,11 @@ describe("M4 producto.listed dedupe + M2 canonical writer (real DB, RLS on)", ()
   it("a DIFFERENT actor inside the same window still appends his own row", async () => {
     const f = fixture!;
     await withTenantTransaction(adminA(f), (tx) =>
-      listarProductos(tx, adminA(f), { page: 1, limit: 25 }),
+      listarProductos(tx, adminA(f), { page: 1, limit: 25 }, TASAS),
     );
 
     await withTenantTransaction(adminB(f), (tx) =>
-      listarProductos(tx, adminB(f), { page: 1, limit: 25 }),
+      listarProductos(tx, adminB(f), { page: 1, limit: 25 }, TASAS),
     ).then((r) => {
       expect(r.ok).toBe(true);
       if (r.ok) expect(r.data.total).toBe(1);
@@ -150,7 +153,7 @@ describe("M4 producto.listed dedupe + M2 canonical writer (real DB, RLS on)", ()
   it("same-tx semantics: a listing that rolls back aborts its audit row", async () => {
     const f = fixture!;
     const filasAlVuelo = withTenantTransaction(adminA(f), async (tx) => {
-      const r = await listarProductos(tx, adminA(f), { page: 1, limit: 25 });
+      const r = await listarProductos(tx, adminA(f), { page: 1, limit: 25 }, TASAS);
       expect(r.ok).toBe(true);
       const filas = await tx.movimientoAuditoria.count({
         where: { empresaId: f.empresaA.id, accion: "LEER", entidad: "Producto" },
@@ -166,7 +169,7 @@ describe("M4 producto.listed dedupe + M2 canonical writer (real DB, RLS on)", ()
   it("append-only constraint: a direct UPDATE attempt on MOVIMIENTO_AUDITORIA is rejected", async () => {
     const f = fixture!;
     await withTenantTransaction(adminA(f), (tx) =>
-      listarProductos(tx, adminA(f), { page: 1, limit: 25 }),
+      listarProductos(tx, adminA(f), { page: 1, limit: 25 }, TASAS),
     );
 
     // The ledger is enforced immutable by the DB itself (the

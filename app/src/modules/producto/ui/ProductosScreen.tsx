@@ -284,7 +284,14 @@ export function ProductosScreen({
                   </td>
                   <td className="px-4 py-2">{p.categoria}</td>
                   <td className="px-4 py-2">{p.unidadMedida}</td>
-                  <td className="px-4 py-2">{p.tasaItbis}%</td>
+                  <td className="px-4 py-2">
+                    {p.tasaItbis}%
+                    {!p.tasaVigente && (
+                      <span className="text-xs text-amber-700 dark:text-amber-300">
+                        {" "}(retirada)
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-right tabular-nums">
                     {formatearMonto(p.precioVenta)}
                   </td>
@@ -358,6 +365,7 @@ export function ProductosScreen({
         <ProductoFormulario
           producto={formulario.modo === "editar" ? formulario.producto : null}
           categorias={data.categorias}
+          tasas={data.tasasItbis}
           onGuardado={() => {
             setMensaje(
               formulario.modo === "editar" ? "Producto actualizado." : "Producto creado.",

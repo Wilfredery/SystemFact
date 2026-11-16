@@ -83,6 +83,7 @@ const PRODUCTO = {
   unidadMedida: "Libra",
   precioVenta: "10.00",
   tasaItbis: "18" as const,
+  tasaVigente: true,
   itbisVigenteDesde: "2026-01-01T00:00:00.000Z",
   itbisVigenteHasta: null,
   itbisAplicaRetencionITBIS: true,
@@ -168,7 +169,7 @@ beforeEach(() => {
   });
   mockProductos.mockResolvedValue({
     ok: true,
-    data: { items: [PRODUCTO], total: 1, page: 1, limit: 25, categorias: [] },
+    data: { items: [PRODUCTO], total: 1, page: 1, limit: 25, categorias: [], tasasItbis: ["18", "16", "0"] },
   });
   mockCrear.mockResolvedValue({
     ok: true,

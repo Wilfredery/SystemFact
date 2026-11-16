@@ -18,8 +18,7 @@ import {
   actualizarProductoAction,
 } from "@/modules/producto/http/actions";
 import type { ProductoConsultaItem } from "@/modules/producto/application/producto-consulta-projection";
-import type { TasaItbis } from "@/modules/producto/domain/producto";
-import { TASAS_ITBIS_PERMITIDAS } from "@/shared/domain/tasas-itbis";
+import { esTasaEnLista, etiquetaTasaItbis } from "@/shared/domain/tasas-itbis";
 import {
   Button,
 } from "@/components/ui/button";
@@ -44,20 +43,27 @@ const CLASE_CONTROL =
 const CLASE_ALERTA =
   "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
 
-const ETIQUETAS_TASA: Record<TasaItbis, string> = {
-  "18": "18%",
-  "16": "16%",
-  "0": "0% (exento)",
-};
-
-// Display order stays 18, 16, 0 (the shared tuple is ordered 0, 16, 18).
-const TASAS: readonly { valor: TasaItbis; etiqueta: string }[] = [...TASAS_ITBIS_PERMITIDAS]
-  .reverse()
-  .map((valor) => ({ valor, etiqueta: ETIQUETAS_TASA[valor] }));
+/**
+ * Options of the rate select: the company's list in config order, plus the
+ * product's own stored rate when it was retired from the list, so an old
+ * product never shows a blank or a wrong rate (S4).
+ */
+function opcionesTasa(
+  tasas: readonly string[],
+  actual: string | null,
+): readonly { valor: string; etiqueta: string }[] {
+  const opciones = tasas.map((valor) => ({ valor, etiqueta: etiquetaTasaItbis(valor) }));
+  if (actual !== null && !esTasaEnLista(actual, tasas)) {
+    opciones.push({ valor: actual, etiqueta: `${actual}% (retirada)` });
+  }
+  return opciones;
+}
 
 export interface ProductoFormularioProps {
   readonly producto: ProductoConsultaItem | null;
   readonly categorias: readonly { id: number; nombre: string }[];
+  /** Allowed rates from the server, in config order; the first is the default. */
+  readonly tasas: readonly string[];
   readonly onGuardado: () => void;
   readonly onCancelar: () => void;
 }
@@ -65,6 +71,7 @@ export interface ProductoFormularioProps {
 export function ProductoFormulario({
   producto,
   categorias,
+  tasas,
   onGuardado,
   onCancelar,
 }: ProductoFormularioProps) {
@@ -76,7 +83,8 @@ export function ProductoFormulario({
   );
   const [unidad, setUnidad] = useState(producto?.unidadMedida ?? "");
   const [precio, setPrecio] = useState(producto?.precioVenta ?? "");
-  const [itbis, setItbis] = useState<TasaItbis>(producto?.tasaItbis ?? "18");
+  const [itbis, setItbis] = useState(producto?.tasaItbis ?? tasas[0] ?? "");
+  const opciones = opcionesTasa(tasas, producto?.tasaItbis ?? null);
   const [descripcion, setDescripcion] = useState(producto?.descripcion ?? "");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -210,10 +218,10 @@ export function ProductoFormulario({
               <select
                 id="producto-itbis"
                 value={itbis}
-                onChange={(e) => setItbis(e.target.value as TasaItbis)}
+                onChange={(e) => setItbis(e.target.value)}
                 className={CLASE_CONTROL}
               >
-                {TASAS.map((t) => (
+                {opciones.map((t) => (
                   <option key={t.valor} value={t.valor}>
                     {t.etiqueta}
                   </option>

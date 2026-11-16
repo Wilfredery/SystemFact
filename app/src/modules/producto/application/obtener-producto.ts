@@ -39,6 +39,7 @@ export async function obtenerProductoDetalle(
   tx: PrismaTx,
   ctx: TenantCtx,
   input: ObtenerProductoDetalleInput,
+  tasasPermitidas: readonly string[],
 ): Promise<ObtenerProductoDetalleResult> {
   // The adapter validates too; the use case guards its own contract.
   if (!Number.isInteger(input.id) || input.id < 1) {
@@ -50,5 +51,5 @@ export async function obtenerProductoDetalle(
     return buildError(PRODUCTO_NO_ENCONTRADO);
   }
 
-  return { ok: true, producto: mapearProductoConsulta(fila) };
+  return { ok: true, producto: mapearProductoConsulta(fila, tasasPermitidas) };
 }

@@ -40,6 +40,8 @@ export interface ConsultarProductosOutput {
   readonly page: number;
   readonly limit: number;
   readonly categorias: CategoriaOpcion[];
+  /** The company's allowed rates, in config order (form options). */
+  readonly tasasItbis: readonly string[];
 }
 
 export type ConsultarProductosResult =
@@ -64,6 +66,7 @@ export async function consultarProductos(
   tx: PrismaTx,
   ctx: TenantCtx,
   query: ConsultarProductosQuery,
+  tasasPermitidas: readonly string[],
 ): Promise<ConsultarProductosResult> {
   if (query.limit < 1 || query.limit > 100) {
     return buildError(LIMITE_PAGINACION_INVALIDO);
@@ -92,11 +95,12 @@ export async function consultarProductos(
   return {
     ok: true,
     data: {
-      items: filas.map(mapearProductoConsulta),
+      items: filas.map((f) => mapearProductoConsulta(f, tasasPermitidas)),
       total,
       page,
       limit: query.limit,
       categorias,
+      tasasItbis: tasasPermitidas,
     },
   };
 }
