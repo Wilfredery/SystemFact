@@ -1,6 +1,6 @@
 {
   "name": "systemfact",
-  "version": "0.34.10",
+  "version": "0.34.11",
   "private": true,
   "scripts": {
     "dev": "next dev",

@@ -19,8 +19,9 @@ import {
 import {
   calcularLineaVenta,
   calcularTotalesVenta,
-  validarLineaVenta,
+  validarFormaLineaVenta,
 } from "../domain/calculators";
+import { esTasaItbisFormatoValido } from "@/shared/domain/tasas-itbis";
 import type { VentaTotalesCalculo } from "../domain/calculators";
 import type { TeclaNumerica } from "@/components/ui/numeric-keypad";
 
@@ -171,7 +172,12 @@ export function editarLinea(
   return carro.map((l) => (l.productoId === productoId ? { ...l, [campo]: valor } : l));
 }
 
-/** True when the line still parses as a computable draft line (preview-safe). */
+/**
+ * True when the line still parses as a computable draft line (preview-safe).
+ * SHAPE-ONLY (feature itbis-tasas-config, slice 3d): whether the product's rate
+ * is still allowed is the server's job at prepare/confirm (S13 — a retired
+ * rate is refused there); the cart never validates membership.
+ */
 export function lineaComputable(linea: CarroLinea): boolean {
   const input: VentaLineaInput = {
     productoId: linea.productoId,
@@ -179,7 +185,10 @@ export function lineaComputable(linea: CarroLinea): boolean {
     precioUnitario: linea.precioUnitario,
     descuento: linea.descuento,
   };
-  return validarLineaVenta(input, linea.tasaItbis) === null;
+  return (
+    validarFormaLineaVenta(input) === null &&
+    esTasaItbisFormatoValido(linea.tasaItbis)
+  );
 }
 
 /** A line's contribution to the preview (its pre-proration calculation). */

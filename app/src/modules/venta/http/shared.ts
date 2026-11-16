@@ -12,7 +12,10 @@ export const ROLES_VENTA = ["Administrador", "Operador"];
 export type VentaAccionesErrorCode =
   | VentaErrorCode
   | CreditoRechazo
-  | Extract<VentaGuardadoErrorCode, "DESC_MAX_FALTANTE">
+  | Extract<
+      VentaGuardadoErrorCode,
+      "DESC_MAX_FALTANTE" | "TASA_ITBIS_CONFIG_FALTANTE"
+    >
   | typeof NO_AUTORIZADO
   | typeof SESION_INVALIDA
   | typeof VALIDATION_ERROR;

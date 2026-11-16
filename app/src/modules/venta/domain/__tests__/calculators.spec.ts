@@ -142,6 +142,7 @@ describe("Fixture F4 — 100.00 @18% with header 4% (R-V8 boundary)", () => {
     const { totales } = calcularVenta(
       [{ linea: inp(1, "1", "100.00"), tasaItbis: "18" }],
       { descuentoTipo: DESCUENTO_TIPO.PORCENTAJE, descuentoValor: "4.00" },
+          LISTA,
     );
     expect(totales.descuentoCabecera).toBe("4.00");
     expect(totales.subtotalGravado).toBe("96.00");
@@ -157,7 +158,7 @@ describe("Fixture F4 — 100.00 @18% with header 4% (R-V8 boundary)", () => {
       ),
     ).toThrow(VentaDomainError);
     expect(() =>
-      calcularVenta([{ linea: inp(1, "1", "100.00"), tasaItbis: "7" }]),
+      calcularVenta([{ linea: inp(1, "1", "100.00"), tasaItbis: "7" }], DESCUENTO_CERO, LISTA),
     ).toThrow(VentaDomainError);
   });
 });
@@ -305,6 +306,7 @@ describe("Property-style matrix (R-V5 / R-V6 identities)", () => {
     const { totales } = calcularVenta(
       [{ linea: inp(1, "1", "100.00"), tasaItbis: "18" }],
       { descuentoTipo: DESCUENTO_TIPO.PORCENTAJE, descuentoValor: "12.5" },
+          LISTA,
     );
     expect(totales.descuentoCabecera).toBe("12.50");
     expect(totales.descuento).toBe("12.50");
@@ -314,18 +316,20 @@ describe("Property-style matrix (R-V5 / R-V6 identities)", () => {
 // ---------------------------------------------------------------------------
 // Line validator — invalid shapes map to LINEA_INVALIDA.
 // ---------------------------------------------------------------------------
+const LISTA = ["18", "16", "0"];
+
 describe("validarLineaVenta (R-V1 line shapes)", () => {
   it("accepts a well-formed line", () => {
-    expect(validarLineaVenta(inp(1, "2.000", "100.00"), "18")).toBeNull();
+    expect(validarLineaVenta(inp(1, "2.000", "100.00"), "18", LISTA)).toBeNull();
   });
   it("rejects quantity ≤ 0", () => {
-    expect(validarLineaVenta(inp(1, "0", "100.00"), "18")).toBe("LINEA_INVALIDA");
-    expect(validarLineaVenta(inp(1, "-1", "100.00"), "18")).toBe("LINEA_INVALIDA");
+    expect(validarLineaVenta(inp(1, "0", "100.00"), "18", LISTA)).toBe("LINEA_INVALIDA");
+    expect(validarLineaVenta(inp(1, "-1", "100.00"), "18", LISTA)).toBe("LINEA_INVALIDA");
   });
   it("rejects negative price", () => {
-    expect(validarLineaVenta(inp(1, "1", "-0.01"), "18")).toBe("LINEA_INVALIDA");
+    expect(validarLineaVenta(inp(1, "1", "-0.01"), "18", LISTA)).toBe("LINEA_INVALIDA");
   });
   it("rejects an ITBIS rate outside 18 / 16 / 0", () => {
-    expect(validarLineaVenta(inp(1, "1", "10.00"), "12")).toBe("LINEA_INVALIDA");
+    expect(validarLineaVenta(inp(1, "1", "10.00"), "12", LISTA)).toBe("LINEA_INVALIDA");
   });
 });

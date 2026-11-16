@@ -23,13 +23,23 @@ import {
   DESC_MAX_FALTANTE,
   messageForVentaConfig,
 } from "../infrastructure/config-repository";
+import {
+  CODIGO_TASA_ITBIS_CONFIG_FALTANTE,
+  MENSAJE_TASA_ITBIS_CONFIG_FALTANTE,
+} from "@/shared/domain/tasas-itbis";
 
 // The save pipeline only ever reads DESC_MAX (its `leerConfigVentaEnTx`
 // reader); `VentaConfigErrorCode` also carries PLAZO_DEVOLUCION_FALTANTE
 // (task 1.7's other config key), which belongs to the devolucion flow and
 // must NOT leak into the save surface — pin the union to the exact code.
+/** Stable code for a missing/malformed per-empresa TASA_ITBIS key (S15). */
+export const TASA_ITBIS_CONFIG_FALTANTE = CODIGO_TASA_ITBIS_CONFIG_FALTANTE;
+
 /** Union of the venta-domain and venta-config codes a save can return. */
-export type VentaGuardadoErrorCode = VentaErrorCode | typeof DESC_MAX_FALTANTE;
+export type VentaGuardadoErrorCode =
+  | VentaErrorCode
+  | typeof DESC_MAX_FALTANTE
+  | typeof CODIGO_TASA_ITBIS_CONFIG_FALTANTE;
 
 export const ALL_GUARDADO_ERROR_CODES: readonly VentaGuardadoErrorCode[] = [
   // venta domain (R-V13)
@@ -49,11 +59,16 @@ export const ALL_GUARDADO_ERROR_CODES: readonly VentaGuardadoErrorCode[] = [
   "CLIENTE_INACTIVO",
   // venta-config (R-C1)
   DESC_MAX_FALTANTE,
+  // shared config (feature itbis-tasas-config, S15)
+  CODIGO_TASA_ITBIS_CONFIG_FALTANTE,
 ];
 
 /** Default user copy for any composed save error code. */
 export function messageForVentaGuardado(code: VentaGuardadoErrorCode): string {
   if (code === DESC_MAX_FALTANTE) return messageForVentaConfig(code);
+  if (code === CODIGO_TASA_ITBIS_CONFIG_FALTANTE) {
+    return MENSAJE_TASA_ITBIS_CONFIG_FALTANTE;
+  }
   return messageFor(code);
 }
 

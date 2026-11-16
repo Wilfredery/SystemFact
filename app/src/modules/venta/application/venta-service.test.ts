@@ -46,6 +46,7 @@ import {
   RETROACTIVO_FECHA_VENTA_FALTANTE,
 } from "../infrastructure/config-repository";
 import { getOrCreateConsumidorFinalEnTx } from "@/modules/cliente/application/consumidor-final";
+import { leerTasasItbisEnTx } from "@/shared/infrastructure/tasas-itbis-config";
 import { registrarReposicionCancelacion } from "@/modules/inventario/application/registrar-salidas-venta";
 import { revertirPagosAplicadosDeVentaEnTx } from "@/modules/cobros/infrastructure/pago-repository";
 import { registrarEventoAuditoriaEnTx } from "@/modules/auditoria/application/auditoria-write-port";
@@ -121,6 +122,15 @@ jest.mock("../infrastructure/config-repository", () => {
   };
 });
 
+// Slice 3d (itbis-tasas-config): stub the shared rate-list reader; the REAL
+// TasasItbisConfigError class stays so instanceof inside the pipeline holds.
+jest.mock("@/shared/infrastructure/tasas-itbis-config", () => {
+  const actual = jest.requireActual(
+    "@/shared/infrastructure/tasas-itbis-config",
+  ) as Record<string, unknown>;
+  return { ...actual, leerTasasItbisEnTx: jest.fn() };
+});
+
 jest.mock("@/modules/cliente/application/consumidor-final", () => ({
   getOrCreateConsumidorFinalEnTx: jest.fn(),
 }));
@@ -166,6 +176,7 @@ beforeEach(() => {
   (leerStockSucursalEnTx as jest.Mock).mockResolvedValue([{ productoId: 10, disponible: "50.000" }]);
   (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
   (leerConfigVentaEnTx as jest.Mock).mockResolvedValue("25.00");
+  (leerTasasItbisEnTx as jest.Mock).mockResolvedValue(["18", "16", "0"]);
   // F5: the sale-date band. `FECHA` (2026-01-10) is far in the past, so the
   // default mock opens the band wide enough for the historical fixtures here;
   // the two bounds themselves are pinned in `domain/__tests__/fecha-venta.spec.ts`
