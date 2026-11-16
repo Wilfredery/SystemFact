@@ -48,6 +48,7 @@ function makeFakeDb(
     empresa: { findMany: async () => empresas.map((id) => ({ id })) },
     configuracionEmpresa: {
       findMany: async () => activeRows,
+      findFirst: async () => null,
       updateMany: async (args: unknown) => {
         calls.updateMany.push(args);
         return { count: 0 };

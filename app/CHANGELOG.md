@@ -1,3 +1,9 @@
+## [0.35.0](https://github.com/Wilfredery/SystemFact/compare/v0.34.13...v0.35.0) (2026-11-16)
+
+### Features
+
+* **itbis:** the Configuración tab in Administración now has a card to edit the company's list of allowed ITBIS rates (TASA_ITBIS, today 18,16,0), Administrador only (odd/tasks/itbis-tasas-edit.md, first MINOR release under the confirmed versioning rule). The screen shows the current list and its validity window; you type the new comma-separated list and save. Saving closes the current validity window at the change moment and opens a new row from it, so history is preserved and no past document changes: the new list governs from the moment of the save onward. Saving the same list again is a no-op. The form validates the format (comma-separated values between 0 and 100, no duplicates, no empty items) before sending, and the server re-checks with the same rules; a simultaneous edit by another admin returns a clear conflict message instead of overwriting. Every change writes one audit entry. The card carries a caution: confirm the legality of any new rate with your accountant before saving it; the screen enforces the format, not the legality. A database migration now restricts writes on the configuration table to Administrador sessions at the database level as well (SELECT unchanged; rows are never deleted through the application); the migration must be applied before deploying this release.
+
 ## [0.34.13](https://github.com/Wilfredery/SystemFact/compare/v0.34.12...v0.34.13) (2026-11-16)
 
 ### Changed

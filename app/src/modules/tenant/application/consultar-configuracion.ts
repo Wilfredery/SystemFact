@@ -18,6 +18,7 @@ import { calcularPorcentajeUsado } from "../domain/administracion";
 import { armarTasasItbisEnUso, type TasaItbisEnUso } from "../domain/itbis-en-uso";
 import {
   leerConfiguracionAdministracionEnTx,
+  leerTasaItbisConfigEnTx,
   type SecuenciaNcfLeida,
 } from "../infrastructure/administracion-config-repository";
 
@@ -35,6 +36,12 @@ export interface ConfiguracionAdministracion {
   readonly retenciones: RetentionRates | null;
   readonly ncf: readonly SecuenciaNcfAdministracion[];
   readonly itbisEnUso: readonly TasaItbisEnUso[];
+  /** The empresa's current active TASA_ITBIS row (feature itbis-tasas-edit). */
+  readonly tasaItbis: {
+    readonly valor: string;
+    readonly vigenciaInicio: string;
+    readonly vigenciaFin: string;
+  } | null;
 }
 
 export type ConsultarConfiguracionResult = {
@@ -63,12 +70,18 @@ export async function consultarConfiguracion(
   ahora: Date = new Date(),
 ): Promise<ConsultarConfiguracionResult> {
   const leida = await leerConfiguracionAdministracionEnTx(tx, empresaId);
+  const tasaItbis = await leerTasaItbisConfigEnTx(tx, empresaId, ahora);
   return {
     ok: true,
     data: {
       retenciones: leida.retenciones,
       ncf: leida.secuenciasNcf.map(toVista),
       itbisEnUso: armarTasasItbisEnUso(leida.tasasItbis, ahora),
+      tasaItbis: tasaItbis === null ? null : {
+        valor: tasaItbis.valor,
+        vigenciaInicio: tasaItbis.vigenciaInicio.toISOString(),
+        vigenciaFin: tasaItbis.vigenciaFin.toISOString(),
+      },
     },
   };
 }

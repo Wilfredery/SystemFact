@@ -46,6 +46,13 @@ jest.mock("@/modules/tenant/http/actions.usuarios", () => ({
   moverUsuarioDeSucursalAction: jest.fn(),
 }));
 
+// The new config write action (feature itbis-tasas-edit) is mocked at the
+// HTTP boundary like the other write actions; its real module graph pulls
+// the server-only Prisma client that jsdom cannot load.
+jest.mock("@/modules/tenant/http/actions.configuracion", () => ({
+  editarTasasItbisAction: jest.fn(),
+}));
+
 const mockListar = jest.mocked(listarUsuariosAction);
 const mockSucursales = jest.mocked(listarSucursalesDeEmpresaAction);
 const mockMover = jest.mocked(moverUsuarioDeSucursalAction);

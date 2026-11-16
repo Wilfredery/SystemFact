@@ -50,6 +50,11 @@ export const ROLES_GESTION_USUARIOS = ["Administrador"];
  */
 export const ROLES_GESTION_SUCURSALES = ["Administrador"];
 
+// Feature itbis-tasas-edit: the fiscal rate list is its OWN capability — it
+// must NOT silently inherit branch-management role group (a future edit of
+// one must never change the other).
+export const ROLES_GESTION_CONFIGURACION = ["Administrador"];
+
 export type AdministracionErrorCode =
   | TenantErrorCode
   | typeof VALIDATION_ERROR

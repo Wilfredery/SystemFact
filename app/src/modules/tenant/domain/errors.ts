@@ -42,6 +42,10 @@ export const TEN_SUCURSAL_ULTIMA_ACTIVA = "TEN_SUCURSAL_ULTIMA_ACTIVA";
 // tenant-blind on purpose and its message cannot tell the admin what to do, so
 // this refusal has its own code (the admin sees the user's own branch anyway).
 export const TEN_USUARIO_SUCURSAL_INACTIVA = "TEN_USUARIO_SUCURSAL_INACTIVA";
+// Feature itbis-tasas-edit: the submitted rate list fails the shared parser
+// (empty element, bad format, >100, duplicate). The UI pre-validates with the
+// same parser; this is the server's typed refusal.
+export const TEN_TASA_ITBIS_INVALIDA = "TEN_TASA_ITBIS_INVALIDA";
 
 export const TEN_ERROR_CODES = [
   TEN_OPS_NO_AUTORIZADO,
@@ -59,6 +63,7 @@ export const TEN_ERROR_CODES = [
   TEN_SUCURSAL_PROPIA_NO_DESACTIVABLE,
   TEN_SUCURSAL_ULTIMA_ACTIVA,
   TEN_USUARIO_SUCURSAL_INACTIVA,
+  TEN_TASA_ITBIS_INVALIDA,
 ] as const;
 
 export type TenantErrorCode = (typeof TEN_ERROR_CODES)[number];
@@ -93,6 +98,8 @@ const TEN_ERROR_MESSAGES: Readonly<Record<TenantErrorCode, string>> = {
     "No puede desactivar la última sucursal activa de la empresa.",
   [TEN_USUARIO_SUCURSAL_INACTIVA]:
     "La sucursal del usuario está inactiva: muévalo primero a una sucursal activa y después actívelo.",
+  [TEN_TASA_ITBIS_INVALIDA]:
+    "La lista de tasas de ITBIS no es válida: debe ser una lista separada por comas de valores entre 0 y 100, sin repetir ni elementos vacíos.",
 };
 
 export function messageFor(code: TenantErrorCode): string {

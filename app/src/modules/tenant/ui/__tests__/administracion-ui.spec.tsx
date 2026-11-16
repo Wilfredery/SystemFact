@@ -43,6 +43,13 @@ jest.mock("@/modules/tenant/http/actions.administracion", () => ({
   obtenerPermisosAdministracionAction: jest.fn(),
 }));
 
+// The new config write action (feature itbis-tasas-edit) is mocked at the
+// HTTP boundary like the other write actions; its real module graph pulls
+// the server-only Prisma client that jsdom cannot load.
+jest.mock("@/modules/tenant/http/actions.configuracion", () => ({
+  editarTasasItbisAction: jest.fn(),
+}));
+
 const mockListar = jest.mocked(listarUsuariosAction);
 
 const FILTROS: FiltrosUsuarios = { busqueda: "", activo: "" };
@@ -257,6 +264,7 @@ describe("AdministracionScreen — tabs (S2/S6)", () => {
             },
           ],
           itbisEnUso: [],
+            tasaItbis: null,
         },
       },
     });
@@ -296,6 +304,7 @@ describe("AdministracionScreen — tabs (S2/S6)", () => {
               vigenteHoy: false,
             },
           ],
+            tasaItbis: null,
         },
       },
     });
@@ -317,7 +326,7 @@ describe("AdministracionScreen — tabs (S2/S6)", () => {
     expect(screen.queryByText(/Sin productos activos/)).not.toBeInTheDocument();
   });
 
-  it("renders no create/edit/delete control for the ITBIS rates (read-only)", () => {
+  it("renders the rate-list edit card (feature itbis-tasas-edit)", () => {
     montar({
       tab: "configuracion",
       usuarios: null,
@@ -335,14 +344,15 @@ describe("AdministracionScreen — tabs (S2/S6)", () => {
               vigenteHoy: true,
             },
           ],
+            tasaItbis: null,
         },
       },
     });
 
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/conjunto de tasas permitidas está fijado por las reglas de producto/),
-    ).toBeInTheDocument();
+    // The card replaces the old read-only caption: the edit control exists
+    // (server-enforced Administrador-only) and no delete control does.
+    expect(screen.getByRole("button", { name: /Guardar lista/ })).toBeInTheDocument();
+    expect(screen.queryByText(/conjunto de tasas permitidas está fijado por las reglas de producto/)).not.toBeInTheDocument();
   });
 
   it("renders the explicit empty state when no active product exists (S3)", () => {
@@ -351,7 +361,7 @@ describe("AdministracionScreen — tabs (S2/S6)", () => {
       usuarios: null,
       configuracion: {
         ok: true,
-        data: { retenciones: retencionesOk, ncf: [], itbisEnUso: [] },
+        data: { retenciones: retencionesOk, ncf: [], itbisEnUso: [], tasaItbis: null },
       },
     });
 
