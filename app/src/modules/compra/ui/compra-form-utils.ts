@@ -7,7 +7,7 @@
  *
  * S6 (no float math in the UI): the money/quantity DISPLAY math reuses the
  * purchase DOMAIN's own calculators (`calcularLinea`, `calcularTotales`,
- * `validarLinea` from `domain/calculators`), not a client-side re-implementation.
+ * `validarFormaLinea` (shape-only, slice 3e of itbis-tasas-config)), not a client-side re-implementation.
  * The domain is pure TypeScript over `decimal.js`, so the preview a user sees
  * while typing is computed by exactly the function the server runs when the
  * purchase is saved — the two can never drift, and nothing crosses a JS float.
@@ -31,8 +31,9 @@ import {
   RE_COSTO_UNITARIO,
   calcularLinea,
   calcularTotales,
-  validarLinea,
+  validarFormaLinea,
 } from "../domain/calculators";
+import { esTasaItbisFormatoValido } from "@/shared/domain/tasas-itbis";
 import { formatearFechaSD } from "@/shared/ui/format/date";
 import { TIPOS_COMPRA_FILTRO } from "./compras-filtros";
 
@@ -193,7 +194,8 @@ export function vistaPreviaCompra(
       cantidad: linea.cantidad.trim(),
       costoUnitario: linea.costoUnitario.trim(),
     };
-    if (validarLinea(input, linea.producto.tasaItbis) !== null) continue;
+    if (validarFormaLinea(input) !== null) continue;
+    if (!esTasaItbisFormatoValido(linea.producto.tasaItbis)) continue;
     const calculada = calcularLinea(input, linea.producto.tasaItbis);
     calculadas.push(calculada);
     porClave.set(linea.clave, calculada);

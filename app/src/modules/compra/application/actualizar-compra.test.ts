@@ -13,8 +13,19 @@ import {
   reemplazarLineasEnTx,
   registrarAuditCompraEnTx,
 } from "../infrastructure/compra-repository";
+import { leerTasasItbisEnTx } from "@/shared/infrastructure/tasas-itbis-config";
 import { actualizarCompra } from "./actualizar-compra";
 import { NFC_INVALIDO, TIPO_NCF_DESACUERDO } from "../domain/errors";
+
+
+// Slice 3e (itbis-tasas-config): stub the shared rate-list reader; the REAL
+// TasasItbisConfigError class stays so instanceof inside prepararLineas holds.
+jest.mock("@/shared/infrastructure/tasas-itbis-config", () => {
+  const actual = jest.requireActual(
+    "@/shared/infrastructure/tasas-itbis-config",
+  ) as Record<string, unknown>;
+  return { ...actual, leerTasasItbisEnTx: jest.fn() };
+});
 
 jest.mock("../infrastructure/compra-repository", () => ({
   actualizarCompraBorradorEnTx: jest.fn(),
@@ -34,6 +45,7 @@ const draft = {
   correlativoInterno: "",
   tipoCompra: "MERCANCIA",
   sucursalId: 2,
+    fecha: new Date("2026-01-10T00:00:00.000Z"),
   ncf: null,
   tipoNcf: null,
   proveedorId: 5,
@@ -42,6 +54,7 @@ const draft = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(leerTasasItbisEnTx).mockResolvedValue(["18", "16", "0"]);
   jest.mocked(leerCompraEnTx).mockResolvedValue(draft);
   jest.mocked(leerProveedorClasificadoEnTx).mockResolvedValue({
     id: 5,

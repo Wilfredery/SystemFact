@@ -67,6 +67,8 @@ export interface CompraLeida {
   readonly proveedorId: number;
   /** The branch that owns the purchase — required by the receipt branch guard. */
   readonly sucursalId: number;
+  /** The purchase date — selects the TASA_ITBIS validity window (slice 3e). */
+  readonly fecha: Date;
   readonly lineas: readonly CompraLineaPersistida[];
 }
 
@@ -263,6 +265,7 @@ export async function leerCompraEnTx(
       tipoNcf: true,
       proveedorId: true,
       sucursalId: true,
+      fecha: true,
       detalles: {
         select: {
           productoId: true,
@@ -285,6 +288,7 @@ export async function leerCompraEnTx(
     tipoNcf: row.tipoNcf as TipoNcfCompraCore | null,
     proveedorId: row.proveedorId,
     sucursalId: row.sucursalId,
+    fecha: row.fecha,
     lineas: row.detalles.map((d) => ({
       productoId: d.productoId,
       cantidad: new Prisma.Decimal(d.cantidad).toString(),

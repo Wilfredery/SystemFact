@@ -30,6 +30,7 @@ describe("compra error catalog", () => {
     COMPRA_INMUTABLE: true,
     TRANSICION_INVALIDA: true,
     CONFIG_RETENCION_FALTANTE: true,
+    TASA_ITBIS_CONFIG_FALTANTE: true,
     CORRELATIVO_CONFLICTO: true,
     CONCURRENCIA_CONFLICTO: true,
     NFC_DUPLICADO: true,
@@ -45,8 +46,8 @@ describe("compra error catalog", () => {
     STOCK_MAXIMO_EXCEDIDO: true,
   };
 
-  it("carries exactly 19 stable codes (18 + the L6 stock-ceiling delta)", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(19);
+  it("carries exactly 20 stable codes (18 + the L6 stock-ceiling delta + the 3e TASA_ITBIS config code)", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(20);
   });
 
   it("gives every catalog code a non-empty Spanish message", () => {

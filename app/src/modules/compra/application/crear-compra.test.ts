@@ -14,6 +14,7 @@ import {
   leerProductosParaLineasEnTx,
   registrarAuditCompraEnTx,
 } from "../infrastructure/compra-repository";
+import { leerTasasItbisEnTx } from "@/shared/infrastructure/tasas-itbis-config";
 import {
   CompraDomainError,
   NFC_DUPLICADO,
@@ -21,6 +22,16 @@ import {
   TIPO_NCF_DESACUERDO,
 } from "../domain/errors";
 import { crearCompra, type CrearCompraInput } from "./crear-compra";
+
+
+// Slice 3e (itbis-tasas-config): stub the shared rate-list reader; the REAL
+// TasasItbisConfigError class stays so instanceof inside prepararLineas holds.
+jest.mock("@/shared/infrastructure/tasas-itbis-config", () => {
+  const actual = jest.requireActual(
+    "@/shared/infrastructure/tasas-itbis-config",
+  ) as Record<string, unknown>;
+  return { ...actual, leerTasasItbisEnTx: jest.fn() };
+});
 
 jest.mock("../infrastructure/compra-repository", () => ({
   crearCompraConLineasEnTx: jest.fn(),
@@ -58,6 +69,7 @@ function baseInput(over: Partial<CrearCompraInput> = {}): CrearCompraInput {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(leerTasasItbisEnTx).mockResolvedValue(["18", "16", "0"]);
   jest.mocked(leerProveedorClasificadoEnTx).mockResolvedValue(proveedorFormal);
   jest.mocked(leerProductosParaLineasEnTx).mockResolvedValue([
     { id: 10, activo: true, tasaItbis: "18" },
@@ -154,5 +166,41 @@ describe("crearCompra", () => {
     );
     expect(result.ok === false && result.code).toBe(TIPO_NCF_DESACUERDO);
     expect(crearCompraConLineasEnTx).not.toHaveBeenCalled();
+  });
+});
+
+// --- slice 3e: per-empresa TASA_ITBIS list ---------------------------------
+
+import { TasasItbisConfigError } from "@/shared/domain/tasas-itbis";
+
+describe("crearCompra — per-empresa TASA_ITBIS list (slice 3e)", () => {
+  it("refuses a well-formed rate outside the list ('7') with LINEA_INVALIDA", async () => {
+    jest.mocked(leerProductosParaLineasEnTx).mockResolvedValue([
+      { id: 10, activo: true, tasaItbis: "7" },
+    ]);
+    const result = await crearCompra(tx, ctx, baseInput());
+    expect(!result.ok && result.code).toBe("LINEA_INVALIDA");
+  });
+
+  it("fails loud with TASA_ITBIS_CONFIG_FALTANTE when the key is missing (S15)", async () => {
+    jest.mocked(leerTasasItbisEnTx).mockRejectedValue(
+      new TasasItbisConfigError("ausente"),
+    );
+    const result = await crearCompra(tx, ctx, baseInput());
+    expect(!result.ok && result.code).toBe("TASA_ITBIS_CONFIG_FALTANTE");
+  });
+
+  it("reads the rate list AFTER the product batch (ordering)", async () => {
+    const calls: string[] = [];
+    jest.mocked(leerProductosParaLineasEnTx).mockImplementation(async () => {
+      calls.push("productos");
+      return [{ id: 10, activo: true, tasaItbis: "18" }];
+    });
+    jest.mocked(leerTasasItbisEnTx).mockImplementation(async () => {
+      calls.push("tasas");
+      return ["18", "16", "0"];
+    });
+    await crearCompra(tx, ctx, baseInput());
+    expect(calls).toEqual(["productos", "tasas"]);
   });
 });

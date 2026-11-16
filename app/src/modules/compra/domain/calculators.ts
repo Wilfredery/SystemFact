@@ -20,7 +20,7 @@
 
 import { Decimal } from "decimal.js";
 import { LINEA_INVALIDA, type CompraErrorCode } from "./errors";
-import { esTasaItbisValida } from "@/modules/producto/domain/producto";
+import { esTasaEnLista } from "@/shared/domain/tasas-itbis";
 import type {
   ClaseProveedor,
   CompraLineaCalculada,
@@ -48,21 +48,38 @@ export const RE_CANTIDAD = /^\d{1,9}(\.\d{1,3})?$/;
 export const RE_COSTO_UNITARIO = /^\d{1,10}(\.\d{1,2})?$/;
 
 /**
- * Validate a draft line at the domain boundary: a strictly positive base-unit
- * quantity (`Decimal(12,3)`), a non-negative unit cost (`Decimal(12,2)`), and a
- * frozen ITBIS rate restricted to the 18 / 16 / 0 set. Ownership/inactivity of
- * the referenced product is a DB concern and is checked by the application
- * layer. Returns `null` when valid, otherwise the stable `LINEA_INVALIDA` code.
+ * Pure shape checks only (quantity/cost) — no rate membership. The purchase
+ * form UI uses this directly (membership is the server's job at prepare,
+ * slice 3e); {@link validarLinea} adds the rate check on top.
  */
-export function validarLinea(
+export function validarFormaLinea(
   input: CompraLineaInput,
-  tasaItbis: string,
 ): CompraErrorCode | null {
   if (!RE_CANTIDAD.test(input.cantidad)) return LINEA_INVALIDA;
   if (!RE_COSTO_UNITARIO.test(input.costoUnitario)) return LINEA_INVALIDA;
   if (new Decimal(input.cantidad).lessThanOrEqualTo(0)) return LINEA_INVALIDA;
   if (new Decimal(input.costoUnitario).lessThan(0)) return LINEA_INVALIDA;
-  if (!esTasaItbisValida(tasaItbis)) return LINEA_INVALIDA;
+  return null;
+}
+
+/**
+ * Validate a draft line at the domain boundary: a strictly positive base-unit
+ * quantity (`Decimal(12,3)`), a non-negative unit cost (`Decimal(12,2)`), and
+ * an ITBIS rate numerically inside the per-empresa allowed list (feature
+ * itbis-tasas-config, slice 3e — the list is DATA, passed by the caller from
+ * `TASA_ITBIS`; the domain never imports a rate set nor the producto domain).
+ * Ownership/inactivity of the referenced product is a DB concern and is
+ * checked by the application layer. Returns `null` when valid, otherwise the
+ * stable `LINEA_INVALIDA` code.
+ */
+export function validarLinea(
+  input: CompraLineaInput,
+  tasaItbis: string,
+  tasasPermitidas: readonly string[],
+): CompraErrorCode | null {
+  const forma = validarFormaLinea(input);
+  if (forma !== null) return forma;
+  if (!esTasaEnLista(tasaItbis, tasasPermitidas)) return LINEA_INVALIDA;
   return null;
 }
 

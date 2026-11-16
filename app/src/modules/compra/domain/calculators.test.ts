@@ -218,28 +218,46 @@ describe("calcularRetenciones — full matrix", () => {
   });
 });
 
+const LISTA = ["18", "16", "0"];
+
 describe("validarLinea", () => {
   it("accepts a positive quantity, non-negative cost and a 18/16/0 rate", () => {
     expect(
-      validarLinea({ productoId: 1, cantidad: "1.000", costoUnitario: "0.00" }, "18"),
+      validarLinea(
+        { productoId: 1, cantidad: "1.000", costoUnitario: "0.00" },
+        "18",
+        LISTA,
+      ),
     ).toBeNull();
   });
 
   it("rejects a non-positive quantity", () => {
     expect(
-      validarLinea({ productoId: 1, cantidad: "0.000", costoUnitario: "10.00" }, "18"),
+      validarLinea(
+        { productoId: 1, cantidad: "0.000", costoUnitario: "10.00" },
+        "18",
+        LISTA,
+      ),
     ).toBe("LINEA_INVALIDA");
   });
 
   it("rejects a negative unit cost", () => {
     expect(
-      validarLinea({ productoId: 1, cantidad: "1.000", costoUnitario: "-1.00" }, "18"),
+      validarLinea(
+        { productoId: 1, cantidad: "1.000", costoUnitario: "-1.00" },
+        "18",
+        LISTA,
+      ),
     ).toBe("LINEA_INVALIDA");
   });
 
   it("rejects a rate outside the 18/16/0 set", () => {
     expect(
-      validarLinea({ productoId: 1, cantidad: "1.000", costoUnitario: "10.00" }, "12"),
+      validarLinea(
+        { productoId: 1, cantidad: "1.000", costoUnitario: "10.00" },
+        "12",
+        LISTA,
+      ),
     ).toBe("LINEA_INVALIDA");
   });
 
@@ -248,6 +266,7 @@ describe("validarLinea", () => {
       validarLinea(
         { productoId: 1, cantidad: "1.000", costoUnitario: "1000000000.00" },
         "18",
+        LISTA,
       ),
     ).toBeNull();
   });
@@ -257,6 +276,7 @@ describe("validarLinea", () => {
       validarLinea(
         { productoId: 1, cantidad: "1.000", costoUnitario: "10000000000.00" },
         "18",
+        LISTA,
       ),
     ).toBe("LINEA_INVALIDA");
   });
