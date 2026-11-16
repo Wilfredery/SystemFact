@@ -1,3 +1,9 @@
+## [0.34.8](https://github.com/Wilfredery/SystemFact/compare/v0.34.7...v0.34.8) (2026-11-16)
+
+### Bug Fixes
+
+* **devolucion:** a return now validates the ITBIS rate FROZEN on the original sale line by shape only, not against the company's current list of allowed rates (`odd/tasks/itbis-tasas-config.md`, sub-slice 3f). Nothing changes for the rates in use today (18, 16, 0); the fix makes sure that when a rate is retired from the list later, sales made at that rate can still be returned with their original rate. Malformed rates (empty, non-numeric, negative, above 100, more than 2 decimals) are still refused with `LINEA_INVALIDA`. Covered by a real-database test that fails on the previous validation.
+
 ## [0.34.7](https://github.com/Wilfredery/SystemFact/compare/v0.34.6...v0.34.7) (2026-11-16)
 
 ### Maintenance

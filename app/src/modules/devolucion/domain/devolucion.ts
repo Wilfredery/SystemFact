@@ -26,7 +26,7 @@
  */
 
 import { Decimal } from "decimal.js";
-import { esTasaItbisPermitida } from "@/shared/domain/tasas-itbis";
+import { esTasaItbisFormatoValido } from "@/shared/domain/tasas-itbis";
 import {
   CANTIDAD_EXCEDE_ORIGINAL,
   DEVOLUCION_FUERA_DE_PLAZO,
@@ -207,7 +207,10 @@ export function calcularTotalesNotaCredito(
     if (
       !/^\d{1,9}(\.\d{1,3})?$/.test(l.cantidad) ||
       !/^\d{1,9}(\.\d{1,2})?$/.test(l.precioUnitario) ||
-      !esTasaItbisPermitida(l.tasaItbis)
+      // The rate is the one FROZEN on the original sale line: a return must work even when
+      // that rate was retired from the company list afterwards (itbis-tasas-config S4, S7),
+      // so only its SHAPE is checked here, never membership in today's list.
+      !esTasaItbisFormatoValido(l.tasaItbis)
     ) {
       throw new VentaDomainError(LINEA_INVALIDA, { productoId: l.productoId });
     }

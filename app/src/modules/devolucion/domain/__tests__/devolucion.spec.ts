@@ -192,6 +192,54 @@ describe("devolucion — calcularTotalesNotaCredito (R-D5, frozen NC totals)", (
     });
   });
 
+  it("uses the rate FROZEN on the original line even when it is no longer in the allowed list (S4, S7)", () => {
+    // 7 and 25 are valid rate SHAPES that today's list ({0,16,18}) does not contain: a
+    // legacy sale line can carry them after a rate is retired, and the return must work.
+    const lineas = [
+      {
+        productoId: 1,
+        cantidad: "2.000",
+        precioUnitario: "10.50",
+        tasaItbis: "7",
+        tipoReposicion: TIPO_REPOSICION.VENDIBLE,
+      },
+      {
+        productoId: 2,
+        cantidad: "1.000",
+        precioUnitario: "100.00",
+        tasaItbis: "25",
+        tipoReposicion: TIPO_REPOSICION.VENDIBLE,
+      },
+    ];
+    // sub1 = 21.00 ; itbis1 = round2(21 x 7/100) = 1.47
+    // sub2 = 100.00 ; itbis2 = round2(100 x 25/100) = 25.00
+    expect(calcularTotalesNotaCredito(lineas)).toEqual({
+      monto: "121.00",
+      itbis: "26.47",
+      lineas: [
+        { productoId: 1, subtotalLinea: "21.00", itbisLinea: "1.47" },
+        { productoId: 2, subtotalLinea: "100.00", itbisLinea: "25.00" },
+      ],
+    });
+  });
+
+  it.each(["", "abc", "-1", "1e1", " 18", "100.01", "7.555", "18,5"])(
+    "still rejects a malformed frozen rate %p with LINEA_INVALIDA",
+    (tasaItbis) => {
+      expect(() =>
+        calcularTotalesNotaCredito([
+          {
+            productoId: 1,
+            cantidad: "1.000",
+            precioUnitario: "10.00",
+            tasaItbis,
+            tipoReposicion: TIPO_REPOSICION.VENDIBLE,
+          },
+        ]),
+      ).toThrow(expect.objectContaining({ code: LINEA_INVALIDA }));
+    },
+  );
+
   it("rejects malformed lines with LINEA_INVALIDA before any arithmetic", () => {
     expect(() =>
       calcularTotalesNotaCredito([
@@ -223,7 +271,7 @@ describe("devolucion — calcularTotalesNotaCredito (R-D5, frozen NC totals)", (
           productoId: 1,
           cantidad: "2.000",
           precioUnitario: "10.50",
-          tasaItbis: "25",
+          tasaItbis: "abc",
           tipoReposicion: TIPO_REPOSICION.VENDIBLE,
         },
       ]),
