@@ -50,6 +50,7 @@ import type {
 } from "@/modules/tenant/http/shared";
 import { TEN_CONCURRENCIA_CONFLICTO } from "@/modules/tenant/domain/errors";
 import { formatearFechaSD } from "@/shared/ui/format/date";
+import { EditarTasasItbisCard } from "./EditarTasasItbisCard";
 import {
   DEBOUNCE_BUSQUEDA_MS,
   FILTROS_ACTIVO,
@@ -1027,9 +1028,7 @@ function PanelConfiguracion({ inicial }: { readonly inicial: ConfiguracionInicia
             </table>
           </div>
         )}
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Solo lectura: el conjunto de tasas permitidas está fijado por las reglas de producto.
-        </p>
+        <EditarTasasItbisCard inicial={inicial.data.tasaItbis} />
       </section>
 
       <section className="flex flex-col gap-2">

@@ -122,6 +122,16 @@ async function seedClaveParaEmpresa(
   clave: string,
   valor: string,
 ): Promise<void> {
+  // Feature itbis-tasas-edit: TASA_ITBIS is managed by the Administracion
+  // screen. Seeding must never revert an admin edit: only provision the key
+  // when the empresa has NO TASA_ITBIS rows at all (fresh company).
+  if (clave === TASA_ITBIS_CLAVE) {
+    const existente = await db.configuracionEmpresa.findFirst({
+      where: { empresaId, clave },
+      select: { id: true },
+    });
+    if (existente !== null) return;
+  }
   const extraActivas = await db.configuracionEmpresa.findMany({
     where: {
       empresaId,

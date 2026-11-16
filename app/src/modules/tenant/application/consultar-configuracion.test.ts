@@ -17,12 +17,14 @@
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import {
   leerConfiguracionAdministracionEnTx,
+  leerTasaItbisConfigEnTx,
   type ConfiguracionAdministracionLeida,
 } from "../infrastructure/administracion-config-repository";
 import { consultarConfiguracion } from "./consultar-configuracion";
 
 jest.mock("../infrastructure/administracion-config-repository", () => ({
   leerConfiguracionAdministracionEnTx: jest.fn(),
+  leerTasaItbisConfigEnTx: jest.fn(),
 }));
 
 const tx = {} as unknown as PrismaTx;
@@ -40,6 +42,7 @@ function leida(
 }
 
 beforeEach(() => {
+  (leerTasaItbisConfigEnTx as jest.Mock).mockResolvedValue(null);
   jest.clearAllMocks();
   (leerConfiguracionAdministracionEnTx as jest.Mock).mockResolvedValue(leida());
 });
@@ -60,6 +63,7 @@ describe("consultarConfiguracion", () => {
         retenciones: { isr15: "15", isr2: "2", itbis100: "100", itbis30: "30" },
         ncf: [],
         itbisEnUso: [],
+        tasaItbis: null,
       },
     });
   });
@@ -121,6 +125,7 @@ describe("consultarConfiguracion", () => {
           },
         ],
         itbisEnUso: [],
+        tasaItbis: null,
       },
     });
   });

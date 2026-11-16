@@ -13,7 +13,6 @@
  * stored rows are unchanged.
  */
 
-import { prisma } from "@/lib/prisma";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";

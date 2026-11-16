@@ -57,6 +57,13 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
 }));
 
+// The new config write action (feature itbis-tasas-edit) is mocked at the
+// HTTP boundary like the other write actions; its real module graph pulls
+// the server-only Prisma client that jsdom cannot load.
+jest.mock("@/modules/tenant/http/actions.configuracion", () => ({
+  editarTasasItbisAction: jest.fn(),
+}));
+
 const mockListar = jest.mocked(listarUsuariosAction);
 const mockSucursales = jest.mocked(listarSucursalesAdministracionAction);
 const mockConfiguracion = jest.mocked(consultarConfiguracionAction);
@@ -122,6 +129,7 @@ beforeEach(() => {
       retenciones: { isr15: "15", isr2: "2", itbis100: "100", itbis30: "30" },
       ncf: [],
       itbisEnUso: [],
+      tasaItbis: null,
     },
   });
 });

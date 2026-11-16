@@ -17,12 +17,14 @@
  *     duration of this read-only transaction (released at commit).
  *   - ITBIS rates IN USE: ONE `groupBy` over the empresa's ACTIVE products by
  *     `tasaItbis` + validity window (`venta` validates the per-product rate the
- *     same way; there is no `TASA_ITBIS` config key). Pure SQL aggregation, no
- *     per-product loop; the rate stays a string (administracion-itbis S2/S3).
+ *     same way; the allowed SET lives in the TASA_ITBIS config key since the
+ *     itbis-tasas-config feature). Pure SQL aggregation, no per-product loop;
+ *     the rate stays a string (administracion-itbis S2/S3).
  */
 
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { RetentionRates } from "@/modules/compra/domain/compra";
+import { CLAVE_TASA_ITBIS } from "@/shared/domain/tasas-itbis";
 import { RETENCION_CLAVES } from "@/modules/compra/domain/calculators";
 import {
   CONFIG_RETENCION_FALTANTE,
@@ -132,4 +134,44 @@ export async function leerConfiguracionAdministracionEnTx(
   const tasasItbis = await leerTasasItbisEnUsoEnTx(tx, empresaId);
 
   return { retenciones, secuenciasNcf, tasasItbis };
+}
+
+// ---------------------------------------------------------------------------
+// TASA_ITBIS config row (feature itbis-tasas-edit): full-row read for the
+// Configuración screen and the edit use case. `leerConfigActivaEnTx` (the
+// shared seam) returns only {clave, valor}; the screen needs the window and
+// the optimistic-locking version.
+// ---------------------------------------------------------------------------
+
+export interface FilaTasaItbisConfig {
+  readonly id: number;
+  readonly valor: string;
+  readonly vigenciaInicio: Date;
+  readonly vigenciaFin: Date;
+  readonly version: number;
+}
+
+/** The empresa's current active TASA_ITBIS row, or `null` when unconfigured. */
+export async function leerTasaItbisConfigEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+  ahora: Date = new Date(),
+): Promise<FilaTasaItbisConfig | null> {
+  return tx.configuracionEmpresa.findFirst({
+    where: {
+      empresaId,
+      clave: CLAVE_TASA_ITBIS,
+      activa: true,
+      vigenciaInicio: { lte: ahora },
+      vigenciaFin: { gte: ahora },
+    },
+    orderBy: { vigenciaInicio: "desc" },
+    select: {
+      id: true,
+      valor: true,
+      vigenciaInicio: true,
+      vigenciaFin: true,
+      version: true,
+    },
+  });
 }
