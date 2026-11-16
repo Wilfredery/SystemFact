@@ -1,5 +1,12 @@
 import { z } from "@/lib/zod";
 import {
+  CODIGO_TASA_ITBIS_CONFIG_FALTANTE,
+  MENSAJE_TASA_ITBIS_CONFIG_FALTANTE,
+  TasasItbisConfigError,
+  esTasaItbisFormatoValido,
+  etiquetaTasaItbis,
+  mensajeTasaItbisInvalidaDe,
+  parsearListaTasasItbis,
   TASAS_ITBIS_PERMITIDAS,
   esTasaItbisPermitida,
   mensajeTasaItbisInvalida,
@@ -38,5 +45,87 @@ describe("tasas-itbis: non-member keys", () => {
     expect(rate.options).toEqual(["0", "16", "18"]);
     expect(rate.safeParse("constructor").success).toBe(false);
     expect(rate.safeParse("18").success).toBe(true);
+  });
+});
+
+describe("parsearListaTasasItbis", () => {
+  it.each([
+    ["18,16,0", ["18", "16", "0"]],
+    [" 18 , 16 ,0 ", ["18", "16", "0"]],
+    ["18.00,0", ["18", "0"]],
+    ["0,16,18", ["0", "16", "18"]],
+    ["7.5", ["7.5"]],
+    ["100", ["100"]],
+  ])("accepts %p keeping config order", (valor, esperado) => {
+    expect(parsearListaTasasItbis(valor)).toEqual({ ok: true, tasas: esperado });
+  });
+
+  it.each([
+    "",
+    "   ",
+    "18,,0",
+    "18,16,",
+    ",18",
+    "-1",
+    "+18",
+    "1e1",
+    "abc",
+    "1 8",
+    "7.555",
+    "100.01",
+    "101",
+    "18,18",
+    "18,18.00",
+    "0,0.0",
+  ])("rejects %p", (valor) => {
+    const r = parsearListaTasasItbis(valor);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.motivo.length).toBeGreaterThan(0);
+  });
+});
+
+describe("esTasaItbisFormatoValido", () => {
+  it.each(["0", "7", "7.5", "18", "18.00", "100"])("accepts %p", (v) => {
+    expect(esTasaItbisFormatoValido(v)).toBe(true);
+  });
+  it.each(["", "-1", "1e1", "abc", "100.01", "7.555", " 7"])("rejects %p", (v) => {
+    expect(esTasaItbisFormatoValido(v)).toBe(false);
+  });
+});
+
+describe("etiquetaTasaItbis", () => {
+  it("labels zero as exento and others with a percent sign", () => {
+    expect(etiquetaTasaItbis("0")).toBe("0% (exento)");
+    expect(etiquetaTasaItbis("16")).toBe("16%");
+    expect(etiquetaTasaItbis("18")).toBe("18%");
+  });
+});
+
+describe("mensajeTasaItbisInvalidaDe", () => {
+  it("renders the same sentence as the legacy message, ascending", () => {
+    const esperado = "La tasa de ITBIS debe ser 0%, 16% o 18%";
+    expect(mensajeTasaItbisInvalidaDe(["18", "16", "0"])).toBe(esperado);
+    expect(mensajeTasaItbisInvalidaDe(["0", "16", "18"])).toBe(esperado);
+    expect(mensajeTasaItbisInvalidaDe(["18", "16", "0"])).toBe(mensajeTasaItbisInvalida());
+  });
+  it("handles one and two rates", () => {
+    expect(mensajeTasaItbisInvalidaDe(["18"])).toBe("La tasa de ITBIS debe ser 18%");
+    expect(mensajeTasaItbisInvalidaDe(["18", "0"])).toBe("La tasa de ITBIS debe ser 0% o 18%");
+  });
+});
+
+describe("TasasItbisConfigError", () => {
+  it("carries the stable code, message, motivo and detalle", () => {
+    const e = new TasasItbisConfigError("valor_invalido", "valor vacío");
+    expect(e).toBeInstanceOf(Error);
+    expect(e.code).toBe("TASA_ITBIS_CONFIG_FALTANTE");
+    expect(CODIGO_TASA_ITBIS_CONFIG_FALTANTE).toBe("TASA_ITBIS_CONFIG_FALTANTE");
+    expect(e.message).toBe(MENSAJE_TASA_ITBIS_CONFIG_FALTANTE);
+    expect(e.message).toBe(
+      "Falta la configuración TASA_ITBIS requerida; no se puede validar la tasa de ITBIS",
+    );
+    expect(e.motivo).toBe("valor_invalido");
+    expect(e.detalle).toBe("valor vacío");
+    expect(new TasasItbisConfigError("ausente").detalle).toBeUndefined();
   });
 });

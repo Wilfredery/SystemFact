@@ -1,3 +1,9 @@
+## [0.34.7](https://github.com/Wilfredery/SystemFact/compare/v0.34.6...v0.34.7) (2026-11-16)
+
+### Maintenance
+
+* **itbis:** sub-slice 3a of making the app read the allowed ITBIS rates from the database (`odd/tasks/itbis-tasas-config.md`). Adds the pure parser of the `TASA_ITBIS` comma list (rejects empty, duplicate, non-decimal, more than 2 decimals and rates above 100), the rate labels, the sentence builder, the stable error `TASA_ITBIS_CONFIG_FALTANTE` ("Falta la configuración TASA_ITBIS requerida; no se puede validar la tasa de ITBIS") and the reader `leerTasasItbisEnTx`. **Nothing calls them yet**, so there is no visible change; the following sub-slices wire the product, sale, return and purchase paths one at a time. The integration fixtures now provision `TASA_ITBIS = 18,16,0` for both test companies.
+
 ## [0.34.6](https://github.com/Wilfredery/SystemFact/compare/v0.34.5...v0.34.6) (2026-11-15)
 
 ### Features

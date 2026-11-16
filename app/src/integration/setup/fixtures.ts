@@ -365,6 +365,11 @@ export async function seedTenantFixture(): Promise<TenantFixture> {
     HORIZONTE_LARGO_FIXTURE,
   );
 
+  // --- ITBIS rate list (feature itbis-tasas-config) for empresas A and B ----
+  // Same value the production migration seeds; read by `leerTasasItbisEnTx`.
+  await crearConfig(empresaA.id, "TASA_ITBIS", "18,16,0");
+  await crearConfig(empresaB.id, "TASA_ITBIS", "18,16,0");
+
   return {
     empresaA: { id: empresaA.id },
     empresaB: { id: empresaB.id },
