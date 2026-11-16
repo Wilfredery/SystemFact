@@ -1,3 +1,9 @@
+## [0.34.12](https://github.com/Wilfredery/SystemFact/compare/v0.34.11...v0.34.12) (2026-11-16)
+
+### Features
+
+* **itbis:** a purchase now validates each line's ITBIS rate against the company's list of allowed rates stored in the database (`TASA_ITBIS`, today `18,16,0`) at the purchase date, instead of a fixed set in the code (`odd/tasks/itbis-tasas-config.md`, sub-slice 3e). The accepted rates do not change (the same three). A well-formed rate that is no longer in the list (a retired rate, for example 7) refuses the purchase at draft time with `LINEA_INVALIDA` — you must fix the product's rate before the purchase can be saved; an editing purchase is validated against its own stored date, so changing its date is not required to keep editing. If the `TASA_ITBIS` configuration is ever missing, the purchase create and edit fail with the stable error `TASA_ITBIS_CONFIG_FALTANTE` instead of using a silent default. The purchase form on screen now only checks that the typed values are well-formed; whether the product's rate is allowed is decided by the server at save. The purchase code no longer borrows the product module's rate constants (the two domains are independent). Covered by real-database tests (full confirmed purchase at 18/16/0; a retired rate refused and a missing configuration fail on the previous code).
+
 ## [0.34.11](https://github.com/Wilfredery/SystemFact/compare/v0.34.10...v0.34.11) (2026-11-16)
 
 ### Features
