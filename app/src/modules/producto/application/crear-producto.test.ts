@@ -156,6 +156,36 @@ describe("crearProducto", () => {
     expect((crearProductoEnTx as jest.Mock).mock.calls[0][2].itbisTasa).toBe(tasa);
   });
 
+  it.each([
+    ["18.00", "18"],
+    ["18.0", "18"],
+    ["016", "16"],
+    ["0.0", "0"],
+  ])("stores %s in the list's own spelling (%s)", async (escrita, canonica) => {
+    (existeCodigoEnEmpresa as jest.Mock).mockResolvedValue(false);
+    (categoriaPerteneceAEmpresa as jest.Mock).mockResolvedValue(true);
+    (crearProductoEnTx as jest.Mock).mockImplementation(
+      async (_tx: unknown, _ctx: unknown, input: CrearProductoInput) => ({
+        ...input,
+        id: 1,
+        empresaId: 1,
+        itbis: {
+          tasa: input.itbisTasa,
+          vigenteDesde: input.itbisVigenteDesde,
+          vigenteHasta: input.itbisVigenteHasta,
+          aplicaRetencionITBIS: input.itbisAplicaRetencionITBIS,
+        },
+        exento: input.itbisTasa === "0",
+        activo: true,
+      }),
+    );
+
+    const result = await crearProducto(makeTx(), ctx, { ...baseInput, itbisTasa: escrita }, TASAS);
+
+    expect(result.ok).toBe(true);
+    expect((crearProductoEnTx as jest.Mock).mock.calls[0][2].itbisTasa).toBe(canonica);
+  });
+
   it("refuses a rate that was retired from the list and names the current list", async () => {
     const result = await crearProducto(makeTx(), ctx, baseInput, ["16", "0"]);
 

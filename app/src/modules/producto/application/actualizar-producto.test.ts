@@ -288,6 +288,27 @@ describe("actualizarProducto", () => {
     (actualizarProductoEnTx as jest.Mock).mockResolvedValue({ updated: true, newVersion: 3 });
   }
 
+  it.each(["18.0", "18.00", "018"])(
+    "S12: resubmitting the stored rate as %s is no change: never blocked by the list and the stored value is written back unchanged",
+    async (escrita) => {
+      mockCurrent(2, productoConTasa("18")); // 18 retired below
+      mockActualizacionExitosa();
+
+      const result = await actualizarProducto(
+        makeTx(),
+        ctx,
+        { id: 10, version: 2, nombre: "Notebook", itbisTasa: escrita },
+        ["16", "0"],
+      );
+
+      expect(result.ok).toBe(true);
+      // Any field the caller sends is written, so the patch carries the rate; it must be
+      // the STORED spelling ("18"), never the resubmitted one ("18.0"): nothing is stored differently.
+      const parche = (actualizarProductoEnTx as jest.Mock).mock.calls[0][4];
+      expect(parche.tasaItbis).toBe("18");
+    },
+  );
+
   it("S14: changing the rate to one retired from the list is refused with the list message", async () => {
     mockCurrent(2, productoConTasa("16"));
 
