@@ -45,7 +45,7 @@ const draft = {
   correlativoInterno: "",
   tipoCompra: "MERCANCIA",
   sucursalId: 2,
-    fecha: new Date("2026-01-10T00:00:00.000Z"),
+  fecha: new Date("2026-01-10T00:00:00.000Z"),
   ncf: null,
   tipoNcf: null,
   proveedorId: 5,
@@ -127,5 +127,38 @@ describe("actualizarCompra", () => {
     });
     expect(result.ok === false && result.code).toBe(TIPO_NCF_DESACUERDO);
     expect(actualizarCompraBorradorEnTx).not.toHaveBeenCalled();
+  });
+});
+
+// --- slice 3g follow-up (L16 item 4): the edit path validates against the
+// purchase's STORED fecha, not the request, and refuses a retired rate.
+
+describe("actualizarCompra — stored-fecha rate validation (slice 3g follow-up)", () => {
+  it("validates line rates against leerTasasItbisEnTx called with actual.fecha", async () => {
+    jest.mocked(leerProductosParaLineasEnTx).mockResolvedValue([
+      { id: 10, activo: true, tasaItbis: "18" },
+    ]);
+    await actualizarCompra(tx, ctx, {
+      id: 7,
+      lineas: [{ productoId: 10, cantidad: "1.000", costoUnitario: "100.00" }],
+    });
+    expect(jest.mocked(leerTasasItbisEnTx)).toHaveBeenCalledWith(
+      tx,
+      ctx.empresaId,
+      draft.fecha,
+    );
+  });
+
+  it("refuses an edit whose product rate is retired against the stored-fecha list", async () => {
+    jest.mocked(leerTasasItbisEnTx).mockResolvedValue(["18", "16", "0"]);
+    jest.mocked(leerProductosParaLineasEnTx).mockResolvedValue([
+      { id: 10, activo: true, tasaItbis: "7" },
+    ]);
+    const result = await actualizarCompra(tx, ctx, {
+      id: 7,
+      lineas: [{ productoId: 10, cantidad: "1.000", costoUnitario: "100.00" }],
+    });
+    expect(!result.ok && result.code).toBe("LINEA_INVALIDA");
+    expect(reemplazarLineasEnTx).not.toHaveBeenCalled();
   });
 });
