@@ -66,7 +66,7 @@ export const TASA_ITBIS_CLAVE = "TASA_ITBIS";
  * The allowed ITBIS rates, a comma list (percent, default rate first): exactly 18, 16
  * and 0 (owner decision, odd/tasks/itbis-tasas-config.md S2). The seed migration
  * `20261115140000_seed_tasa_itbis` stores the same value for existing empresas; a unit
- * test pins that this list is the same SET as `TASAS_ITBIS_PERMITIDAS`.
+ * test pins that this list is the same SET {0,16,18} (a local literal in the test file; the old shared constant was deleted in slice 3g).
  */
 export const TASA_ITBIS_SEED_VALOR = "18,16,0";
 

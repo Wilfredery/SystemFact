@@ -2,7 +2,7 @@
 
 ### Changed
 
-* **itbis:** the old hardcoded list of ITBIS rates in the code (`0, 16, 18`) was deleted (odd/tasks/itbis-tasas-config.md, sub-slice 3g, end of the feature). Nothing a visitor or user sees changes: the allowed rates come from the company's database list (`TASA_ITBIS`, today `18,16,0`) since the previous slices, and sales, purchases, products and returns already validate against it. The only code-level remnant is the static fallback sentence in the product error catalog, kept byte-identical ("La tasa de ITBIS debe ser 0%, 16% o 18%") for the generic default copy. From now on, changing a company's allowed rate set is a reviewed database change, not a code change. Also added a test pinning that editing a purchase validates its lines against the purchase's own stored date.
+* **itbis:** the old hardcoded list of ITBIS rates in the code (`0, 16, 18`) was deleted (odd/tasks/itbis-tasas-config.md, sub-slice 3g, end of the feature). Nothing a visitor or user sees changes: the allowed rates come from the company's database list (`TASA_ITBIS`, today `18,16,0`) since the previous slices, and sales, purchases and products already validate against it (returns keep validating the frozen line rate by shape only, by design). The only code-level remnant is the static fallback sentence in the product error catalog, kept byte-identical ("La tasa de ITBIS debe ser 0%, 16% o 18%") for the generic default copy. From now on, changing a company's allowed rate set is a reviewed database change, not a code change. Also added a test pinning that editing a purchase validates its lines against the purchase's own stored date.
 
 ## [0.34.12](https://github.com/Wilfredery/SystemFact/compare/v0.34.11...v0.34.12) (2026-11-16)
 
