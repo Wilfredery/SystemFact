@@ -15,12 +15,11 @@ import {
   ProductoDomainError,
   type ProductoErrorCode,
 } from "../domain/errors";
+import { buildProductoItbis, type Producto } from "../domain/producto";
 import {
-  esTasaItbisValida,
-  buildProductoItbis,
-  type Producto,
-  type TasaItbis,
-} from "../domain/producto";
+  esTasaItbisFormatoValido,
+  mensajeTasaItbisInvalidaDe,
+} from "@/shared/domain/tasas-itbis";
 import {
   obtenerProductoPorId,
   existeCodigoEnEmpresa,
@@ -42,7 +41,8 @@ export interface ActualizarProductoInput {
   readonly descripcion?: string | null;
   readonly unidadMedida?: string;
   readonly precioVenta?: Prisma.Decimal;
-  readonly itbisTasa?: TasaItbis;
+  /** Plain decimal string; membership is only checked when it differs from the stored rate (S12). */
+  readonly itbisTasa?: string;
   readonly itbisVigenteDesde?: Date;
   readonly itbisVigenteHasta?: Date | null;
   readonly itbisAplicaRetencionITBIS?: boolean;
@@ -70,8 +70,26 @@ function esPrecioValido(precio: Decimal): boolean {
 
 function buildError(
   code: ProductoErrorCode,
+  message: string = messageFor(code),
 ): { ok: false; code: ProductoErrorCode; message: string } {
-  return { ok: false, code, message: messageFor(code) };
+  return { ok: false, code, message };
+}
+
+/**
+ * Rate the patch will store, or null when it is refused. An unchanged rate is
+ * never checked against the list (an old product must stay editable, S12);
+ * only a CHANGE must land inside the per-empresa list, written with the list's
+ * own spelling.
+ */
+function resolverTasaDelPatch(
+  solicitada: string,
+  guardada: string,
+  tasasPermitidas: readonly string[],
+): string | null {
+  if (!esTasaItbisFormatoValido(solicitada)) return null;
+  const buscada = new Decimal(solicitada);
+  if (buscada.equals(new Decimal(guardada))) return guardada;
+  return tasasPermitidas.find((t) => new Decimal(t).equals(buscada)) ?? null;
 }
 
 const CAMPOS_EDITABLES: readonly (keyof ActualizarProductoInput)[] = [
@@ -189,15 +207,14 @@ function validarInvariantsFiscales(
   actual: Producto,
   input: ActualizarProductoInput,
 ): ProductoErrorCode | null {
-  if (input.itbisTasa !== undefined && !esTasaItbisValida(input.itbisTasa)) {
-    return TASA_ITBIS_INVALIDA;
-  }
   if (input.precioVenta !== undefined && !esPrecioValido(input.precioVenta)) {
     return PRECIO_BASE_INVALIDO;
   }
   try {
     buildProductoItbis({
-      tasa: input.itbisTasa ?? actual.itbis.tasa,
+      // The rate does not take part in the vigencia rule; membership of the
+      // rate is judged before this function runs.
+      tasa: actual.itbis.tasa,
       vigenteDesde: input.itbisVigenteDesde ?? actual.itbis.vigenteDesde,
       vigenteHasta:
         input.itbisVigenteHasta !== undefined
@@ -259,8 +276,10 @@ async function sondarIntegridadReferencial(
 export async function actualizarProducto(
   tx: PrismaTx,
   ctx: TenantCtx,
-  input: ActualizarProductoInput,
+  comando: ActualizarProductoInput,
+  tasasPermitidas: readonly string[],
 ): Promise<ActualizarProductoResult> {
+  let input = comando;
   // Adapter-level zod enforces this too; the use case guards its own contract
   // because an empty patch would bump `version` without changing anything.
   if (!tieneAlgunCampoEditable(input)) {
@@ -275,6 +294,21 @@ export async function actualizarProducto(
     return buildError(PRODUCTO_NO_ENCONTRADO);
   }
   const actual = current.producto;
+
+  if (input.itbisTasa !== undefined) {
+    const tasa = resolverTasaDelPatch(
+      input.itbisTasa,
+      actual.itbis.tasa,
+      tasasPermitidas,
+    );
+    if (tasa === null) {
+      return buildError(
+        TASA_ITBIS_INVALIDA,
+        mensajeTasaItbisInvalidaDe(tasasPermitidas),
+      );
+    }
+    input = { ...input, itbisTasa: tasa };
+  }
 
   // Domain validation on supplied fields only; unchanged fields are preserved.
   const fiscalError = validarInvariantsFiscales(actual, input);

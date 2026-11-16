@@ -2,8 +2,13 @@
 
 import { Prisma } from "@/generated/prisma/client";
 import { createClient } from "@/lib/supabase/client";
-import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
+import {
+  withTenantTransaction,
+  type PrismaTx,
+} from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import { TasasItbisConfigError } from "@/shared/domain/tasas-itbis";
+import { leerTasasItbisEnTx } from "@/shared/infrastructure/tasas-itbis-config";
 import { crearProducto } from "../application/crear-producto";
 import { actualizarProducto } from "../application/actualizar-producto";
 import { desactivarProducto } from "../application/desactivar-producto";
@@ -16,6 +21,7 @@ import {
 import {
   NO_AUTORIZADO,
   SESION_INVALIDA,
+  TASA_ITBIS_CONFIG_FALTANTE,
   VALIDATION_ERROR,
   messageFor,
 } from "../domain/errors";
@@ -26,6 +32,21 @@ import {
   ROLES_GESTION_PRODUCTOS,
   ROLES_ADMIN_ONLY,
 } from "./shared";
+
+// Reads the per-empresa rate list inside the caller's tenant transaction.
+// A missing or malformed key is a typed failure (null), never a default and
+// never an internal error leaked to the client; any other error propagates.
+async function leerTasasPermitidasEnTx(
+  tx: PrismaTx,
+  empresaId: number,
+): Promise<readonly string[] | null> {
+  try {
+    return await leerTasasItbisEnTx(tx, empresaId, new Date());
+  } catch (err) {
+    if (err instanceof TasasItbisConfigError) return null;
+    throw err;
+  }
+}
 
 // The tenant context must be resolved from the Supabase session (an auth read,
 // not tenant-DB access) BEFORE withTenantTransaction can receive it, so the
@@ -56,6 +77,11 @@ export async function crearProductoAction(
       return error(NO_AUTORIZADO, "No tiene permisos para crear productos");
     }
 
+    const tasas = await leerTasasPermitidasEnTx(tx, ctx.empresaId);
+    if (tasas === null) {
+      return error(TASA_ITBIS_CONFIG_FALTANTE, messageFor(TASA_ITBIS_CONFIG_FALTANTE));
+    }
+
     const parsed = parseResult.data;
     const result = await crearProducto(tx, ctx, {
       categoriaId: parsed.categoriaId,
@@ -70,7 +96,7 @@ export async function crearProductoAction(
       itbisVigenteDesde: parsed.itbisVigenteDesde ?? new Date(),
       itbisVigenteHasta: parsed.itbisVigenteHasta ?? null,
       itbisAplicaRetencionITBIS: parsed.itbisAplicaRetencionITBIS,
-    });
+    }, tasas);
 
     if (!result.ok) {
       return error(result.code, result.message);
@@ -107,6 +133,11 @@ export async function actualizarProductoAction(
       return error(NO_AUTORIZADO, "No tiene permisos para editar productos");
     }
 
+    const tasas = await leerTasasPermitidasEnTx(tx, ctx.empresaId);
+    if (tasas === null) {
+      return error(TASA_ITBIS_CONFIG_FALTANTE, messageFor(TASA_ITBIS_CONFIG_FALTANTE));
+    }
+
     const parsed = parseResult.data;
     const result = await actualizarProducto(tx, ctx, {
       id: parsed.id,
@@ -137,7 +168,7 @@ export async function actualizarProductoAction(
       ...(parsed.categoriaId !== undefined
         ? { categoriaId: parsed.categoriaId }
         : {}),
-    });
+    }, tasas);
 
     if (!result.ok) {
       return error(result.code, result.message);

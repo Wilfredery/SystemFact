@@ -12,10 +12,14 @@ import {
   type ProductoErrorCode,
 } from "../domain/errors";
 import {
-  esTasaItbisValida,
   buildProductoItbis,
   type Producto,
+  type TasaItbis,
 } from "../domain/producto";
+import {
+  esTasaItbisFormatoValido,
+  mensajeTasaItbisInvalidaDe,
+} from "@/shared/domain/tasas-itbis";
 import type { CrearProductoInput } from "../infrastructure/producto-repository";
 import {
   existeCodigoEnEmpresa,
@@ -24,6 +28,14 @@ import {
 } from "../infrastructure/producto-repository";
 // Design D3 (fase-3-2): category ownership belongs to the Categoria module.
 import { categoriaPerteneceAEmpresa } from "@/modules/categoria/infrastructure/categoria-repository";
+
+/**
+ * Creation command: the rate arrives as a plain decimal string (shape checked
+ * by the adapter); membership in the per-empresa list is decided here.
+ */
+export type CrearProductoComando = Omit<CrearProductoInput, "itbisTasa"> & {
+  readonly itbisTasa: string;
+};
 
 export type CrearProductoResult =
   | { ok: true; producto: Producto }
@@ -43,21 +55,41 @@ function esPrecioValido(precio: Decimal): boolean {
   );
 }
 
+/** The list's own spelling of `tasa` when it is allowed (so "18.00" is stored as "18"), else null. */
+function tasaCanonica(
+  tasa: string,
+  tasasPermitidas: readonly string[],
+): string | null {
+  if (!esTasaItbisFormatoValido(tasa)) return null;
+  const buscada = new Decimal(tasa);
+  return tasasPermitidas.find((t) => new Decimal(t).equals(buscada)) ?? null;
+}
+
 function buildError(
   code: ProductoErrorCode,
+  message: string = messageFor(code),
 ): { ok: false; code: ProductoErrorCode; message: string } {
-  return { ok: false, code, message: messageFor(code) };
+  return { ok: false, code, message };
 }
 
 export async function crearProducto(
   tx: PrismaTx,
   ctx: TenantCtx,
-  input: CrearProductoInput,
+  comando: CrearProductoComando,
+  tasasPermitidas: readonly string[],
 ): Promise<CrearProductoResult> {
-  // Domain validation (no DB required)
-  if (!esTasaItbisValida(input.itbisTasa)) {
-    return buildError(TASA_ITBIS_INVALIDA);
+  // Domain validation (no DB required). The allowed list comes from the
+  // per-empresa config, read by the adapter inside the same transaction.
+  const tasa = tasaCanonica(comando.itbisTasa, tasasPermitidas);
+  if (tasa === null) {
+    return buildError(
+      TASA_ITBIS_INVALIDA,
+      mensajeTasaItbisInvalidaDe(tasasPermitidas),
+    );
   }
+  // The repository still types the rate as the closed union until the read
+  // path stops depending on it (sub-slice 3c); membership was checked above.
+  const input: CrearProductoInput = { ...comando, itbisTasa: tasa as TasaItbis };
 
   if (!esPrecioValido(input.precioVenta)) {
     return buildError(PRECIO_BASE_INVALIDO);
