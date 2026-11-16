@@ -31,6 +31,7 @@ import {
   DESCUENTO_EXCEDE_MAXIMO,
 } from "../domain/errors";
 import { prepararLineasVenta } from "./preparar-lineas-venta";
+import { leerTasasItbisEnTx } from "@/shared/infrastructure/tasas-itbis-config";
 
 // --- mocks -----------------------------------------------------------------
 
@@ -42,6 +43,16 @@ jest.mock("../infrastructure/venta-repository", () => ({
 
 // Keep the REAL VentaConfigError / DESC_MAX_FALTANTE (so `instanceof` inside the
 // discount helper holds); stub only the async config reader.
+// The sale now validates line rates against the per-empresa TASA_ITBIS list
+// (feature itbis-tasas-config, slice 3d); stub the shared reader, keep the REAL
+// TasasItbisConfigError class so instanceof in the prepare pipeline holds.
+jest.mock("@/shared/infrastructure/tasas-itbis-config", () => {
+  const actual = jest.requireActual(
+    "@/shared/infrastructure/tasas-itbis-config",
+  ) as Record<string, unknown>;
+  return { ...actual, leerTasasItbisEnTx: jest.fn() };
+});
+
 jest.mock("../infrastructure/config-repository", () => {
   const actual = jest.requireActual(
     "../infrastructure/config-repository",
@@ -94,6 +105,7 @@ beforeEach(() => {
   ]);
   (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
   (leerConfigVentaEnTx as jest.Mock).mockResolvedValue("25.00");
+  (leerTasasItbisEnTx as jest.Mock).mockResolvedValue(["18", "16", "0"]);
 });
 
 describe("prepararLineasVenta — preconditions (validarPrecondicionesLineas)", () => {
@@ -257,5 +269,54 @@ describe("prepararLineasVenta — stock warnings (colectarWarningsStock)", () =>
         available: "0.000",
       });
     }
+  });
+});
+
+// --- slice 3d: per-empresa ITBIS rate list ---------------------------------
+
+import { TasasItbisConfigError } from "@/shared/domain/tasas-itbis";
+
+describe("prepararLineasVenta — per-empresa TASA_ITBIS list (slice 3d)", () => {
+  it("refuses a well-formed rate outside the list ('7') with LINEA_INVALIDA", async () => {
+    (leerProductosParaLineasVentaEnTx as jest.Mock).mockResolvedValue([
+      producto(10, "7"),
+    ]);
+    const r = await prepararLineasVenta(tx, ctx, {
+      lineas: [linea()],
+      descuentoCabecera: CERO,
+      fecha: FECHA,
+    });
+    expect(!r.ok && r.code).toBe("LINEA_INVALIDA");
+  });
+
+  it("fails loud with TASA_ITBIS_CONFIG_FALTANTE when the key is missing (S15)", async () => {
+    (leerTasasItbisEnTx as jest.Mock).mockRejectedValue(
+      new TasasItbisConfigError("ausente"),
+    );
+    const r = await prepararLineasVenta(tx, ctx, {
+      lineas: [linea()],
+      descuentoCabecera: CERO,
+      fecha: FECHA,
+    });
+    expect(!r.ok && r.code).toBe("TASA_ITBIS_CONFIG_FALTANTE");
+    expect(!r.ok && r.message).toContain("TASA_ITBIS");
+  });
+
+  it("reads the rate list AFTER the product batch (ordering)", async () => {
+    const calls: string[] = [];
+    (leerProductosParaLineasVentaEnTx as jest.Mock).mockImplementation(async () => {
+      calls.push("productos");
+      return [producto(10)];
+    });
+    (leerTasasItbisEnTx as jest.Mock).mockImplementation(async () => {
+      calls.push("tasas");
+      return ["18", "16", "0"];
+    });
+    await prepararLineasVenta(tx, ctx, {
+      lineas: [linea()],
+      descuentoCabecera: CERO,
+      fecha: FECHA,
+    });
+    expect(calls).toEqual(["productos", "tasas"]);
   });
 });

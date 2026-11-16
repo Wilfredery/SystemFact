@@ -15,7 +15,7 @@
  */
 
 import { Decimal } from "decimal.js";
-import { esTasaItbisPermitida } from "@/shared/domain/tasas-itbis";
+import { esTasaEnLista } from "@/shared/domain/tasas-itbis";
 import {
   LINEA_INVALIDA,
   VentaDomainError,
@@ -39,21 +39,37 @@ function round2(value: Decimal): string {
 }
 
 /**
- * Validate a draft line at the domain boundary: strictly positive quantity
- * (`Decimal(12,3)`), non-negative unit price (`Decimal(12,2)`), and a frozen
- * ITBIS rate restricted to 18 / 16 / 0. Product ownership/inactivity is a DB
- * concern checked by the application layer. Returns `null` when valid, otherwise
- * the stable `LINEA_INVALIDA` code (spec R-V1).
+ * Pure shape checks only (quantity/price) — no rate membership. The cart UI
+ * uses this directly (membership is the server's job at prepare/confirm, slice
+ * 3d); {@link validarLineaVenta} adds the rate check on top.
  */
-export function validarLineaVenta(
+export function validarFormaLineaVenta(
   input: VentaLineaInput,
-  tasaItbis: string,
 ): VentaErrorCode | null {
   if (!/^\d{1,9}(\.\d{1,3})?$/.test(input.cantidad)) return LINEA_INVALIDA;
   if (!/^\d{1,9}(\.\d{1,2})?$/.test(input.precioUnitario)) return LINEA_INVALIDA;
   if (new Decimal(input.cantidad).lessThanOrEqualTo(0)) return LINEA_INVALIDA;
   if (new Decimal(input.precioUnitario).lessThan(0)) return LINEA_INVALIDA;
-  if (!esTasaItbisPermitida(tasaItbis)) return LINEA_INVALIDA;
+  return null;
+}
+
+/**
+ * Validate a draft line at the domain boundary: strictly positive quantity
+ * (`Decimal(12,3)`), non-negative unit price (`Decimal(12,2)`), and an ITBIS
+ * rate numerically inside the per-empresa allowed list (feature
+ * itbis-tasas-config, slice 3d — the list is DATA, passed by the caller from
+ * `TASA_ITBIS`; the domain never imports it). Product ownership/inactivity is
+ * a DB concern checked by the application layer. Returns `null` when valid,
+ * otherwise the stable `LINEA_INVALIDA` code (spec R-V1).
+ */
+export function validarLineaVenta(
+  input: VentaLineaInput,
+  tasaItbis: string,
+  tasasPermitidas: readonly string[],
+): VentaErrorCode | null {
+  const forma = validarFormaLineaVenta(input);
+  if (forma !== null) return forma;
+  if (!esTasaEnLista(tasaItbis, tasasPermitidas)) return LINEA_INVALIDA;
   return null;
 }
 
@@ -272,11 +288,12 @@ export function calcularTotalesVenta(
 export function calcularVenta(
   entradas: readonly { linea: VentaLineaInput; tasaItbis: string }[],
   headerDiscount: Descuento = DESCUENTO_CERO,
+  tasasPermitidas: readonly string[] = [],
 ): VentaTotalesCalculo {
   const calculadas = entradas.map((e) => {
     // Honor the documented contract: the pipeline validates before calculating
     // (defense-in-depth; the application layer already validates per line).
-    const invalid = validarLineaVenta(e.linea, e.tasaItbis);
+    const invalid = validarLineaVenta(e.linea, e.tasaItbis, tasasPermitidas);
     if (invalid !== null) throw new VentaDomainError(invalid);
     return calcularLineaVenta(e.linea, e.tasaItbis);
   });

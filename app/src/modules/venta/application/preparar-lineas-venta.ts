@@ -59,9 +59,12 @@ import {
   type VentaTotalesWrite,
 } from "../infrastructure/venta-repository";
 import {
+  TASA_ITBIS_CONFIG_FALTANTE,
   ventaGuardadoError,
   type VentaGuardadoErrorCode,
 } from "./venta-guardado";
+import { TasasItbisConfigError } from "@/shared/domain/tasas-itbis";
+import { leerTasasItbisEnTx } from "@/shared/infrastructure/tasas-itbis-config";
 
 /** Input to the shared draft-line preparation. */
 export interface PrepararLineasVentaInput {
@@ -120,12 +123,13 @@ function validarPrecondicionesLineas(
   lineas: readonly VentaLineaInput[],
   productosById: ReadonlyMap<number, ProductoParaLineaVenta>,
   fecha: Date,
+  tasasPermitidas: readonly string[],
 ): VentaErrorCode | null {
   for (const linea of lineas) {
     const producto = productosById.get(linea.productoId);
     if (producto === undefined) return PRODUCTO_NO_ENCONTRADO;
     if (!producto.activo) return PRODUCTO_INACTIVO;
-    if (validarLineaVenta(linea, producto.tasaItbis) !== null) {
+    if (validarLineaVenta(linea, producto.tasaItbis, tasasPermitidas) !== null) {
       return LINEA_INVALIDA;
     }
     if (!tasaVigenteEn(producto, fecha)) return TASA_ITBIS_VIGENCIA_FALTA;
@@ -308,7 +312,26 @@ export async function prepararLineasVenta(
   );
   const productosById = new Map(productos.map((p) => [p.id, p]));
 
-  const precond = validarPrecondicionesLineas(lineas, productosById, fecha);
+  // 2b. Read the per-empresa ITBIS rate list (TASA_ITBIS) inside the same
+  // transaction, AFTER the product batch (feature itbis-tasas-config, slice
+  // 3d). The sale date selects the validity window. Missing/malformed key
+  // fails loud with the stable config code (S15) — never a hardcoded default.
+  let tasasPermitidas: readonly string[];
+  try {
+    tasasPermitidas = await leerTasasItbisEnTx(tx, ctx.empresaId, fecha);
+  } catch (err) {
+    if (err instanceof TasasItbisConfigError) {
+      return ventaGuardadoError(TASA_ITBIS_CONFIG_FALTANTE);
+    }
+    throw err;
+  }
+
+  const precond = validarPrecondicionesLineas(
+    lineas,
+    productosById,
+    fecha,
+    tasasPermitidas,
+  );
   if (precond !== null) {
     return ventaGuardadoError(precond);
   }
