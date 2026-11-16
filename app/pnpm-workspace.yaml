@@ -65,8 +65,18 @@ overrides:
   'qs@6': '>=6.16.1 <7'
   # js-yaml 4.x only (eslint): GHSA-2883-xcg3-v3hh. The 3.x copy (istanbul) is not affected.
   'js-yaml@4': '>=4.3.2 <5'
-  # NOT lifted on purpose (dev-only, the fix needs a MAJOR jump of its consumer or does not exist):
-  # zod 3.25.x GHSA-mrhx-c7xc-m3w5 (patched only in 4.x; consumer is the MCP SDK under shadcn),
-  # deepmerge 4.3.1 GHSA-gcqx-w48m-w2h4 (no patched version), glob 10.x GHSA-3g3m-2fjr-6pw4 and
-  # minimatch 9/10 GHSA-g3hv-75wg-m249 (patched only in glob 14 / minimatch 11). Re-check when
-  # jest, ts-jest, eslint or shadcn publish releases that move those ranges.
+  # 0.35.0 follow-up (dev-scope audit recheck 2026-11-16): the upstream fixes
+  # now exist, so these leave the parked list. Cross-major overrides, each
+  # verified by the full suite (incl. an eslint run and a jest coverage run
+  # for the test-exclude>glob chain).
+  # glob: GHSA-3g3m-2fjr-6pw4 (AbortSignal cancellation bypass) - patched in 14.0.2.
+  'glob@10': '>=14.0.2 <15'
+  # minimatch: GHSA-3h5v-q93c-6h6q (globparts amplification DoS) - patched in 11.0.1.
+  'minimatch@10': '>=11.0.1 <12'
+  # PARKED list emptied on 2026-11-16 (dev-deps cleanup): zod 3.25.x left with the
+  # shadcn 4.23.0 upgrade (shadcn moved to Zod 4 itself); deepmerge no longer appears
+  # in the audit; glob 10.x and minimatch 10.x lifted by the cross-major overrides
+  # above (patched versions 14.0.2 / 11.0.1, verified by the full suite incl. eslint
+  # and a jest coverage run). Audit now reports zero known vulnerabilities.
+  # Standing order: nothing updates itself — re-run pnpm audit --audit-level moderate
+  # on upstream releases and report to the owner before ever changing versions.

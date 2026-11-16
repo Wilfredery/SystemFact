@@ -1,3 +1,9 @@
+## [0.35.1](https://github.com/Wilfredery/SystemFact/compare/v0.35.0...v0.35.1) (2026-11-16)
+
+### Changed
+
+* **security:** the development-only dependency audit is now clean: zero known vulnerabilities across the whole project (production was already clean). Upgrades, quoted per the dependency rule: shadcn 4.21.4 -> 4.23.0 (upstream release notes: shadcn 4.22.0 moves the CLI to Zod 4 and 4.23.0 switches the MCP server to the TypeScript SDK v2, which clears the high-severity zod advisory GHSA-mrhx-c7xc-m3w5 from the dev tree), and two cross-major overrides to the now-patched versions glob 14.0.2 (GHSA-3g3m-2fjr-6pw4, AbortSignal cancellation bypass) and minimatch 11.0.1 (GHSA-3h5v-q93c-6h6q, globparts amplification). Nothing that runs in production changes: these are developer tools, so no deploy and no release artifacts beyond the version files. Verified with the full green suite including an eslint run (the minimatch chain) and a jest coverage run (the glob chain), plus integration tests and the production build.
+
 ## [0.35.0](https://github.com/Wilfredery/SystemFact/compare/v0.34.13...v0.35.0) (2026-11-16)
 
 ### Features
