@@ -36,6 +36,8 @@ const ctx: TenantCtx = {
   esAdmin: true,
 };
 
+const TASAS = ["18", "16", "0"] as const;
+
 const baseInput: CrearProductoInput = {
   categoriaId: 1,
   codigo: "LAPTOP-001",
@@ -81,7 +83,7 @@ describe("crearProducto", () => {
       activo: true,
     });
 
-    const result = await crearProducto(tx, ctx, baseInput);
+    const result = await crearProducto(tx, ctx, baseInput, TASAS);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -95,7 +97,7 @@ describe("crearProducto", () => {
     const tx = makeTx();
     (existeCodigoEnEmpresa as jest.Mock).mockResolvedValue(true);
 
-    const result = await crearProducto(tx, ctx, baseInput);
+    const result = await crearProducto(tx, ctx, baseInput, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -108,7 +110,7 @@ describe("crearProducto", () => {
     (existeCodigoEnEmpresa as jest.Mock).mockResolvedValue(false);
     (categoriaPerteneceAEmpresa as jest.Mock).mockResolvedValue(false);
 
-    const result = await crearProducto(tx, ctx, baseInput);
+    const result = await crearProducto(tx, ctx, baseInput, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -119,17 +121,62 @@ describe("crearProducto", () => {
 
   it("returns invalid rate error", async () => {
     const tx = makeTx();
-    const result = await crearProducto(tx, ctx, { ...baseInput, itbisTasa: "19" as "18" });
+    const result = await crearProducto(tx, ctx, { ...baseInput, itbisTasa: "19" }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.code).toBe(TASA_ITBIS_INVALIDA);
+      expect(result.message).toBe("La tasa de ITBIS debe ser 0%, 16% o 18%");
     }
+    expect(crearProductoEnTx).not.toHaveBeenCalled();
+  });
+
+  it.each(["18", "16", "0"])("accepts rate %s when it is in the list", async (tasa) => {
+    (existeCodigoEnEmpresa as jest.Mock).mockResolvedValue(false);
+    (categoriaPerteneceAEmpresa as jest.Mock).mockResolvedValue(true);
+    (crearProductoEnTx as jest.Mock).mockImplementation(
+      async (_tx: unknown, _ctx: unknown, input: CrearProductoInput) => ({
+        ...input,
+        id: 1,
+        empresaId: 1,
+        itbis: {
+          tasa: input.itbisTasa,
+          vigenteDesde: input.itbisVigenteDesde,
+          vigenteHasta: input.itbisVigenteHasta,
+          aplicaRetencionITBIS: input.itbisAplicaRetencionITBIS,
+        },
+        exento: input.itbisTasa === "0",
+        activo: true,
+      }),
+    );
+
+    const result = await crearProducto(makeTx(), ctx, { ...baseInput, itbisTasa: tasa }, TASAS);
+
+    expect(result.ok).toBe(true);
+    expect((crearProductoEnTx as jest.Mock).mock.calls[0][2].itbisTasa).toBe(tasa);
+  });
+
+  it("refuses a rate that was retired from the list and names the current list", async () => {
+    const result = await crearProducto(makeTx(), ctx, baseInput, ["16", "0"]);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe(TASA_ITBIS_INVALIDA);
+      expect(result.message).toBe("La tasa de ITBIS debe ser 0% o 16%");
+    }
+    expect(crearProductoEnTx).not.toHaveBeenCalled();
+  });
+
+  it("refuses a malformed rate even when called directly (never throws)", async () => {
+    const result = await crearProducto(makeTx(), ctx, { ...baseInput, itbisTasa: "abc" }, TASAS);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(TASA_ITBIS_INVALIDA);
   });
 
   it("returns invalid price error", async () => {
     const tx = makeTx();
-    const result = await crearProducto(tx, ctx, { ...baseInput, precioVenta: new Decimal("-10") });
+    const result = await crearProducto(tx, ctx, { ...baseInput, precioVenta: new Decimal("-10") }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -143,7 +190,7 @@ describe("crearProducto", () => {
       ...baseInput,
       itbisVigenteDesde: new Date("2026-12-31"),
       itbisVigenteHasta: new Date("2026-01-01"),
-    });
+    }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -159,7 +206,7 @@ describe("crearProducto", () => {
       new ProductoDomainError(CODIGO_PRODUCTO_DUPLICADO),
     );
 
-    const result = await crearProducto(tx, ctx, baseInput);
+    const result = await crearProducto(tx, ctx, baseInput, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -173,7 +220,7 @@ describe("crearProducto", () => {
     const result = await crearProducto(tx, ctx, {
       ...baseInput,
       precioVenta: new Decimal("12345678901.00"), // 11 integer digits > 10
-    });
+    }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -210,7 +257,7 @@ describe("crearProducto — unidad (S1)", () => {
       activo: true,
     });
 
-    const result = await crearProducto(tx, ctx, { ...baseInput, unidadMedida: "Unidad" });
+    const result = await crearProducto(tx, ctx, { ...baseInput, unidadMedida: "Unidad" }, TASAS);
 
     expect(result.ok).toBe(true);
     expect((crearProductoEnTx as jest.Mock).mock.calls[0][2]).toMatchObject({
@@ -241,7 +288,7 @@ describe("crearProducto — unidad (S1)", () => {
       activo: true,
     });
 
-    await crearProducto(tx, ctx, baseInput);
+    await crearProducto(tx, ctx, baseInput, TASAS);
 
     const enviado = (crearProductoEnTx as jest.Mock).mock.calls[0][2];
     expect(enviado.unidadMedida).toBeUndefined();

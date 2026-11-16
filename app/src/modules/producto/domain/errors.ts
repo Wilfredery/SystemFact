@@ -1,7 +1,14 @@
-import { mensajeTasaItbisInvalida } from "@/shared/domain/tasas-itbis";
+import {
+  CODIGO_TASA_ITBIS_CONFIG_FALTANTE,
+  MENSAJE_TASA_ITBIS_CONFIG_FALTANTE,
+  mensajeTasaItbisInvalida,
+} from "@/shared/domain/tasas-itbis";
 
 export const CODIGO_PRODUCTO_DUPLICADO = "CODIGO_PRODUCTO_DUPLICADO";
 export const TASA_ITBIS_INVALIDA = "TASA_ITBIS_INVALIDA";
+// Single-source with the shared constant: the same stable code the sale and
+// purchase paths will use (feature itbis-tasas-config, S15).
+export const TASA_ITBIS_CONFIG_FALTANTE = CODIGO_TASA_ITBIS_CONFIG_FALTANTE;
 export const PRECIO_BASE_INVALIDO = "PRECIO_BASE_INVALIDO";
 export const VIGENCIA_INVALIDA = "VIGENCIA_INVALIDA";
 export const LIMITE_PAGINACION_INVALIDO = "LIMITE_PAGINACION_INVALIDO";
@@ -19,6 +26,7 @@ export const PRODUCTO_TIENE_MOVIMIENTOS = "PRODUCTO_TIENE_MOVIMIENTOS";
 export type ProductoErrorCode =
   | typeof CODIGO_PRODUCTO_DUPLICADO
   | typeof TASA_ITBIS_INVALIDA
+  | typeof TASA_ITBIS_CONFIG_FALTANTE
   | typeof PRECIO_BASE_INVALIDO
   | typeof VIGENCIA_INVALIDA
   | typeof LIMITE_PAGINACION_INVALIDO
@@ -36,6 +44,7 @@ export type ProductoErrorCode =
 const MESSAGES: Record<ProductoErrorCode, string> = {
   [CODIGO_PRODUCTO_DUPLICADO]: "Ya existe un producto con ese código en la empresa",
   [TASA_ITBIS_INVALIDA]: mensajeTasaItbisInvalida(),
+  [TASA_ITBIS_CONFIG_FALTANTE]: MENSAJE_TASA_ITBIS_CONFIG_FALTANTE,
   [PRECIO_BASE_INVALIDO]: "El precio base debe ser un monto mayor o igual a cero con hasta 2 decimales",
   [VIGENCIA_INVALIDA]: "La fecha de vigencia hasta no puede ser menor que la fecha desde",
   [LIMITE_PAGINACION_INVALIDO]: "El límite de paginación debe estar entre 1 y 100",

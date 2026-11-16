@@ -19,7 +19,11 @@ import { ROLES_GESTION_PRODUCTOS, ROLES_VER_PRODUCTOS } from "./shared";
 import { actualizarProducto } from "../application/actualizar-producto";
 import { desactivarProducto } from "../application/desactivar-producto";
 import { tieneRolPermitidoEnTx } from "../infrastructure/producto-repository";
+import { TasasItbisConfigError } from "@/shared/domain/tasas-itbis";
+import { leerTasasItbisEnTx } from "@/shared/infrastructure/tasas-itbis-config";
 import {
+  TASA_ITBIS_CONFIG_FALTANTE,
+  TASA_ITBIS_INVALIDA,
   CODIGO_PRODUCTO_DUPLICADO,
   NO_AUTORIZADO,
   SESION_INVALIDA,
@@ -42,6 +46,10 @@ jest.mock("@/modules/tenant/infrastructure/tenant-runtime", () => ({
 
 jest.mock("@/modules/tenant/infrastructure/withTenantTransaction", () => ({
   withTenantTransaction: jest.fn((_ctx: unknown, fn: (t: unknown) => Promise<unknown>) => fn({})),
+}));
+
+jest.mock("@/shared/infrastructure/tasas-itbis-config", () => ({
+  leerTasasItbisEnTx: jest.fn(),
 }));
 
 jest.mock("../application/crear-producto", () => ({
@@ -720,5 +728,109 @@ describe("unidad in the write actions (S1)", () => {
     expect(result.ok).toBe(true);
     const passed = (actualizarProducto as jest.Mock).mock.calls[0][2];
     expect(passed.unidadMedida).toBe("Caja");
+  });
+});
+
+describe("rate list from the database (feature itbis-tasas-config)", () => {
+  const TASAS = ["18", "16", "0"];
+
+  beforeEach(() => {
+    mockSupabase();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (leerTasasItbisEnTx as jest.Mock).mockResolvedValue(TASAS);
+  });
+
+  it("crear reads the list for the caller's empresa and hands it to the use case", async () => {
+    (crearProducto as jest.Mock).mockResolvedValue(mockProductoResult());
+
+    const result = await crearProductoAction(validInput);
+
+    expect(result.ok).toBe(true);
+    expect(leerTasasItbisEnTx).toHaveBeenCalledWith(expect.anything(), mockCtx.empresaId, expect.any(Date));
+    expect((crearProducto as jest.Mock).mock.calls[0][3]).toEqual(TASAS);
+  });
+
+  it("crear: a rate outside the list reaches the use case (zod only checks the shape) and its code and message come back", async () => {
+    const mensaje = "La tasa de ITBIS debe ser 0%, 16% o 18%";
+    (crearProducto as jest.Mock).mockResolvedValue(
+      mockProductoResult({ code: TASA_ITBIS_INVALIDA, message: mensaje }),
+    );
+
+    const result = await crearProductoAction({ ...validInput, itbisTasa: "19" });
+
+    expect(crearProducto).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: false, error: { code: TASA_ITBIS_INVALIDA, message: mensaje } });
+  });
+
+  it.each(["abc", "", "-1", "100.5", "18,5"])("crear: malformed rate %p is VALIDATION_ERROR before any read", async (itbisTasa) => {
+    const result = await crearProductoAction({ ...validInput, itbisTasa });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: VALIDATION_ERROR, message: messageFor(VALIDATION_ERROR) },
+    });
+    expect(leerTasasItbisEnTx).not.toHaveBeenCalled();
+    expect(crearProducto).not.toHaveBeenCalled();
+  });
+
+  it("crear: a missing or malformed key fails loud with the stable code and the shared message", async () => {
+    (leerTasasItbisEnTx as jest.Mock).mockRejectedValue(new TasasItbisConfigError("ausente"));
+
+    const result = await crearProductoAction(validInput);
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: TASA_ITBIS_CONFIG_FALTANTE,
+        message: "Falta la configuración TASA_ITBIS requerida; no se puede validar la tasa de ITBIS",
+      },
+    });
+    expect(crearProducto).not.toHaveBeenCalled();
+  });
+
+  it("crear: an unexpected reader error propagates (no swallowing)", async () => {
+    (leerTasasItbisEnTx as jest.Mock).mockRejectedValue(new Error("boom"));
+
+    await expect(crearProductoAction(validInput)).rejects.toThrow("boom");
+    expect(crearProducto).not.toHaveBeenCalled();
+  });
+
+  it("actualizar reads the list and hands it to the use case, rate as sent", async () => {
+    (actualizarProducto as jest.Mock).mockResolvedValue({
+      ok: true,
+      producto: makeProductoDomain(),
+      version: 3,
+    });
+
+    const result = await actualizarProductoAction({ id: 10, version: 2, itbisTasa: "19" });
+
+    expect(result.ok).toBe(true);
+    expect((actualizarProducto as jest.Mock).mock.calls[0][2].itbisTasa).toBe("19");
+    expect((actualizarProducto as jest.Mock).mock.calls[0][3]).toEqual(TASAS);
+  });
+
+  it.each(["abc", "", "-1"])("actualizar: malformed rate %p is VALIDATION_ERROR", async (itbisTasa) => {
+    const result = await actualizarProductoAction({ id: 10, version: 2, itbisTasa });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: VALIDATION_ERROR, message: messageFor(VALIDATION_ERROR) },
+    });
+    expect(actualizarProducto).not.toHaveBeenCalled();
+  });
+
+  it("actualizar: a missing key fails loud with the stable code", async () => {
+    (leerTasasItbisEnTx as jest.Mock).mockRejectedValue(
+      new TasasItbisConfigError("valor_invalido", "valor vacío"),
+    );
+
+    const result = await actualizarProductoAction({ id: 10, version: 2, nombre: "X" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(TASA_ITBIS_CONFIG_FALTANTE);
+      expect(result.error.message).not.toContain("valor vacío");
+    }
+    expect(actualizarProducto).not.toHaveBeenCalled();
   });
 });

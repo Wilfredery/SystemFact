@@ -72,6 +72,8 @@ function mockCurrent(version = 2, producto: Producto = makeProducto()) {
   (obtenerProductoPorId as jest.Mock).mockResolvedValue({ producto, version });
 }
 
+const TASAS = ["18", "16", "0"] as const;
+
 const baseCommand: ActualizarProductoInput = {
   id: 10,
   version: 2,
@@ -99,7 +101,7 @@ describe("actualizarProducto", () => {
       version: 3,
     });
 
-    const result = await actualizarProducto(makeTx(), ctx, baseCommand);
+    const result = await actualizarProducto(makeTx(), ctx, baseCommand, TASAS);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -127,7 +129,7 @@ describe("actualizarProducto", () => {
       newVersion: 3,
     });
 
-    await actualizarProducto(makeTx(), ctx, { id: 10, version: 2, nombre: "Notebook" });
+    await actualizarProducto(makeTx(), ctx, { id: 10, version: 2, nombre: "Notebook" }, TASAS);
 
     const [oldVals, newVals] = (registrarProductoActualizadoEnTx as jest.Mock).mock
       .calls[0].slice(3);
@@ -156,7 +158,7 @@ describe("actualizarProducto", () => {
           : { updated: false, newVersion: storedVersion },
     );
 
-    const result = await actualizarProducto(makeTx(), ctx, baseCommand);
+    const result = await actualizarProducto(makeTx(), ctx, baseCommand, TASAS);
 
     // Optimistic lock must be driven by the CLIENT version, not the version
     // re-read inside the same transaction, or stale edits silently win.
@@ -175,7 +177,7 @@ describe("actualizarProducto", () => {
   it("PROD-013-B: cross-tenant or missing id returns PRODUCTO_NO_ENCONTRADO", async () => {
     (obtenerProductoPorId as jest.Mock).mockResolvedValue(null);
 
-    const result = await actualizarProducto(makeTx(), ctx, baseCommand);
+    const result = await actualizarProducto(makeTx(), ctx, baseCommand, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(PRODUCTO_NO_ENCONTRADO);
@@ -185,7 +187,7 @@ describe("actualizarProducto", () => {
   it("inactive product cannot be edited (PRODUCTO_NO_ENCONTRADO)", async () => {
     mockCurrent(2, makeProducto({ activo: false }));
 
-    const result = await actualizarProducto(makeTx(), ctx, baseCommand);
+    const result = await actualizarProducto(makeTx(), ctx, baseCommand, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(PRODUCTO_NO_ENCONTRADO);
@@ -200,7 +202,7 @@ describe("actualizarProducto", () => {
       id: 10,
       version: 2,
       codigo: "OTRO-COD",
-    });
+    }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(CODIGO_PRODUCTO_DUPLICADO);
@@ -225,7 +227,7 @@ describe("actualizarProducto", () => {
       id: 10,
       version: 2,
       codigo: "LAPTOP-001",
-    });
+    }, TASAS);
 
     expect(result.ok).toBe(true);
     expect(existeCodigoEnEmpresa).not.toHaveBeenCalled();
@@ -241,7 +243,7 @@ describe("actualizarProducto", () => {
       id: 10,
       version: 2,
       codigo: "NUEVO",
-    });
+    }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(CODIGO_PRODUCTO_DUPLICADO);
@@ -255,7 +257,7 @@ describe("actualizarProducto", () => {
       id: 10,
       version: 2,
       precioVenta: new Decimal("-5"),
-    });
+    }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(PRECIO_BASE_INVALIDO);
@@ -268,8 +270,110 @@ describe("actualizarProducto", () => {
     const result = await actualizarProducto(makeTx(), ctx, {
       id: 10,
       version: 2,
-      itbisTasa: "19" as "18",
-    });
+      itbisTasa: "19",
+    }, TASAS);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe(TASA_ITBIS_INVALIDA);
+      expect(result.message).toBe("La tasa de ITBIS debe ser 0%, 16% o 18%");
+    }
+    expect(actualizarProductoEnTx).not.toHaveBeenCalled();
+  });
+
+  const productoConTasa = (tasa: "18" | "16" | "0") =>
+    makeProducto({ itbis: { ...makeProducto().itbis, tasa } });
+
+  function mockActualizacionExitosa() {
+    (actualizarProductoEnTx as jest.Mock).mockResolvedValue({ updated: true, newVersion: 3 });
+  }
+
+  it("S14: changing the rate to one retired from the list is refused with the list message", async () => {
+    mockCurrent(2, productoConTasa("16"));
+
+    const result = await actualizarProducto(
+      makeTx(),
+      ctx,
+      { id: 10, version: 2, itbisTasa: "18" },
+      ["16", "0"],
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe(TASA_ITBIS_INVALIDA);
+      expect(result.message).toBe("La tasa de ITBIS debe ser 0% o 16%");
+    }
+    expect(actualizarProductoEnTx).not.toHaveBeenCalled();
+  });
+
+  it.each(["18", "16", "0"] as const)("accepts changing the rate to %s when it is in the list", async (tasa) => {
+    mockCurrent(2, productoConTasa(tasa === "0" ? "16" : "0"));
+    mockActualizacionExitosa();
+
+    const result = await actualizarProducto(
+      makeTx(),
+      ctx,
+      { id: 10, version: 2, itbisTasa: tasa },
+      TASAS,
+    );
+
+    expect(result.ok).toBe(true);
+    expect((actualizarProductoEnTx as jest.Mock).mock.calls[0][4].tasaItbis).toBe(tasa);
+  });
+
+  it("S12: an unchanged rate that is no longer in the list does not block the edit", async () => {
+    mockCurrent(2, productoConTasa("18")); // 18 retired below
+    mockActualizacionExitosa();
+
+    const result = await actualizarProducto(
+      makeTx(),
+      ctx,
+      { id: 10, version: 2, nombre: "Notebook", itbisTasa: "18" },
+      ["16", "0"],
+    );
+
+    expect(result.ok).toBe(true);
+    expect(actualizarProductoEnTx).toHaveBeenCalledTimes(1);
+  });
+
+  it("S12: an edit that does not send the rate is never judged by the list", async () => {
+    mockCurrent(2, productoConTasa("18"));
+    mockActualizacionExitosa();
+
+    const result = await actualizarProducto(
+      makeTx(),
+      ctx,
+      { id: 10, version: 2, nombre: "Notebook" },
+      ["16", "0"],
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("S12: the same rate spelled differently (18.00) counts as unchanged", async () => {
+    mockCurrent(2, productoConTasa("18"));
+    mockActualizacionExitosa();
+
+    const result = await actualizarProducto(
+      makeTx(),
+      ctx,
+      { id: 10, version: 2, nombre: "Notebook", itbisTasa: "18.00" },
+      ["16", "0"],
+    );
+
+    expect(result.ok).toBe(true);
+    expect((actualizarProductoEnTx as jest.Mock).mock.calls[0][4].tasaItbis).toBe("18");
+  });
+
+  it("refuses a malformed rate when called directly (never throws)", async () => {
+    mockCurrent();
+
+    const result = await actualizarProducto(
+      makeTx(),
+      ctx,
+      { id: 10, version: 2, itbisTasa: "abc" },
+      TASAS,
+    );
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(TASA_ITBIS_INVALIDA);
@@ -282,7 +386,7 @@ describe("actualizarProducto", () => {
       id: 10,
       version: 2,
       itbisVigenteHasta: new Date("2025-06-01"), // before current vigenteDesde
-    });
+    }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(VIGENCIA_INVALIDA);
@@ -297,7 +401,7 @@ describe("actualizarProducto", () => {
       id: 10,
       version: 2,
       categoriaId: 99,
-    });
+    }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(CATEGORIA_INVALIDA);
@@ -316,7 +420,7 @@ describe("actualizarProducto", () => {
       version: 2,
       nombre: "Notebook",
       descripcion: undefined,
-    });
+    }, TASAS);
 
     // `undefined` is NOT a patch: the field must be absent from the UPDATE
     // payload and from the audit old/new, so it is left untouched in the DB.
@@ -340,7 +444,7 @@ describe("actualizarProducto", () => {
       id: 10,
       version: 2,
       descripcion: null,
-    });
+    }, TASAS);
 
     // `null` IS a patch: SQL NULL is written and the audit records the
     // transition from the stored value to null.
@@ -355,7 +459,7 @@ describe("actualizarProducto", () => {
   it("patch with no editable fields returns VALIDATION_ERROR", async () => {
     mockCurrent();
 
-    const result = await actualizarProducto(makeTx(), ctx, { id: 10, version: 2 });
+    const result = await actualizarProducto(makeTx(), ctx, { id: 10, version: 2 }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(VALIDATION_ERROR);
@@ -382,7 +486,7 @@ describe("actualizarProducto — unidad (S1)", () => {
       id: 10,
       version: 2,
       unidadMedida: "Caja",
-    });
+    }, TASAS);
 
     expect(result.ok).toBe(true);
     const data = (actualizarProductoEnTx as jest.Mock).mock.calls[0][4];
@@ -403,7 +507,7 @@ describe("actualizarProducto — unidad (S1)", () => {
       newVersion: 3,
     });
 
-    await actualizarProducto(makeTx(), ctx, { id: 10, version: 2, unidadMedida: "Libra" });
+    await actualizarProducto(makeTx(), ctx, { id: 10, version: 2, unidadMedida: "Libra" }, TASAS);
 
     const [oldVals, newVals] = (registrarProductoActualizadoEnTx as jest.Mock).mock
       .calls[0].slice(3);
