@@ -133,7 +133,7 @@ beforeEach(() => {
   });
   mockProductos.mockResolvedValue({
     ok: true,
-    data: { items: [], total: 0, page: 1, limit: 10, categorias: [] },
+    data: { items: [], total: 0, page: 1, limit: 10, categorias: [], tasasItbis: ["18", "16", "0"] },
   });
 });
 

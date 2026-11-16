@@ -521,6 +521,7 @@ const CONSULTA_VACIA = {
   page: 1,
   limit: 25,
   categorias: [],
+  tasasItbis: ["18", "16", "0"],
 };
 
 describe("consultarProductosAction", () => {
@@ -542,6 +543,7 @@ describe("consultarProductosAction", () => {
             unidadMedida: "Libra",
             precioVenta: "125.50",
             tasaItbis: "18",
+            tasaVigente: true,
             itbisVigenteDesde: "2026-01-01T00:00:00.000Z",
             itbisVigenteHasta: null,
             itbisAplicaRetencionITBIS: false,
@@ -603,6 +605,7 @@ describe("obtenerProductoPorIdAction", () => {
     unidadMedida: "Unidad",
     precioVenta: "55000.00",
     tasaItbis: "18",
+    tasaVigente: true,
     itbisVigenteDesde: "2026-01-01T00:00:00.000Z",
     itbisVigenteHasta: null,
     itbisAplicaRetencionITBIS: false,
@@ -613,6 +616,7 @@ describe("obtenerProductoPorIdAction", () => {
   it("S1: returns the full detail including the version, for the edit prefill", async () => {
     mockSupabase();
     (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (leerTasasItbisEnTx as jest.Mock).mockResolvedValue(["18", "16", "0"]);
     (obtenerProductoDetalle as jest.Mock).mockResolvedValue({ ok: true, producto: detalle });
 
     const result = await obtenerProductoPorIdAction({ id: 10 });
@@ -625,7 +629,7 @@ describe("obtenerProductoPorIdAction", () => {
       1,
       ROLES_VER_PRODUCTOS,
     );
-    expect(obtenerProductoDetalle).toHaveBeenCalledWith(expect.anything(), mockCtx, { id: 10 });
+    expect(obtenerProductoDetalle).toHaveBeenCalledWith(expect.anything(), mockCtx, { id: 10 }, ["18", "16", "0"]);
   });
 
   it("S4: a missing product maps PRODUCTO_NO_ENCONTRADO", async () => {
@@ -832,5 +836,99 @@ describe("rate list from the database (feature itbis-tasas-config)", () => {
       expect(result.error.message).not.toContain("valor vacío");
     }
     expect(actualizarProducto).not.toHaveBeenCalled();
+  });
+});
+
+describe("read actions: rate list from the database (S4, S15)", () => {
+  const TASAS = ["18", "16", "0"];
+
+  beforeEach(() => {
+    mockSupabase();
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (leerTasasItbisEnTx as jest.Mock).mockResolvedValue(TASAS);
+  });
+
+  it("consultar reads the list for the caller's empresa and hands it to the use case", async () => {
+    (consultarProductos as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: { ...CONSULTA_VACIA, tasasItbis: TASAS },
+    });
+
+    const result = await consultarProductosAction({ page: 1, limit: 25 });
+
+    expect(leerTasasItbisEnTx).toHaveBeenCalledWith(expect.anything(), mockCtx.empresaId, expect.any(Date));
+    expect(consultarProductos).toHaveBeenCalledWith(expect.anything(), mockCtx, expect.anything(), TASAS);
+    expect(result.ok && result.data.tasasItbis).toEqual(TASAS);
+  });
+
+  it("listar passes the list down to the use case (picker output shape unchanged)", async () => {
+    (listarProductos as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: {
+        items: [
+          { id: 1, codigo: "A", nombre: "A", precioVenta: new Decimal("1.00"), itbis: { tasa: "7" }, tasaVigente: false },
+        ],
+        total: 1,
+        page: 1,
+      },
+    });
+
+    const result = await listarProductosAction({ page: 1, limit: 25 });
+
+    expect(listarProductos).toHaveBeenCalledWith(expect.anything(), mockCtx, expect.anything(), TASAS);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.items[0]).toEqual({
+      id: 1,
+      codigo: "A",
+      nombre: "A",
+      precioVenta: "1.00",
+      tasaItbis: "7",
+    });
+  });
+
+  it("detalle passes the list down to the use case", async () => {
+    (obtenerProductoDetalle as jest.Mock).mockResolvedValue({ ok: true, producto: { id: 10 } });
+
+    await obtenerProductoPorIdAction({ id: 10 });
+
+    expect(obtenerProductoDetalle).toHaveBeenCalledWith(expect.anything(), mockCtx, { id: 10 }, TASAS);
+  });
+
+  it.each([
+    ["listar", () => listarProductosAction({ page: 1, limit: 25 }), () => listarProductos],
+    ["consultar", () => consultarProductosAction({ page: 1, limit: 25 }), () => consultarProductos],
+    ["detalle", () => obtenerProductoPorIdAction({ id: 10 }), () => obtenerProductoDetalle],
+  ])("%s: a missing or malformed key returns TASA_ITBIS_CONFIG_FALTANTE without leaking", async (_n, run, useCase) => {
+    (leerTasasItbisEnTx as jest.Mock).mockRejectedValue(
+      new TasasItbisConfigError("valor_invalido", "valor vacío"),
+    );
+
+    const result = await run();
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(TASA_ITBIS_CONFIG_FALTANTE);
+      expect(result.error.message).toBe(messageFor(TASA_ITBIS_CONFIG_FALTANTE));
+      expect(result.error.message).not.toContain("valor vacío");
+    }
+    expect(useCase()).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["listar", () => listarProductosAction({ page: 1, limit: 25 })],
+    ["consultar", () => consultarProductosAction({ page: 1, limit: 25 })],
+    ["detalle", () => obtenerProductoPorIdAction({ id: 10 })],
+  ])("%s: an unauthorized role is refused BEFORE the list is read", async (_n, run) => {
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(false);
+
+    const result = await run();
+
+    expect(result.ok === false && result.error.code).toBe(NO_AUTORIZADO);
+    expect(leerTasasItbisEnTx).not.toHaveBeenCalled();
+  });
+
+  it("any other read error propagates (never swallowed as a config failure)", async () => {
+    (leerTasasItbisEnTx as jest.Mock).mockRejectedValue(new Error("boom"));
+    await expect(consultarProductosAction({ page: 1, limit: 25 })).rejects.toThrow("boom");
   });
 });

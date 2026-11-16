@@ -19,6 +19,8 @@ jest.mock("../infrastructure/producto-repository", () => ({
   registrarProductoListadoEnTx: jest.fn(),
 }));
 
+const TASAS = ["18", "16", "0"];
+
 const ctx: TenantCtx = {
   empresaId: 1,
   sucursalId: 1,
@@ -32,7 +34,7 @@ function makeTx(): PrismaTx {
   return {} as unknown as PrismaTx;
 }
 
-function makeProducto(id: number, codigo: string, descripcion?: string) {
+function makeProducto(id: number, codigo: string, descripcion?: string, tasa = "18") {
   return {
     id,
     empresaId: 1,
@@ -43,7 +45,7 @@ function makeProducto(id: number, codigo: string, descripcion?: string) {
     unidadMedida: "",
     precioVenta: new Decimal("100.00"),
     itbis: {
-      tasa: "18" as const,
+      tasa,
       vigenteDesde: new Date("2026-01-01"),
       vigenteHasta: null,
       aplicaRetencionITBIS: false,
@@ -65,7 +67,7 @@ describe("listarProductos", () => {
     (listarProductosEnTx as jest.Mock).mockResolvedValue(items);
     (contarProductos as jest.Mock).mockResolvedValue(30);
 
-    const result = await listarProductos(tx, ctx, query);
+    const result = await listarProductos(tx, ctx, query, TASAS);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -76,6 +78,21 @@ describe("listarProductos", () => {
     expect(registrarProductoListadoEnTx).toHaveBeenCalledTimes(1);
   });
 
+  it("S4: a stored rate outside the list is listed with tasaVigente false and the list is returned", async () => {
+    (listarProductosEnTx as jest.Mock).mockResolvedValue([
+      makeProducto(1, "A"),
+      makeProducto(2, "B", undefined, "7"),
+    ]);
+    (contarProductos as jest.Mock).mockResolvedValue(2);
+
+    const result = await listarProductos(makeTx(), ctx, { page: 1, limit: 25 }, TASAS);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.tasasItbis).toEqual(TASAS);
+    expect(result.data.items.map((p) => p.tasaVigente)).toEqual([true, false]);
+  });
+
   it("returns page 2 with remaining items", async () => {
     const tx = makeTx();
     const query: ListarProductosQuery = { page: 2, limit: 25 };
@@ -83,7 +100,7 @@ describe("listarProductos", () => {
     (listarProductosEnTx as jest.Mock).mockResolvedValue(items);
     (contarProductos as jest.Mock).mockResolvedValue(30);
 
-    const result = await listarProductos(tx, ctx, query);
+    const result = await listarProductos(tx, ctx, query, TASAS);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -99,7 +116,7 @@ describe("listarProductos", () => {
     (listarProductosEnTx as jest.Mock).mockResolvedValue([]);
     (contarProductos as jest.Mock).mockResolvedValue(0);
 
-    const result = await listarProductos(tx, ctx, query);
+    const result = await listarProductos(tx, ctx, query, TASAS);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -115,7 +132,7 @@ describe("listarProductos", () => {
     (listarProductosEnTx as jest.Mock).mockResolvedValue([laptop]);
     (contarProductos as jest.Mock).mockResolvedValue(1);
 
-    const result = await listarProductos(tx, ctx, query);
+    const result = await listarProductos(tx, ctx, query, TASAS);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -129,7 +146,7 @@ describe("listarProductos", () => {
 
   it("rejects limit above 100", async () => {
     const tx = makeTx();
-    const result = await listarProductos(tx, ctx, { page: 1, limit: 101 });
+    const result = await listarProductos(tx, ctx, { page: 1, limit: 101 }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -139,7 +156,7 @@ describe("listarProductos", () => {
 
   it("rejects page below 1", async () => {
     const tx = makeTx();
-    const result = await listarProductos(tx, ctx, { page: 0, limit: 25 });
+    const result = await listarProductos(tx, ctx, { page: 0, limit: 25 }, TASAS);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {

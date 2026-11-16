@@ -11,11 +11,7 @@ import {
   ProductoDomainError,
   type ProductoErrorCode,
 } from "../domain/errors";
-import {
-  buildProductoItbis,
-  type Producto,
-  type TasaItbis,
-} from "../domain/producto";
+import { buildProductoItbis, type Producto } from "../domain/producto";
 import {
   esTasaItbisFormatoValido,
   mensajeTasaItbisInvalidaDe,
@@ -87,9 +83,7 @@ export async function crearProducto(
       mensajeTasaItbisInvalidaDe(tasasPermitidas),
     );
   }
-  // The repository still types the rate as the closed union until the read
-  // path stops depending on it (sub-slice 3c); membership was checked above.
-  const input: CrearProductoInput = { ...comando, itbisTasa: tasa as TasaItbis };
+  const input: CrearProductoInput = { ...comando, itbisTasa: tasa };
 
   if (!esPrecioValido(input.precioVenta)) {
     return buildError(PRECIO_BASE_INVALIDO);

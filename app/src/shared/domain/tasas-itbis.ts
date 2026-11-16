@@ -85,6 +85,13 @@ export function parsearListaTasasItbis(valor: string): ResultadoParseoTasasItbis
   return { ok: true, tasas };
 }
 
+/** True when `tasa` equals (numerically) one of `tasas`: "18.00" matches "18". Never throws. */
+export function esTasaEnLista(tasa: string, tasas: readonly string[]): boolean {
+  if (!esTasaItbisFormatoValido(tasa)) return false;
+  const buscada = new Decimal(tasa);
+  return tasas.some((t) => esTasaItbisFormatoValido(t) && new Decimal(t).equals(buscada));
+}
+
 /** UI label of a rate: "0% (exento)" for zero, `${t}%` otherwise. */
 export function etiquetaTasaItbis(t: string): string {
   return t === "0" ? "0% (exento)" : `${t}%`;

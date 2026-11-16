@@ -11,7 +11,7 @@
  */
 
 import "@testing-library/jest-dom";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import ProductosPage from "@/app/(app)/productos/page";
 import {
   consultarProductosAction,
@@ -79,6 +79,7 @@ function salida(): ConsultarProductosOutput {
         unidadMedida: "Libra",
         precioVenta: "125.50",
         tasaItbis: "18",
+        tasaVigente: true,
         itbisVigenteDesde: "2026-01-01T00:00:00.000Z",
         itbisVigenteHasta: null,
         itbisAplicaRetencionITBIS: false,
@@ -90,6 +91,7 @@ function salida(): ConsultarProductosOutput {
     page: 1,
     limit: 25,
     categorias: [{ id: 3, nombre: "Granos" }],
+    tasasItbis: ["18", "16", "0"],
   };
 }
 
@@ -124,6 +126,33 @@ describe("ProductosPage — role gate (S3)", () => {
     expect(screen.getByRole("button", { name: "Editar P-007" })).toBeInTheDocument();
     // The first load goes through the screen's own action, not a direct query.
     expect(mockConsultar).toHaveBeenCalledWith({ page: 1, limit: 25, estado: "activos" });
+  });
+
+  it("S4: the form options come from the list the consulta returned, not a constant", async () => {
+    mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeGestionar: true } });
+    mockConsultar.mockResolvedValue({ ok: true, data: { ...salida(), tasasItbis: ["0", "5"] } });
+
+    await renderizarPagina();
+    fireEvent.click(screen.getByRole("button", { name: "+ Nuevo producto" }));
+
+    const select = within(screen.getByRole("dialog")).getByLabelText("ITBIS *");
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "0% (exento)",
+      "5%",
+    ]);
+  });
+
+  it("S15: a missing rate list shows the typed message and no table", async () => {
+    mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeGestionar: true } });
+    mockConsultar.mockResolvedValue({
+      ok: false,
+      error: { code: "TASA_ITBIS_CONFIG_FALTANTE", message: "Falta la configuración TASA_ITBIS requerida; no se puede validar la tasa de ITBIS" },
+    });
+
+    await renderizarPagina();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Falta la configuración TASA_ITBIS requerida");
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("renders a view-only list (no manage controls) for Operador and Despachador", async () => {

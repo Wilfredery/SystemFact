@@ -51,6 +51,7 @@ const ARROZ: ProductoConsultaItem = {
   unidadMedida: "Libra",
   precioVenta: "125.50",
   tasaItbis: "18",
+  tasaVigente: true,
   itbisVigenteDesde: "2026-01-01T00:00:00.000Z",
   itbisVigenteHasta: null,
   itbisAplicaRetencionITBIS: false,
@@ -80,6 +81,7 @@ function salida(parcial: Partial<ConsultarProductosOutput> = {}): ConsultarProdu
       { id: 3, nombre: "Granos" },
       { id: 4, nombre: "Aceites" },
     ],
+    tasasItbis: ["18", "16", "0"],
     ...parcial,
   };
 }
@@ -322,6 +324,82 @@ describe("ProductosScreen — create dialog (S1)", () => {
       await within(dialogo).findByText("Ya existe un producto con ese código en la empresa"),
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+describe("ProductosScreen — rate list from the server (S4)", () => {
+  function opcionesItbis(dialogo: HTMLElement): { texto: string; valor: string }[] {
+    return within(within(dialogo).getByLabelText("ITBIS *"))
+      .getAllByRole("option")
+      .map((o) => ({ texto: o.textContent ?? "", valor: (o as HTMLOptionElement).value }));
+  }
+
+  it("the create form builds its options from the list, in list order, default = first", () => {
+    montar({ inicial: { ok: true, data: salida({ tasasItbis: ["16", "0"] }) } });
+    fireEvent.click(screen.getByRole("button", { name: "+ Nuevo producto" }));
+    const dialogo = screen.getByRole("dialog");
+
+    expect(opcionesItbis(dialogo)).toEqual([
+      { texto: "16%", valor: "16" },
+      { texto: "0% (exento)", valor: "0" },
+    ]);
+    expect(within(dialogo).getByLabelText("ITBIS *")).toHaveValue("16");
+  });
+
+  it("keeps the labels 18%, 16% and 0% (exento) for today's list", () => {
+    montar();
+    fireEvent.click(screen.getByRole("button", { name: "+ Nuevo producto" }));
+
+    expect(opcionesItbis(screen.getByRole("dialog"))).toEqual([
+      { texto: "18%", valor: "18" },
+      { texto: "16%", valor: "16" },
+      { texto: "0% (exento)", valor: "0" },
+    ]);
+  });
+
+  it("editing a retired rate adds it as a selected '(retirada)' option and submits it unchanged", async () => {
+    const VIEJO: ProductoConsultaItem = { ...ARROZ, tasaItbis: "7", tasaVigente: false };
+    montar();
+    mockObtener.mockResolvedValueOnce({ ok: true, data: VIEJO });
+    mockActualizar.mockResolvedValueOnce({ ok: true, data: { id: 7, version: 5 } });
+    resolverConsulta(salida());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Editar P-007" }));
+    });
+    const dialogo = screen.getByRole("dialog");
+
+    expect(opcionesItbis(dialogo)).toEqual([
+      { texto: "18%", valor: "18" },
+      { texto: "16%", valor: "16" },
+      { texto: "0% (exento)", valor: "0" },
+      { texto: "7% (retirada)", valor: "7" },
+    ]);
+    expect(within(dialogo).getByLabelText("ITBIS *")).toHaveValue("7");
+
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(mockActualizar).toHaveBeenCalledWith(expect.objectContaining({ itbisTasa: "7" }));
+  });
+
+  it("editing a current rate adds no extra option", async () => {
+    montar();
+    mockObtener.mockResolvedValueOnce({ ok: true, data: ARROZ });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Editar P-007" }));
+    });
+    expect(opcionesItbis(screen.getByRole("dialog"))).toHaveLength(3);
+  });
+
+  it("the table marks a row whose rate is not in the list with text, not color only", () => {
+    const VIEJO: ProductoConsultaItem = { ...ACEITE, tasaItbis: "7", tasaVigente: false };
+    montar({ inicial: { ok: true, data: salida({ items: [ARROZ, VIEJO] }) } });
+
+    const vieja = within(screen.getByTestId("producto-fila-8"));
+    expect(vieja.getByText("(retirada)")).toBeInTheDocument();
+    expect(screen.getByTestId("producto-fila-8")).toHaveTextContent("7% (retirada)");
+    expect(within(screen.getByTestId("producto-fila-7")).queryByText("(retirada)")).toBeNull();
   });
 });
 

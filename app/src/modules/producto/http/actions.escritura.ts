@@ -2,17 +2,13 @@
 
 import { Prisma } from "@/generated/prisma/client";
 import { createClient } from "@/lib/supabase/client";
-import {
-  withTenantTransaction,
-  type PrismaTx,
-} from "@/modules/tenant/infrastructure/withTenantTransaction";
+import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
-import { TasasItbisConfigError } from "@/shared/domain/tasas-itbis";
-import { leerTasasItbisEnTx } from "@/shared/infrastructure/tasas-itbis-config";
 import { crearProducto } from "../application/crear-producto";
 import { actualizarProducto } from "../application/actualizar-producto";
 import { desactivarProducto } from "../application/desactivar-producto";
 import { tieneRolPermitidoEnTx } from "../infrastructure/producto-repository";
+import { leerTasasPermitidasEnTx } from "./tasas-permitidas";
 import {
   zCrearProductoInput,
   zActualizarProductoInput,
@@ -32,21 +28,6 @@ import {
   ROLES_GESTION_PRODUCTOS,
   ROLES_ADMIN_ONLY,
 } from "./shared";
-
-// Reads the per-empresa rate list inside the caller's tenant transaction.
-// A missing or malformed key is a typed failure (null), never a default and
-// never an internal error leaked to the client; any other error propagates.
-async function leerTasasPermitidasEnTx(
-  tx: PrismaTx,
-  empresaId: number,
-): Promise<readonly string[] | null> {
-  try {
-    return await leerTasasItbisEnTx(tx, empresaId, new Date());
-  } catch (err) {
-    if (err instanceof TasasItbisConfigError) return null;
-    throw err;
-  }
-}
 
 // The tenant context must be resolved from the Supabase session (an auth read,
 // not tenant-DB access) BEFORE withTenantTransaction can receive it, so the

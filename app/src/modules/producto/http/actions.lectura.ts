@@ -10,6 +10,7 @@ import {
 } from "../application/consultar-productos";
 import { obtenerProductoDetalle } from "../application/obtener-producto";
 import { tieneRolPermitidoEnTx } from "../infrastructure/producto-repository";
+import { leerTasasPermitidasEnTx } from "./tasas-permitidas";
 import {
   zConsultarProductosQuery,
   zListarProductosQuery,
@@ -18,6 +19,7 @@ import {
 import {
   NO_AUTORIZADO,
   SESION_INVALIDA,
+  TASA_ITBIS_CONFIG_FALTANTE,
   VALIDATION_ERROR,
   messageFor,
 } from "../domain/errors";
@@ -37,7 +39,13 @@ export async function listarProductosAction(
   query: unknown,
 ): Promise<
   ActionResult<{
-    items: { id: number; codigo: string; nombre: string; precioVenta: string; tasaItbis: string }[];
+    items: {
+      id: number;
+      codigo: string;
+      nombre: string;
+      precioVenta: string;
+      tasaItbis: string;
+    }[];
     total: number;
     page: number;
   }>
@@ -64,7 +72,12 @@ export async function listarProductosAction(
       return error(NO_AUTORIZADO, "No tiene permisos para listar productos");
     }
 
-    const result = await listarProductos(tx, ctx, parseResult.data);
+    const tasas = await leerTasasPermitidasEnTx(tx, ctx.empresaId);
+    if (tasas === null) {
+      return error(TASA_ITBIS_CONFIG_FALTANTE, messageFor(TASA_ITBIS_CONFIG_FALTANTE));
+    }
+
+    const result = await listarProductos(tx, ctx, parseResult.data, tasas);
 
     if (!result.ok) {
       return error(result.code, result.message);
@@ -115,7 +128,12 @@ export async function consultarProductosAction(
       return error(NO_AUTORIZADO, "No tiene permisos para listar productos");
     }
 
-    const result = await consultarProductos(tx, ctx, parseResult.data);
+    const tasas = await leerTasasPermitidasEnTx(tx, ctx.empresaId);
+    if (tasas === null) {
+      return error(TASA_ITBIS_CONFIG_FALTANTE, messageFor(TASA_ITBIS_CONFIG_FALTANTE));
+    }
+
+    const result = await consultarProductos(tx, ctx, parseResult.data, tasas);
     if (!result.ok) {
       return error(result.code, result.message);
     }
@@ -152,7 +170,12 @@ export async function obtenerProductoPorIdAction(
       return error(NO_AUTORIZADO, "No tiene permisos para ver productos");
     }
 
-    const result = await obtenerProductoDetalle(tx, ctx, parseResult.data);
+    const tasas = await leerTasasPermitidasEnTx(tx, ctx.empresaId);
+    if (tasas === null) {
+      return error(TASA_ITBIS_CONFIG_FALTANTE, messageFor(TASA_ITBIS_CONFIG_FALTANTE));
+    }
+
+    const result = await obtenerProductoDetalle(tx, ctx, parseResult.data, tasas);
     if (!result.ok) {
       return error(result.code, result.message);
     }

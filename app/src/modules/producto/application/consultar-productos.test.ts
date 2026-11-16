@@ -15,6 +15,8 @@ jest.mock("../infrastructure/producto-repository", () => ({
   listarCategoriasProductoEnTx: jest.fn(),
 }));
 
+const TASAS = ["18", "16", "0"];
+
 const ctx: TenantCtx = {
   empresaId: 1,
   sucursalId: 1,
@@ -57,6 +59,20 @@ function mockRepo(items: ReturnType<typeof fila>[], total = items.length) {
 }
 
 describe("consultarProductos", () => {
+  it("S4: returns the list and flags a retired stored rate without throwing", async () => {
+    mockRepo([fila(), fila({ id: 8, tasaItbis: new Decimal("7") })]);
+
+    const result = await consultarProductos(makeTx(), ctx, { page: 1, limit: 25 }, TASAS);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.tasasItbis).toEqual(TASAS);
+    expect(result.data.items.map((i) => [i.tasaItbis, i.tasaVigente])).toEqual([
+      ["18", true],
+      ["7", false],
+    ]);
+  });
+
   beforeEach(() => {
     jest.resetAllMocks();
   });
@@ -64,7 +80,7 @@ describe("consultarProductos", () => {
   it("S1: returns the enriched projection (category name, unit, Decimal price, ITBIS with vigencia and version)", async () => {
     mockRepo([fila()]);
 
-    const result = await consultarProductos(makeTx(), ctx, { page: 1, limit: 25 });
+    const result = await consultarProductos(makeTx(), ctx, { page: 1, limit: 25 }, TASAS);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -79,6 +95,7 @@ describe("consultarProductos", () => {
         unidadMedida: "Libra",
         precioVenta: "125.50",
         tasaItbis: "18",
+        tasaVigente: true,
         itbisVigenteDesde: "2026-01-01T00:00:00.000Z",
         itbisVigenteHasta: null,
         itbisAplicaRetencionITBIS: true,
@@ -95,7 +112,7 @@ describe("consultarProductos", () => {
   it("S1: a product with a closing ITBIS validity keeps it as an ISO instant", async () => {
     mockRepo([fila({ itbisVigenteHasta: new Date("2027-12-31T12:00:00.000Z") })]);
 
-    const result = await consultarProductos(makeTx(), ctx, { page: 1, limit: 25 });
+    const result = await consultarProductos(makeTx(), ctx, { page: 1, limit: 25 }, TASAS);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -105,7 +122,7 @@ describe("consultarProductos", () => {
   it("S4: defaults to active products only, keeps incluirInactivos for old callers, and an explicit estado wins", async () => {
     mockRepo([]);
 
-    await consultarProductos(makeTx(), ctx, { page: 1, limit: 25 });
+    await consultarProductos(makeTx(), ctx, { page: 1, limit: 25 }, TASAS);
     expect((consultarProductosEnTx as jest.Mock).mock.calls[0][2]).toMatchObject({
       estado: "activos",
       page: 1,
@@ -113,7 +130,7 @@ describe("consultarProductos", () => {
     });
 
     (consultarProductosEnTx as jest.Mock).mockClear();
-    await consultarProductos(makeTx(), ctx, { page: 1, limit: 25, incluirInactivos: true });
+    await consultarProductos(makeTx(), ctx, { page: 1, limit: 25, incluirInactivos: true }, TASAS);
     expect((consultarProductosEnTx as jest.Mock).mock.calls[0][2]).toMatchObject({
       estado: "todos",
     });
@@ -124,7 +141,7 @@ describe("consultarProductos", () => {
       limit: 25,
       incluirInactivos: true,
       estado: "inactivos",
-    });
+    }, TASAS);
     expect((consultarProductosEnTx as jest.Mock).mock.calls[0][2]).toMatchObject({
       estado: "inactivos",
     });
@@ -139,7 +156,7 @@ describe("consultarProductos", () => {
       busqueda: "  arroz ",
       categoriaId: 3,
       estado: "todos",
-    });
+    }, TASAS);
 
     const esperado = { page: 2, limit: 10, busqueda: "  arroz ", categoriaId: 3, estado: "todos" };
     expect((consultarProductosEnTx as jest.Mock).mock.calls[0][2]).toMatchObject(esperado);
@@ -149,7 +166,7 @@ describe("consultarProductos", () => {
   it("S4: a page past the end is clamped to the last page instead of rendering an empty table", async () => {
     mockRepo([fila()], 1);
 
-    const result = await consultarProductos(makeTx(), ctx, { page: 3, limit: 25 });
+    const result = await consultarProductos(makeTx(), ctx, { page: 3, limit: 25 }, TASAS);
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.data.page).toBe(1);
@@ -157,11 +174,11 @@ describe("consultarProductos", () => {
   });
 
   it("S4: rejects a limit above 100 and a page below 1 before touching the repository", async () => {
-    const alto = await consultarProductos(makeTx(), ctx, { page: 1, limit: 101 });
+    const alto = await consultarProductos(makeTx(), ctx, { page: 1, limit: 101 }, TASAS);
     expect(alto.ok).toBe(false);
     if (!alto.ok) expect(alto.code).toBe(LIMITE_PAGINACION_INVALIDO);
 
-    const cero = await consultarProductos(makeTx(), ctx, { page: 0, limit: 25 });
+    const cero = await consultarProductos(makeTx(), ctx, { page: 0, limit: 25 }, TASAS);
     expect(cero.ok).toBe(false);
     if (!cero.ok) expect(cero.code).toBe(PAGINA_INVALIDA);
 

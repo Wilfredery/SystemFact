@@ -1,3 +1,9 @@
+## [0.34.10](https://github.com/Wilfredery/SystemFact/compare/v0.34.9...v0.34.10) (2026-11-16)
+
+### Features
+
+* **itbis:** the product screens no longer crash on a product whose stored ITBIS rate is not in the company's list of allowed rates (`odd/tasks/itbis-tasas-config.md`, sub-slice 3c). Before, the product list, detail and search threw an error for such a product; now it is shown normally, with its rate followed by a **(retirada)** marker in the table and as a selected **"N% (retirada)"** option in the edit form, so an old product never shows a blank or wrong rate. The rate options in the product form now come from the company's database list (`TASA_ITBIS`, today `18%`, `16%`, `0% (exento)` in that order, default 18%) instead of a fixed list in the code. Nothing changes for the rates in use today. If the `TASA_ITBIS` configuration is ever missing, the product list, detail and search (including the product pickers in sales and purchases) fail with the stable error `TASA_ITBIS_CONFIG_FALTANTE` instead of using a silent default. Covered by a real-database test that fails on the previous code with the original crash.
+
 ## [0.34.9](https://github.com/Wilfredery/SystemFact/compare/v0.34.8...v0.34.9) (2026-11-16)
 
 ### Features

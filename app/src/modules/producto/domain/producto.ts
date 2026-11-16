@@ -29,7 +29,8 @@ export type TasaItbis = TasaItbisPermitida;
  * Valor objeto con la tasa ITBIS aplicable a un producto y su ventana de vigencia.
  */
 export interface ProductoItbis {
-  readonly tasa: TasaItbis;
+  /** Canonical decimal string; may be a retired rate no longer in the allowed list (S4). */
+  readonly tasa: string;
   readonly vigenteDesde: Date;
   readonly vigenteHasta: Date | null;
   readonly aplicaRetencionITBIS: boolean;
