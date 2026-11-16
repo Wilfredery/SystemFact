@@ -95,6 +95,7 @@ export async function actualizarCompra(
     proveedor?.activo ?? false,
     proveedor !== null,
     input.lineas,
+    actual.fecha,
   );
   if (!preparado.ok) {
     return buildError(preparado.code);

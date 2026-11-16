@@ -90,6 +90,7 @@ export async function crearCompra(
     proveedor?.activo ?? false,
     proveedor !== null,
     input.lineas,
+    input.fecha,
   );
   if (!preparado.ok) {
     return buildError(preparado.code);

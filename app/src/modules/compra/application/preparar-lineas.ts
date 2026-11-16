@@ -13,6 +13,7 @@ import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransac
 import {
   LINEA_INVALIDA,
   PRODUCTO_NO_ENCONTRADO,
+  TASA_ITBIS_CONFIG_FALTANTE,
   PROVEEDOR_INACTIVO,
   PROVEEDOR_NO_ENCONTRADO,
   messageFor,
@@ -23,8 +24,14 @@ import type {
   CompraLineaInput,
   TotalesCompra,
 } from "../domain/compra";
-import { calcularLinea, calcularTotales, validarLinea } from "../domain/calculators";
+import {
+  calcularLinea,
+  calcularTotales,
+  validarLinea,
+} from "../domain/calculators";
 import { leerProductosParaLineasEnTx } from "../infrastructure/compra-repository";
+import { TasasItbisConfigError } from "@/shared/domain/tasas-itbis";
+import { leerTasasItbisEnTx } from "@/shared/infrastructure/tasas-itbis-config";
 
 export type PrepararLineasResultado =
   | {
@@ -37,6 +44,11 @@ export type PrepararLineasResultado =
 /**
  * Validate the supplier is present and active, then validate + freeze each
  * line against its product's ITBIS rate and aggregate the header totals.
+ * Each line's rate is checked against the per-empresa TASA_ITBIS list read
+ * INSIDE the tenant transaction AFTER the product batch, at the compra `fecha`
+ * (feature itbis-tasas-config, slice 3e). A missing/malformed key fails loud
+ * with the stable `TASA_ITBIS_CONFIG_FALTANTE` code (S15) — never a silent
+ * hardcoded default.
  * An empty line set is rejected (a purchase needs at least one line).
  */
 export async function prepararLineas(
@@ -46,6 +58,7 @@ export async function prepararLineas(
   proveedorActivo: boolean,
   proveedorExiste: boolean,
   lineas: readonly CompraLineaInput[],
+  fecha: Date,
 ): Promise<PrepararLineasResultado> {
   if (!proveedorExiste) {
     return { ok: false, code: PROVEEDOR_NO_ENCONTRADO, message: messageFor(PROVEEDOR_NO_ENCONTRADO) };
@@ -64,6 +77,22 @@ export async function prepararLineas(
   );
   const productosById = new Map(productos.map((p) => [p.id, p]));
 
+  // Per-empresa ITBIS rate list (TASA_ITBIS), read in the same transaction
+  // AFTER the product batch; the compra fecha selects the validity window.
+  let tasasPermitidas: readonly string[];
+  try {
+    tasasPermitidas = await leerTasasItbisEnTx(tx, empresaId, fecha);
+  } catch (err) {
+    if (err instanceof TasasItbisConfigError) {
+      return {
+        ok: false,
+        code: TASA_ITBIS_CONFIG_FALTANTE,
+        message: messageFor(TASA_ITBIS_CONFIG_FALTANTE),
+      };
+    }
+    throw err;
+  }
+
   const calculadas: CompraLineaCalculada[] = [];
   for (const linea of lineas) {
     const producto = productosById.get(linea.productoId);
@@ -73,7 +102,7 @@ export async function prepararLineas(
     if (!producto.activo) {
       return { ok: false, code: LINEA_INVALIDA, message: messageFor(LINEA_INVALIDA) };
     }
-    const invalida = validarLinea(linea, producto.tasaItbis);
+    const invalida = validarLinea(linea, producto.tasaItbis, tasasPermitidas);
     if (invalida !== null) {
       return { ok: false, code: invalida, message: messageFor(invalida) };
     }

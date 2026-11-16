@@ -8,6 +8,11 @@
  * constraint) that the application layer converts back into a typed result.
  */
 
+import {
+  CODIGO_TASA_ITBIS_CONFIG_FALTANTE,
+  MENSAJE_TASA_ITBIS_CONFIG_FALTANTE,
+} from "@/shared/domain/tasas-itbis";
+
 // --- Stable code catalog (R: all error scenarios) ---
 export const VALIDATION_ERROR = "VALIDATION_ERROR";
 export const COMPRA_NO_ENCONTRADA = "COMPRA_NO_ENCONTRADA";
@@ -33,6 +38,9 @@ export const INVENTARIO_ENTRADA_RECHAZADA = "INVENTARIO_ENTRADA_RECHAZADA";
 // L6 stock-ceiling rejection from inventario. Compra owns the same stable code
 // but provides receipt-specific copy and never forwards inventory details.
 export const STOCK_MAXIMO_EXCEDIDO = "STOCK_MAXIMO_EXCEDIDO";
+// Feature itbis-tasas-config (slice 3e): the per-empresa ITBIS rate list is
+// required to validate purchase lines; a missing/malformed key fails loud (S15).
+export const TASA_ITBIS_CONFIG_FALTANTE = CODIGO_TASA_ITBIS_CONFIG_FALTANTE;
 
 export type CompraErrorCode =
   | typeof VALIDATION_ERROR
@@ -53,7 +61,8 @@ export type CompraErrorCode =
   | typeof SESION_INVALIDA
   | typeof COMPRA_SUCURSAL_INVALIDA
   | typeof INVENTARIO_ENTRADA_RECHAZADA
-  | typeof STOCK_MAXIMO_EXCEDIDO;
+  | typeof STOCK_MAXIMO_EXCEDIDO
+  | typeof TASA_ITBIS_CONFIG_FALTANTE;
 
 const MESSAGES: Record<CompraErrorCode, string> = {
   [VALIDATION_ERROR]: "Datos de entrada inválidos",
@@ -62,6 +71,7 @@ const MESSAGES: Record<CompraErrorCode, string> = {
   [PRODUCTO_NO_ENCONTRADO]: "El producto no existe en la empresa",
   [PROVEEDOR_INACTIVO]: "El proveedor está inactivo",
   [LINEA_INVALIDA]: "La línea de compra es inválida",
+  [TASA_ITBIS_CONFIG_FALTANTE]: MENSAJE_TASA_ITBIS_CONFIG_FALTANTE,
   [COMPRA_INMUTABLE]: "La compra ya confirmada no puede editarse",
   [TRANSICION_INVALIDA]: "La transición de estado no es permitida",
   [CONFIG_RETENCION_FALTANTE]:
