@@ -1,3 +1,9 @@
+## [0.34.11](https://github.com/Wilfredery/SystemFact/compare/v0.34.10...v0.34.11) (2026-11-16)
+
+### Features
+
+* **itbis:** a sale now validates each line's ITBIS rate against the company's list of allowed rates stored in the database (`TASA_ITBIS`, today `18,16,0`) at the sale date, instead of a fixed set in the code (`odd/tasks/itbis-tasas-config.md`, sub-slice 3d). The accepted rates do not change (the same three); a product whose stored rate is written with extra zeros (`18.00`) is now accepted because it matches the list numerically. A well-formed rate that is no longer in the list (a retired rate, for example 7) refuses the sale at draft/prepare time with `LINEA_INVALIDA` — per the owner's decision, you must fix the product's rate before the sale can be saved; confirmed sales are never affected. If the `TASA_ITBIS` configuration is ever missing, the sale save fails with the stable error `TASA_ITBIS_CONFIG_FALTANTE` instead of using a silent default. The cart on screen now only checks that the typed values are well-formed; whether the product's rate is allowed is decided by the server at save. Covered by real-database tests (full sale at 18/16/0 already covered; a retired rate refused and a missing configuration fail on the previous code).
+
 ## [0.34.10](https://github.com/Wilfredery/SystemFact/compare/v0.34.9...v0.34.10) (2026-11-16)
 
 ### Features
