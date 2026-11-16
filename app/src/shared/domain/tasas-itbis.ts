@@ -1,30 +1,22 @@
 /**
- * ITBIS rates allowed for new use (Ley 30-26): 0 / 16 / 18 percent.
+ * Per-empresa ITBIS rate list helpers (feature itbis-tasas-config).
  *
- * Single shared source for the allowed set (pure TS, ADR-013: no Next.js,
- * React, Prisma or Supabase). Rates are decimal strings, never `number`.
+ * Pure TS, ADR-013: no Next.js, React, Prisma or Supabase. Rates are decimal
+ * strings, never `number`. The allowed set is DATA in CONFIGURACION_EMPRESA
+ * (key `TASA_ITBIS`): the old hardcoded 0/16/18 constant and its membership
+ * predicate were deleted in slice 3g — every validation now goes through
+ * `esTasaEnLista` against the empresa's own list (numeric equality).
  */
 import { Decimal } from "decimal.js";
 
-export const TASAS_ITBIS_PERMITIDAS = ["0", "16", "18"] as const;
-
-export type TasaItbis = (typeof TASAS_ITBIS_PERMITIDAS)[number];
-
-/** True when `valor` is exactly one of the allowed rate strings. */
-export function esTasaItbisPermitida(valor: string): valor is TasaItbis {
-  return (TASAS_ITBIS_PERMITIDAS as readonly string[]).includes(valor);
-}
-
-/** Human list of the allowed rates, e.g. "0%, 16% o 18%". */
-export function textoTasasItbisPermitidas(): string {
-  const porcentajes = TASAS_ITBIS_PERMITIDAS.map((t) => `${t}%`);
-  const ultima = porcentajes[porcentajes.length - 1];
-  return `${porcentajes.slice(0, -1).join(", ")} o ${ultima}`;
-}
-
-/** Error sentence for a rate outside the allowed set. */
+/**
+ * Fallback copy for a rate outside the allowed set, kept for the error
+ * catalog's static default (producto/domain/errors.ts). The LIVE messages are
+ * built from the empresa's list via `mensajeTasaItbisInvalidaDe(list)`; this
+ * literal only matches the former constant-derived output (0/16/18 today).
+ */
 export function mensajeTasaItbisInvalida(): string {
-  return `La tasa de ITBIS debe ser ${textoTasasItbisPermitidas()}`;
+  return "La tasa de ITBIS debe ser 0%, 16% o 18%";
 }
 
 // ---------------------------------------------------------------------------

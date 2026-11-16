@@ -1,29 +1,14 @@
 import type { Decimal } from "decimal.js";
-import {
-  TASAS_ITBIS_PERMITIDAS,
-  esTasaItbisPermitida,
-  type TasaItbis as TasaItbisPermitida,
-} from "@/shared/domain/tasas-itbis";
 import { ProductoDomainError, VIGENCIA_INVALIDA } from "./errors";
 
 /**
- * Tasas ITBIS reconocidas por la DGII.
- *
- * MAINTAINER-RATIFIED DEVIATION (2026-09-04, SystemFact phase 6 review):
- * the project rule "Parameters from DB, never hardcoded constants: ITBIS rate
- * (with validity)" is deliberately NOT applied to this closed enumeration.
- * Rationale: the allowed-rate set is a closed legal set validated at compile
- * time (TypeScript union), and DGII historically ADDS rates rather than
- * renumbering existing ones — the project already anticipates 18%. What
- * actually changes with a fiscal reform — which rate each product uses and
- * its validity window — is ALREADY DB-sourced per PRODUCTO row (tasaItbis +
- * itbisVigenteDesde/itbisVigenteHasta). Parametrizing the enumeration would
- * break domain purity (async DB read on every validation) and add a failure
- * surface (missing param row blocks product creation) to guard a decadal
- * event. A future rate requires: update of shared/domain/tasas-itbis.ts,
- * Prisma migration, and PARAMETRO seed — tracked in the SDD change.
+ * ITBIS rate history note (feature itbis-tasas-config): the old closed
+ * enumeration (0/16/18) and its validators that used to live here were
+ * DELETED in slice 3g. The allowed set is DATA per empresa
+ * (CONFIGURACION_EMPRESA key TASA_ITBIS) and validation happens through the
+ * shared `esTasaEnLista` against that list; a rate change is a reviewed
+ * config/migration change, not a code change.
  */
-export type TasaItbis = TasaItbisPermitida;
 
 /**
  * Valor objeto con la tasa ITBIS aplicable a un producto y su ventana de vigencia.
@@ -80,16 +65,4 @@ export function buildProductoItbis(itbis: ProductoItbis): ProductoItbis {
  */
 export function esProductoExento(itbis: ProductoItbis): boolean {
   return itbis.tasa === "0";
-}
-
-/**
- * Lista ordenada de tasas válidas (útil para validaciones).
- */
-export const TASAS_ITBIS_VALIDAS: readonly TasaItbis[] = TASAS_ITBIS_PERMITIDAS;
-
-/**
- * Verifica si un string es una tasa ITBIS válida.
- */
-export function esTasaItbisValida(value: string): value is TasaItbis {
-  return esTasaItbisPermitida(value);
 }

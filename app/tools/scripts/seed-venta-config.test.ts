@@ -27,7 +27,7 @@ import {
   TASA_ITBIS_CLAVE,
   CLAVE_SEED_VIGENCIA,
 } from "./seed-venta-config";
-import { TASAS_ITBIS_PERMITIDAS } from "@/shared/domain/tasas-itbis";
+const TASAS_ITBIS_PERMITIDAS = ["0", "16", "18"] as const;
 
 // The seed module imports the generated Prisma client + pg adapter at the top for
 // its `main()` CLI path. In the CommonJS unit runner the generated client's
