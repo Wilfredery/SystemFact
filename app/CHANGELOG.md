@@ -1,3 +1,9 @@
+## [0.34.9](https://github.com/Wilfredery/SystemFact/compare/v0.34.8...v0.34.9) (2026-11-16)
+
+### Features
+
+* **itbis:** creating or editing a product now checks the ITBIS rate against the company's list of allowed rates stored in the database (`TASA_ITBIS`, today `18,16,0`) instead of a fixed set in the code (`odd/tasks/itbis-tasas-config.md`, sub-slice 3b). The accepted rates do not change. What changes: a well-formed rate that is not allowed (for example 19) now returns the clear error `TASA_ITBIS_INVALIDA` ("La tasa de ITBIS debe ser 0%, 16% o 18%") instead of the generic validation error; a malformed rate (empty, text, negative) still returns the validation error. An old product whose rate is no longer in the list can still be edited as long as its rate is not changed. If the `TASA_ITBIS` configuration is ever missing, the product create and edit fail with the stable error `TASA_ITBIS_CONFIG_FALTANTE` instead of using a silent default. Covered by a real-database test that fails on the previous code.
+
 ## [0.34.8](https://github.com/Wilfredery/SystemFact/compare/v0.34.7...v0.34.8) (2026-11-16)
 
 ### Bug Fixes
