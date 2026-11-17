@@ -1,3 +1,9 @@
+## [0.37.1](https://github.com/Wilfredery/SystemFact/compare/v0.37.0...v0.37.1) (2026-11-17)
+
+### Fixed
+
+* **venta:** CONFIRMADA rows in the POS "My drafts" list now carry a "Ver factura" link to the print view `/venta/factura/{facturaId}` (the list rows expose the linked invoice's id) — closing the discoverability gap the changelog previously documented as future work. **ci:** the production-demo CSP walker resolves the new `[facturaId]` dynamic segment from the estado de cuenta UI (its own UI-derived id discipline), which un-blocks the demo lane after the print view shipped.
+
 ## [0.37.0](https://github.com/Wilfredery/SystemFact/compare/v0.36.2...v0.37.0) (2026-11-17)
 
 ### Features

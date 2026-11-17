@@ -98,3 +98,6 @@ client island + window.print, NO print CSS exists anywhere yet), venta-repositor
 - L4 (2026-11-17): the local stack was re-provisioned cleanly (schema drop + provision with
   explicit throwaway passwords, recorded in this file only as the procedure; the stack env file is
   gitignored and its values were never read).
+
+- L6 (2026-11-17): the 0.37.0 deploy arc caught a demo-lane red: the prod-demo CSP walker (UI-derived ids only) had no id for [facturaId]. Fixed properly by shipping the deferred POS link: listarVentas rows now carry facturaId and CONFIRMADA rows render a "Ver factura" link to /venta/factura/{id} (also closes the changelog promise); the demo walker reads the id the way it always does — from the estado de cuenta UI (run.facturaId) — and the local csp walker resolves it from the seeded tenant. Bump 0.37.1 (fix → PATCH).
+- L7 (2026-11-17): LIVE FINDING recorded during the visual check: a B04 credit note of the pre-ITBIS subtotal (150) against a fully-cobrado invoice (177) leaves a NEGATIVE canonical saldo (-150) — the print view shows it honestly; the amount belongs to the devolucion domain (later work, owner decision).

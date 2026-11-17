@@ -50,6 +50,7 @@ export async function listarVentasAction(
       clienteNombre: string;
       usuarioNombre: string;
       ncf: string | null;
+      facturaId: number | null;
     }[];
     total: number;
     page: number;
@@ -79,6 +80,7 @@ export async function listarVentasAction(
         clienteNombre: v.clienteNombre,
         usuarioNombre: v.usuarioNombre,
         ncf: v.ncf,
+        facturaId: v.facturaId ?? null,
       })),
       total: result.data.total,
       page: result.data.page,

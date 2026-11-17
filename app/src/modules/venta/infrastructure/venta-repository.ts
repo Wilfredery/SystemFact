@@ -125,6 +125,8 @@ export interface VentaListRow {
   readonly usuarioNombre: string;
   /** NCF of the linked invoice when the sale is CONFIRMADA; null otherwise. */
   readonly ncf: string | null;
+  /** Id of the linked invoice (print view resolves by it); null on drafts. */
+  readonly facturaId: number | null;
 }
 
 /** Detail projection with client name and full lines (same-tenant only). */
@@ -964,7 +966,7 @@ export async function listarVentasEnTx(
       usuario: { select: { nombre: true } },
       // One sale emits at most one invoice (1:1 `FacturaVenta`), so the list row
       // can carry the NCF for CONFIRMADA rows without any N+1 (R-V12).
-      factura: { select: { ncf: true } },
+      factura: { select: { id: true, ncf: true } },
     },
     orderBy: [{ fecha: "desc" }, { id: "desc" }],
     skip: (query.page - 1) * query.limit,
@@ -979,6 +981,7 @@ export async function listarVentasEnTx(
     clienteNombre: r.cliente.nombre,
     usuarioNombre: r.usuario.nombre,
     ncf: r.factura?.ncf ?? null,
+    facturaId: r.factura?.id ?? null,
   }));
 }
 

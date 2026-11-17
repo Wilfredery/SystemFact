@@ -217,6 +217,7 @@ describe("PosScreen (R-V14)", () => {
             clienteNombre: CONSUMIDOR_FINAL_LABEL,
             usuarioNombre: "Ana",
             ncf: null,
+            facturaId: null,
           },
         ],
         total: 1,
@@ -245,6 +246,7 @@ describe("PosScreen (R-V14)", () => {
             clienteNombre: "Consumidor Final",
             usuarioNombre: "Ana",
             ncf: null,
+            facturaId: null,
           },
         ],
         total: 1,
@@ -353,6 +355,7 @@ describe("PosScreen credit-mode derivation (R-V19)", () => {
             clienteNombre: "Comercios Clara, SRL",
             usuarioNombre: "Ana",
             ncf: null,
+            facturaId: null,
           },
         ],
         total: 1,
@@ -367,7 +370,7 @@ describe("PosScreen credit-mode derivation (R-V19)", () => {
         id: 3,
         estado: ESTADO_VENTA.CONFIRMADA,
         facturaId: 77,
-        ncf: "B0200000101",
+        ncf: "B0200000101",
         tipoNcf: "B02",
         correlativoInterno: "FAC-000001",
         total: "118.00",
@@ -599,6 +602,7 @@ describe("PosScreen numeric keypad (R-V23)", () => {
       clienteNombre: string;
       usuarioNombre: string;
       ncf: string | null;
+      facturaId: number | null;
     };
 
     function lista(items: ListItem[]) {
@@ -614,6 +618,7 @@ describe("PosScreen numeric keypad (R-V23)", () => {
       clienteNombre: "Consumidor Final",
       usuarioNombre: "Ana",
       ncf: null,
+      facturaId: null,
     };
 
     const CONFIRMADA_4: ListItem = {
@@ -621,6 +626,7 @@ describe("PosScreen numeric keypad (R-V23)", () => {
       id: 4,
       estado: ESTADO_VENTA.CONFIRMADA,
       ncf: "B0200000101",
+      facturaId: 101,
     };
 
     it("admin: the Void control opens the Dialog and nothing is voided before submit", async () => {

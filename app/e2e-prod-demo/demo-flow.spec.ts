@@ -50,6 +50,7 @@ const run: {
   stockAfterCredit?: Decimal;
   credit?: { id: number; name: string };
   creditSale?: { ventaId: number; ncf: string };
+  facturaId?: number;
   receipt?: number;
 } = {};
 
@@ -129,6 +130,7 @@ test.describe("demo sales flow (S1: cash B02, credit B01 + partial cobro, return
     const created = [...after].filter((id) => !before.has(id));
     expect(created, "the credit sale must add exactly one invoice to the estado de cuenta").toHaveLength(1);
     const facturaId = created[0];
+    run.facturaId = facturaId;
 
     // Partial cobro: half of the prefilled pending balance, rounded down to cents.
     const row = page.getByTestId(`estado-cuenta-fila-${facturaId}`);
@@ -247,6 +249,7 @@ test.describe("CSP across the authenticated pages (S1)", () => {
     const dynamicSegments: Record<string, number> = {
       clienteId: credit.id,
       correlativo: run.receipt!,
+      facturaId: run.facturaId!,
     };
 
     const visited: string[] = [];
