@@ -2,8 +2,8 @@
 
 Objective: finish the screens the business needs to run (products, customers, suppliers, inventory,
 purchases, administration, daily close) in a safe order, with each screen tested like the sales flow was.
-Status: **AUDIT AND PLAN ONLY (2026-11-07). No code has been written for this plan.** Coding starts only after
-the owner approves the build order below (see "Open questions" and the Log).
+Status: **COMPLETE (2026-11-16 re-audit).** Every planned screen shipped (see the Status table); the plan phase
+(2026-11-07) and the owner's build-order approval are recorded in the Log. Only status bookkeeping remains here.
 
 ## How to resume this work (for any model or session)
 
@@ -134,7 +134,7 @@ CSP is enforced, so new screens must not need inline scripts or `eval` (the loca
 | 4 | Proveedores | shipped, v0.24.0 (PR #205); `odd/tasks/proveedores.md` | |
 | 5 | Inventario | consulta shipped (1a) and the adjustment form; evidence in `odd/tasks/inventario-consulta.md` and `odd/tasks/inventario-ajuste.md` | |
 | 6 | Compras | shipped, v0.25.0 (PR #207); `odd/tasks/compras.md` | |
-| 7 | Administración | read-only shipped, v0.26.0 (PR #209); writes (roles, activate/deactivate) in v0.28.0, see `odd/tasks/administracion-writes.md`. Still deferred: user creation (operator-side), branch moves/management, company-wide listing, ITBIS reader | |
+| 7 | Administración | read-only shipped, v0.26.0 (PR #209); writes (roles, activate/deactivate) in v0.28.0 (`odd/tasks/administracion.md`); user moves v0.32.0, branch create/edit v0.33.0, branch activate/deactivate (PR #224) — `odd/tasks/administracion-sucursales-crear-editar.md`, `odd/tasks/administracion-mover-usuario.md`; ITBIS rate list shipped in the TASA_ITBIS program (PRs #236–#240, `odd/tasks/itbis-tasas-config.md`/`itbis-tasas-edit.md`). Deferred by standing decision: in-app user/password creation (operator-side, `app/USER-PROVISIONING.md`) | |
 | 8 | Caja | shipped, v0.27.0 (PR #211); `odd/tasks/caja.md` | |
 
 ## Open questions for the owner
