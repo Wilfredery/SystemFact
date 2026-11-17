@@ -137,6 +137,36 @@ function truncate(value: string | null): string | null {
 }
 
 /**
+ * Serialize one violation without ever throwing. `JSON.stringify` raises RangeError on deeply
+ * nested structures that `JSON.parse` accepted, and this endpoint is pre-auth: a hostile body must
+ * never break the 204 contract, so a serialization failure degrades to a flat marker line that
+ * names the failing report class instead of the payload.
+ */
+function serializeViolation(report: CspViolationReport): string {
+  try {
+    return JSON.stringify({
+      event: CSP_VIOLATION_EVENT,
+      blockedUri: truncate(report.blockedUri),
+      effectiveDirective: truncate(report.effectiveDirective),
+      sourceFile: truncate(report.sourceFile),
+      lineNumber: report.lineNumber,
+      documentUri: truncate(report.documentUri),
+      report: report.raw,
+    });
+  } catch {
+    return JSON.stringify({
+      event: CSP_VIOLATION_EVENT,
+      blockedUri: truncate(report.blockedUri),
+      effectiveDirective: truncate(report.effectiveDirective),
+      sourceFile: truncate(report.sourceFile),
+      lineNumber: report.lineNumber,
+      documentUri: truncate(report.documentUri),
+      reportSerialization: "failed",
+    });
+  }
+}
+
+/**
  * Emit ONE structured JSON line per violation to the server console (visible in Vercel logs).
  *
  * The fields the operator reads first are lifted to the top level; the browser's own report rides
@@ -145,16 +175,6 @@ function truncate(value: string | null): string | null {
  */
 export function logCspViolations(reports: readonly CspViolationReport[]): void {
   for (const report of reports.slice(0, MAX_LOGGED_REPORTS)) {
-    console.log(
-      JSON.stringify({
-        event: CSP_VIOLATION_EVENT,
-        blockedUri: truncate(report.blockedUri),
-        effectiveDirective: truncate(report.effectiveDirective),
-        sourceFile: truncate(report.sourceFile),
-        lineNumber: report.lineNumber,
-        documentUri: truncate(report.documentUri),
-        report: report.raw,
-      }),
-    );
+    console.log(serializeViolation(report));
   }
 }

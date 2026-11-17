@@ -187,6 +187,31 @@ describe("POST /api/security/csp-report — hostile and broken input", () => {
     expect(log).not.toHaveBeenCalled();
   });
 
+  it("answers 204 and degrades the log line for a deeply nested report that JSON.parse accepts but JSON.stringify cannot serialize", async () => {
+    // Deterministic Node behavior: parse succeeds while stringify throws
+    // RangeError at nesting depths far under the 32 KB byte cap.
+    const depth = 5000;
+    // Built by concatenation on purpose: the wire body is valid JSON that
+    // JSON.parse accepts, but JSON.stringify cannot serialize it — which is
+    // exactly the asymmetry under test.
+    const nested =
+      '{"csp-report":{"document-uri":"https://app.test/x","effective-directive":"script-src","violated-directive":"script-src","script-sample":' +
+      "[".repeat(depth) +
+      "0" +
+      "]".repeat(depth) +
+      "}}";
+    expect(nested.length).toBeLessThan(MAX_REPORT_BYTES);
+
+    const res = await POST(post(nested, "application/csp-report"));
+
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe("");
+    expect(log).toHaveBeenCalledTimes(1);
+    const line = JSON.parse(log.mock.calls[0][0] as string) as { event: string; reportSerialization?: string };
+    expect(line.event).toBe("csp_violation");
+    expect(line.reportSerialization).toBe("failed");
+  });
+
   it("answers 204 without logging a body larger than the cap (declared Content-Length)", async () => {
     const oversized = JSON.stringify({
       "csp-report": { ...LEGACY, "script-sample": "x".repeat(MAX_REPORT_BYTES) },
