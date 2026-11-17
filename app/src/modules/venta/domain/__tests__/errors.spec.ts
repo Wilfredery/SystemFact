@@ -48,6 +48,7 @@ describe("venta error catalog — 5c confirm delta (R-V13 / R-V15)", () => {
     DEVOLUCION_FUERA_DE_PLAZO: true,
     CANTIDAD_EXCEDE_ORIGINAL: true,
     FACTURA_NO_VIGENTE: true,
+    FACTURA_NO_ENCONTRADA: true,
     VENTA_NO_CONFIRMADA: true,
     // Phase-5d idempotency-gate delta (R-D5 amendment: 605).
     DEVOLUCION_YA_REGISTRADA: true,
@@ -60,8 +61,8 @@ describe("venta error catalog — 5c confirm delta (R-V13 / R-V15)", () => {
     STOCK_MAXIMO_EXCEDIDO: true,
   };
 
-  it("carries exactly 27 stable codes (26 + the L6 stock-ceiling delta)", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(27);
+  it("carries exactly 28 stable codes (26 + the L6 stock-ceiling delta + the print-view FACTURA_NO_ENCONTRADA)", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(28);
   });
 
   it("exposes the stock-ceiling code with venta's own copy (never inventario's)", () => {

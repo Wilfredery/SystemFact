@@ -167,6 +167,14 @@ const PAGES: readonly PageCheck[] = [
     forbidden: ['[data-testid="recibo-reprint"]'],
   },
   {
+    route: "/venta/factura/[facturaId]",
+    path: `/venta/factura/${SENTINEL_ID}`,
+    // consultarFacturaParaImpresionAction answers FACTURA_NO_ENCONTRADA: a
+    // typed alert, never a document and never a cross-tenant leak (S4/S5).
+    alert: "Factura no encontrada",
+    forbidden: ['[data-testid="factura-print"]'],
+  },
+  {
     route: "/compras",
     path: "/compras",
     heading: "Compras",

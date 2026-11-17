@@ -66,6 +66,7 @@ export const STOCK_MAXIMO_EXCEDIDO = "STOCK_MAXIMO_EXCEDIDO";
 export const DEVOLUCION_FUERA_DE_PLAZO = "DEVOLUCION_FUERA_DE_PLAZO"; // 601
 export const CANTIDAD_EXCEDE_ORIGINAL = "CANTIDAD_EXCEDE_ORIGINAL"; // 602
 export const FACTURA_NO_VIGENTE = "FACTURA_NO_VIGENTE"; // 603
+export const FACTURA_NO_ENCONTRADA = "FACTURA_NO_ENCONTRADA"; // print view (factura-print.md S5)
 export const VENTA_NO_CONFIRMADA = "VENTA_NO_CONFIRMADA"; // 604
 // Idempotency gate (R-D5 "Idempotent retry does not double-consume", approved
 // design amendment): an exact (productoId, cantidad, tipoReposicion) triple
@@ -104,6 +105,7 @@ export type VentaErrorCode =
   | typeof DEVOLUCION_FUERA_DE_PLAZO
   | typeof CANTIDAD_EXCEDE_ORIGINAL
   | typeof FACTURA_NO_VIGENTE
+  | typeof FACTURA_NO_ENCONTRADA
   | typeof VENTA_NO_CONFIRMADA
   | typeof DEVOLUCION_YA_REGISTRADA
   | typeof FECHA_VENTA_FUTURA
@@ -148,6 +150,7 @@ const MESSAGES: Record<VentaErrorCode, string> = {
     "La venta original no está confirmada; no se puede devolver",
   [DEVOLUCION_YA_REGISTRADA]:
     "La devolución ya fue registrada para esta factura; no se puede emitir una nota de crédito duplicada",
+  [FACTURA_NO_ENCONTRADA]: "Factura no encontrada",
   [FECHA_VENTA_FUTURA]: "La fecha de la venta no puede ser futura",
   [FECHA_VENTA_RETROACTIVA_EXCEDIDA]:
     "La fecha de la venta supera el horizonte retroactivo permitido",
