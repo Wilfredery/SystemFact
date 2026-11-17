@@ -1,3 +1,9 @@
+## [0.36.1](https://github.com/Wilfredery/SystemFact/compare/v0.36.0...v0.36.1) (2026-11-17)
+
+### Fixed
+
+* **ci:** the version-bump guard now verifies that the version actually INCREASED (app/package.json strictly greater at HEAD than at the base, and .release-please-manifest.json agreeing), not merely that one of the three version files was touched — so a one-byte CHANGELOG edit no longer satisfies the guard, and an `app/package.json`-only change with runtime fields (dependencies, engines) and an unchanged version now fails instead of shipping untagged. The job also diffs the live `origin/<base_ref>` instead of the event-frozen PR base sha, matching the `commits` job, so a master that advances mid-PR can no longer make the guard name paths the PR never touched. All three defects were found and confirmed by the Judgment Day audit before the fix; 45 node:test cases cover the new rule.
+
 
 ## [0.36.0](https://github.com/Wilfredery/SystemFact/compare/v0.35.1...v0.36.0) (2026-11-16)
 
