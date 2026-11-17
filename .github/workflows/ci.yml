@@ -360,7 +360,10 @@ jobs:
         run: node --test tools/scripts/check-version-bump.test.mjs
 
       - name: Fail when a non-exempt path changed without a version bump
-        run: node tools/scripts/check-version-bump.mjs "${{ github.event.pull_request.base.sha }}"
+        # Ref viva, no el sha congelado del evento: si master avanza mientras
+        # el PR está abierto, diffear contra el sha viejo nombraría rutas que
+        # el PR nunca tocó. Igual que el job `commits` (líneas 221-224).
+        run: node tools/scripts/check-version-bump.mjs "origin/${{ github.base_ref }}"
 
   ci-gate:
     name: CI gate

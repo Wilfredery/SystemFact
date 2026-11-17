@@ -100,17 +100,91 @@ export function isExempt(path) {
 }
 
 /**
+ * Compara dos versiones semver ("0.36.2"). Numérico por componente; devuelve
+ * > 0, 0 o < 0. Un componente ausente cuenta como 0.
+ */
+export function compareVersions(a, b) {
+  const pa = String(a ?? "").split(".").map((n) => Number.parseInt(n, 10) || 0);
+  const pb = String(b ?? "").split(".").map((n) => Number.parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i += 1) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+/**
+ * La versión aumentó de base a head Y el manifest coincide con la de head.
+ * Valores nulos/ausentes nunca cuentan como bump.
+ */
+export function versionIncreased(versions) {
+  if (!versions) return false;
+  const { pkgBase, pkgHead, manifestBase, manifestHead } = versions;
+  if (
+    typeof pkgBase !== "string" ||
+    typeof pkgHead !== "string" ||
+    pkgBase.length === 0 ||
+    pkgHead.length === 0
+  ) {
+    return false;
+  }
+  return compareVersions(pkgHead, pkgBase) > 0 && manifestHead === pkgHead;
+}
+
+/**
  * Decisión pura del guardián sobre una lista de rutas cambiadas.
+ *
+ * El segundo argumento es la evidencia de versión leída por el CLI con `git
+ * show` en la base y en HEAD (`null` cuando el archivo no existía). Es
+ * obligatorio: el guardián exige que la versión AUMENTE, no que un archivo de
+ * versión se toque (así una edición de un byte al CHANGELOG y un cambio sólo
+ * en campos runtime de app/package.json ya no escapan sin bump).
  *
  * Devuelve `ok` (¿el PR cumple?), las rutas que importan, los archivos de
  * versión tocados y un mensaje listo para imprimir.
  */
-export function evaluateVersionBump(changedPaths) {
+export function evaluateVersionBump(changedPaths, versions) {
+  if (
+    !versions ||
+    typeof versions !== "object" ||
+    !("pkgBase" in versions) ||
+    !("pkgHead" in versions) ||
+    !("manifestBase" in versions) ||
+    !("manifestHead" in versions)
+  ) {
+    throw new Error(
+      "evaluateVersionBump requiere evidencia de versión: " +
+        "{ pkgBase, pkgHead, manifestBase, manifestHead } leídos de la base y de HEAD.",
+    );
+  }
   const paths = changedPaths.filter((path) => typeof path === "string" && path.length > 0);
-  // Los archivos de versión son el bump: no cuentan como rutas que lo exigen.
   const versionFilesChanged = paths.filter((path) => VERSION_FILES.includes(path));
+  const bumped = versionIncreased(versions);
+
+  if (
+    bumped === false &&
+    [versions.pkgBase, versions.pkgHead, versions.manifestBase, versions.manifestHead].some(
+      (value) => value === null,
+    )
+  ) {
+    return {
+      ok: false,
+      releaseAffectingPaths: paths.filter((path) => !isExempt(path)),
+      versionFilesChanged,
+      message:
+        "No se pudo leer la evidencia de versión con git show (alguna ref o archivo no existe); " +
+        "el guardián no puede verificar el bump, así que falla en lugar de dejar pasar.",
+    };
+  }
+  // Con el bump presente, los tres archivos de versión SON el bump y no exigen
+  // nada más. Sin bump, app/package.json y el manifest cuentan como rutas que
+  // lo exigen (pueden llevar cambios runtime que el artefacto sí consume).
+  const versionFilesExcused = bumped ? VERSION_FILES : VERSION_FILES.filter(
+    (path) => path !== "app/package.json" && path !== ".release-please-manifest.json",
+  );
   const releaseAffectingPaths = paths.filter(
-    (path) => !isExempt(path) && !VERSION_FILES.includes(path),
+    (path) => !isExempt(path) && !versionFilesExcused.includes(path),
   );
 
   if (releaseAffectingPaths.length === 0) {
@@ -124,22 +198,22 @@ export function evaluateVersionBump(changedPaths) {
     };
   }
 
-  if (versionFilesChanged.length === 0) {
+  if (!bumped) {
     return {
       ok: false,
       releaseAffectingPaths,
       versionFilesChanged,
       message: [
-        "Falta el version bump: este PR cambia rutas que pueden alterar el artefacto",
-        "construido o el pipeline de entrega, y ninguno de los tres archivos de versión cambió.",
+        `Falta el version bump: la versión era ${versions.pkgBase} en la base y es ${versions.pkgHead} en HEAD`,
+        `(manifest: ${versions.manifestBase} -> ${versions.manifestHead}); el PR cambia rutas que pueden`,
+        "alterar el artefacto construido o el pipeline de entrega, y la versión NO aumentó.",
         "",
         "Rutas que exigen bump:",
         ...releaseAffectingPaths.map((path) => `  - ${path}`),
         "",
-        "Archivos de versión (al menos uno debe cambiar):",
-        ...VERSION_FILES.map((path) => `  - ${path}`),
-        "",
-        "Regla completa: AGENTS.md, Release convention (2026-09-18, maintainer-approved).",
+        "El bump exige: versión en app/package.json estrictamente mayor en HEAD que en la base,",
+        "y .release-please-manifest.json coincidiendo con la nueva versión.",
+        "Regla completa: AGENTS.md, Release convention (2026-09-18 + amendments).",
       ].join("\n"),
     };
   }
@@ -150,7 +224,7 @@ export function evaluateVersionBump(changedPaths) {
     versionFilesChanged,
     message:
       `OK: ${releaseAffectingPaths.length} ruta(s) con impacto de artefacto y version bump presente ` +
-      `(${versionFilesChanged.join(", ")}).`,
+      `(${versions.pkgBase} -> ${versions.pkgHead}).`,
   };
 }
 
@@ -179,27 +253,65 @@ export function readChangedPaths(baseSha, options = {}) {
     .filter((line) => line.length > 0);
 }
 
+/**
+ * Lee el campo `version` de un archivo JSON en una ref vía `git show`.
+ * Devuelve `null` cuando la ref o el archivo no existen — el CLI distingue ese
+ * caso del error de entorno y el guardián nunca cuenta un `null` como bump.
+ */
+export function readVersionAt(ref, file, options = {}) {
+  // El manifest usa la clave "app"; package.json usa "version".
+  const key = file.includes("manifest") ? "app" : "version";
+  try {
+    const output = execFileSync(
+      "git",
+      ["show", `${ref}:${file}`],
+      { cwd: options.cwd, encoding: "utf8" },
+    );
+    const parsed = JSON.parse(output.replace(/^\uFEFF/, ""));
+    const version = parsed?.[key];
+    return typeof version === "string" ? version : null;
+  } catch (error) {
+    // execFileSync marca el fallo de git con status != 0: ref o archivo
+    // inexistente en esa ref. Otros errores (git roto) se relanzan.
+    if (typeof error?.status === "number" && error.status !== 0) return null;
+    throw error;
+  }
+}
+
 function main(argv) {
-  const baseSha = argv[2];
-  if (baseSha === undefined || baseSha.length === 0 || baseSha.startsWith("--")) {
+  const baseRef = argv[2];
+  if (baseRef === undefined || baseRef.length === 0 || baseRef.startsWith("--")) {
     console.error(
-      "Uso: node tools/scripts/check-version-bump.mjs <base-sha>\n" +
-        "  <base-sha> = github.event.pull_request.base.sha (el diff se calcula contra HEAD).",
+      "Uso: node tools/scripts/check-version-bump.mjs <base-ref>\n" +
+        "  <base-ref> = origin/${{ github.base_ref }} (el diff y las versiones se leen contra HEAD).",
     );
     return EXIT_USAGE;
   }
 
   let changedPaths;
   try {
-    changedPaths = readChangedPaths(baseSha);
+    changedPaths = readChangedPaths(baseRef);
   } catch (error) {
     console.error(
-      `No se pudo leer el diff de git entre '${baseSha}' y HEAD: ${String(error)}`,
+      `No se pudo leer el diff de git entre '${baseRef}' y HEAD: ${String(error)}`,
     );
     return EXIT_USAGE;
   }
 
-  const result = evaluateVersionBump(changedPaths);
+  let versions;
+  try {
+    versions = {
+      pkgBase: readVersionAt(baseRef, "app/package.json"),
+      pkgHead: readVersionAt("HEAD", "app/package.json"),
+      manifestBase: readVersionAt(baseRef, ".release-please-manifest.json"),
+      manifestHead: readVersionAt("HEAD", ".release-please-manifest.json"),
+    };
+  } catch (error) {
+    console.error(`No se pudo leer la evidencia de versión con git show: ${String(error)}`);
+    return EXIT_USAGE;
+  }
+
+  const result = evaluateVersionBump(changedPaths, versions);
   if (result.ok) {
     console.log(result.message);
   } else {
