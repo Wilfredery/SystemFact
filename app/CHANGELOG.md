@@ -1,3 +1,9 @@
+## [0.35.2](https://github.com/Wilfredery/SystemFact/compare/v0.35.1...v0.35.2) (2026-11-16)
+
+### Changed
+
+* **ci:** the release-bump rule from AGENTS.md (2026-11-04 amendment) is now enforced mechanically: a new `version-bump` job in the CI gate runs `app/tools/scripts/check-version-bump.mjs`, which fails the PR when any non-exempt path changed (app/src/**, app/prisma/**, next.config.ts, proxy.ts, runtime package.json fields, .github/workflows|actions/**) and none of app/package.json, .release-please-manifest.json or app/CHANGELOG.md did. Exempt paths (docs/**, odd/**, *.md, README*, LICENSE*, *.test.ts(x), *.spec.ts(x), app/tools/**) ride into the next changelog without paying a tag, exactly as the rule reads. The guard's glob and decision logic is covered by 42 node:test cases; this PR's own diff is non-exempt and carries its bump.
+
 ## [0.35.1](https://github.com/Wilfredery/SystemFact/compare/v0.35.0...v0.35.1) (2026-11-16)
 
 ### Changed
