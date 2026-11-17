@@ -135,3 +135,10 @@ export const zConfirmarVentaInput = z.object({
   id: z.number().int().positive(),
 });
 export type ConfirmarVentaInputDto = z.infer<typeof zConfirmarVentaInput>;
+
+// Print view (factura-print.md T2): ONLY the invoice id travels. Every field on
+// the printed bill is re-derived server-side from the persisted record.
+export const zFacturaParaImpresionInput = z.object({
+  facturaId: z.number().int().positive(),
+});
+export type FacturaParaImpresionInputDto = z.infer<typeof zFacturaParaImpresionInput>;

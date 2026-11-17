@@ -1088,3 +1088,173 @@ export async function registrarAuditVentaEnTx(
     motivo,
   });
 }
+
+/** 2-decimal string for a persisted money/quantity column (never a float). */
+function d2(v: Prisma.Decimal | null): string {
+  return v === null ? "0.00" : new Prisma.Decimal(v).toFixed(2);
+}
+
+/**
+ * Everything the printed fiscal invoice needs (factura-print.md T1/S3), read
+ * from persisted data ONLY: invoice identity + totals, the frozen sale lines,
+ * emisor (empresa/sucursal), receptor identity, the issuing user, and the NCF
+ * expiry date resolved from the SEQUENCE RANGE that contains this NCF's number
+ * (the active sequence may already be a later range — the expiry printed must
+ * be the one that governs THIS voucher, DGII 254-06 Art. 7).
+ * `null` when no invoice with that id exists for the tenant (id + empresaId).
+ */
+export async function leerFacturaParaImpresionEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  facturaId: number,
+): Promise<FacturaParaImpresionRow | null> {
+  const factura = await tx.factura.findFirst({
+    where: { id: facturaId, empresaId: ctx.empresaId },
+    select: {
+      id: true,
+      ventaId: true,
+      tipoNcf: true,
+      ncf: true,
+      correlativoInterno: true,
+      estado: true,
+      fechaEmision: true,
+      subtotalGravado: true,
+      subtotalExento: true,
+      itbis: true,
+      descuento: true,
+      total: true,
+      cliente: { select: { nombre: true, identificacionFiscal: true, esConsumidorFinal: true } },
+      usuario: { select: { nombre: true } },
+      venta: {
+        select: {
+          id: true,
+          fecha: true,
+          estado: true,
+          detalles: {
+            select: {
+              producto: { select: { nombre: true } },
+              cantidad: true,
+              precioUnitario: true,
+              tasaItbis: true,
+              descuentoLinea: true,
+              descuentoTipo: true,
+              itbisLinea: true,
+              subtotalLinea: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  if (factura === null) return null;
+
+  if (factura.venta === null) return null; // a factura always has its sale; fail closed
+
+  const [empresa, sucursal] = await Promise.all([
+    tx.empresa.findUnique({
+      where: { id: ctx.empresaId },
+      select: {
+        nombreComercial: true,
+        razonSocial: true,
+        rnc: true,
+        direccionFiscal: true,
+        telefono: true,
+        regimenFiscal: true,
+      },
+    }),
+    tx.sucursal.findUnique({
+      where: { id: ctx.sucursalId },
+      select: { nombre: true, direccion: true, telefono: true },
+    }),
+  ]);
+  if (empresa === null || sucursal === null) return null;
+
+  // The expiry that governs THIS voucher: the sequence whose numeric range
+  // contains the NCF's number. NCF = letter + 2-digit type code + 8-digit
+  // sequence (e.g. B0200000522 → sequence 522 inside range 500..1000).
+  const numero = Number.parseInt(factura.ncf.slice(3), 10);
+  const secuencia = Number.isFinite(numero)
+    ? await tx.ncfSecuencia.findFirst({
+        where: {
+          empresaId: ctx.empresaId,
+          tipoNcf: factura.tipoNcf as never,
+          rangoInicio: { lte: BigInt(numero) },
+          rangoFin: { gte: BigInt(numero) },
+        },
+        select: { vigenciaFin: true },
+      })
+    : null;
+
+  return {
+    id: factura.id,
+    ventaId: factura.venta.id,
+    tipoNcf: String(factura.tipoNcf),
+    ncf: factura.ncf,
+    correlativoInterno: factura.correlativoInterno,
+    estado: factura.estado,
+    fechaEmision: factura.fechaEmision,
+    ventaFecha: factura.venta.fecha,
+    ncfVigenciaFin: secuencia?.vigenciaFin ?? null,
+    empresa,
+    sucursal,
+    cliente: factura.cliente,
+    usuarioNombre: factura.usuario.nombre,
+    lineas: factura.venta.detalles.map((l) => ({
+      productoNombre: l.producto.nombre,
+      cantidad: new Prisma.Decimal(l.cantidad).toString(),
+      precioUnitario: d2(l.precioUnitario),
+      tasaItbis: d2(l.tasaItbis),
+      descuentoLinea: d2(l.descuentoLinea),
+      descuentoTipo: l.descuentoTipo,
+      itbisLinea: d2(l.itbisLinea),
+      subtotalLinea: d2(l.subtotalLinea),
+    })),
+    subtotalGravado: d2(factura.subtotalGravado),
+    subtotalExento: d2(factura.subtotalExento),
+    descuento: d2(factura.descuento),
+    itbis: d2(factura.itbis),
+    total: d2(factura.total),
+  };
+}
+
+type FacturaParaImpresionRow = {
+  readonly id: number;
+  readonly ventaId: number;
+  readonly tipoNcf: string;
+  readonly ncf: string;
+  readonly correlativoInterno: string;
+  readonly estado: EstadoDocumento;
+  readonly fechaEmision: Date;
+  readonly ventaFecha: Date;
+  readonly ncfVigenciaFin: Date | null;
+  readonly empresa: {
+    readonly nombreComercial: string;
+    readonly razonSocial: string;
+    readonly rnc: string;
+    readonly direccionFiscal: string;
+    readonly telefono: string;
+    readonly regimenFiscal: string;
+  };
+  readonly sucursal: { readonly nombre: string; readonly direccion: string; readonly telefono: string };
+  readonly cliente: {
+    readonly nombre: string;
+    readonly identificacionFiscal: string | null;
+    readonly esConsumidorFinal: boolean;
+  };
+  readonly usuarioNombre: string;
+  readonly lineas: readonly {
+    readonly productoNombre: string;
+    readonly cantidad: string;
+    readonly precioUnitario: string;
+    readonly tasaItbis: string;
+    readonly descuentoLinea: string;
+    readonly descuentoTipo: string;
+    readonly itbisLinea: string;
+    readonly subtotalLinea: string;
+  }[];
+  readonly subtotalGravado: string;
+  readonly subtotalExento: string;
+  readonly descuento: string;
+  readonly itbis: string;
+  readonly total: string;
+};

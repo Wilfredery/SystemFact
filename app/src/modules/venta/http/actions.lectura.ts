@@ -2,10 +2,12 @@
 
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { listarVentas, obtenerVenta } from "../application/venta-service";
+import { consultarFacturaParaImpresion, type FacturaParaImpresionVista } from "../application/consultar-factura-impresion";
 import { tieneRolPermitidoEnTx } from "../infrastructure/venta-repository";
 import type { VentaDetalle } from "../infrastructure/venta-repository";
 import {
   zListarVentasQuery,
+  zFacturaParaImpresionInput,
   zObtenerVentaInput,
   NO_AUTORIZADO,
   SESION_INVALIDA,
@@ -155,5 +157,34 @@ export async function obtenerVentaAction(
     const result = await obtenerVenta(tx, ctx, parsed.data);
     if (!result.ok) return fail(result.code, result.message);
     return ok(toDetalleDto(result.data));
+  });
+}
+
+/** The print-view DTO crosses as-is: every field is already a string/primitive. */
+export type FacturaParaImpresionDto = FacturaParaImpresionVista;
+
+/**
+ * Printable fiscal invoice (factura-print.md T2): thin adapter, the SAME three
+ * steps as obtenerVentaAction — zod, tenant context, role-gated tenant
+ * transaction — with zero business logic. The view is a representation of the
+ * persisted record (S4): it never mints an NCF, never mutates anything.
+ */
+export async function consultarFacturaParaImpresionAction(
+  input: unknown,
+): Promise<ActionResult<FacturaParaImpresionDto>> {
+  const parsed = zFacturaParaImpresionInput.safeParse(input);
+  if (!parsed.success) return fail(VALIDATION_ERROR, mensajeTransporte(VALIDATION_ERROR));
+
+  const ctx = await resolverCtx();
+  if (ctx === null) return fail(SESION_INVALIDA, mensajeTransporte(SESION_INVALIDA));
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const permitido = await tieneRolPermitidoEnTx(tx, ctx.usuarioId, ctx.empresaId, ROLES_VENTA);
+    if (!permitido) {
+      return fail(NO_AUTORIZADO, "No tiene permisos para ver facturas");
+    }
+    const result = await consultarFacturaParaImpresion(tx, ctx, parsed.data);
+    if (!result.ok) return fail(result.code, result.message);
+    return ok(result.data);
   });
 }
