@@ -24,7 +24,9 @@ export default async function FacturaPrintPage({
   }
 
   const { facturaId: raw } = await params;
-  const facturaId = Number.parseInt(raw, 10);
+  // Strict digits: parseInt would accept "12abc"/"12.9" as 12 and open the
+  // wrong invoice id instead of redirecting (JD round 1).
+  const facturaId = /^\d+$/.test(raw) ? Number.parseInt(raw, 10) : Number.NaN;
   if (!Number.isInteger(facturaId) || facturaId <= 0) {
     redirect("/venta");
   }

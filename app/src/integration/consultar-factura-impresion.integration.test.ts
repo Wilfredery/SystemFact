@@ -164,18 +164,51 @@ describe("consultarFacturaParaImpresion (real DB, RLS on, S3/S4/S5)", () => {
     expect(Number(vista.saldo!.cobrosAplicados)).toBeCloseTo(Number(vista.total), 2);
   });
 
-  it("fails CLOSED with FACTURA_NO_ENCONTRADA for a foreign-tenant invoice", async () => {
+  it("fails CLOSED with FACTURA_NO_ENCONTRADA for a foreign-TENANT invoice (a real empresa-B row)", async () => {
     const db = getHarnessDb();
-    const catB = (await db.categoria.findFirst({ where: { empresaId: fixture!.empresaB.id } }))!.id;
-    const prodB = await crearProductoVenta({ empresaId: fixture!.empresaB.id, categoriaId: catB, codigo: "FPB", precioVenta: "10.00", tasa: 18 });
+    // Seed a REAL invoice belonging to empresa B (the #1 project risk is the
+    // cross-tenant leak, so the test must exercise an existing foreign row,
+    // not just a nonexistent id).
+    const clienteB = await db.cliente.create({
+      data: {
+        empresaId: fixture!.empresaB.id,
+        nombre: "Cliente Forbidden B",
+        telefono: "0",
+        direccion: "x",
+        tipoCliente: "MINORISTA",
+        esConsumidorFinal: true,
+      },
+    });
+    const usuarioB = await db.usuario.findFirstOrThrow({ where: { empresaId: fixture!.empresaB.id } });
+    const sucursalB = await db.sucursal.findFirstOrThrow({ where: { empresaId: fixture!.empresaB.id } });
+    const foreign = await db.factura.create({
+      data: {
+        empresaId: fixture!.empresaB.id,
+        sucursalId: sucursalB.id,
+        clienteId: clienteB.id,
+        usuarioId: usuarioB.id,
+        tipoNcf: "B02",
+        ncf: "B0299999001",
+        correlativoInterno: "F-FORBIDDEN-001",
+        estado: "VIGENTE",
+        fechaEmision: new Date("2026-01-15T00:00:00.000Z"),
+        subtotalGravado: new Prisma.Decimal("100.00"),
+        subtotalExento: new Prisma.Decimal("0.00"),
+        descuento: new Prisma.Decimal("0.00"),
+        itbis: new Prisma.Decimal("18.00"),
+        total: new Prisma.Decimal("118.00"),
+      },
+    });
 
     const result = await withTenantTransaction(ctx, (tx) =>
-      consultarFacturaParaImpresion(tx, ctx, { facturaId: prodB.id }),
+      consultarFacturaParaImpresion(tx, ctx, { facturaId: foreign.id }),
     );
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe("FACTURA_NO_ENCONTRADA");
+    // The foreign invoice still exists — nothing was mutated by the denied read.
+    expect(await db.factura.count({ where: { id: foreign.id, empresaId: fixture!.empresaB.id } })).toBe(1);
   });
 
   it("a CANCELLED invoice still reads, with estado CANCELADA and no derived balance (S4)", async () => {

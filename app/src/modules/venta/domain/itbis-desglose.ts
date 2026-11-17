@@ -13,7 +13,7 @@ export interface LineaItbisFrozen {
 }
 
 export interface DesgloseItbisFila {
-  /** The frozen rate as stored on the line (e.g. "0.18", "0.16", "0.00"). */
+  /** The frozen rate as stored on the line (e.g. "18.00", "16.00", "0.00" — the persisted PERCENTAGE string). */
   readonly tasa: string;
   /** Sum of the lines' `itbisLinea` for that rate, 2-decimal string. */
   readonly itbis: string;

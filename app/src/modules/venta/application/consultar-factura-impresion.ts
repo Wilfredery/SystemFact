@@ -125,7 +125,15 @@ export async function consultarFacturaParaImpresion(
       estado: row.estado,
       fechaEmision: row.fechaEmision.toISOString(),
       ventaFecha: row.ventaFecha.toISOString(),
-      ncfVigenciaFin: row.ncfVigenciaFin === null ? null : row.ncfVigenciaFin.toISOString().slice(0, 10),
+      // Calendar date in America/Santo_Domingo (business-calculation layer,
+      // AGENTS.md dates): a 23:59:59 UTC-4 expiry must not print as the NEXT
+      // UTC day. en-CA yields the YYYY-MM-DD the view renders.
+      ncfVigenciaFin:
+        row.ncfVigenciaFin === null
+          ? null
+          : new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santo_Domingo" }).format(
+              row.ncfVigenciaFin,
+            ),
       empresa: row.empresa,
       sucursal: row.sucursal,
       cliente: row.cliente,
