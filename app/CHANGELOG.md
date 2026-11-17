@@ -1,9 +1,13 @@
+
+## [0.36.0](https://github.com/Wilfredery/SystemFact/compare/v0.35.1...v0.36.0) (2026-11-16)
+
+### Features
+
 ## [0.35.2](https://github.com/Wilfredery/SystemFact/compare/v0.35.1...v0.35.2) (2026-11-16)
 
 ### Changed
 
-* **ci:** the release-bump rule from AGENTS.md (2026-11-04 amendment) is now enforced mechanically: a new `version-bump` job in the CI gate runs `app/tools/scripts/check-version-bump.mjs`, which fails the PR when any non-exempt path changed (app/src/**, app/prisma/**, next.config.ts, proxy.ts, runtime package.json fields, .github/workflows|actions/**) and none of app/package.json, .release-please-manifest.json or app/CHANGELOG.md did. Exempt paths (docs/**, odd/**, *.md, README*, LICENSE*, *.test.ts(x), *.spec.ts(x), app/tools/**) ride into the next changelog without paying a tag, exactly as the rule reads. The guard's glob and decision logic is covered by 42 node:test cases; this PR's own diff is non-exempt and carries its bump.
-
+* **ci:** the release-bump rule from AGENTS.md (2026-11-04 amendment) is now enforced mechanically: a new `version-bump` job in the CI gate runs `app/tools/scripts/check-version-bump.mjs`, which fails the PR when any non-exempt path changed (app/src/**, app/prisma/**, next.config.ts, proxy.ts, runtime package.json fields, .github/workflows|actions/**) and none of app/package.json, .release-please-manifest.json or app/CHANGELOG.md did. Exempt paths (docs/**, odd/**, *.md, README*, LICENSE*, *.test.ts(x), *.spec.ts(x), app/tools/**) ride into the next changelog without paying a tag, exactly as the rule reads. The guard's glob and decision logic is covered by 42 node:test cases; this PR's own diff is non-exempt and carries its bump.
 ## [0.35.1](https://github.com/Wilfredery/SystemFact/compare/v0.35.0...v0.35.1) (2026-11-16)
 
 ### Changed
@@ -1058,3 +1062,5 @@ eportes/domain/reporte-resultado.ts (D7) — the duplicated copies in operaciona
 ### Bug Fixes
 
 * **ncf:** compute seed vigencia year on the Santo Domingo business calendar ([85f86b2](https://github.com/Wilfredery/SystemFact/commit/85f86b202b00ef8635ed04d9ffc66eeb785981e1))
+
+* **security:** CSP violations are now observable: the enforced policy gained `report-uri /api/security/csp-report` and the app serves that endpoint (POST-only, 204 either way, bounded 32 KB reads, one structured `csp_violation` log line per report — visible in Vercel logs; nothing is written to the database, CSP reports are an observability signal, never audit data). The endpoint is reachable before login in both directions and never throws on malformed input. Deliberate choices, documented in code: no `'self'` token inside `report-uri` (it takes URLs, not source expressions) and no `report-to` directive — the proxy does not advertise `Reporting-Endpoints`, and a CSP naming a group the origin never advertises silently reports nothing. Every CSP directive value is now frozen by test, so a future loosening fails loudly. No policy directive was loosened; scripts stay nonce-only with no `'unsafe-eval'`.
