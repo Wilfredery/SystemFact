@@ -165,6 +165,13 @@ describe("isExempt (S3: los globs exentos de AGENTS.md)", () => {
 });
 
 describe("evaluateVersionBump (S3: la decisión)", () => {
+  const BUMP = {
+    pkgBase: "0.36.1",
+    pkgHead: "0.36.2",
+    manifestBase: "0.36.1",
+    manifestHead: "0.36.2",
+  };
+
   it("deja pasar un PR que sólo cambia rutas exentas (provable por test)", () => {
     const result = evaluateVersionBump([
       "docs/19-directivas_desarrollo.md",
@@ -172,7 +179,7 @@ describe("evaluateVersionBump (S3: la decisión)", () => {
       "README.md",
       "app/tools/scripts/check-version-bump.mjs",
       "app/src/modules/venta/domain/venta.test.ts",
-    ]);
+    ], BUMP);
     assert.equal(result.ok, true);
     assert.deepEqual(result.releaseAffectingPaths, []);
     assert.deepEqual(result.versionFilesChanged, []);
@@ -182,17 +189,20 @@ describe("evaluateVersionBump (S3: la decisión)", () => {
   });
 
   it("deja pasar un PR sin cambios", () => {
-    const result = evaluateVersionBump([]);
+    const result = evaluateVersionBump([], BUMP);
     assert.equal(result.ok, true);
     assert.equal(exitCodeFor(result), 0);
   });
 
-  it("falla cuando cambia una ruta no exenta y ningún archivo de versión cambió", () => {
-    const result = evaluateVersionBump([
-      ".github/workflows/ci.yml",
-      "app/src/proxy.ts",
-      "docs/plan.md",
-    ]);
+  it("falla cuando cambia una ruta no exenta y la versión no aumentó", () => {
+    const result = evaluateVersionBump(
+      [
+        ".github/workflows/ci.yml",
+        "app/src/proxy.ts",
+        "docs/plan.md",
+      ],
+      { ...BUMP, pkgHead: "0.36.1", manifestHead: "0.36.1" },
+    );
     assert.equal(result.ok, false);
     assert.equal(exitCodeFor(result), 1);
     assert.deepEqual(result.releaseAffectingPaths, [
@@ -201,53 +211,94 @@ describe("evaluateVersionBump (S3: la decisión)", () => {
     ]);
   });
 
-  it("el mensaje de fallo nombra cada ruta ofensora y los tres archivos de versión", () => {
-    const result = evaluateVersionBump([
-      ".github/workflows/ci.yml",
-      "app/src/proxy.ts",
-      "docs/plan.md",
-    ]);
+  it("el mensaje de fallo nombra cada ruta ofensora y el requisito de versión", () => {
+    const result = evaluateVersionBump(
+      [".github/workflows/ci.yml", "app/src/proxy.ts", "docs/plan.md"],
+      { ...BUMP, pkgHead: "0.36.1", manifestHead: "0.36.1" },
+    );
     assert.match(result.message, /\.github\/workflows\/ci\.yml/);
     assert.match(result.message, /app\/src\/proxy\.ts/);
     assert.equal(result.message.includes("docs/plan.md"), false, "no nombra rutas exentas");
-    for (const file of VERSION_FILES) {
-      assert.equal(result.message.includes(file), true, `menciona ${file}`);
-    }
+    assert.match(result.message, /app\/package\.json/);
+    assert.match(result.message, /release-please-manifest/);
   });
 
-  for (const versionFile of ["app/package.json", ".release-please-manifest.json", "app/CHANGELOG.md"]) {
-    it(`deja pasar un cambio no exento cuando ${versionFile} cambió`, () => {
-      const result = evaluateVersionBump([".github/workflows/ci.yml", versionFile]);
-      assert.equal(result.ok, true);
-      assert.equal(exitCodeFor(result), 0);
-      assert.deepEqual(result.versionFilesChanged, [versionFile]);
-      assert.deepEqual(result.releaseAffectingPaths, [".github/workflows/ci.yml"]);
-      assert.match(result.message, new RegExp(versionFile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    });
-  }
+  it("exige que la versión AUMENTE, no que un archivo se toque (findings 1+2 del JD)", () => {
+    // A one-byte whitespace edit to the CHANGELOG no longer satisfies the
+    // guard: the version must strictly increase.
+    const presenceOnly = evaluateVersionBump(
+      ["app/src/proxy.ts", "app/CHANGELOG.md"],
+      { ...BUMP, pkgHead: "0.36.1", manifestHead: "0.36.1" },
+    );
+    assert.equal(presenceOnly.ok, false);
+    assert.equal(exitCodeFor(presenceOnly), 1);
+  });
 
-  it("un archivo de versión sin cambios no exentos no exige nada", () => {
-    const result = evaluateVersionBump(["app/package.json"]);
+  it("falla cuando sólo cambia app/package.json y la versión NO aumentó (runtime fields)", () => {
+    // A dependency/engines-only change cannot ship untagged.
+    const result = evaluateVersionBump(["app/package.json"], {
+      ...BUMP,
+      pkgHead: "0.36.1",
+      manifestHead: "0.36.1",
+    });
+    assert.equal(result.ok, false);
+    assert.equal(exitCodeFor(result), 1);
+    assert.match(result.message, /app\/package\.json/);
+  });
+
+  it("falla cuando la versión aumenta pero el manifest no coincide", () => {
+    const result = evaluateVersionBump(["app/src/proxy.ts"], {
+      ...BUMP,
+      manifestHead: "0.99.9",
+    });
+    assert.equal(result.ok, false);
+    assert.equal(exitCodeFor(result), 1);
+    assert.match(result.message, /release-please-manifest/);
+  });
+
+  it("falla cuando la versión baja", () => {
+    const result = evaluateVersionBump(["app/src/proxy.ts"], {
+      ...BUMP,
+      pkgHead: "0.36.0",
+      manifestHead: "0.36.0",
+    });
+    assert.equal(result.ok, false);
+    assert.equal(exitCodeFor(result), 1);
+  });
+
+  it("deja pasar el bump real: versión aumentó y manifest coincide", () => {
+    const result = evaluateVersionBump(
+      ["app/src/proxy.ts", "app/package.json", ".release-please-manifest.json", "app/CHANGELOG.md"],
+      BUMP,
+    );
     assert.equal(result.ok, true);
     assert.equal(exitCodeFor(result), 0);
-    assert.deepEqual(result.releaseAffectingPaths, []);
-    assert.deepEqual(result.versionFilesChanged, ["app/package.json"]);
+    assert.deepEqual(result.versionFilesChanged, VERSION_FILES);
+  });
+
+  it("los archivos de versión solos siguen pasando cuando la versión aumentó", () => {
+    const result = evaluateVersionBump(["app/CHANGELOG.md"], BUMP);
+    assert.equal(result.ok, true);
+    assert.equal(exitCodeFor(result), 0);
+  });
+
+  it("sin evidencia de versión no decide: pide los cuatro valores", () => {
+    assert.throws(() => evaluateVersionBump(["app/src/proxy.ts"]), /version/i);
+    assert.throws(() => evaluateVersionBump(["app/src/proxy.ts"], { pkgBase: "0.36.1" }), /version/i);
   });
 
   it("reporta cada archivo de versión tocado, no sólo el primero", () => {
-    const result = evaluateVersionBump([
-      "app/package.json",
-      ".release-please-manifest.json",
-      "app/CHANGELOG.md",
-      "app/src/proxy.ts",
-    ]);
+    const result = evaluateVersionBump(
+      ["app/package.json", ".release-please-manifest.json", "app/CHANGELOG.md", "app/src/proxy.ts"],
+      BUMP,
+    );
     assert.equal(result.ok, true);
     assert.deepEqual(result.versionFilesChanged, VERSION_FILES);
   });
 
   it("preserva el orden de las rutas tal como las entrega git", () => {
     const changed = ["app/src/b.ts", "app/src/a.ts"];
-    const result = evaluateVersionBump(changed);
+    const result = evaluateVersionBump(changed, { ...BUMP, pkgHead: "0.36.1", manifestHead: "0.36.1" });
     assert.deepEqual(result.releaseAffectingPaths, changed);
   });
 });
@@ -261,7 +312,7 @@ describe("CLI", () => {
   it("sale con código de uso (2) y explica el uso cuando falta el base sha", () => {
     const run = spawnSync(process.execPath, [SCRIPT], { cwd: sandbox, encoding: "utf8" });
     assert.equal(run.status, EXIT_USAGE);
-    assert.match(run.stderr, /<base-sha>/);
+    assert.match(run.stderr, /<base-ref>/);
     assert.equal(run.stdout, "");
   });
 
