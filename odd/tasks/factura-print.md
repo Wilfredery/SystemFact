@@ -94,6 +94,7 @@ client island + window.print, NO print CSS exists anywhere yet), venta-repositor
   real invoice + reprint-mints-nothing, typed error on a foreign id), session-smoke walker gained
   the `/venta/factura/[facturaId]` sentinel entry. FULL local lane: **32 passed / 0 failed**, incl.
   the CSP walker. tsc 0, eslint clean.
+- L5 (2026-11-17): CI caught a real gap the local lane missed: the CSP authenticated walker had no seeded id for [facturaId] (my T3 entry added the route to the e2e-prod walker but the LOCAL csp-authenticated.spec.ts map did not know the segment). Fixed: the walker resolves facturaId from the seeded tenant (max VIGENTE invoice id) — verified locally (csp walker + print spec 3/3).
 - L4 (2026-11-17): the local stack was re-provisioned cleanly (schema drop + provision with
   explicit throwaway passwords, recorded in this file only as the procedure; the stack env file is
   gitignored and its values were never read).

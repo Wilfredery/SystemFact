@@ -73,9 +73,14 @@ test.describe("CSP across the authenticated pages (S5/S7)", () => {
       `select min("correlativoRecibo") as correlativo from "PAGO" where "empresaId" = $1`,
       [empresaId],
     );
+    const factura = await pool.query(
+      `select max(id) as id from "FACTURA" where "empresaId" = $1`,
+      [empresaId],
+    );
     const dynamicSegments: Record<string, number | null> = {
       clienteId: cliente.rows[0].id,
       correlativo: pago.rows[0].correlativo,
+      facturaId: factura.rows[0].id,
     };
 
     const violations = await watchCspViolations(page);
