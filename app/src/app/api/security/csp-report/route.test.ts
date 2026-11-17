@@ -224,6 +224,44 @@ describe("POST /api/security/csp-report — hostile and broken input", () => {
     expect(log).not.toHaveBeenCalled();
   });
 
+  it("short-circuits on a DECLARED oversized Content-Length before buffering any byte", async () => {
+    // Judgment Day advisory 2: a Request built from a string body carries no
+    // content-length header, so this branch had no coverage. Send it explicitly.
+    const body = JSON.stringify({ "csp-report": LEGACY });
+    const oversized = MAX_REPORT_BYTES + 1;
+    const res = await POST(
+      new Request(ENDPOINT, {
+        method: "POST",
+        body,
+        headers: {
+          "content-type": "application/csp-report",
+          "content-length": String(oversized),
+        },
+      }),
+    );
+
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe("");
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it("accepts a declared Content-Length under the cap and logs normally", async () => {
+    const body = JSON.stringify({ "csp-report": LEGACY });
+    const res = await POST(
+      new Request(ENDPOINT, {
+        method: "POST",
+        body,
+        headers: {
+          "content-type": "application/csp-report",
+          "content-length": String(body.length),
+        },
+      }),
+    );
+
+    expect(res.status).toBe(204);
+    expect(log).toHaveBeenCalledTimes(1);
+  });
+
   it("stops reading a chunked body at the cap and logs nothing", async () => {
     let pulled = 0;
     const chunk = new Uint8Array(8 * 1024).fill(120);

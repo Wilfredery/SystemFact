@@ -1,3 +1,10 @@
+## [0.36.2](https://github.com/Wilfredery/SystemFact/compare/v0.36.1...v0.36.2) (2026-11-17)
+
+### Fixed
+
+* **security:** the CSP report endpoint now bounds log volume across requests, not just within one: a per-instance token budget (30 lines per rolling 60 s window) sits in front of the logger, so repeated small POSTs can no longer grow log volume without bound. Stated honestly in code: this is real protection per serverless instance and no global guarantee — the durable global cap belongs to a Vercel Firewall rate rule on this path, recommended in the tracker for the dashboard owner; dropped reports still answer 204, so the browser contract never changes. Also: the overclaiming comments ("a hostile POST cannot buy log lines") now say exactly what the code enforces, and the declared-`Content-Length` short-circuit branch (untested — a string-built Request carries no content-length) has dedicated tests both over and under the cap.
+* **ci:** the version-bump guard now reads `git diff --name-only -z` and parses by NUL without trimming, so git C-quoted paths (quotes, backslashes, control chars) and real filenames with leading/trailing spaces are classified correctly instead of misread into false failures; the root-anchoring comment now states that a slash-less pattern is deliberately stricter than gitignore; and the exempt-list comment is now truthful after the AGENTS.md amendment adds `**/*.test.tsx`/`**/*.spec.tsx` (the rule exempts tests, not one extension — the project ships RTL `.test.tsx` suites).
+
 ## [0.36.1](https://github.com/Wilfredery/SystemFact/compare/v0.36.0...v0.36.1) (2026-11-17)
 
 ### Fixed

@@ -26,7 +26,11 @@
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
-/** Globs exentos, exactamente los de AGENTS.md + S3 (orden de la spec). */
+/**
+ * Globs exentos: la lista de AGENTS.md (Release convention, enmienda 2026-11-04) más la paridad
+ * de extensiones de test `.test.tsx`/`.spec.tsx` (enmienda del owner 2026-11-17: el proyecto
+ * tiene suites RTL .test.tsx y la regla exime a los tests, no a una extensión).
+ */
 export const EXEMPT_GLOBS = [
   "docs/**",
   "odd/**",
@@ -61,7 +65,10 @@ const REGEX_METACHARS = /[.*+?^${}()|[\]\\]/g;
  * - `?`   = exactamente un carácter que no sea `/`.
  *
  * Un patrón sin `/` se ancla a la raíz del repo (`README*` es el README de la
- * raíz, no `app/README.md` de cualquier nivel), igual que en gitignore.
+ * raíz, no `app/README.md` de cualquier nivel). Esto es MÁS estricto que
+ * gitignore, donde un patrón sin `/` coincide en cualquier profundidad; la
+ * regla de AGENTS.md («README*», «LICENSE*») nombra los de la raíz, y este
+ * guardián prefiere fallar a exigir un bump de más que a eximir de menos.
  */
 export function globToRegExp(glob) {
   let source = "";
@@ -244,13 +251,22 @@ export function exitCodeFor(result) {
 export function readChangedPaths(baseSha, options = {}) {
   const output = execFileSync(
     "git",
-    ["-c", "core.quotepath=false", "diff", "--name-only", "--no-renames", baseSha, "HEAD"],
+    ["-c", "core.quotepath=false", "diff", "--name-only", "--no-renames", "-z", baseSha, "HEAD"],
     { cwd: options.cwd, encoding: "utf8" },
   );
-  return output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  // `-z` (NUL-separated) es la salida máquina de git: sin ella git C-escapa
+  // rutas con comillas, backslashes o caracteres de control incluso con
+  // core.quotepath=false, y un `.trim()` se comería espacios reales de un
+  // nombre. Con `-z` no hay comillas que des-escapar y NUL no aparece en
+  // nombres de archivo.
+  return parseChangedPaths(output);
+}
+
+/** Parseo puro de la salida `--name-only -z` de git (probable sin repo). */
+export function parseChangedPaths(raw) {
+  // Sin `.trim()`: con NUL-separación no hay relleno que quitar y un trim se
+  // comería espacios reales del nombre de un archivo.
+  return raw.split("\0").filter((line) => line.length > 0);
 }
 
 /**
