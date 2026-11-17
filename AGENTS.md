@@ -183,8 +183,11 @@ These rules derive from the canonical engineering constitution in the project do
   can change the built artifact or the delivery pipeline — `app/src/**`, `app/prisma/**`,
   `app/next.config.ts`, `app/proxy.ts` / `app/src/proxy.ts`, runtime `app/package.json` fields,
   `.github/workflows/**`, `.github/actions/**`. **Exempt**: `docs/**`, `odd/**`, `**/*.md`,
-  `README*`, `LICENSE*`, `**/*.test.ts`, `**/*.spec.ts` and `app/tools/**` — none of it can change
+  `README*`, `LICENSE*`, `**/*.test.ts`, `**/*.test.tsx`, `**/*.spec.ts`, `**/*.spec.tsx` and
+  `app/tools/**` — none of it can change
   what production serves, so it rides into the next release's changelog instead of paying a tag
+  (tsx amendment 2026-11-17: the project ships RTL `.test.tsx`/`.spec.tsx` suites; the rule
+  exempts tests, not one extension)
   (v0.18.2 was a whole patch release for two paragraphs: that is the ceremony this removes).
   Follow-up: make it mechanical in CI (a step that fails when a non-exempt path changed and the
   three version files did not), so the rule stops depending on judgement.

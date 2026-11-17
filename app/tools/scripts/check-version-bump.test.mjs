@@ -27,6 +27,7 @@ import {
   exitCodeFor,
   globToRegExp,
   isExempt,
+  parseChangedPaths,
 } from "./check-version-bump.mjs";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "check-version-bump.mjs");
@@ -300,6 +301,20 @@ describe("evaluateVersionBump (S3: la decisión)", () => {
     const changed = ["app/src/b.ts", "app/src/a.ts"];
     const result = evaluateVersionBump(changed, { ...BUMP, pkgHead: "0.36.1", manifestHead: "0.36.1" });
     assert.deepEqual(result.releaseAffectingPaths, changed);
+  });
+});
+
+describe("parseChangedPaths (la salida `-z` de git, probable sin repo)", () => {
+  it("separa por NUL y no des-escapa ni recorta nombres reales", () => {
+    // Con `--name-only -z` git separa con NUL y NO escapa comillas/backslashes:
+    // un nombre con comillas llega íntegro, y SIN `.trim()` los espacios reales
+    // de un nombre sobreviven (advisory del JD round 1).
+    const raw = "docs/a\"b.md\0app/src/con espacio final.ts \0docs/plan.md\0";
+    assert.deepEqual(parseChangedPaths(raw), ["docs/a\"b.md", "app/src/con espacio final.ts ", "docs/plan.md"]);
+  });
+
+  it("devuelve [] para una salida vacía", () => {
+    assert.deepEqual(parseChangedPaths(""), []);
   });
 });
 
