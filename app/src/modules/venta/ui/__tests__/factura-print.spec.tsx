@@ -156,12 +156,16 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     expect(screen.getByTestId("factura-saldo-pendiente").textContent).toMatch(/200\.00/);
   });
 
-  it("a CANCELLED invoice renders the no-fiscal-effect banner and no balance", async () => {
+  it("a CANCELLED invoice renders the no-fiscal-effect banner INSIDE the printed article", async () => {
     mockAction.mockResolvedValue({ ok: true, data: { ...VISTA_BASE, estado: "CANCELADA", saldo: null } });
     render(<FacturaPrintScreen facturaId={77} />);
     await screen.findByTestId("factura-print");
 
     const banner = screen.getByTestId("factura-banner-estado");
+    // S4 regression guard (JD round 2, A): the banner must live INSIDE the
+    // print-isolated article — outside it, the printed copy loses the banner.
+    const article = screen.getByTestId("factura-print");
+    expect(article.contains(banner)).toBe(true);
     expect(banner.textContent).toContain("sin efecto fiscal");
     expect(screen.queryByTestId("factura-forma-pago")).not.toBeNull();
     expect(screen.getByTestId("factura-forma-pago").textContent).toBe("—");
@@ -173,6 +177,16 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     await screen.findByTestId("factura-print");
 
     expect(screen.getByTestId("factura-banner-estado").textContent).toContain("608");
+  });
+
+  it("a transport-level rejection lands in the typed error state without masquerading as not-found", async () => {
+    mockAction.mockRejectedValue(new Error("network down"));
+    render(<FacturaPrintScreen facturaId={77} />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("No se pudo cargar la factura");
+    expect(alert.textContent).not.toContain("Factura no encontrada");
+    expect(alert.textContent).not.toMatch(/network down/);
   });
 
   it("maps a missing/foreign invoice to the typed catalog message, no provider leakage", async () => {

@@ -89,7 +89,10 @@ export function FacturaPrintScreen({ facturaId }: { readonly facturaId: number }
           .factura-print-doc, .factura-print-doc * { visibility: visible; }
           .factura-print-doc { position: absolute; inset: 0; margin: 0; background: #ffffff !important; color: #18181b !important; }
           /* Browsers do not print background colors: force light-on-white so a
-             dark-OS user still gets a legible document (JD round 1, B). */
+             dark-OS user still gets a legible document (JD rounds 1-2). The
+             blanket descendant reset beats every dark: utility on children; the
+             banner rule AFTER it restores its red identity (later rule wins). */
+          .factura-print-doc * { color: #18181b !important; border-color: #d4d4d8 !important; }
           .factura-print-doc [role="alert"] { color: #b91c1c !important; background: transparent !important; border-color: #b91c1c !important; }
           .no-print { display: none !important; }
         }
