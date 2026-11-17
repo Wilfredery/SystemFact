@@ -34,6 +34,8 @@ export interface BorradorFila {
   readonly usuarioNombre: string;
   /** NCF of the emitted invoice — CONFIRMADA rows only. */
   readonly ncf: string | null;
+  /** Id of the emitted invoice — the print view resolves by it; null on drafts. */
+  readonly facturaId: number | null;
 }
 
 export function DraftList({
@@ -94,6 +96,15 @@ export function DraftList({
                             <span className="ml-1 font-mono text-xs text-ink-muted">
                               NCF {d.ncf}
                             </span>
+                          )}
+                          {d.facturaId !== null && (
+                            <a
+                              href={`/venta/factura/${d.facturaId}`}
+                              aria-label={`Ver factura ${d.ncf ?? ""}`.trim()}
+                              className="ml-1 text-xs text-indigo-600 hover:underline dark:text-indigo-400"
+                            >
+                              Ver factura
+                            </a>
                           )}
                           {" · "}{formatearMonto(d.total)}
                         </>

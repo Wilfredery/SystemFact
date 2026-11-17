@@ -58,7 +58,8 @@ const CONFIRMADA_7 = {
   descuento: "0.00",
   clienteNombre: "Consumidor Final",
   usuarioNombre: "Ana",
-  ncf: "B0200000101",
+  ncf: "B0200000101",
+  facturaId: 101,
 };
 
 const DETALLE = {

@@ -62,6 +62,7 @@ type ListItem = {
   clienteNombre: string;
   usuarioNombre: string;
   ncf: string | null;
+  facturaId: number | null;
 };
 
 function lista(items: ListItem[]) {
@@ -77,13 +78,14 @@ const BORRADOR_3: ListItem = {
   clienteNombre: "Consumidor Final",
   usuarioNombre: "Ana",
   ncf: null,
+  facturaId: null,
 };
 
 const CONFIRMADA_4: ListItem = {
   ...BORRADOR_3,
   id: 4,
   estado: ESTADO_VENTA.CONFIRMADA,
-  ncf: "B0200000101",
+  ncf: "B0200000101",
 };
 
 function exitoConfirmar(ncfWarning?: "NCF_UMBRAL_90") {
