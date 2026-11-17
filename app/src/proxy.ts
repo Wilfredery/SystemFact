@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { serverEnv } from "@/lib/env";
-import { buildContentSecurityPolicy, generateNonce } from "@/lib/security/csp";
+import {
+  CSP_REPORT_PATH,
+  buildContentSecurityPolicy,
+  generateNonce,
+} from "@/lib/security/csp";
 import { createProxyClient } from "@/lib/supabase/proxy";
 
 /**
@@ -41,6 +45,16 @@ export async function proxy(request: NextRequest) {
     },
   });
   response.headers.set(CSP_HEADER, csp);
+
+  // The CSP reporting endpoint (S1) bypasses the auth gate in BOTH directions, and it must:
+  // violations fire on `/login` (no session) AND on the authenticated pages (session present).
+  // A 307 to /login drops the report without a session, and a 307 to /dashboard drops it WITH one,
+  // so neither gate branch may see this path. It is safe to exempt because the handler reads no
+  // tenant data and writes nothing at all — there is no authorization to enforce (S1). The route
+  // itself answers POST only (405 otherwise), so nothing is exposed by letting it through.
+  if (pathname === CSP_REPORT_PATH) {
+    return response;
+  }
 
   const supabase = createProxyClient(request, response);
 
