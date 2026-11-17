@@ -31,6 +31,39 @@ export const MAX_LOGGED_REPORTS = 20;
 /** The `event` field every emitted line carries, so the log stream is greppable. */
 export const CSP_VIOLATION_EVENT = "csp_violation";
 
+/**
+ * Per-instance log budget for violations (Judgment Day advisory: per-request caps alone let a
+ * repeated small POST grow log volume without bound). A token bucket refilled continuously:
+ * `MAX_LOGS_PER_WINDOW` lines per rolling `LOG_WINDOW_MS`, kept per serverless instance.
+ *
+ * Honest limits, stated here so no comment overclaims: this is REAL protection for one instance
+ * and NO global guarantee — serverless fan-out multiplies it, and instances recycle. The durable
+ * global cap belongs to a Vercel Firewall rate rule on this path (dashboard owner; recommended
+ * in odd/tasks/csp-reporting-and-bump-guard.md). Dropped lines still answered 204; the browser
+ * contract never changes.
+ */
+export const MAX_LOGS_PER_WINDOW = 30;
+export const LOG_WINDOW_MS = 60_000;
+
+/**
+ * Module-level budget state. Sliding window of accepted timestamps, pruned on each call — a few
+ * numbers per instance, never per request.
+ */
+const logBudget: number[] = [];
+
+/**
+ * True when this instance still has budget to log one more violation line at `nowMs`.
+ * Exported for tests; the route calls it before `logCspViolations`.
+ */
+export function shouldLogViolationNow(nowMs: number = Date.now()): boolean {
+  while (logBudget.length > 0 && nowMs - logBudget[0] >= LOG_WINDOW_MS) {
+    logBudget.shift();
+  }
+  if (logBudget.length >= MAX_LOGS_PER_WINDOW) return false;
+  logBudget.push(nowMs);
+  return true;
+}
+
 /** Longest value kept for one summary field; the raw report is logged as received. */
 const MAX_FIELD_LENGTH = 512;
 

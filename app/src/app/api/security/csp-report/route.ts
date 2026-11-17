@@ -14,13 +14,20 @@
  * Contract (browsers ignore the body, so both answers are 204):
  *  - a valid legacy `application/csp-report` or `application/reports+json` body -> 204 + logs;
  *  - a malformed, empty, foreign-content-type or oversized (>32 KB) body -> 204, no log, no
- *    throw. Oversized bodies are never read, so a hostile POST cannot buy memory or log lines.
+ *    throw. Oversized bodies are never read, so a hostile POST cannot buy memory.
+ *
+ * Log-volume honesty (Judgment Day advisory): memory is bounded per request, but log LINES are
+ * bounded per request AND per instance by the rate budget in `@/lib/security/csp-report`
+ * (`shouldLogViolationNow`). That budget is per serverless instance: it is real protection per
+ * instance, not a global guarantee — the durable global guarantee belongs to a Vercel Firewall
+ * rate rule on this path, recommended in odd/tasks/csp-reporting-and-bump-guard.md for the
+ * dashboard owner. This code never claims what it cannot enforce.
  *
  * Writes NOTHING to the database: CSP reports are an observability signal, not audit data (S1).
  * `GET` answers 405 — this endpoint is not a data source, and a 200 here would invite scraping.
  */
 
-import { MAX_REPORT_BYTES, logCspViolations, parseCspReports } from "@/lib/security/csp-report";
+import { MAX_REPORT_BYTES, logCspViolations, parseCspReports, shouldLogViolationNow } from "@/lib/security/csp-report";
 
 /** The single answer a browser can act on: "received, nothing to say". */
 function noContent(): Response {
@@ -82,7 +89,9 @@ export async function POST(request: Request): Promise<Response> {
   const body = await readBoundedBody(request);
   if (!body.ok) return noContent();
 
-  logCspViolations(parseCspReports(request.headers.get("content-type"), body.text));
+  if (shouldLogViolationNow()) {
+    logCspViolations(parseCspReports(request.headers.get("content-type"), body.text));
+  }
 
   return noContent();
 }
