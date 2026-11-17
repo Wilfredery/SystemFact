@@ -51,6 +51,30 @@ client island + window.print, NO print CSS exists anywhere yet), venta-repositor
 (`leerFacturaDeVentaEnTx`, `VentaDetalle` without NCF fields), `ROLES_VENTA` in venta
 `http/shared.ts`, CSP enforced nonce-only with style-src 'unsafe-inline'.
 
+## Log (Judgment Day)
+
+- Round 1 (2026-11-17), target origin/master..HEAD (4 commits), blind judges A+B: BOTH confirmed a
+  CRITICAL — FacturaPrintScreen.tsx + its RTL suite were staged but never committed (an aborted
+  `git add` chain left them out; the branch did not build). A alone flagged the banner OUTSIDE the
+  print-isolated article (a printed CANCELADA/ANULADA copy would omit its banner) — treated as
+  confirmed-severe. Owner approved the full fix round: both CRITICALs + dark-mode print legibility
+  (B's WARNING: dark-OS prints near-illegible) + a REAL empresa-B cross-tenant integration test +
+  truthful wording + SD-timezone expiry + strict digit id.
+- Round 2 (2026-11-17), fix delta bc1608c, both judges: NO fix-caused defects; the round-1 fixes
+  hold. Residual both-flagged: the footer's dark:text-zinc-400 still printed faint. Final fix
+  (round 2 allowed): blanket descendant print reset with the banner red restored after it, plus
+  RTL containment + transport-rejection guards. Final scoped re-judgment (both judges): CLEAN.
+  **JUDGMENT: APPROVED ✅ (terminal, round 2).** 11/11 island tests, 3/3 integration, full local
+  lane 32 passed / 0 failed, tsc 0, eslint clean.
+- Recorded as later work (single-judge/recorded, not fixed): forma de pago derives from the
+  canonical saldo only (the contado/crédito condition is not persisted — a B04 credit note of the
+  pre-ITBIS subtotal against a fully-cobrado invoice leaves a NEGATIVE canonical saldo, seen live
+  at -150.00; belongs to the devolucion domain, NOT this slice); canonical saldo loads all
+  VIGENTE invoices then filters in JS; sucursalId not pinned in the factura read (RLS tier-2
+  covers it); the range-miss expiry fallback is unreachable while @@unique(empresaId,tipoNcf)
+  holds; the screen-money display uses Number() (display-only); a POS shortcut link to the print
+  view is future work.
+
 ## Log
 
 - L1 (2026-11-17): owner request quoted in S1; audit commissioned and delivered (this header).
