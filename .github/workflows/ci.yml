@@ -331,10 +331,41 @@ jobs:
       - name: pnpm audit (prod, high and above)
         run: pnpm audit --prod --audit-level high
 
+  # ----------------------------------------------------------
+  # 8. Guardián mecánico del version bump (solo PRs)
+  # ----------------------------------------------------------
+  # AGENTS.md, Release convention (2026-09-18, amendment 2026-11-04): "a step
+  # that fails when a non-exempt path changed and the three version files did
+  # not". La regla dejó de depender del criterio de quien revisa: el job corre
+  # el guardián sobre el diff real del PR y falla nombrando las rutas ofensoras.
+  # Exentos: docs/**, odd/**, **/*.md, README*, LICENSE*, **/*.test.ts(x),
+  # **/*.spec.ts(x) y app/tools/** (este mismo guard vive ahí).
+  version-bump:
+    name: Version bump guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # `git diff <base sha> HEAD` necesita el commit base en el object DB;
+          # el checkout de un PR trae sólo el merge commit por defecto.
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-project
+
+      # `node --test`: el guardián es ESM plano (.mjs) y el transform de Jest
+      # no lo cubre. Las suites son de lógica pura (globs + decisión); el
+      # shell-out a git no necesita un repo con historia en los tests.
+      - name: Guard tests (node --test)
+        run: node --test tools/scripts/check-version-bump.test.mjs
+
+      - name: Fail when a non-exempt path changed without a version bump
+        run: node tools/scripts/check-version-bump.mjs "${{ github.event.pull_request.base.sha }}"
+
   ci-gate:
     name: CI gate
     if: always()
-    needs: [quality, unit, integration, build, commits, e2e, audit]
+    needs: [quality, unit, integration, build, commits, e2e, audit, version-bump]
     runs-on: ubuntu-latest
     # Agregador puro: no hace checkout, así que no hereda el cwd app/.
     defaults:
@@ -349,4 +380,4 @@ jobs:
 
       - name: All required jobs passed
         run: |
-          echo "OK: lint, types, schema, unit, integration, build, e2e y audit de dependencias en verde."
+          echo "OK: lint, types, schema, unit, integration, build, e2e, audit de dependencias y version bump en verde."
