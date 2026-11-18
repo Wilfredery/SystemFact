@@ -1,3 +1,9 @@
+## [0.37.3](https://github.com/Wilfredery/SystemFact/compare/v0.37.2...v0.37.3) (2026-11-18)
+
+### Fixed
+
+* **cobros/devolucion:** security hardening from the scoped audit (owner-approved): the `DEVOLUCION:` idempotency-key namespace is reserved server-side — a manual refund claiming it (any casing) is rejected with the new stable code `PAGO_IDEMPOTENCIA_RESERVADA` before any lookup, so it can no longer pre-block a predictable future return; the devolución auto-refund now uses its own entry point that mints those keys. Branch-GUC restores moved to `finally` in the cobros receipt allocator, the idempotency lookup, and the compra correlativo. The return flow locks FACTURA before EMPRESA and inventory (global FACTURA→EMPRESA→INVENTARIO, same order as the cobro/refund paths), removing a cross-flow deadlock window, and fails closed if the invoice stops being VIGENTE under the lock. The audited role exception is documented: the automatic refund runs under the return's role gate and is capped at the ITBIS-inclusive value of the returned goods and the cash actually collected; free-form manual refunds stay Administrador-only.
+
 ## [0.37.2](https://github.com/Wilfredery/SystemFact/compare/v0.37.1...v0.37.2) (2026-11-18)
 
 ### Fixed
