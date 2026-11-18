@@ -5,8 +5,14 @@ import type { StockWarning, VentaErrorCode } from "../domain/errors";
 import type { VentaGuardadoErrorCode } from "../application/venta-guardado";
 import { NO_AUTORIZADO, SESION_INVALIDA, VALIDATION_ERROR } from "./validations";
 
-/** Sale CRUD is operational (Admin + Operador); the discount gate is per-payload. */
-export const ROLES_VENTA = ["Administrador", "Operador"];
+/**
+ * Sale CRUD is operational. Board 02 of the factura.penpot wireframe is the
+ * source of truth for roles (owner, 2026-11-18): the POS screen's header and
+ * Etiqueta-Acción card show a Despachador using 02-Venta-Contado, so the
+ * Despachador role is granted here. The discount gate stays per-payload.
+ * Despachador remains denied in Cobros (ROLES_COBROS, R-C6) — unchanged.
+ */
+export const ROLES_VENTA = ["Administrador", "Operador", "Despachador"];
 
 /** Composed action error surface: domain ∪ config ∪ transport ∪ credit codes. */
 export type VentaAccionesErrorCode =

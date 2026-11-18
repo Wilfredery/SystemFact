@@ -32,7 +32,12 @@ import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-
 import type { DevolucionErrorCode, DevolucionWarning } from "../application/crear-devolucion";
 import { NO_AUTORIZADO, SESION_INVALIDA, VALIDATION_ERROR } from "./validations";
 
-/** Returns are operational (Administrador + Operador) - mirrors ROLES_VENTA. */
+/**
+ * Returns are operational (Administrador + Operador). Deliberately narrower
+ * than ROLES_VENTA since the factura.penpot wireframe (board 02, owner
+ * 2026-11-18) grants Despachador the POS screen but not returns — the old
+ * "mirrors ROLES_VENTA" note no longer holds by design.
+ */
 export const ROLES_DEVOLUCION = ["Administrador", "Operador"];
 
 /** Composed action error surface: domain/catalog + transport codes. */
