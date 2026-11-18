@@ -584,6 +584,31 @@ describe("PosScreen numeric keypad (R-V23)", () => {
     await waitFor(() => expect(recibido).toHaveValue("10.00"));
   });
 
+  // Board 02 quick-amounts row (S2): exact payment = 1 tap. The row renders
+  // inside the Totales money slot (where the wireframe draws "Monto recibido")
+  // only when that slot exists, never when Totales is used without it.
+  describe("quick-amounts row (S2)", () => {
+    it.each([100, 200, 500, 1000, 2000, 5000])(
+      "tapping RD$%i sets the money-received slot to that amount",
+      async (monto) => {
+        await renderPos(false);
+        await buscarYAgregar();
+        const recibido = screen.getByLabelText("Money received");
+        fireEvent.click(screen.getByRole("button", { name: `Quick amount ${monto}` }));
+        await waitFor(() => expect(recibido).toHaveValue(String(monto)));
+      },
+    );
+
+    it("Exact sets the slot to the current total", async () => {
+      await renderPos(false);
+      await buscarYAgregar();
+      const recibido = screen.getByLabelText("Money received");
+      fireEvent.click(screen.getByRole("button", { name: "Quick amount exact total" }));
+      // One added unit (1 × 10.00 + ITBIS 1.80) — the 23.60 case above is qty=2.
+      await waitFor(() => expect(recibido).toHaveValue("11.80"));
+    });
+  });
+
   it("exactly ONE keypad instance exists on the screen", async () => {
     await renderPos(false);
     expect(screen.getAllByRole("group", { name: "Numeric keypad" })).toHaveLength(1);
