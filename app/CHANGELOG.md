@@ -1,3 +1,9 @@
+## [0.37.2](https://github.com/Wilfredery/SystemFact/compare/v0.37.1...v0.37.2) (2026-11-18)
+
+### Fixed
+
+* **devolucion:** credit notes and cash refunds now net on the ITBIS-inclusive basis in every CxC balance (canonical ADR-017 aggregate, its coupling fragment, the row-locked payment-gate recompute, and the estado de facturas report grid). A fully returned CONTADO sale no longer computes a negative saldo — it nets to exactly 0.00, matching what DGII 607/IT-1 already report. The return flow also auto-registers the cash refund (`REEMBOLSO`) bounded by what the cliente actually paid, takes the EMPRESA row lock first (removing a deadlock cycle against a concurrent sale confirmation), and rolls back the whole return if the refund is rejected.
+
 ## [0.37.1](https://github.com/Wilfredery/SystemFact/compare/v0.37.0...v0.37.1) (2026-11-17)
 
 ### Fixed
