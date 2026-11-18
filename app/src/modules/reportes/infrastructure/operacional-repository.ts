@@ -311,8 +311,9 @@ export async function estadoFacturasGridEnTx(
         (
           f."total"
           - COALESCE(p."cobros", 0)
-          - COALESCE(nc."monto", 0)
-          + COALESCE(nd."monto", 0)
+          + COALESCE(r."reembolsos", 0)
+          - COALESCE(nc."valor", 0)
+          + COALESCE(nd."valor", 0)
         )                                                 AS "saldo"
       FROM "FACTURA" f
       LEFT JOIN (
@@ -324,14 +325,22 @@ export async function estadoFacturasGridEnTx(
         GROUP BY "facturaId"
       ) p ON p."facturaId" = f."id"
       LEFT JOIN (
-        SELECT "facturaOriginalId" AS "facturaId", SUM("monto") AS "monto"
+        SELECT "facturaId", SUM("monto") AS "reembolsos"
+        FROM "PAGO"
+        WHERE "empresaId" = ${ctx.empresaId}
+          AND "tipo" = 'REEMBOLSO'
+          AND "estado" IN ('REGISTRADO', 'APLICADO')
+        GROUP BY "facturaId"
+      ) r ON r."facturaId" = f."id"
+      LEFT JOIN (
+        SELECT "facturaOriginalId" AS "facturaId", SUM("monto" + "itbis") AS "valor"
         FROM "NOTA_CREDITO"
         WHERE "empresaId" = ${ctx.empresaId}
           AND "estado" = 'VIGENTE'
         GROUP BY "facturaOriginalId"
       ) nc ON nc."facturaId" = f."id"
       LEFT JOIN (
-        SELECT "facturaOriginalId" AS "facturaId", SUM("monto") AS "monto"
+        SELECT "facturaOriginalId" AS "facturaId", SUM("monto" + "itbis") AS "valor"
         FROM "NOTA_DEBITO"
         WHERE "empresaId" = ${ctx.empresaId}
           AND "estado" = 'VIGENTE'

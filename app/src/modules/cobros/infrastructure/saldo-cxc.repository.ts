@@ -10,8 +10,9 @@
  * Pending balance per invoice is
  *   FACTURA.total
  *     − Σ PAGO.monto            (tipo=COBRO AND estado=APLICADO)
- *     − Σ VIGENTE nota-de-crédito.monto
- *     + Σ VIGENTE nota-de-débito.monto   (empty in V1; B03 deferred)
+ *     + Σ PAGO.monto            (tipo=REEMBOLSO AND estado IN REGISTRADO/APLICADO)
+ *     − Σ VIGENTE nota-de-crédito (monto + itbis)
+ *     + Σ VIGENTE nota-de-débito (monto + itbis)   (empty in V1; B03 deferred)
  * counting ONLY FACTURA.estado='VIGENTE'. It is ONE aggregate statement — the
  * per-invoice sums are pre-aggregated sub-joins, so there is no query-per-invoice
  * N+1 (AGENTS.md "No N+1", "Reports/KPIs via SQL aggregation").
@@ -63,13 +64,14 @@ export async function consultarSaldoCxcEnTx(
       f."clienteId"::int                                                 AS "clienteId",
       f."total"::numeric(12, 2)::text                                    AS "total",
       COALESCE(p."cobros", 0)::numeric(12, 2)::text                       AS "cobrosAplicados",
-      COALESCE(nc."monto", 0)::numeric(12, 2)::text                       AS "ajustesCredito",
-      COALESCE(nd."monto", 0)::numeric(12, 2)::text                       AS "ajustesDebito",
+      COALESCE(nc."valor", 0)::numeric(12, 2)::text                       AS "ajustesCredito",
+      COALESCE(nd."valor", 0)::numeric(12, 2)::text                       AS "ajustesDebito",
       (
         f."total"
         - COALESCE(p."cobros", 0)
-        - COALESCE(nc."monto", 0)
-        + COALESCE(nd."monto", 0)
+        + COALESCE(r."reembolsos", 0)
+        - COALESCE(nc."valor", 0)
+        + COALESCE(nd."valor", 0)
       )::numeric(12, 2)::text                                             AS "saldoPendiente",
       f."fechaEmision"                                                    AS "fechaEmision"
     FROM "FACTURA" f
@@ -82,14 +84,22 @@ export async function consultarSaldoCxcEnTx(
       GROUP BY "facturaId"
     ) p ON p."facturaId" = f."id"
     LEFT JOIN (
-      SELECT "facturaOriginalId" AS "facturaId", SUM("monto") AS "monto"
+      SELECT "facturaId", SUM("monto") AS "reembolsos"
+      FROM "PAGO"
+      WHERE "empresaId" = ${ctx.empresaId}
+        AND "tipo" = 'REEMBOLSO'
+        AND "estado" IN ('REGISTRADO', 'APLICADO')
+      GROUP BY "facturaId"
+    ) r ON r."facturaId" = f."id"
+    LEFT JOIN (
+      SELECT "facturaOriginalId" AS "facturaId", SUM("monto" + "itbis") AS "valor"
       FROM "NOTA_CREDITO"
       WHERE "empresaId" = ${ctx.empresaId}
         AND "estado" = 'VIGENTE'
       GROUP BY "facturaOriginalId"
     ) nc ON nc."facturaId" = f."id"
     LEFT JOIN (
-      SELECT "facturaOriginalId" AS "facturaId", SUM("monto") AS "monto"
+      SELECT "facturaOriginalId" AS "facturaId", SUM("monto" + "itbis") AS "valor"
       FROM "NOTA_DEBITO"
       WHERE "empresaId" = ${ctx.empresaId}
         AND "estado" = 'VIGENTE'
@@ -120,13 +130,14 @@ function saldoCxcFragmentoCanonico(ctx: TenantCtx): Prisma.Sql {
       f."clienteId"::int                                                 AS "clienteId",
       f."total"::numeric(12, 2)::text                                    AS "total",
       COALESCE(p."cobros", 0)::numeric(12, 2)::text                       AS "cobrosAplicados",
-      COALESCE(nc."monto", 0)::numeric(12, 2)::text                       AS "ajustesCredito",
-      COALESCE(nd."monto", 0)::numeric(12, 2)::text                       AS "ajustesDebito",
+      COALESCE(nc."valor", 0)::numeric(12, 2)::text                       AS "ajustesCredito",
+      COALESCE(nd."valor", 0)::numeric(12, 2)::text                       AS "ajustesDebito",
       (
         f."total"
         - COALESCE(p."cobros", 0)
-        - COALESCE(nc."monto", 0)
-        + COALESCE(nd."monto", 0)
+        + COALESCE(r."reembolsos", 0)
+        - COALESCE(nc."valor", 0)
+        + COALESCE(nd."valor", 0)
       )::numeric(12, 2)::text                                             AS "saldoPendiente",
       f."fechaEmision"                                                    AS "fechaEmision"
     FROM "FACTURA" f
@@ -139,14 +150,22 @@ function saldoCxcFragmentoCanonico(ctx: TenantCtx): Prisma.Sql {
       GROUP BY "facturaId"
     ) p ON p."facturaId" = f."id"
     LEFT JOIN (
-      SELECT "facturaOriginalId" AS "facturaId", SUM("monto") AS "monto"
+      SELECT "facturaId", SUM("monto") AS "reembolsos"
+      FROM "PAGO"
+      WHERE "empresaId" = ${ctx.empresaId}
+        AND "tipo" = 'REEMBOLSO'
+        AND "estado" IN ('REGISTRADO', 'APLICADO')
+      GROUP BY "facturaId"
+    ) r ON r."facturaId" = f."id"
+    LEFT JOIN (
+      SELECT "facturaOriginalId" AS "facturaId", SUM("monto" + "itbis") AS "valor"
       FROM "NOTA_CREDITO"
       WHERE "empresaId" = ${ctx.empresaId}
         AND "estado" = 'VIGENTE'
       GROUP BY "facturaOriginalId"
     ) nc ON nc."facturaId" = f."id"
     LEFT JOIN (
-      SELECT "facturaOriginalId" AS "facturaId", SUM("monto") AS "monto"
+      SELECT "facturaOriginalId" AS "facturaId", SUM("monto" + "itbis") AS "valor"
       FROM "NOTA_DEBITO"
       WHERE "empresaId" = ${ctx.empresaId}
         AND "estado" = 'VIGENTE'
@@ -512,14 +531,21 @@ export async function bloquearYCalcularSaldoFacturaEnTx(
               AND "tipo" = 'COBRO'
               AND "estado" = 'APLICADO'
           ), 0)
+        + COALESCE((
+            SELECT SUM("monto") FROM "PAGO"
+            WHERE "facturaId" = f."id"
+              AND "empresaId" = ${ctx.empresaId}
+              AND "tipo" = 'REEMBOLSO'
+              AND "estado" IN ('REGISTRADO', 'APLICADO')
+          ), 0)
         - COALESCE((
-            SELECT SUM("monto") FROM "NOTA_CREDITO"
+            SELECT SUM("monto" + "itbis") FROM "NOTA_CREDITO"
             WHERE "facturaOriginalId" = f."id"
               AND "empresaId" = ${ctx.empresaId}
               AND "estado" = 'VIGENTE'
           ), 0)
         + COALESCE((
-            SELECT SUM("monto") FROM "NOTA_DEBITO"
+            SELECT SUM("monto" + "itbis") FROM "NOTA_DEBITO"
             WHERE "facturaOriginalId" = f."id"
               AND "empresaId" = ${ctx.empresaId}
               AND "estado" = 'VIGENTE'

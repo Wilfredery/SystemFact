@@ -25,14 +25,19 @@
  *      non-blocking `NCF_UMBRAL_90` warning
  *   8. NOTA_CREDITO + DETALLE rows + audit      — state VIGENTE from birth
  *   9. `registrarDevolucion`                    — post-write stock effect
+ *  10. `registrarReembolso`                     — CONTADO close-the-loop: refund
+ *      the cash the cliente actually paid (`cobradoNeto`, capped at the B04's
+ *      ITBIS-inclusive value) so the canonical balance nets to the true
+ *      remaining receivable; skipped when nothing was collected
  *
  * Error mapping (design D2 / R-V13): the return speaks the frozen venta
  * catalog; the NCF consume error maps to the NCF codes PINNED in that same
  * catalog (`mapearCodigoNcf`, same as `confirmarVenta`). `VentaConfigError`
  * (`PLAZO_DEVOLUCION_FALTANTE` from task 1.7) and `VentaDomainError` are
  * caught pre-write and returned as typed results. Errors raised by the
- * post-write inventory mutation (`registrarDevolucion`) still THROW so the
- * wrapper aborts the WHOLE transaction (NC + details + NCF + audit + stock).
+ * post-write inventory mutation (`registrarDevolucion`) or by a rejected
+ * refund (`registrarReembolso`) still THROW so the wrapper aborts the WHOLE
+ * transaction (NC + details + NCF + audit + stock + refund).
  * The stock ceiling is translated to venta's `STOCK_MAXIMO_EXCEDIDO` code before
  * throwing; other inventory-domain failures propagate unchanged. No failure
  * after the NC exists can leave a validated NC with a partial stock effect.
@@ -45,6 +50,8 @@
  */
 
 import { Decimal } from "decimal.js";
+import { registrarReembolso } from "@/modules/cobros/application/registrar-reembolso";
+import { bloquearYCalcularSaldoFacturaEnTx } from "@/modules/cobros/infrastructure/saldo-cxc.repository";
 import {
   DEVOLUCION_YA_REGISTRADA,
   FACTURA_NO_VIGENTE,
@@ -91,6 +98,7 @@ import {
   crearNotaCreditoEnTx,
   existeDevolucionIdenticaEnTx,
   leerPriorNCsPorFacturaEnTx,
+  bloquearEmpresaEnTx,
   leerStockSucursalEnTx,
   registrarAuditNotaCreditoEnTx,
 } from "../infrastructure/devolucion-repository";
@@ -272,6 +280,13 @@ export async function crearDevolucion(
       venta.lineas,
     );
 
+    // GLOBAL LOCK-ORDER ANCHOR: the EMPRESA row lock is taken BEFORE the
+    // inventory rows, the same order confirmarVenta uses (EMPRESA via the
+    // correlativo seam, then INVENTARIO). Without it, a concurrent sale
+    // confirmation and return on the same product could deadlock
+    // (INVENTARIO→EMPRESA vs EMPRESA→INVENTARIO).
+    await bloquearEmpresaEnTx(tx, ctx.empresaId);
+
     // CRITICAL: lock ALL inventory rows FIRST (ascending, the same order every
     // inventory seam uses) — this IS the serialization point for R-D3. All
     // cumulative reads below run under those locks.
@@ -411,6 +426,40 @@ export async function crearDevolucion(
         tipoReposicion: d.tipoReposicion,
       })),
     });
+
+    // Step 10 — CONTADO close-the-loop (the mirror of confirmar-venta's
+    // step-10 `registrarCobro`): the B04 credits the invoice ITBIS-inclusively
+    // (monto + itbis, the DGII mirror rule), so the cash the cliente actually
+    // paid must come back through the cobros reembolso path. The refund is
+    // bounded by `cobradoNeto` (collected cash minus refunds already
+    // committed): a crédito sale with no collections refunds nothing, and a
+    // partially collected sale refunds exactly what was paid. The
+    // deterministic idempotency key (the burned B04 NCF, unique per empresa)
+    // makes a replayed devolucion safe. A rejected refund is a post-write
+    // failure: it propagates so the wrapper rolls back the NC + details +
+    // NCF + audit + stock together — never a refund without the credit note.
+    const saldoBloqueado = await bloquearYCalcularSaldoFacturaEnTx(
+      tx,
+      ctx,
+      venta.factura.facturaId,
+    );
+    const valorNotaCredito = new Decimal(totales.monto).plus(
+      new Decimal(totales.itbis),
+    );
+    const reembolsable = Decimal.min(
+      valorNotaCredito,
+      new Decimal(saldoBloqueado?.cobradoNeto ?? "0"),
+    );
+    if (reembolsable.gt(0)) {
+      const reembolso = await registrarReembolso(tx, ctx, {
+        facturaId: venta.factura.facturaId,
+        monto: reembolsable.toFixed(2),
+        idempotencyKey: `DEVOLUCION:${consumido.ncf}`,
+      });
+      if (!reembolso.ok) {
+        throw new Error(`devolucion: reembolso rechazado (${reembolso.code})`);
+      }
+    }
 
     const output: DevolucionOutput = {
       id: notaCredito.id,

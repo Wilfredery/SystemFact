@@ -335,6 +335,63 @@ async function facturaConEstadoCobro(
   return id;
 }
 
+/** Seed the CONTADO full-return money pattern on one invoice: full cobro +
+ *  VIGENTE B04 (base + separate ITBIS) + REEMBOLSO of the collected cash. */
+async function facturaDevueltaContado(
+  f: TenantFixture,
+  opts: { empresaId: number; sucursalId: number; clienteId: number; total: string; tipoNcf: "B01" | "B02"; ncfNota: string },
+): Promise<number> {
+  const id = await crearFactura(f, {
+    empresaId: opts.empresaId,
+    sucursalId: opts.sucursalId,
+    clienteId: opts.clienteId,
+    total: opts.total,
+    estado: "VIGENTE",
+    tipoNcf: opts.tipoNcf,
+  });
+  await crearCobro(f, {
+    empresaId: opts.empresaId,
+    sucursalId: opts.sucursalId,
+    facturaId: id,
+    monto: opts.total,
+  });
+  const base = new Decimal(opts.total).dividedBy("1.18").toDecimalPlaces(2).toFixed(2);
+  const itbis = new Decimal(opts.total).minus(base).toFixed(2);
+  const db = getHarnessDb();
+  await db.notaCredito.create({
+    data: {
+      facturaOriginalId: id,
+      empresaId: opts.empresaId,
+      sucursalId: opts.sucursalId,
+      clienteId: opts.clienteId,
+      usuarioId: f.usuarios.adminA.id,
+      ncf: opts.ncfNota,
+      estado: "VIGENTE",
+      motivo: "devolucion total",
+      monto: new Decimal(base),
+      itbis: new Decimal(itbis),
+      fechaEmision: new Date("2026-09-06T12:00:00.000Z"),
+    },
+  });
+  await db.pago.create({
+    data: {
+      facturaId: id,
+      empresaId: opts.empresaId,
+      sucursalId: opts.sucursalId,
+      usuarioId: f.usuarios.adminA.id,
+      metodoPago: "EFECTIVO",
+      monto: new Decimal(opts.total),
+      fecha: new Date("2026-09-07T12:00:00.000Z"),
+      estado: "APLICADO",
+      tipo: "REEMBOLSO",
+      correlativoRecibo: 9001,
+      autorizadoPor: f.usuarios.adminA.id,
+      idempotencyKey: "test-devolucion-reembolso",
+    },
+  });
+  return id;
+}
+
 describe("reportes slice B — operational reports + CSV (real DB, RLS on)", () => {
   beforeEach(async () => {
     fixture = await seedTenantFixture();
@@ -442,6 +499,9 @@ describe("reportes slice B — operational reports + CSV (real DB, RLS on)", () 
     await facturaConEstadoCobro(f, { empresaId: f.empresaA.id, sucursalId: f.sucursalA1.id, clienteId: clienteA, total: "100.00", cobrado: "40.00", tipoNcf: "B01" });
     // (VIGENTE,B02): fully collected → pagada.
     await facturaConEstadoCobro(f, { empresaId: f.empresaA.id, sucursalId: f.sucursalA1.id, clienteId: clienteA, total: "50.00", cobrado: "50.00", tipoNcf: "B02" });
+    // (VIGENTE,B02): fully collected → pagada.
+    // Fully returned CONTADO sale nets to saldo 0 → pagada (never negative).
+    await facturaDevueltaContado(f, { empresaId: f.empresaA.id, sucursalId: f.sucursalA1.id, clienteId: clienteA, total: "35.40", tipoNcf: "B02", ncfNota: "B04000000077" });
     // (CANCELADA,B01): no payment state applies.
     await facturaConEstadoCobro(f, { empresaId: f.empresaA.id, sucursalId: f.sucursalA1.id, clienteId: clienteA, total: "30.00", cobrado: "0.00", tipoNcf: "B01", estado: "CANCELADA" });
 
@@ -457,14 +517,14 @@ describe("reportes slice B — operational reports + CSV (real DB, RLS on)", () 
       r.data.filas.find((c) => c.estado === estado && c.tipoNcf === tipo);
 
     expect(celda("VIGENTE", "B01")).toMatchObject({ facturas: 2, monto: "200.00", pendientes: 1, parciales: 1, pagadas: 0 });
-    expect(celda("VIGENTE", "B02")).toMatchObject({ facturas: 1, monto: "50.00", pendientes: 0, parciales: 0, pagadas: 1 });
+    expect(celda("VIGENTE", "B02")).toMatchObject({ facturas: 2, monto: "85.40", pendientes: 0, parciales: 0, pagadas: 2 });
     expect(celda("CANCELADA", "B01")).toMatchObject({ facturas: 1, monto: "30.00", pendientes: 0, parciales: 0, pagadas: 0 });
-    // Grand summary = Σ cells: 4 invoices, 280.00, 1 pendiente + 1 parcial + 1 pagada.
-    expect(r.data.resumen.totalFacturas).toBe("4");
-    expect(r.data.resumen.totalMonto).toBe("280.00");
+    // Grand summary = Σ cells: 5 invoices, 315.40, 1 pendiente + 1 parcial + 2 pagadas.
+    expect(r.data.resumen.totalFacturas).toBe("5");
+    expect(r.data.resumen.totalMonto).toBe("315.40");
     expect(r.data.resumen.pendientes).toBe("1");
     expect(r.data.resumen.parciales).toBe("1");
-    expect(r.data.resumen.pagadas).toBe("1");
+    expect(r.data.resumen.pagadas).toBe("2");
 
     // "never materialized": the FACTURA table has no stored payment-state / balance column.
     const columnas = await getHarnessDb().$queryRaw<{ nombre: string }[]>`
