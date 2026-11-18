@@ -77,14 +77,17 @@ export async function buscarPagoPorIdempotenciaEnTx(
   idempotencyKey: string,
 ): Promise<{ readonly id: number } | null> {
   await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', '', true)`;
-  const hit = await tx.pago.findFirst({
-    where: { empresaId: ctx.empresaId, idempotencyKey },
-    select: { id: true },
-  });
-  await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${String(
-    ctx.sucursalId,
-  )}, true)`;
-  return hit === null ? null : { id: hit.id };
+  try {
+    const hit = await tx.pago.findFirst({
+      where: { empresaId: ctx.empresaId, idempotencyKey },
+      select: { id: true },
+    });
+    return hit === null ? null : { id: hit.id };
+  } finally {
+    await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${String(
+      ctx.sucursalId,
+    )}, true)`;
+  }
 }
 
 /**

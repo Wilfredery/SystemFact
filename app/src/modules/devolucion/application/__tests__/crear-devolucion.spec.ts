@@ -17,6 +17,9 @@ import { consumirNcfEnTx } from "@/modules/ncf/application/consumir-ncf";
 import { DEVOLUCION_YA_REGISTRADA, messageFor } from "@/modules/venta/domain/errors";
 import { crearDevolucion } from "../crear-devolucion";
 
+jest.mock("@/modules/cobros/infrastructure/saldo-cxc.repository", () => ({
+  bloquearYCalcularSaldoFacturaEnTx: jest.fn(),
+}));
 jest.mock("../../infrastructure/devolucion-repository", () => ({
   bloquearEmpresaEnTx: jest.fn(),
   leerStockSucursalEnTx: jest.fn(),

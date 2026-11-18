@@ -31,6 +31,20 @@
  * coarse role gate enforced by the HTTP adapter BEFORE this use case runs — it
  * never reaches here for an unauthorized actor (R-C6). This use case assumes the
  * caller is authorized.
+ *
+ * AUDIT EXCEPTION (2026-11-18, owner-approved): the ONLY non-HTTP caller is the
+ * devolución auto-refund (`crearDevolucion` step 10). It runs under the
+ * devolución role gate (`ROLES_DEVOLUCION` = Administrador + Operador), so an
+ * Operador can move cash out — but ONLY the bounded amount
+ * `min(cobradoNeto, B04 monto+itbis)`: at most the ITBIS-inclusive value of the
+ * returned goods AND never more than the cash actually collected. The
+ * cobradoNeto component is enforced HERE under the FACTURA row lock
+ * (`reembolsoExcedeMontoCobrado`); the B04-value component is enforced at the
+ * caller (`crearDevolucion` `Decimal.min`) — a future caller that skips that
+ * `min` would still be capped by the collected cash, never by less. This is not
+ * a free-form refund: it is inseparable from the return the role already
+ * authorizes, and the free-form manual refund stays Administrador-only. Manual idempotency keys may NOT claim the
+ * server-owned `DEVOLUCION:` namespace (rejected below).
  */
 
 import { Prisma } from "@/generated/prisma/client";
@@ -39,6 +53,7 @@ import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import {
   FACTURA_COBRO_NO_VIGENTE,
   PAGO_IDEMPOTENCIA_CONFLICTO,
+  PAGO_IDEMPOTENCIA_RESERVADA,
   REEMBOLSO_EXCEDE_SALDO,
   messageFor,
   type CobroErrorCode,
@@ -148,6 +163,14 @@ export function esConflictoIdempotencia(err: unknown): boolean {
  * Registers a `REEMBOLSO/APLICADO` guarded by the client idempotency key, which
  * is checked before any write and before the receipt allocation (R-C3).
  */
+/**
+ * The manual refund entry (the HTTP path, `registrarReembolsoAction`). It owns
+ * the `DEVOLUCION:` namespace reservation; the devolución auto-refund calls
+ * {@link registrarReembolsoAutomatico}, which skips it because IT is the
+ * legitimate minter of `DEVOLUCION:<ncf>` keys (JD round-1 fix: the shared
+ * entry point rejected the auto-refund's own key and broke every contado
+ * return).
+ */
 export async function registrarReembolso(
   tx: PrismaTx,
   ctx: TenantCtx,
@@ -159,6 +182,40 @@ export async function registrarReembolso(
     // violation, not a business state, so it fails loud and rolls back.
     throw new Error("registrarReembolso: idempotencyKey obligatorio");
   }
+  // Namespace reservation (security audit 2026-11-18): the `DEVOLUCION:` prefix
+  // is server-owned — ONLY the devolución auto-refund mints keys in that
+  // namespace (deterministic `DEVOLUCION:<ncf>`, via the automatic entry point
+  // below). A manual refund claiming it could pre-block a predictable future
+  // return (the next NCF is derivable from the empresa sequence), so any cased
+  // variant is rejected with a STABLE CODE before any lookup.
+  if (/^devolucion:/i.test(idempotencyKey)) {
+    return buildError(PAGO_IDEMPOTENCIA_RESERVADA);
+  }
+  return registrarReembolsoCore(tx, ctx, input);
+}
+
+/**
+ * The devolución auto-refund entry (the ONLY non-HTTP caller, `crearDevolucion`
+ * step 10). Identical semantics to {@link registrarReembolso} — same bound, same
+ * idempotency, same audit — without the manual-key namespace reservation,
+ * because this caller MINTS the reserved `DEVOLUCION:<ncf>` keys. It runs under
+ * the devolución role gate (ROLES_DEVOLUCION), never the HTTP layer directly.
+ */
+export async function registrarReembolsoAutomatico(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  input: RegistrarReembolsoInput,
+): Promise<CobroResult<RegistrarReembolsoOutput>> {
+  return registrarReembolsoCore(tx, ctx, input);
+}
+
+/** Shared refund body after the entry-point-specific key gates. */
+async function registrarReembolsoCore(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  input: RegistrarReembolsoInput,
+): Promise<CobroResult<RegistrarReembolsoOutput>> {
+  const idempotencyKey = input.idempotencyKey.trim();
   const monto = aDecimalMonto(input.monto);
   if (monto.lessThanOrEqualTo(0)) {
     throw new Error("registrarReembolso: el monto debe ser mayor que cero");
