@@ -35,6 +35,7 @@ import { leerPlazoDevolucionEnTx } from "../../venta/infrastructure/config-repos
 import { consumirNcfEnTx } from "@/modules/ncf/application/consumir-ncf";
 import { registrarDevolucion } from "@/modules/inventario/application/registrar-salidas-venta";
 import {
+  bloquearEmpresaEnTx,
   crearDetalleNotaCreditoEnTx,
   crearNotaCreditoEnTx,
   existeDevolucionIdenticaEnTx,
@@ -66,7 +67,15 @@ jest.mock("@/modules/ncf/application/consumir-ncf", () => ({
 jest.mock("@/modules/inventario/application/registrar-salidas-venta", () => ({
   registrarDevolucion: jest.fn(),
 }));
+jest.mock("@/modules/cobros/infrastructure/saldo-cxc.repository", () => ({
+  bloquearYCalcularSaldoFacturaEnTx: jest.fn(),
+}));
+jest.mock("@/modules/cobros/application/registrar-reembolso", () => ({
+  registrarReembolso: jest.fn(),
+}));
 jest.mock("../infrastructure/devolucion-repository", () => ({
+  bloquearEmpresaEnTx: jest.fn(),
+
   crearDetalleNotaCreditoEnTx: jest.fn(),
   crearNotaCreditoEnTx: jest.fn(),
   existeDevolucionIdenticaEnTx: jest.fn(),
@@ -74,6 +83,9 @@ jest.mock("../infrastructure/devolucion-repository", () => ({
   leerStockSucursalEnTx: jest.fn(),
   registrarAuditNotaCreditoEnTx: jest.fn(),
 }));
+
+import { bloquearYCalcularSaldoFacturaEnTx } from "@/modules/cobros/infrastructure/saldo-cxc.repository";
+import { registrarReembolso } from "@/modules/cobros/application/registrar-reembolso";
 
 const ventaLinea = (
   productoId: number,
@@ -341,5 +353,98 @@ describe("crearDevolucion — shared stock-ceiling mapping (L6)", () => {
     await expect(crearDevolucion(tx, ctx, input)).rejects.toBeInstanceOf(
       InventarioDomainError,
     );
+  });
+});
+
+describe("crearDevolucion — CONTADO close-the-loop auto-reembolso", () => {
+  const ctx: TenantCtx = { empresaId: 1, sucursalId: 2, usuarioId: 3, esAdmin: true };
+  const tx = {} as unknown as PrismaTx;
+  const now = new Date("2026-09-05T12:00:00.000Z");
+  const input = {
+    ventaId: 7,
+    motivo: "devolucion total",
+    lineas: [retorno(10, "5")],
+    now,
+  };
+  // 5 × 100.00 @ 18% → monto 500.00 + itbis 90.00 = 590.00 ITBIS-inclusive.
+  const NC_VALOR = "590.00";
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (leerVentaParaDevolucionEnTx as jest.Mock).mockResolvedValue({
+      estado: "CONFIRMADA",
+      clienteId: 5,
+      ventaFecha: new Date("2026-09-01T15:00:00.000Z"),
+      factura: { estado: "VIGENTE", facturaId: 80 },
+      lineas: [
+        { productoId: 10, cantidad: "5", precioUnitario: "100.00", tasaItbis: "18" },
+      ],
+    });
+    (leerPlazoDevolucionEnTx as jest.Mock).mockResolvedValue(15);
+    (leerStockSucursalEnTx as jest.Mock).mockResolvedValue([
+      { productoId: 10, inventarioId: 5, cantidad: new Decimal("50.000") },
+    ]);
+    (leerPriorNCsPorFacturaEnTx as jest.Mock).mockResolvedValue(new Map());
+    (existeDevolucionIdenticaEnTx as jest.Mock).mockResolvedValue(null);
+    (consumirNcfEnTx as jest.Mock).mockResolvedValue({ ncf: "B0400000001" });
+    (crearNotaCreditoEnTx as jest.Mock).mockResolvedValue({ id: 1 });
+    (crearDetalleNotaCreditoEnTx as jest.Mock).mockResolvedValue(undefined);
+    (registrarAuditNotaCreditoEnTx as jest.Mock).mockResolvedValue(undefined);
+    (registrarDevolucion as jest.Mock).mockResolvedValue([]);
+    (bloquearYCalcularSaldoFacturaEnTx as jest.Mock).mockResolvedValue({
+      total: NC_VALOR,
+      saldoPendiente: "0.00",
+      cobradoNeto: NC_VALOR,
+    });
+    (registrarReembolso as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: { pagoId: 9, correlativoRecibo: 4, autorizadoPor: 3 },
+    });
+  });
+
+  it("locks the EMPRESA row BEFORE the inventory rows (global EMPRESA→INVENTARIO order, no deadlock vs confirmarVenta)", async () => {
+    await crearDevolucion(tx, ctx, input);
+    const ordenEmpresa = (bloquearEmpresaEnTx as jest.Mock).mock.invocationCallOrder[0];
+    const ordenStock = (leerStockSucursalEnTx as jest.Mock).mock.invocationCallOrder[0];
+    expect(ordenEmpresa).toBeLessThan(ordenStock);
+  });
+
+  it("refunds the cash collected when the invoice was fully cobrado (CONTADO close-the-loop)", async () => {
+    await crearDevolucion(tx, ctx, input);
+    expect(registrarReembolso).toHaveBeenCalledTimes(1);
+    expect(registrarReembolso).toHaveBeenCalledWith(tx, ctx, {
+      facturaId: 80,
+      monto: NC_VALOR,
+      idempotencyKey: "DEVOLUCION:B0400000001",
+    });
+  });
+
+  it("refunds only what was actually collected when the collection is partial", async () => {
+    (bloquearYCalcularSaldoFacturaEnTx as jest.Mock).mockResolvedValue({
+      total: NC_VALOR,
+      saldoPendiente: "490.00",
+      cobradoNeto: "100.00",
+    });
+    await crearDevolucion(tx, ctx, input);
+    expect(registrarReembolso).toHaveBeenCalledWith(tx, ctx, expect.objectContaining({ monto: "100.00" }));
+  });
+
+  it("skips the refund when nothing was collected (crédito sale, no payments)", async () => {
+    (bloquearYCalcularSaldoFacturaEnTx as jest.Mock).mockResolvedValue({
+      total: NC_VALOR,
+      saldoPendiente: NC_VALOR,
+      cobradoNeto: "0.00",
+    });
+    await crearDevolucion(tx, ctx, input);
+    expect(registrarReembolso).not.toHaveBeenCalled();
+  });
+
+  it("propagates a rejected refund so the wrapper rolls back the whole devolucion (post-write failure)", async () => {
+    (registrarReembolso as jest.Mock).mockResolvedValue({
+      ok: false,
+      code: "REEMBOLSO_EXCEDE_SALDO",
+      message: "x",
+    });
+    await expect(crearDevolucion(tx, ctx, input)).rejects.toThrow(/reembolso rechazado/);
   });
 });

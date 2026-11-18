@@ -18,6 +18,7 @@ import { DEVOLUCION_YA_REGISTRADA, messageFor } from "@/modules/venta/domain/err
 import { crearDevolucion } from "../crear-devolucion";
 
 jest.mock("../../infrastructure/devolucion-repository", () => ({
+  bloquearEmpresaEnTx: jest.fn(),
   leerStockSucursalEnTx: jest.fn(),
   leerPriorNCsPorFacturaEnTx: jest.fn(),
   existeDevolucionIdenticaEnTx: jest.fn(),

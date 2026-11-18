@@ -16,7 +16,10 @@
 import { Prisma } from "@/generated/prisma/client";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
-import { consultarSaldoCxcEnTx } from "@/modules/cobros/infrastructure/saldo-cxc.repository";
+import {
+  bloquearYCalcularSaldoFacturaEnTx,
+  consultarSaldoCxcEnTx,
+} from "@/modules/cobros/infrastructure/saldo-cxc.repository";
 import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 let fixture: TenantFixture | null = null;
@@ -106,6 +109,59 @@ async function crearCobro(
   });
 }
 
+/** Create a REEMBOLSO pago (cash refund) against the invoice. */
+async function crearReembolso(facturaId: number, monto: string): Promise<void> {
+  const db = getHarnessDb();
+  reciboSeq += 1;
+  await db.pago.create({
+    data: {
+      facturaId,
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      usuarioId: ctx.usuarioId,
+      metodoPago: "EFECTIVO",
+      monto: new Prisma.Decimal(monto),
+      fecha: new Date("2026-09-07T12:00:00.000Z"),
+      estado: "APLICADO",
+      tipo: "REEMBOLSO",
+      correlativoRecibo: reciboSeq,
+      autorizadoPor: ctx.usuarioId,
+      idempotencyKey: `test-reembolso-${reciboSeq}`,
+    },
+  });
+}
+
+/** Create a VIGENTE credit note (base monto + separate ITBIS, as the
+ *  devolucion module persists them); unique NCF per empresa. */
+async function crearNotaCredito(
+  facturaOriginalId: number,
+  ncf: string,
+  monto: string,
+  itbis: string,
+): Promise<void> {
+  const db = getHarnessDb();
+  await db.notaCredito.create({
+    data: {
+      facturaOriginalId,
+      empresaId: ctx.empresaId,
+      sucursalId: ctx.sucursalId,
+      clienteId: (
+        await db.factura.findUniqueOrThrow({
+          where: { id: facturaOriginalId },
+          select: { clienteId: true },
+        })
+      ).clienteId,
+      usuarioId: ctx.usuarioId,
+      ncf,
+      estado: "VIGENTE",
+      motivo: "devolucion total",
+      monto: new Prisma.Decimal(monto),
+      itbis: new Prisma.Decimal(itbis),
+      fechaEmision: new Date("2026-09-06T12:00:00.000Z"),
+    },
+  });
+}
+
 describe("canonical derived CxC balance (real DB, RLS on, R-B1)", () => {
   beforeEach(async () => {
     fixture = await seedTenantFixture();
@@ -137,6 +193,42 @@ describe("canonical derived CxC balance (real DB, RLS on, R-B1)", () => {
     expect(fila.ajustesCredito).toBe("0.00");
     expect(fila.ajustesDebito).toBe("0.00");
     expect(fila.saldoPendiente).toBe("6000.00");
+  });
+
+  it("fully cobrado CONTADO invoice with a full devolucion B04 nets to saldo 0.00, never negative", async () => {
+    // The 2026-11-17 devolucion finding: the B04 persists monto (base 150.00)
+    // and itbis (27.00) separately while the COBRO is ITBIS-inclusive (177.00).
+    // The canonical balance must credit monto + itbis so the saldo lands at 0.
+    const clienteId = await crearCliente("Contado Devuelto");
+    const vigente = await crearFactura(clienteId, "B01000000003", "VIGENTE", "177.00");
+    await crearCobro(vigente, "177.00", "APLICADO");
+    await crearNotaCredito(vigente, "B04000000001", "150.00", "27.00");
+    await crearReembolso(vigente, "177.00");
+
+    const filas = await withTenantTransaction(ctx, (tx) =>
+      consultarSaldoCxcEnTx(tx, ctx),
+    );
+    expect(filas).toHaveLength(1);
+    const [fila] = filas;
+    expect(fila.cobrosAplicados).toBe("177.00");
+    expect(fila.ajustesCredito).toBe("177.00");
+    expect(fila.ajustesDebito).toBe("0.00");
+    expect(fila.saldoPendiente).toBe("0.00"); // 177 − 177 + 177 − 177
+  });
+
+  it("bloquearYCalcularSaldoFacturaEnTx recomputes saldo with the credit note ITBIS included", async () => {
+    const clienteId = await crearCliente("Nota Parcial");
+    const vigente = await crearFactura(clienteId, "B01000000004", "VIGENTE", "177.00");
+    await crearCobro(vigente, "100.00", "APLICADO");
+    await crearNotaCredito(vigente, "B04000000002", "50.00", "9.00");
+    await crearReembolso(vigente, "40.00");
+
+    const saldo = await withTenantTransaction(ctx, (tx) =>
+      bloquearYCalcularSaldoFacturaEnTx(tx, ctx, vigente),
+    );
+
+    expect(saldo).not.toBeNull();
+    expect(saldo!.saldoPendiente).toBe("58.00"); // 177 − 100 + 40 − (50 + 9)
   });
 
   it("returns nothing for a tenant with no VIGENTE invoices and never leaks cross-tenant rows", async () => {

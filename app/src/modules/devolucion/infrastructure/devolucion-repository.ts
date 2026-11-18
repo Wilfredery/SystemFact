@@ -54,6 +54,17 @@ import { bloquearInventarioSucursalEnTx } from "@/modules/inventario/infrastruct
  *          with no prior VIGENTE NC line is OMITTED (the caller defaults it to
  *          zero — "0" for a fresh product).
  */
+/**
+ * Global lock-order anchor (EMPRESA → INVENTARIO → FACTURA): the devolucion
+ * flow takes the empresa row FIRST so it can never cycle against
+ * `confirmarVenta`, which locks EMPRESA (correlativo) before its INVENTARIO
+ * rows. Without this, a concurrent sale confirmation and return on the same
+ * product could deadlock (INVENTARIO→EMPRESA vs EMPRESA→INVENTARIO).
+ */
+export async function bloquearEmpresaEnTx(tx: PrismaTx, empresaId: number): Promise<void> {
+  await tx.$executeRaw`SELECT "id" FROM "EMPRESA" WHERE "id" = ${empresaId} FOR UPDATE`;
+}
+
 export async function leerPriorNCsPorFacturaEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
