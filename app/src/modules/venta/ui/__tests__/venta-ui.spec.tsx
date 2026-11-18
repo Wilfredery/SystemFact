@@ -25,6 +25,13 @@ import { listarClientesAction } from "@/modules/cliente/http/actions";
 // The real `"use server"` modules import Prisma/Next runtime and cannot load
 // under jsdom; mirror the http-adapter test harness (session/use-case mocks)
 // and assert the screen against the transport contract.
+// Board 02 (S5): PosScreen now uses Next's router for the post-confirm
+// receipt route — mock it like the actions so the suite stays App-Router-free.
+const mockPush = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush, refresh: jest.fn() }),
+}));
+
 jest.mock("@/modules/venta/http/actions", () => ({
   crearVentaAction: jest.fn(),
   actualizarVentaAction: jest.fn(),
@@ -68,6 +75,11 @@ function exitoCrear(id: number, warnings?: readonly { code: "STOCK_INSUFICIENTE"
     data: { id, estado: ESTADO_VENTA.BORRADOR, total: "11.80", subtotalGravado: "10.00", subtotalExento: "0.00" },
     ...(warnings ? { warnings } : {}),
   };
+}
+
+/** Board 02 (S6): the drafts list is collapsed by default; expand it for tests that touch draft rows. */
+async function expandirBorradores(): Promise<void> {
+  fireEvent.click(await screen.findByRole("button", { name: /My drafts/ }));
 }
 
 async function buscarYAgregar(): Promise<void> {
@@ -226,6 +238,7 @@ describe("PosScreen (R-V14)", () => {
       },
     });
     render(<PosScreen esAdmin />);
+    await expandirBorradores();
     const edit = await screen.findByRole("button", { name: "Edit draft 9" });
     // Discounted drafts are view/cancel only; cancel stays available.
     expect(edit).toBeDisabled();
@@ -256,6 +269,7 @@ describe("PosScreen (R-V14)", () => {
     });
     mockCancelar.mockResolvedValue({ ok: true, data: { id: 3, estado: ESTADO_VENTA.CANCELADA } });
     await renderPos(false);
+    await expandirBorradores();
 
     // R-V14 (5c slice): the confirm affordance now EXISTS for BORRADOR rows,
     // while the payment boundary (Fase 6) still must hold.
@@ -364,6 +378,7 @@ describe("PosScreen credit-mode derivation (R-V19)", () => {
       },
     });
     await renderPos(false);
+    await expandirBorradores();
     mockConfirmarVenta.mockResolvedValue({
       ok: true as const,
       data: {
@@ -614,6 +629,71 @@ describe("PosScreen numeric keypad (R-V23)", () => {
     expect(screen.getAllByRole("group", { name: "Numeric keypad" })).toHaveLength(1);
   });
 
+  // Board 02 (S6): the drafts list renders COLLAPSED by default so the POS
+  // screen matches the wireframe's clean state; a disclosure toggle expands it.
+  describe("My drafts collapsed by default (S6)", () => {
+    it("hides draft rows until the toggle is expanded", async () => {
+      mockListar.mockResolvedValue({
+        ok: true as const,
+        data: {
+          items: [
+            {
+              id: 3,
+              fecha: new Date().toISOString(),
+              estado: ESTADO_VENTA.BORRADOR,
+              total: "118.00",
+              descuento: "0.00",
+              clienteNombre: "Consumidor Final",
+              usuarioNombre: "Ana",
+              ncf: null,
+              facturaId: null,
+            },
+          ],
+          total: 1,
+          page: 1,
+          limit: 25,
+        },
+      });
+      await renderPos(false);
+      expect(screen.queryByTestId("venta-fila-3")).toBeNull();
+      const toggle = screen.getByRole("button", { name: /My drafts/ });
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      expect(await screen.findByTestId("venta-fila-3")).toBeInTheDocument();
+    });
+
+    // Board 02 (S7): the receipt link uses the --link token, never a raw palette.
+    it("renders the Ver factura link with the --link token (no indigo)", async () => {
+      mockListar.mockResolvedValue({
+        ok: true as const,
+        data: {
+          items: [
+            {
+              id: 4,
+              fecha: new Date().toISOString(),
+              estado: ESTADO_VENTA.CONFIRMADA,
+              total: "118.00",
+              descuento: "0.00",
+              clienteNombre: "Consumidor Final",
+              usuarioNombre: "Ana",
+              ncf: "B0200000101",
+              facturaId: 101,
+            },
+          ],
+          total: 1,
+          page: 1,
+          limit: 25,
+        },
+      });
+      await renderPos(true);
+      fireEvent.click(screen.getByRole("button", { name: /My drafts/ }));
+      const link = await screen.findByRole("link", { name: /Ver factura/ });
+      expect(link.className).toContain("text-link");
+      expect(link.className).not.toContain("indigo");
+    });
+  });
+
   // F2 slice E (task 5.11, R-V24/D5): the CONFIRMADA void flow — an admin-only
   // control that opens a mandatory-reason Dialog and routes the reason to the
   // unchanged `cancelarVentaAction` (server keeps `motivo` optional, R-V16).
@@ -657,7 +737,7 @@ describe("PosScreen numeric keypad (R-V23)", () => {
     it("admin: the Void control opens the Dialog and nothing is voided before submit", async () => {
       mockListar.mockResolvedValue(lista([CONFIRMADA_4]));
       await renderPos(true);
-
+      await expandirBorradores();
       fireEvent.click(await screen.findByRole("button", { name: "Void sale 4" }));
 
       const dialog = await screen.findByRole("dialog");
@@ -670,7 +750,7 @@ describe("PosScreen numeric keypad (R-V23)", () => {
     it("an empty (or whitespace-only) motivo blocks submission and never invokes the action", async () => {
       mockListar.mockResolvedValue(lista([CONFIRMADA_4]));
       await renderPos(true);
-
+      await expandirBorradores();
       fireEvent.click(await screen.findByRole("button", { name: "Void sale 4" }));
       const dialog = await screen.findByRole("dialog");
       const submit = within(dialog).getByRole("button", { name: "Void sale" });
@@ -692,7 +772,7 @@ describe("PosScreen numeric keypad (R-V23)", () => {
         data: { id: 4, estado: ESTADO_VENTA.CANCELADA },
       });
       await renderPos(true);
-
+      await expandirBorradores();
       fireEvent.click(await screen.findByRole("button", { name: "Void sale 4" }));
       const dialog = await screen.findByRole("dialog");
       fireEvent.change(within(dialog).getByLabelText("Reason for voiding"), {
@@ -718,7 +798,7 @@ describe("PosScreen numeric keypad (R-V23)", () => {
     it("non-admin sessions never see the Void control", async () => {
       mockListar.mockResolvedValue(lista([CONFIRMADA_4]));
       await renderPos(false);
-
+      await expandirBorradores();
       expect(await screen.findByTestId("venta-fila-4")).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Void sale 4" })).toBeNull();
     });
@@ -730,7 +810,7 @@ describe("PosScreen numeric keypad (R-V23)", () => {
         data: { id: 3, estado: ESTADO_VENTA.CANCELADA },
       });
       await renderPos(true);
-
+      await expandirBorradores();
       fireEvent.click(await screen.findByRole("button", { name: "Cancel draft 3" }));
 
       await waitFor(() => expect(mockCancelar).toHaveBeenCalledWith({ id: 3 }));

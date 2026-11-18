@@ -11,6 +11,7 @@
  * non-blocking banner. The screen still renders NO payment control (Fase 6).
  */
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,6 +88,9 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
   const [guardando, setGuardando] = useState(false);
   const [confirmandoId, setConfirmandoId] = useState<number | null>(null);
   const [mensaje, setMensaje] = useState<Mensaje>(null);
+  // Board 02 (S5): a confirmed sale routes to its emitted receipt — the confirm
+  // result carries facturaId; no dead end in the drafts list.
+  const router = useRouter();
   const [warnings, setWarnings] = useState<readonly AvisoStock[]>([]);
   const [avisoNcf, setAvisoNcf] = useState<string | null>(null);
   const [borradores, setBorradores] = useState<readonly BorradorFila[]>([]);
@@ -340,6 +344,10 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
         kind: "ok",
         text: `Sale #${r.data.id} confirmed — invoice ${r.data.ncf}.`,
       });
+      // Board 02 (S5): straight to the emitted receipt after a cash confirm.
+      if (r.data.facturaId !== null) {
+        router.push(`/venta/factura/${r.data.facturaId}`);
+      }
       if (r.data.ncfWarning !== null) setAvisoNcf(r.data.ncfWarning);
       // Display-only verdict (D7/R-V19): derive the due date for presentation,
       // persist nothing, send nothing. Absent/CONTADO → no due-date block.

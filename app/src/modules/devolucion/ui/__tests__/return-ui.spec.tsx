@@ -22,6 +22,12 @@ import {
   listarVentasAction,
   obtenerVentaAction,
 } from "@/modules/venta/http/actions";
+// Board 02 (S4/S5): PosScreen now mounts Next's router — mock it like the actions.
+const mockPush = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush, refresh: jest.fn() }),
+}));
+
 import { listarProductosAction } from "@/modules/producto/http/actions";
 import { listarClientesAction } from "@/modules/cliente/http/actions";
 import { devolverVentaAction } from "@/modules/devolucion/http/actions";
@@ -116,6 +122,8 @@ async function renderPos(): Promise<void> {
   });
   render(<PosScreen esAdmin={false} />);
   await settle();
+  // Board 02 (S6): the drafts list is collapsed by default; expand to reach rows.
+  fireEvent.click(await screen.findByRole("button", { name: /My drafts/ }));
 }
 
 describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
