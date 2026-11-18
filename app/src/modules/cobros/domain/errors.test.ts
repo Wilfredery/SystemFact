@@ -8,6 +8,7 @@
  */
 
 import {
+  PAGO_IDEMPOTENCIA_RESERVADA,
   COBRO_ERROR_CODES,
   CobroDomainError,
   PAGO_IDEMPOTENCIA_CONFLICTO,
@@ -24,7 +25,7 @@ import {
 } from "./errors";
 
 describe("cobros error catalog (600-series, R-C5)", () => {
-  it("owns exactly the nine spec-listed codes", () => {
+  it("owns exactly the ten spec-listed codes", () => {
     // toStrictEqual (not toEqual): an unknowingly-missing export imports as
     // `undefined`, and toEqual IGNORES undefined array entries — which would let
     // this exact-list assertion pass vacuously before the code exists (TDD red).
@@ -39,6 +40,7 @@ describe("cobros error catalog (600-series, R-C5)", () => {
         FACTURA_COBRO_NO_VIGENTE,
         PAGO_NO_AUTORIZADO,
         PAGO_NO_ENCONTRADO,
+        PAGO_IDEMPOTENCIA_RESERVADA,
       ].sort(),
     );
   });

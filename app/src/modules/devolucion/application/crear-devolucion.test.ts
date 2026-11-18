@@ -71,7 +71,7 @@ jest.mock("@/modules/cobros/infrastructure/saldo-cxc.repository", () => ({
   bloquearYCalcularSaldoFacturaEnTx: jest.fn(),
 }));
 jest.mock("@/modules/cobros/application/registrar-reembolso", () => ({
-  registrarReembolso: jest.fn(),
+  registrarReembolsoAutomatico: jest.fn(),
 }));
 jest.mock("../infrastructure/devolucion-repository", () => ({
   bloquearEmpresaEnTx: jest.fn(),
@@ -85,7 +85,7 @@ jest.mock("../infrastructure/devolucion-repository", () => ({
 }));
 
 import { bloquearYCalcularSaldoFacturaEnTx } from "@/modules/cobros/infrastructure/saldo-cxc.repository";
-import { registrarReembolso } from "@/modules/cobros/application/registrar-reembolso";
+import { registrarReembolsoAutomatico } from "@/modules/cobros/application/registrar-reembolso";
 
 const ventaLinea = (
   productoId: number,
@@ -396,10 +396,17 @@ describe("crearDevolucion — CONTADO close-the-loop auto-reembolso", () => {
       saldoPendiente: "0.00",
       cobradoNeto: NC_VALOR,
     });
-    (registrarReembolso as jest.Mock).mockResolvedValue({
+    (registrarReembolsoAutomatico as jest.Mock).mockResolvedValue({
       ok: true,
       data: { pagoId: 9, correlativoRecibo: 4, autorizadoPor: 3 },
     });
+  });
+
+  it("locks FACTURA BEFORE EMPRESA (global FACTURA→EMPRESA→INVENTARIO order, no deadlock vs cobro/refund)", async () => {
+    await crearDevolucion(tx, ctx, input);
+    const ordenFactura = (bloquearYCalcularSaldoFacturaEnTx as jest.Mock).mock.invocationCallOrder[0];
+    const ordenEmpresa = (bloquearEmpresaEnTx as jest.Mock).mock.invocationCallOrder[0];
+    expect(ordenFactura).toBeLessThan(ordenEmpresa);
   });
 
   it("locks the EMPRESA row BEFORE the inventory rows (global EMPRESA→INVENTARIO order, no deadlock vs confirmarVenta)", async () => {
@@ -411,8 +418,8 @@ describe("crearDevolucion — CONTADO close-the-loop auto-reembolso", () => {
 
   it("refunds the cash collected when the invoice was fully cobrado (CONTADO close-the-loop)", async () => {
     await crearDevolucion(tx, ctx, input);
-    expect(registrarReembolso).toHaveBeenCalledTimes(1);
-    expect(registrarReembolso).toHaveBeenCalledWith(tx, ctx, {
+    expect(registrarReembolsoAutomatico).toHaveBeenCalledTimes(1);
+    expect(registrarReembolsoAutomatico).toHaveBeenCalledWith(tx, ctx, {
       facturaId: 80,
       monto: NC_VALOR,
       idempotencyKey: "DEVOLUCION:B0400000001",
@@ -426,7 +433,7 @@ describe("crearDevolucion — CONTADO close-the-loop auto-reembolso", () => {
       cobradoNeto: "100.00",
     });
     await crearDevolucion(tx, ctx, input);
-    expect(registrarReembolso).toHaveBeenCalledWith(tx, ctx, expect.objectContaining({ monto: "100.00" }));
+    expect(registrarReembolsoAutomatico).toHaveBeenCalledWith(tx, ctx, expect.objectContaining({ monto: "100.00" }));
   });
 
   it("skips the refund when nothing was collected (crédito sale, no payments)", async () => {
@@ -436,11 +443,11 @@ describe("crearDevolucion — CONTADO close-the-loop auto-reembolso", () => {
       cobradoNeto: "0.00",
     });
     await crearDevolucion(tx, ctx, input);
-    expect(registrarReembolso).not.toHaveBeenCalled();
+    expect(registrarReembolsoAutomatico).not.toHaveBeenCalled();
   });
 
   it("propagates a rejected refund so the wrapper rolls back the whole devolucion (post-write failure)", async () => {
-    (registrarReembolso as jest.Mock).mockResolvedValue({
+    (registrarReembolsoAutomatico as jest.Mock).mockResolvedValue({
       ok: false,
       code: "REEMBOLSO_EXCEDE_SALDO",
       message: "x",

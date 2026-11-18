@@ -442,21 +442,27 @@ async function asignarCorrelativoSiguienteEnTx(
 
   // Clear ONLY the sucursal filter locally so the MAX spans every branch of
   // this empresa; the empresa boundary (app.current_empresa_id) stays enforced.
+  // The restore lives in `finally` (the venta/cobros correlativo pattern):
+  // a JS-side failure inside the MAX read still restores the branch GUC before
+  // returning. If the read fails AT POSTGRES level the transaction is aborted
+  // anyway (25P02) — nothing later runs in it, fail-closed either way.
   await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', '', true)`;
-  // Cast to int so Prisma returns a JS number (no BigInt, which the app
-  // tsconfig target below ES2020 cannot emit as a literal). The empresa row is
-  // locked above, so this read is serialized against every other confirm.
-  const rows = await tx.$queryRaw<{ next: number }[]>`
-    SELECT (COALESCE(MAX(CAST(SUBSTRING("correlativoInterno" FROM '([0-9]+)$') AS BIGINT)), 0) + 1)::int AS next
-    FROM "COMPRA"
-    WHERE "empresaId" = ${empresaId}`;
-  // Restore the acting branch context before any further tenant-scoped write.
-  await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${String(
-    sucursalId,
-  )}, true)`;
-
-  const next = rows[0]?.next ?? 1;
-  return `CMP-${next.toString().padStart(6, "0")}`;
+  try {
+    // Cast to int so Prisma returns a JS number (no BigInt, which the app
+    // tsconfig target below ES2020 cannot emit as a literal). The empresa row is
+    // locked above, so this read is serialized against every other confirm.
+    const rows = await tx.$queryRaw<{ next: number }[]>`
+      SELECT (COALESCE(MAX(CAST(SUBSTRING("correlativoInterno" FROM '([0-9]+)$') AS BIGINT)), 0) + 1)::int AS next
+      FROM "COMPRA"
+      WHERE "empresaId" = ${empresaId}`;
+    const next = rows[0]?.next ?? 1;
+    return `CMP-${next.toString().padStart(6, "0")}`;
+  } finally {
+    // Restore the acting branch context before any further tenant-scoped write.
+    await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${String(
+      sucursalId,
+    )}, true)`;
+  }
 }
 
 /**

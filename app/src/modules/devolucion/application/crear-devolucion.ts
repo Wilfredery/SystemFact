@@ -25,7 +25,7 @@
  *      non-blocking `NCF_UMBRAL_90` warning
  *   8. NOTA_CREDITO + DETALLE rows + audit      — state VIGENTE from birth
  *   9. `registrarDevolucion`                    — post-write stock effect
- *  10. `registrarReembolso`                     — CONTADO close-the-loop: refund
+ *  10. `registrarReembolsoAutomatico`           — CONTADO close-the-loop: refund
  *      the cash the cliente actually paid (`cobradoNeto`, capped at the B04's
  *      ITBIS-inclusive value) so the canonical balance nets to the true
  *      remaining receivable; skipped when nothing was collected
@@ -50,7 +50,7 @@
  */
 
 import { Decimal } from "decimal.js";
-import { registrarReembolso } from "@/modules/cobros/application/registrar-reembolso";
+import { registrarReembolsoAutomatico } from "@/modules/cobros/application/registrar-reembolso";
 import { bloquearYCalcularSaldoFacturaEnTx } from "@/modules/cobros/infrastructure/saldo-cxc.repository";
 import {
   DEVOLUCION_YA_REGISTRADA,
@@ -280,11 +280,28 @@ export async function crearDevolucion(
       venta.lineas,
     );
 
-    // GLOBAL LOCK-ORDER ANCHOR: the EMPRESA row lock is taken BEFORE the
-    // inventory rows, the same order confirmarVenta uses (EMPRESA via the
-    // correlativo seam, then INVENTARIO). Without it, a concurrent sale
-    // confirmation and return on the same product could deadlock
-    // (INVENTARIO→EMPRESA vs EMPRESA→INVENTARIO).
+    // GLOBAL LOCK-ORDER ANCHOR (JD-A-007, round 1): FACTURA first, then
+    // EMPRESA, then INVENTARIO — the SAME order the cobro/refund paths use
+    // (FACTURA FOR UPDATE → EMPRESA inside the receipt allocator), so a
+    // concurrent cobro or manual refund on the same invoice can never cycle
+    // against this flow. Taking it early also covers the step-10 recompute:
+    // while we hold the FACTURA row, no other transaction can commit a cobro
+    // or refund on this invoice (they all lock FACTURA first), so the step-10
+    // `cobradoNeto` recompute below is consistent under our own lock.
+    // Fail-closed (JD-B round-2 note): the venta guard above read the factura
+    // VIGENTE, but a concurrent annul could land between that read and this
+    // lock — a null here means the invoice is no longer VIGENTE under the lock.
+    const saldoBajoLock = await bloquearYCalcularSaldoFacturaEnTx(
+      tx,
+      ctx,
+      venta.factura.facturaId,
+    );
+    if (saldoBajoLock === null) {
+      return devolucionError(FACTURA_NO_VIGENTE);
+    }
+
+    // EMPRESA second (see the order note above): the receipt-correlativo
+    // anchor, before the inventory rows.
     await bloquearEmpresaEnTx(tx, ctx.empresaId);
 
     // CRITICAL: lock ALL inventory rows FIRST (ascending, the same order every
@@ -438,6 +455,11 @@ export async function crearDevolucion(
     // makes a replayed devolucion safe. A rejected refund is a post-write
     // failure: it propagates so the wrapper rolls back the NC + details +
     // NCF + audit + stock together — never a refund without the credit note.
+    // (The FACTURA row lock was taken at the top of the flow — global order
+    // FACTURA→EMPRESA→INVENTARIO — so this recompute is consistent: no other
+    // transaction can move money on this invoice while we hold it.)
+    // The automatic entry point mints the reserved DEVOLUCION:<ncf> keys; the
+    // manual entry point would reject them by design (see registrar-reembolso).
     const saldoBloqueado = await bloquearYCalcularSaldoFacturaEnTx(
       tx,
       ctx,
@@ -451,7 +473,7 @@ export async function crearDevolucion(
       new Decimal(saldoBloqueado?.cobradoNeto ?? "0"),
     );
     if (reembolsable.gt(0)) {
-      const reembolso = await registrarReembolso(tx, ctx, {
+      const reembolso = await registrarReembolsoAutomatico(tx, ctx, {
         facturaId: venta.factura.facturaId,
         monto: reembolsable.toFixed(2),
         idempotencyKey: `DEVOLUCION:${consumido.ncf}`,

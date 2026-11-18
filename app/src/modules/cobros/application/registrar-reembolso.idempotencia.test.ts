@@ -15,7 +15,13 @@
 
 import { Prisma } from "@/generated/prisma/client";
 
-import { esConflictoIdempotencia } from "./registrar-reembolso";
+import {
+  esConflictoIdempotencia,
+  registrarReembolso,
+  registrarReembolsoAutomatico,
+} from "./registrar-reembolso";
+import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
+import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 
 function knownRequestError(
   code: string,
@@ -82,5 +88,58 @@ describe("esConflictoIdempotencia", () => {
       esConflictoIdempotencia(knownRequestError("P2025")),
     ).toBe(false);
     expect(esConflictoIdempotencia(new Error("plain"))).toBe(false);
+  });
+});
+
+describe("reserved DEVOLUCION: idempotency prefix", () => {
+  const ctx: TenantCtx = { empresaId: 1, sucursalId: 2, usuarioId: 3, esAdmin: true };
+
+  /** A tx that fails LOUD on any property access: the reservation must reject
+   *  BEFORE any database work, not after a lookup. */
+  const txProhibido = new Proxy({}, {
+    get() { throw new Error("no debe tocar la base de datos"); },
+  }) as unknown as PrismaTx;
+
+  it.each([
+    "DEVOLUCION:B04000000001",
+    "DEVOLUCION:",
+    " devolucion:B04000000001 ",
+  ])("rejects the reserved prefix before any lookup (key %j)", async (key) => {
+    // A STABLE business code (JD-A-005): typed result, no DB touch.
+    const r = await registrarReembolso(txProhibido, ctx, {
+      facturaId: 80,
+      monto: "10.00",
+      idempotencyKey: key,
+    });
+    expect(r).toEqual({
+      ok: false,
+      code: "PAGO_IDEMPOTENCIA_RESERVADA",
+      message: expect.any(String),
+    });
+  });
+
+  it("the AUTOMATIC entry point accepts the DEVOLUCION: key and proceeds to the DB", async () => {
+    // The devolucion auto-refund MINTS DEVOLUCION:<ncf> keys — it must reach
+    // the lookup (our prohibitive tx proxy surfaces it), never the reservation.
+    await expect(
+      registrarReembolsoAutomatico(txProhibido, ctx, {
+        facturaId: 80,
+        monto: "10.00",
+        idempotencyKey: "DEVOLUCION:B04000000001",
+      }),
+    ).rejects.toThrow("no debe tocar la base de datos");
+  });
+
+  it("accepts a normal manual key (does not hit the reservation)", async () => {
+    // A non-reserved key passes the reservation gate and proceeds to the DB
+    // lookup, which our prohibitive proxy surfaces as its own error — proving
+    // the reservation did not reject it.
+    await expect(
+      registrarReembolso(txProhibido, ctx, {
+        facturaId: 80,
+        monto: "10.00",
+        idempotencyKey: "manual-normal-key-1",
+      }),
+    ).rejects.toThrow("no debe tocar la base de datos");
   });
 });

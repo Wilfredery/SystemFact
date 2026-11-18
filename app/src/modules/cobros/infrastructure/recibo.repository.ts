@@ -38,15 +38,20 @@ export async function asignarCorrelativoReciboEnTx(
 
   // Clear ONLY the sucursal filter locally so the MAX spans every branch of this
   // empresa; the empresa boundary (app.current_empresa_id) stays enforced.
+  // The restore lives in `finally` (the venta-repository correlativo pattern):
+  // a JS-side failure inside the MAX read still restores the branch GUC before
+  // returning. If the read fails AT POSTGRES level the transaction is aborted
+  // anyway (25P02) — nothing later runs in it, fail-closed either way.
   await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', '', true)`;
-  const rows = await tx.$queryRaw<{ next: number }[]>`
-    SELECT (COALESCE(MAX("correlativoRecibo"), 0) + 1)::int AS next
-    FROM "PAGO"
-    WHERE "empresaId" = ${empresaId}`;
-  // Restore the acting branch context before any further tenant-scoped write.
-  await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${String(
-    sucursalId,
-  )}, true)`;
-
-  return rows[0]?.next ?? 1;
+  try {
+    const rows = await tx.$queryRaw<{ next: number }[]>`
+      SELECT (COALESCE(MAX("correlativoRecibo"), 0) + 1)::int AS next
+      FROM "PAGO"
+      WHERE "empresaId" = ${empresaId}`;
+    return rows[0]?.next ?? 1;
+  } finally {
+    await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', ${String(
+      sucursalId,
+    )}, true)`;
+  }
 }
