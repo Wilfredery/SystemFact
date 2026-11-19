@@ -26,8 +26,14 @@ describe("ROLES_VENTA — wireframe board 02 role matrix (S1)", () => {
     );
   });
 
-  it("keeps Despachador denied in Cobros and refunds (R-C6 / §10, unchanged)", () => {
-    expect([...ROLES_COBROS].sort()).toEqual(["Administrador", "Operador"]);
+  it("grants Cobrador Cobros per wireframe board 03 (S9) and keeps Despachador out", () => {
+    // Board 03's header shows 'Juan · Cobrador' collecting; the owner ratified
+    // wireframe-wins. R-C6 (Despachador denied) is unchanged.
+    expect([...ROLES_COBROS].sort()).toEqual([
+      "Administrador",
+      "Cobrador",
+      "Operador",
+    ]);
     expect([...ROLES_REEMBOLSO].sort()).toEqual(["Administrador"]);
   });
 });

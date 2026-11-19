@@ -28,8 +28,13 @@ import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-
 import { type CobroErrorCode } from "../domain/errors";
 import { SESION_INVALIDA, VALIDATION_ERROR } from "./validations";
 
-/** Cobros collections + reads are operational (Admin + Operador); Despachador denied. */
-export const ROLES_COBROS = ["Administrador", "Operador"];
+/**
+ * Cobros collections + reads. Board 03 of the factura.penpot wireframe is the
+ * source of truth (owner, 2026-11-19, "wireframe wins" per the board-02
+ * precedent): its header shows a Cobrador collecting, so Cobrador joins.
+ * Despachador stays denied (R-C6) — unchanged.
+ */
+export const ROLES_COBROS = ["Administrador", "Operador", "Cobrador"];
 /** Refunds require an authorizing role (Administrador only, §10 / R-C6). */
 export const ROLES_REEMBOLSO = ["Administrador"];
 
