@@ -54,7 +54,7 @@ describe("tenant isolation (real DB)", () => {
       ajustarInventario(tx, ctxA1, {
         productoId: fixture.productos.prodB1.id,
         cantidad: "100",
-        motivo: "Intento cross-tenant",
+        motivo: "Conteo físico",
         claveIdempotencia: "k-rationtestts-54",
       }),
     );

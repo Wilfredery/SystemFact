@@ -19,6 +19,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { consultarInventarioAction } from "@/modules/inventario/http/actions";
 import type { ConsultarInventarioOutput } from "@/modules/inventario/application/consultar-inventario";
@@ -259,7 +260,7 @@ export function InventarioScreen({
                   </TableCell>
                   {puedeAjustar && (
                     <TableCell className="px-4 py-2">
-                      <MenuFila codigo={p.codigo} nombre={p.nombre} />
+                      <MenuFila codigo={p.codigo} />
                     </TableCell>
                   )}
                 </TableRow>
@@ -296,20 +297,54 @@ export function InventarioScreen({
   );
 }
 
-/** Per-row ⋯ menu: "Ajustar" (prefill by code) and "Historial" (filtered history). */
-function MenuFila({ codigo, nombre }: { readonly codigo: string; readonly nombre: string }) {
+/**
+ * Per-row ⋯ menu: "Ajustar" (prefill by code) and "Historial" (exact-code
+ * filtered history). The panel renders through a portal with fixed position so
+ * the table's `overflow-x-auto` wrapper can never clip it (JD-B-003); it closes
+ * on Escape or on a press outside both the panel and the button.
+ */
+function MenuFila({ codigo }: { readonly codigo: string }) {
   const [abierto, setAbierto] = useState(false);
-  // Close on focus leaving the menu entirely: `relatedTarget` is the element
-  // gaining focus, so moving focus INTO the items (click or Tab) must not
-  // close the menu before the item's click lands.
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const botonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  function alternar() {
+    if (abierto) {
+      setAbierto(false);
+      return;
+    }
+    const r = botonRef.current?.getBoundingClientRect();
+    if (r !== undefined) {
+      // Right-align under the button (panel width 176px = 44rem/4 -> w-44).
+      setPos({ top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    }
+    setAbierto(true);
+  }
+
+  useEffect(() => {
+    if (!abierto) return;
+    const alPulsar = (e: MouseEvent) => {
+      const objetivo = e.target as Node;
+      if (!menuRef.current?.contains(objetivo) && !botonRef.current?.contains(objetivo)) {
+        setAbierto(false);
+      }
+    };
+    const alTeclar = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAbierto(false);
+    };
+    document.addEventListener("mousedown", alPulsar);
+    document.addEventListener("keydown", alTeclar);
+    return () => {
+      document.removeEventListener("mousedown", alPulsar);
+      document.removeEventListener("keydown", alTeclar);
+    };
+  }, [abierto]);
+
   return (
-    <div
-      className="relative"
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setAbierto(false);
-      }}
-    >
+    <>
       <Button
+        ref={botonRef}
         type="button"
         variant="outline"
         size="icon"
@@ -317,34 +352,39 @@ function MenuFila({ codigo, nombre }: { readonly codigo: string; readonly nombre
         aria-expanded={abierto}
         aria-label={`Acciones ${codigo}`}
         data-testid={`menu-fila-${codigo}`}
-        onClick={() => setAbierto((v) => !v)}
+        onClick={alternar}
         className="text-lg"
       >
         <span aria-hidden="true">⋯</span>
       </Button>
-      {abierto && (
-        <div
-          role="menu"
-          aria-label={`Acciones ${codigo}`}
-          className="absolute right-0 z-10 mt-1 flex flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-md"
-        >
-          <Link
-            role="menuitem"
-            href={`/inventario/ajuste?producto=${encodeURIComponent(codigo)}`}
-            className="min-h-11 px-4 py-2 text-sm text-ink hover:bg-surface-muted"
+      {abierto &&
+        pos !== null &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label={`Acciones ${codigo}`}
+            style={{ position: "fixed", top: pos.top, left: pos.left }}
+            className="z-50 flex w-44 flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-md"
           >
-            Ajustar {nombre}
-          </Link>
-          <Link
-            role="menuitem"
-            href={`/inventario/movimientos?producto=${encodeURIComponent(codigo)}`}
-            className="min-h-11 px-4 py-2 text-sm text-ink hover:bg-surface-muted"
-          >
-            Historial
-          </Link>
-        </div>
-      )}
-    </div>
+            <Link
+              role="menuitem"
+              href={`/inventario/ajuste?producto=${encodeURIComponent(codigo)}`}
+              className="min-h-11 px-4 py-2 text-sm text-ink hover:bg-surface-muted"
+            >
+              Ajustar
+            </Link>
+            <Link
+              role="menuitem"
+              href={`/inventario/movimientos?productoCodigo=${encodeURIComponent(codigo)}`}
+              className="min-h-11 px-4 py-2 text-sm text-ink hover:bg-surface-muted"
+            >
+              Historial
+            </Link>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 

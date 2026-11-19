@@ -46,6 +46,8 @@ export type MovimientosInicial =
 export interface FiltrosMovimientos {
   readonly tipo: TipoMovimientoInventario | null;
   readonly producto: string;
+  /** Board-04 S19: exact product code from the consulta row menu (sticky filter). */
+  readonly productoCodigo: string;
   /** `YYYY-MM-DD` or "" (= default range). */
   readonly desde: string;
   readonly hasta: string;
@@ -63,6 +65,7 @@ function construirQuery(filtros: FiltrosMovimientos, page: number) {
     limit: TAMANO_PAGINA,
     ...(filtros.tipo === null ? {} : { tipo: filtros.tipo }),
     ...(filtros.producto.trim() === "" ? {} : { producto: filtros.producto.trim() }),
+    ...(filtros.productoCodigo.trim() === "" ? {} : { productoCodigo: filtros.productoCodigo.trim() }),
     ...(filtros.desde === "" ? {} : { desde: filtros.desde }),
     ...(filtros.hasta === "" ? {} : { hasta: filtros.hasta }),
   };

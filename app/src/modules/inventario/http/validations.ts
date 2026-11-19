@@ -71,6 +71,9 @@ export const zListarMovimientosQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   tipo: z.preprocess(vacioAUndefined, z.enum(TIPOS_MOVIMIENTO).optional()),
   producto: z.preprocess(vacioAUndefined, z.string().trim().max(100).optional()),
+  // Board-04 S19: exact product code from the consulta row menu — filters the
+  // history to that ONE product (never a contains match).
+  productoCodigo: z.preprocess(vacioAUndefined, z.string().trim().max(100).optional()),
   desde: z.preprocess(vacioAUndefined, z.string().regex(FECHA_SD_RE).optional()),
   hasta: z.preprocess(vacioAUndefined, z.string().regex(FECHA_SD_RE).optional()),
 });

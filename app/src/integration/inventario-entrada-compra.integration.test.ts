@@ -358,7 +358,7 @@ describe("registrarEntradaCompra (real DB)", () => {
       ajustarInventario(tx, ctx, {
         productoId,
         cantidad: "-1.000",
-        motivo: "Ajuste manual de conteo",
+        motivo: "Conteo físico",
         claveIdempotencia: "k-rationtestts-358",
       }),
     );

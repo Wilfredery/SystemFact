@@ -154,13 +154,16 @@ describe("AjusteInventarioForm — row-menu prefill (board-04 S19)", () => {
 
   it("leaves the form untouched when the code has no exact match", async () => {
     jest.useFakeTimers();
-    const sinExacto = resultadoBusqueda();
+    mockConsultar.mockResolvedValueOnce({
+      ok: true,
+      data: { ...resultadoBusqueda(), items: [] },
+    });
     render(<AjusteInventarioForm productoPreseleccionado="P-404" />);
     await act(async () => {
       jest.advanceTimersByTime(0);
     });
 
-    expect(screen.getByLabelText("Producto *")).toHaveValue(sinExacto.items.length === 0 ? "" : "");
+    expect(screen.getByLabelText("Producto *")).toHaveValue("");
     expect(confirmar()).toBeDisabled();
   });
 
@@ -496,6 +499,13 @@ describe("AjusteInventarioForm — NumericKeypad (board-04 S21)", () => {
     fireEvent.click(screen.getByRole("button", { name: "2" }));
     fireEvent.click(screen.getByRole("button", { name: "BSP" }));
     expect(screen.getByLabelText("Cantidad a ajustar *")).toHaveValue("");
+
+    // A "." from the cleared field becomes a legal decimal state (JD-B-004),
+    // never the sticky invalid ".".
+    fireEvent.click(screen.getByRole("button", { name: "." }));
+    expect(screen.getByLabelText("Cantidad a ajustar *")).toHaveValue("0.");
+    fireEvent.click(screen.getByRole("button", { name: "5" }));
+    expect(screen.getByLabelText("Cantidad a ajustar *")).toHaveValue("0.5");
   });
 
   it("closes the keypad when another field takes focus", async () => {

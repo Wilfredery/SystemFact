@@ -181,6 +181,9 @@ export function AjusteInventarioForm({
         if (tecla === "BSP" || tecla === "CLR") return "";
         return tecla;
       }
+      // From a cleared field a "." becomes a legal decimal state instead of the
+      // sticky invalid "." the shared composer would produce (JD-B-004).
+      if (prev === "" && tecla === ".") return "0.";
       return componerValor(prev, tecla, 3);
     });
   }

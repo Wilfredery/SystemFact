@@ -31,7 +31,7 @@ describe("ajustarInventario (real DB)", () => {
       ajustarInventario(tx, ctx, {
         productoId: fixture.productos.prodA1.id,
         cantidad: "-3.500",
-        motivo: "Correccion de conteo fisico",
+        motivo: "Conteo físico",
         claveIdempotencia: "k-rationtestts-31",
       }),
     );
@@ -60,7 +60,7 @@ describe("ajustarInventario (real DB)", () => {
     expect(movimiento?.cantidadMovida.toFixed(3)).toBe("-3.500");
     expect(movimiento?.cantidadAnterior.toFixed(3)).toBe("10.000");
     expect(movimiento?.cantidadNueva.toFixed(3)).toBe("6.500");
-    expect(movimiento?.motivo).toBe("Correccion de conteo fisico");
+    expect(movimiento?.motivo).toBe("Conteo físico");
     expect(movimiento?.usuarioId).toBe(fixture.usuarios.adminA.id);
 
     const auditoria = await db.movimientoAuditoria.findFirst({
@@ -79,7 +79,7 @@ describe("ajustarInventario (real DB)", () => {
       ajustarInventario(tx, ctx, {
         productoId: fixture.productos.prodA1.id,
         cantidad: "-10.001",
-        motivo: "Salida mayor al stock",
+        motivo: "Merma",
         claveIdempotencia: "k-rationtestts-78",
       }),
     );
@@ -111,7 +111,7 @@ describe("ajustarInventario (real DB)", () => {
       ajustarInventario(tx, ctx, {
         productoId: fixture.productos.prodA1.id,
         cantidad: "999999989.999",
-        motivo: "Entrada hasta el techo",
+        motivo: "Conteo físico",
         claveIdempotencia: "k-rationtestts-109",
       }),
     );
@@ -121,7 +121,7 @@ describe("ajustarInventario (real DB)", () => {
       ajustarInventario(tx, ctx, {
         productoId: fixture.productos.prodA1.id,
         cantidad: "0.001",
-        motivo: "Una milesima de mas",
+        motivo: "Otro",
         claveIdempotencia: "k-rationtestts-118",
       }),
     );
@@ -147,7 +147,7 @@ describe("ajustarInventario (real DB)", () => {
     const input = {
       productoId: fixture.productos.prodA1.id,
       cantidad: "4",
-      motivo: "Reintento del mismo clic",
+      motivo: "Corrección de error",
       claveIdempotencia: "idem-replay-0001",
     };
 
@@ -186,7 +186,7 @@ describe("ajustarInventario (real DB)", () => {
     const db = getHarnessDb();
     const base = {
       productoId: fixture.productos.prodA1.id,
-      motivo: "Misma clave",
+      motivo: "Otro",
       claveIdempotencia: "idem-conflict-0002",
     };
 
@@ -221,7 +221,7 @@ describe("ajustarInventario (real DB)", () => {
       ajustarInventario(tx, ctx, {
         productoId: fixture.productos.prodA1.id,
         cantidad: "1",
-        motivo: "Producto uno",
+        motivo: "Conteo físico",
         claveIdempotencia: clave,
       }),
     );
@@ -229,7 +229,7 @@ describe("ajustarInventario (real DB)", () => {
       ajustarInventario(tx, ctx, {
         productoId: fixture.productos.prodA2Only.id,
         cantidad: "1",
-        motivo: "Producto dos",
+        motivo: "Merma",
         claveIdempotencia: clave,
       }),
     );
@@ -279,7 +279,7 @@ describe("ajustarInventario (real DB)", () => {
       ajustarInventario(tx, ctx, {
         productoId: fixture.productos.prodB1.id,
         cantidad: "5",
-        motivo: "Intento cross-tenant",
+        motivo: "Conteo físico",
         claveIdempotencia: "k-rationtestts-172",
       }),
     );

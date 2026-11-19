@@ -182,10 +182,39 @@ describe("InventarioScreen — row ⋯ menu (board-04 S19)", () => {
     });
 
     const menu = screen.getByRole("menu", { name: "Acciones P-007" });
-    const ajustar = within(menu).getByRole("menuitem", { name: "Ajustar Arroz" });
+    const ajustar = within(menu).getByRole("menuitem", { name: "Ajustar" });
     expect(ajustar).toHaveAttribute("href", "/inventario/ajuste?producto=P-007");
+    // Exact-code filter (JD-A-003): the history is filtered to that ONE product.
     const historial = within(menu).getByRole("menuitem", { name: "Historial" });
-    expect(historial).toHaveAttribute("href", "/inventario/movimientos?producto=P-007");
+    expect(historial).toHaveAttribute("href", "/inventario/movimientos?productoCodigo=P-007");
+  });
+
+  it("closes the menu with Escape", async () => {
+    montarConMenu();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("menu-fila-P-007"));
+    });
+    expect(screen.getByRole("menu", { name: "Acciones P-007" })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "Escape" });
+    });
+    expect(screen.queryByRole("menu", { name: "Acciones P-007" })).not.toBeInTheDocument();
+  });
+
+  it("closes the menu on a press outside of it", async () => {
+    montarConMenu();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("menu-fila-P-007"));
+    });
+    expect(screen.getByRole("menu", { name: "Acciones P-007" })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.mouseDown(document.body);
+    });
+    expect(screen.queryByRole("menu", { name: "Acciones P-007" })).not.toBeInTheDocument();
   });
 
   it("toggles the menu closed on a second click", async () => {
