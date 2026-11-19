@@ -107,6 +107,9 @@ test.describe("confirm smoke (R-V15)", () => {
     await page.getByRole("button", { name: "Save draft" }).click();
 
     // The saved BORRADOR appears in "My drafts" with its confirm control.
+    // Board-02 S6: the draft list is collapsed by default — expand it first.
+    await page.getByRole("button", { name: /My drafts/ }).click();
+
     const confirm = page.getByRole("button", { name: /Confirm draft \d+/ });
     await confirm.waitFor();
     await confirm.click();

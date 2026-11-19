@@ -23,7 +23,6 @@ import {
   type MovimientosInicial,
 } from "@/modules/inventario/ui/MovimientosScreen";
 import { TAMANO_PAGINA } from "@/modules/inventario/ui/paginacion";
-import { buttonVariants } from "@/components/ui/button";
 
 type Param = string | string[] | undefined;
 
@@ -73,7 +72,7 @@ export default async function InventarioMovimientosPage({
           </p>
           <Link
             href="/inventario"
-            className={buttonVariants({ variant: "outline", size: "pos" })}
+            className={"inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-surface-muted hover:text-ink select-none"}
           >
             Volver a Inventario
           </Link>
@@ -113,7 +112,7 @@ export default async function InventarioMovimientosPage({
         </h1>
         <Link
           href="/inventario"
-          className={buttonVariants({ variant: "outline", size: "pos" })}
+          className={"inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-surface-muted hover:text-ink select-none"}
         >
           Volver a Inventario
         </Link>

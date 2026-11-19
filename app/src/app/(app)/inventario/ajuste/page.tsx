@@ -13,7 +13,6 @@ import { createClient } from "@/lib/supabase/client";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
 import { obtenerPermisosInventarioAction } from "@/modules/inventario/http/actions";
 import { AjusteInventarioForm } from "@/modules/inventario/ui/AjusteInventarioForm";
-import { buttonVariants } from "@/components/ui/button";
 
 async function puedeAjustarInventario(): Promise<boolean> {
   try {
@@ -57,7 +56,7 @@ export default async function InventarioAjustePage({
           </p>
           <Link
             href="/inventario"
-            className={buttonVariants({ variant: "outline", size: "pos" })}
+            className={"inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-surface-muted hover:text-ink select-none"}
           >
             Volver a Inventario
           </Link>

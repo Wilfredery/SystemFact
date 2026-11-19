@@ -35,6 +35,9 @@ export async function guardarYConfirmar(
 ): Promise<{ ventaId: number; ncf: string }> {
   await page.getByRole("button", { name: "Save draft" }).click();
 
+  // Board-02 S6: the draft list is collapsed by default — expand it first.
+  await page.getByRole("button", { name: /My drafts/ }).click();
+
   const confirm = page.getByRole("button", { name: /Confirm draft \d+/ });
   await confirm.waitFor();
   await confirm.click();
