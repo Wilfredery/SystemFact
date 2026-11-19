@@ -7,9 +7,9 @@
  * user). The local integration harness is DOWN (no Docker), so the first-click
  * disable and the derived-render logic are pinned by the jsdom suite in
  * `src/modules/cobros/ui/__tests__/cobros-ui.spec.tsx`; THIS spec closes the loop
- * against a real Postgres: a rapid double-click on the payment form persists AT MOST
- * ONE COBRO (the server revalidates + row-locks), and the estado de cuenta renders
- * the derived facts for a mixed-state customer.
+ * against a real Postgres: a rapid double-click on the S15 confirmation modal's
+ * `Confirmar Pago` persists AT MOST ONE COBRO (the server revalidates + row-locks),
+ * and the estado de cuenta renders the derived facts for a mixed-state customer.
  *
  * Preconditions (skips otherwise, never silently passes): the seeded E2E company has
  * at least one VIGENTE invoice with a positive derived pending balance — i.e. a CREDIT
@@ -75,7 +75,7 @@ async function crearVentaCreditoPendiente(page: Page): Promise<number> {
     label: CLIENTE_CREDITO_DEMO_NOMBRE,
   });
   await buscarYAgregar(page, E2E_PRODUCT);
-  const { ventaId } = await guardarYConfirmar(page);
+  const { ventaId } = await guardarYConfirmar(page, pool);
 
   const factura = await pool.query(
     `select f.id from "FACTURA" f
@@ -217,29 +217,35 @@ test.describe("cobros board + collection idempotency (fase-6 R-C7)", () => {
     const fila = await filaCxcEnBoard(page, facturaId);
     await fila.getByRole("button", { name: `Cobrar factura ${facturaId}` }).click();
 
-    const confirmar = page.getByRole("button", { name: `Confirmar cobro factura ${facturaId}` });
-    await confirmar.waitFor();
+    // Board-03 S15: `Cobrar` opens the shared confirmation modal, prefilled with
+    // the canonical pending balance as a full collection (the operator confirms
+    // the amount the modal already shows; nothing is entered blind).
+    const modal = page.getByTestId(`modal-cobro-${facturaId}`);
+    await modal.waitFor();
+    await expect(page.getByLabel(`Monto del pago factura ${facturaId}`)).not.toHaveValue("");
+    await expect(page.getByTestId(`cobro-saldo-pendiente-${facturaId}`)).toContainText("Saldo pendiente");
+
+    const confirmar = page.getByRole("button", { name: `Confirmar pago factura ${facturaId}` });
+    await expect(confirmar).toBeEnabled();
 
     const antes = await contarCobros(facturaId);
 
     // Rapid double-click on the SAME cycle: the button disables during flight
-    // (first-click disable; PaymentForm re-enables after resolution so a
-    // PARTIAL-remaining balance can take further ABONO payments - the server
-    // revalidates rate/balance and rejects overpayment, per AGENTS.md).
+    // (first-click disable + the modal's single-flight guard) so only ONE
+    // collection can ever be sent; the server revalidates rate/balance and
+    // rejects overpayment, per AGENTS.md.
     await confirmar.dblclick();
+
+    // The modal's success feedback is the committed collection's non-fiscal
+    // receipt link (`Ver / reimprimir recibo #N`). The modal lives at board
+    // level, so it survives the reload `onCobrado` triggers.
+    await expect(page.locator('[data-testid^="cobro-recibo-link-"]')).toBeVisible({
+      timeout: 30_000,
+    });
 
     // The idempotency PROOF is in the DB, not in a stale post-resolution
     // disabled flag: exactly ONE inserted row (antes+1) despite TWO click
     // events (first-click disable + single-flight guard + row lock).
-    //
-    // NOTE (regression 2026-10-10): an earlier revision also asserted the
-    // PaymentForm's "Cobro registrado" success toast. That toast lives inside
-    // the row's PaymentForm, and the parent reload triggered by `onCobrado()`
-    // legitimately drops the fully-paid row from its bucket, unmounting the
-    // form (and the toast) whenever the canonical refetch resolves before the
-    // assertion looks. The spec (R-C7) requires disable-on-first-click plus
-    // "at most one collection persists" — NOT a long-lived toast — so the
-    // assertion is the DB commit itself, plus the visible canonical refresh.
     await expect
       .poll(() => contarCobros(facturaId), { timeout: 30_000 })
       .toBe(antes + 1);
@@ -269,16 +275,20 @@ test.describe("cobros board + collection idempotency (fase-6 R-C7)", () => {
 
     // Ledger hygiene on a shared prod: settle the invoice this test created so
     // the demo credit wallet keeps ONLY the collections the suite actually
-    // exercised. Full prefill mirrors the operator cobro path (single click).
+    // exercised. Full prefill mirrors the operator cobro path (single click on
+    // the S15 modal's `Confirmar Pago`, whose amount is already the pending one).
     // Same re-pin as test 1: reach the row through the server-paged board walk.
     const fila = await filaCxcEnBoard(page, facturaId);
     await fila.getByRole("button", { name: `Cobrar factura ${facturaId}` }).click();
-    const confirmar = page.getByRole("button", { name: `Confirmar cobro factura ${facturaId}` });
-    await confirmar.waitFor();
+    await page.getByTestId(`modal-cobro-${facturaId}`).waitFor();
+    const confirmar = page.getByRole("button", { name: `Confirmar pago factura ${facturaId}` });
     await confirmar.click();
     // Same spec-true assertion as the double-click test: the canonical view's
-    // reload may unmount the form (and its toast) once the row is fully paid,
-    // so the proof is the DB commit — one APLICADO COBRO for this invoice.
+    // reload may drop the row, so the proof is the modal's receipt link plus
+    // the DB commit — one APLICADO COBRO for this invoice.
+    await expect(page.locator('[data-testid^="cobro-recibo-link-"]')).toBeVisible({
+      timeout: 30_000,
+    });
     await expect.poll(() => contarCobros(facturaId), { timeout: 30_000 }).toBe(1);
   });
 });

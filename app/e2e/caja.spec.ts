@@ -173,7 +173,7 @@ test.describe("/caja (caja T5)", () => {
     await page.goto("/venta");
     await page.getByRole("heading", { name: "Point of sale" }).waitFor();
     await buscarYAgregar(page, E2E_PRODUCT);
-    const { ventaId } = await guardarYConfirmar(page);
+    const { ventaId } = await guardarYConfirmar(page, pool);
     const pagos = await pagosDeLaVenta(ventaId);
     expect(pagos, `cash receipt of venta ${ventaId}`).toHaveLength(1);
     expect(pagos[0]?.tipo).toBe("COBRO");

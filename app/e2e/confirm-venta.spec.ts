@@ -2,9 +2,15 @@
  * Fase-5c E2E smoke (task 4.6): the confirm happy path through the REAL stack.
  *
  * Flow: login (remote Supabase) → POS → search → add to cart → save draft →
- * confirm → assert CONFIRMADA + NCF on the screen → assert the full observable
- * chain in the LOCAL dev DB (VENTA flip, VIGENTE FACTURA with the shown NCF,
- * NCF_SECUENCIA advanced, one SALIDA_VENTA movement).
+ * confirm → assert the emitted invoice on the surface the app leaves open →
+ * assert the full observable chain in the LOCAL dev DB (VENTA flip, VIGENTE
+ * FACTURA with the shown NCF, NCF_SECUENCIA advanced, one SALIDA_VENTA
+ * movement).
+ *
+ * Post-confirm surface (board 02, S5): the CASH test ends on the receipt route
+ * `/venta/factura/<facturaId>` (PosScreen navigates for a CONTADO confirm with
+ * no NCF warning); the CREDIT test stays on `/venta` with the
+ * `Sale #N confirmed — invoice <NCF>` banner plus the row in "My drafts".
  *
  * PREREQUISITES (documented in SETUP-LOCAL.md — the "seed+DB caveat"):
  *   1. Local Postgres up (`docker compose up -d`) and `prisma migrate deploy`.
@@ -100,29 +106,18 @@ test.describe("confirm smoke (R-V15)", () => {
     await page.goto("/venta");
     await page.getByRole("heading", { name: "Point of sale" }).waitFor();
 
-    // Build a one-line cart and save the draft.
-    await page.getByLabel("Search products").fill(E2E_PRODUCT);
-    await page.getByRole("button", { name: "Search" }).click();
-    await page.getByRole("button", { name: "Add" }).first().click();
-    await page.getByRole("button", { name: "Save draft" }).click();
+    // Build a one-line cart (no client → CONTADO) and save the draft.
+    await buscarYAgregar(page, E2E_PRODUCT);
+    const { ventaId, ncf: saleNcf, facturaId } = await guardarYConfirmar(page, pool);
 
-    // The saved BORRADOR appears in "My drafts" with its confirm control.
-    // Board-02 S6: the draft list is collapsed by default — expand it first.
-    await page.getByRole("button", { name: /My drafts/ }).click();
-
-    const confirm = page.getByRole("button", { name: /Confirm draft \d+/ });
-    await confirm.waitFor();
-    await confirm.click();
-
-    // Success status carries the invoice NCF and the row flips CONFIRMADA.
-    const status = page.getByRole("status");
-    await expect(status).toContainText(/confirmed — invoice B\d+/);
-    const saleNcf = (await status.textContent())!.match(/invoice (B\d+)/)![1];
-    const ventaId = Number((await status.textContent())!.match(/#(\d+)/)![1]);
-
-    const row = page.getByTestId(`venta-fila-${ventaId}`);
-    await expect(row).toContainText("CONFIRMADA");
-    await expect(row).toContainText(saleNcf);
+    // Board-02 S5: a CONTADO confirm without an NCF warning leaves the POS on
+    // the emitted invoice's receipt. The document IS the success surface: it
+    // shows the NCF and the derived payment verdict (a cash sale auto-settles).
+    await expect(page).toHaveURL(new RegExp(`/venta/factura/${facturaId}$`));
+    const receipt = page.getByTestId("factura-print");
+    await expect(receipt).toBeVisible();
+    await expect(page.getByTestId("factura-ncf")).toContainText(saleNcf);
+    await expect(page.getByTestId("factura-forma-pago")).toHaveText("Contado — pagada");
 
     // Observable chain in the LOCAL dev DB (assertions only, superuser reads).
     const venta = await pool.query(
@@ -188,10 +183,14 @@ test.describe("confirm smoke (R-V15)", () => {
     });
     await buscarYAgregar(page, E2E_PRODUCT);
 
-    const { ventaId, ncf } = await guardarYConfirmar(page);
-    // The banner carries the emitted NCF (same copy shape as the cash path).
+    const { ventaId, ncf } = await guardarYConfirmar(page, pool);
+    // A CREDITO confirm STAYS on /venta (board-02 S5: the due-date verdict must
+    // be readable): the banner carries the emitted NCF and the row flips
+    // CONFIRMADA in "My drafts".
     await expect(page.getByText(/Sale #\d+ confirmed — invoice B\d+/)).toBeVisible();
-    await expect(page.getByTestId(`venta-fila-${ventaId}`)).toContainText(ncf);
+    const row = page.getByTestId(`venta-fila-${ventaId}`);
+    await expect(row).toContainText("CONFIRMADA");
+    await expect(row).toContainText(ncf);
 
     const venta = await pool.query(
       `select estado from "VENTA" where id = $1 and "empresaId" = $2 and "sucursalId" = $3`,

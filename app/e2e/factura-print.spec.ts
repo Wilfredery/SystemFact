@@ -7,8 +7,9 @@
  * ITBIS desglosado, total, forma de pago) → click Imprimir (must not throw) →
  * assert the DB invoice count did NOT change (a reprint never mints an NCF, S4).
  *
- * ENV: E2E_USER/E2E_PASSWORD (Supabase Auth), E2E_BASE_URL (default localhost),
- * DATABASE_URL or DIRECT_URL for the invoice lookup. Skips are NOT allowed
+ * ENV: E2E_USER/E2E_PASSWORD (Supabase Auth), DATABASE_URL or DIRECT_URL for
+ * the invoice lookup (the base URL comes from `playwright.config.ts`). Skips
+ * are NOT allowed
  * downstream (assert-no-skips.mjs), so the invoice precondition FAILS loudly.
  */
 
@@ -18,7 +19,6 @@ import { Pool } from "pg";
 import { login } from "./utils/login";
 import { E2E_PASSWORD, E2E_USER } from "./utils/venta-pos";
 
-const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const pool = new Pool({
   connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
 });
