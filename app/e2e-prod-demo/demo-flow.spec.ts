@@ -35,6 +35,7 @@ import {
   SLOW,
   addProduct,
   confirmDraft,
+  type ConfirmedSale,
   firstCreditClient,
   firstProductWithStock,
   openPos,
@@ -49,7 +50,7 @@ const run: {
   stockAfterCash?: Decimal;
   stockAfterCredit?: Decimal;
   credit?: { id: number; name: string };
-  creditSale?: { ventaId: number; ncf: string };
+  creditSale?: ConfirmedSale;
   facturaId?: number;
   receipt?: number;
 } = {};

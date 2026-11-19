@@ -65,6 +65,14 @@ export async function saveDraft(page: Page): Promise<number> {
  * far more than exists, read "available" from the insufficient-stock warning, then
  * cancel the draft (CANCELADA: no NCF, no stock effect).
  */
+/**
+ * Board-02 S6: the "My drafts" card is collapsed by default — expand it before
+ * touching any draft row (warnings, cancel, confirm).
+ */
+async function expandDrafts(page: Page): Promise<void> {
+  await page.getByRole("button", { name: /My drafts/ }).click();
+}
+
 export async function readAvailableStock(page: Page, product: string): Promise<Decimal> {
   await openPos(page);
   await addProduct(page, product);
@@ -72,6 +80,7 @@ export async function readAvailableStock(page: Page, product: string): Promise<D
   const probeQuantity = Decimal.min(99_999_999, PROBE_MONEY.div(price).floor());
   await page.getByLabel(`Quantity for ${product}`).fill(probeQuantity.toFixed(0));
   const draftId = await saveDraft(page);
+  await expandDrafts(page);
 
   const warning = page
     .getByRole("alert")
@@ -136,7 +145,19 @@ export async function firstCreditClient(page: Page): Promise<{ id: number; name:
   throw new Error("The demo company shows no CREDITO client in the point of sale.");
 }
 
-export type ConfirmedSale = { ventaId: number; ncf: string };
+export type ConfirmedSale = {
+  /** Undefined on the receipt branch (CONTADO): the route carries the FACTURA id. */
+  readonly ventaId?: number;
+  readonly ncf: string;
+};
+
+/** Both NCF surfaces must carry the requested fiscal series in the 11-char grammar. */
+function validarNcf(ncf: string, ncfPrefix: "B01" | "B02"): void {
+  expect(ncf.startsWith(ncfPrefix), `the invoice NCF must be a ${ncfPrefix} series number`).toBe(
+    true,
+  );
+  expect(ncf, `a ${ncfPrefix} NCF has 11 characters`).toMatch(/^B\d{10}$/);
+}
 
 /**
  * Confirm the saved draft and read the sale id and NCF from the success banner.
@@ -147,7 +168,29 @@ export async function confirmDraft(
   draftId: number,
   ncfPrefix: "B01" | "B02",
 ): Promise<ConfirmedSale> {
+  await expandDrafts(page);
   await page.getByRole("button", { name: `Confirm draft ${draftId}` }).click();
+
+  // Board-02 S5: a CONTADO confirm without an NCF warning navigates to the
+  // receipt route; CREDITO (or a warned CONTADO) stays with the banner. The
+  // banner and the navigation fire in the same continuation, so the URL wins.
+  const rutaRecibo = /\/venta\/factura\/(\d+)$/;
+  const enRecibo = await page
+    .waitForURL(rutaRecibo, { timeout: 1_500 })
+    .then(() => true, () => false);
+
+  if (enRecibo) {
+    const doc = page.getByTestId("factura-print");
+    await expect(doc, "the emitted receipt must render").toBeVisible({ timeout: SLOW });
+    const ncf = (await page.getByTestId("factura-ncf").textContent())!
+      .replace(/^NCF:\s*/, "")
+      .trim();
+    validarNcf(ncf, ncfPrefix);
+    // The receipt route carries the FACTURA id, not the VENTA id; the cash
+    // journey needs neither the row nor a further id, so ventaId is undefined.
+    return { ncf };
+  }
+
   const banner = page.getByText(/Sale #\d+ confirmed — invoice B\d+/);
   await expect(banner, "the sale confirmation banner must appear").toBeVisible({
     timeout: SLOW,
@@ -155,10 +198,7 @@ export async function confirmDraft(
   const text = (await banner.textContent())!;
   const ventaId = Number(text.match(/Sale #(\d+)/)![1]);
   const ncf = text.match(/invoice (B\d+)/)![1];
-  expect(ncf.startsWith(ncfPrefix), `the invoice NCF must be a ${ncfPrefix} series number`).toBe(
-    true,
-  );
-  expect(ncf, `a ${ncfPrefix} NCF has 11 characters`).toMatch(/^B\d{10}$/);
+  validarNcf(ncf, ncfPrefix);
 
   const row = page.getByTestId(`venta-fila-${ventaId}`);
   await expect(row).toContainText("CONFIRMADA");
