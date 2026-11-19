@@ -110,3 +110,18 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
 - L8: BOARD REPORT 03 delivered (B1–B8 + C1–C2); owner: "Go with
   recommendations" → S9–S16. B1 resolved wireframe-wins per the board-02
   precedent; B6 approved with the server-banded date.
+- L9: T7–T10 landed (518d463, d9b709d, 557d251, 46ec732 migration-only,
+  a2a3d00). Suite 2713/2713. Note: KPI strip is search-scoped while a filter
+  is active (flagged to owner, no objection received).
+- L10: JD round 1 (A + B): S9 flagged for a stale local ROLES_COBROS copy in
+  cobros-autorizacion.integration.test.ts; A's MEDIUMs (modal close during
+  in-flight confirm; fecha-cobro horizon config read unconditionally) and
+  B's SUGGESTIONs reconciled. Remediation (in flight): close guard, lazy
+  horizon read, history take cap 100, strict /^\d+$/ id parse, real
+  constants imported + Cobrador-allowed integration case added. Cosmetic
+  riders logged: client-clock default payment date, statement fetch
+  company-wide (R-C7 documented), errors.ts header count drift,
+  Totales.tsx mixed copy. Integration-lane pins for CI: Cobrador grant,
+  fecha band on real Postgres, migration apply + 81-char rejection,
+  saldo parity incl. REEMBOLSO/REVERTIDO, literal %/_ search, tenant-B
+  isolation.
