@@ -1,3 +1,15 @@
+## [0.38.0](https://github.com/Wilfredery/SystemFact/compare/v0.37.3...v0.38.0) (2026-11-19)
+
+### Added
+
+* **venta (UI/UX board 02):** the POS aligns to the factura.penpot wireframe — Despachador granted POS access per the wireframe role map (ROLES_VENTA), quick-amounts row (exact/RD$100/200/500/1000/2000/5000) beside the on-screen numeric keypad, per-line ITBIS-rate chips, cash-only sales navigate to the generated receipt, drafts collapsed by default, server-side role matrix pinned by tests.
+* **cobros (UI/UX board 03):** Cobrador joins the collections role matrix per the wireframe; board shows client names and days outstanding; KPI strip (total pendiente / facturas pendientes / en mora) computed from the canonical ADR-017 saldo; search plus "Próximas a vencer" panel; new per-invoice detail route with payment history; payment form gains a server-banded fecha del pago and optional referencia (new Pago.referencia column, migration 20261118120000); confirmation is an explicit F0 modal with the shared keypad; the whole module retrofits to F0 tokens.
+* **inventario (UI/UX board 04):** consulta rows gain a manage-group ⋯ menu (Ajustar prefills the adjust form with the product's code; Historial opens the movement history filtered by EXACT product code, a new `productoCodigo` filter taking precedence over the free-text search); "Cantidad a ajustar" label with the shared NumericKeypad; the manual-adjustment reason becomes a frozen `MOTIVOS_AJUSTE` enum enforced at the zod transport and domain boundary before composition; the UI retrofits to F0 tokens/primitives with a new `--success-fg` WCAG-AA token.
+
+### Fixed
+
+* Judgment-Day dual review remediations across the three boards: cash sale no longer navigates away before the crédito verdict/NCF banner renders; hidden return button for roles the server rejects; payment modal can no longer be closed during an in-flight confirm (double-coBRO guard); fecha del pago horizon config read lazily; a per-row menu rendered only with the server-granted permission; keypad decimal edge states; stale docblock comments and idempotency notes corrected.
+
 ## [0.37.3](https://github.com/Wilfredery/SystemFact/compare/v0.37.2...v0.37.3) (2026-11-18)
 
 ### Fixed
