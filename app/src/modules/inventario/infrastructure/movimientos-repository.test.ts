@@ -62,6 +62,24 @@ describe("listarMovimientosEnTx", () => {
     });
   });
 
+  it("filters by exact productoCodigo (board-04 S19): plain equality, never a contains", async () => {
+    const { tx, findMany } = fakeTx();
+    await listarMovimientosEnTx(
+      tx,
+      ctx,
+      { ...filtros, productoCodigo: "P-007" },
+      { page: 1, limit: 25 },
+    );
+
+    // "P-007" must NOT match a sibling product coded "P-0070" or a name that
+    // contains the code — the exact filter takes precedence over the text.
+    expect(findMany.mock.calls[0][0].where.inventario).toEqual({
+      sucursalId: 3,
+      sucursal: { empresaId: 7 },
+      producto: { codigo: "P-007" },
+    });
+  });
+
   it("escapes LIKE wildcards so % and _ in the text match literally", async () => {
     const { tx, findMany } = fakeTx();
     await listarMovimientosEnTx(tx, ctx, { ...filtros, producto: "100%_a\\b" }, { page: 1, limit: 25 });

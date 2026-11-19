@@ -309,6 +309,26 @@ function MenuFila({ codigo }: { readonly codigo: string }) {
   const botonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Keyboard access (JD-A round-2 N3): on open, focus lands on the panel's
+  // first item, so Tab reaches the items and Shift+Tab returns to the button.
+  useEffect(() => {
+    if (!abierto) return;
+    menuRef.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus();
+  }, [abierto]);
+
+  // A scroll or resize moves a fixed panel out from under its button: close it
+  // (JD-A round-2 N5). Capture catches the table's own overflow scroll too.
+  useEffect(() => {
+    if (!abierto) return;
+    const cerrar = () => setAbierto(false);
+    window.addEventListener("scroll", cerrar, true);
+    window.addEventListener("resize", cerrar);
+    return () => {
+      window.removeEventListener("scroll", cerrar, true);
+      window.removeEventListener("resize", cerrar);
+    };
+  }, [abierto]);
+
   function alternar() {
     if (abierto) {
       setAbierto(false);

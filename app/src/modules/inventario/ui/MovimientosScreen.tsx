@@ -192,6 +192,23 @@ export function MovimientosScreen({
         </label>
       </div>
 
+      {/* Board-04 S19: the row-menu exact filter is sticky; make it visible
+          and clearable, otherwise the search box would silently do nothing. */}
+      {filtros.productoCodigo.trim() !== "" && (
+        <div data-testid="filtro-producto-codigo" className="flex items-center gap-2 text-sm">
+          <span className="text-ink-muted">Producto:</span>
+          <span className="font-mono text-ink">{filtros.productoCodigo.trim()}</span>
+          <button
+            type="button"
+            aria-label="Quitar filtro de producto"
+            onClick={() => void consultar({ ...filtros, productoCodigo: "" }, 1)}
+            className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-md border border-line text-ink hover:bg-surface-muted"
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+        </div>
+      )}
+
       {data !== null && data.items.length === 0 && (
         <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
           No hay movimientos que coincidan con los filtros.

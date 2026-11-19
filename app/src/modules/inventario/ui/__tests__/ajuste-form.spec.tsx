@@ -154,10 +154,9 @@ describe("AjusteInventarioForm — row-menu prefill (board-04 S19)", () => {
 
   it("leaves the form untouched when the code has no exact match", async () => {
     jest.useFakeTimers();
-    mockConsultar.mockResolvedValueOnce({
-      ok: true,
-      data: { ...resultadoBusqueda(), items: [] },
-    });
+    // Non-empty results WITHOUT the requested code: a wrong "pick the first
+    // result" implementation would fill the field and must fail this pin.
+    mockConsultar.mockResolvedValueOnce({ ok: true, data: resultadoBusqueda() });
     render(<AjusteInventarioForm productoPreseleccionado="P-404" />);
     await act(async () => {
       jest.advanceTimersByTime(0);
