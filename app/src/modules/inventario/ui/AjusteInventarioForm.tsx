@@ -9,34 +9,31 @@
  * the new total: the live line shows what the stock will become. Quantities are
  * Decimal strings end to end, never floats.
  *
- * The adjust action is not idempotent (odd/tasks/inventario-ajuste.md, L2), so
- * Confirmar stays disabled from the first click, and when the outcome is unknown
- * (the action rejects) it stays disabled for good and sends the user to check
- * the Inventario list instead of offering a retry.
+ * The adjust action is idempotent by `requestId`: Confirmar stays disabled from
+ * the first click, and when the outcome is unknown (the action rejects, i.e.
+ * timeout/network) the fields stay locked and the retry repeats the same
+ * `requestId`, so the server applies the request at most once.
  */
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Decimal from "decimal.js";
+import { NumericKeypad, type TeclaNumerica } from "@/components/ui/numeric-keypad";
+import { componerValor } from "@/modules/venta/ui/carro";
 import {
   ajustarInventarioAction,
   consultarInventarioAction,
 } from "@/modules/inventario/http/actions";
-import { STOCK_MAXIMO } from "@/modules/inventario/domain/inventario";
+import {
+  MOTIVOS_AJUSTE,
+  STOCK_MAXIMO,
+} from "@/modules/inventario/domain/inventario";
 
 const DEBOUNCE_BUSQUEDA_MS = 300;
 const LIMITE_BUSQUEDA = 25;
 const MAX_OBSERVACIONES = 200;
 const CANTIDAD_RE = /^\d{1,9}(\.\d{1,3})?$/;
-const MOTIVOS = [
-  "Conteo físico",
-  "Merma",
-  "Producto dañado",
-  "Producto vencido",
-  "Corrección de error",
-  "Otro",
-] as const;
 const MENSAJE_FORMATO_CANTIDAD = "Use punto decimal y hasta 3 decimales (ejemplo: 1.5).";
 const MENSAJE_CANTIDAD_CERO = "La cantidad debe ser mayor que 0.";
 const MENSAJE_STOCK_MAXIMO = "La existencia resultante supera el máximo permitido (999,999,999.999).";
@@ -95,6 +92,9 @@ export function AjusteInventarioForm({
   const [tipo, setTipo] = useState<TipoAjuste | null>(null);
   const [motivo, setMotivo] = useState("");
   const [cantidad, setCantidad] = useState("0");
+  // Touch-first quantity entry (board-04 S21): the shared F0 keypad opens when
+  // the quantity field takes focus and closes when any other field does.
+  const [tecladoActivo, setTecladoActivo] = useState(false);
   const [observaciones, setObservaciones] = useState("");
   const [envio, setEnvio] = useState<EstadoEnvio>("libre");
   const [errorNegocio, setErrorNegocio] = useState<string | null>(null);
@@ -165,6 +165,20 @@ export function AjusteInventarioForm({
     setAvisoBusqueda(null);
   }
 
+  function aplicarTecla(tecla: TeclaNumerica): void {
+    setCantidad((prev) => {
+      // The untouched "0" placeholder behaves like an empty base: the first
+      // digit replaces it (never "010.5"), "0." stays a legal decimal state,
+      // and BSP/CLR clear it entirely.
+      if (prev === "0") {
+        if (tecla === ".") return "0.";
+        if (tecla === "BSP" || tecla === "CLR") return "";
+        return tecla;
+      }
+      return componerValor(prev, tecla, 3);
+    });
+  }
+
   function elegirProducto(p: ProductoElegible) {
     ultimaBusqueda.current++;
     setProducto(p);
@@ -205,7 +219,10 @@ export function AjusteInventarioForm({
       const r = await ajustarInventarioAction({
         productoId: producto.productoId,
         cantidad: `${tipo === "SALIDA" ? "-" : ""}${cantidad.trim()}`,
-        motivo: detalle === "" ? motivo : `${motivo}: ${detalle}`,
+        motivo,
+        // Board-04 S22: the reason rides as its frozen enum value and the
+        // detail rides separately; the USE CASE composes "Motivo: detalle".
+        ...(detalle === "" ? {} : { observaciones: detalle }),
         requestId,
       });
       if (r.ok) {
@@ -246,6 +263,7 @@ export function AjusteInventarioForm({
           autoComplete="off"
           value={texto}
           onChange={(e) => cambiarTexto(e.target.value)}
+          onFocus={() => setTecladoActivo(false)}
           placeholder="Seleccionar producto..."
           className={CLASE_CONTROL}
         />
@@ -310,10 +328,11 @@ export function AjusteInventarioForm({
           id="ajuste-motivo"
           value={motivo}
           onChange={(e) => setMotivo(e.target.value)}
+          onFocus={() => setTecladoActivo(false)}
           className={CLASE_CONTROL}
         >
           <option value="">Seleccionar motivo...</option>
-          {MOTIVOS.map((m) => (
+          {MOTIVOS_AJUSTE.map((m) => (
             <option key={m} value={m}>
               {m}
             </option>
@@ -323,7 +342,7 @@ export function AjusteInventarioForm({
 
       <div className="flex flex-col gap-2">
         <label htmlFor="ajuste-cantidad" className={CLASE_ETIQUETA}>
-          Nueva cantidad *
+          Cantidad a ajustar *
         </label>
         <input
           id="ajuste-cantidad"
@@ -332,11 +351,21 @@ export function AjusteInventarioForm({
           autoComplete="off"
           value={cantidad}
           onChange={(e) => setCantidad(e.target.value)}
-          onFocus={(e) => e.currentTarget.select()}
+          onFocus={(e) => {
+            e.currentTarget.select();
+            setTecladoActivo(true);
+          }}
           placeholder="0"
           aria-describedby="ajuste-cantidad-detalle"
           className={CLASE_CONTROL}
         />
+        {tecladoActivo && (
+          <NumericKeypad
+            onTecla={aplicarTecla}
+            ariaLabel="Teclado numérico cantidad a ajustar"
+            className="max-w-64"
+          />
+        )}
         <p id="ajuste-cantidad-detalle" aria-live="polite" className="min-h-5 text-sm">
           {stockInsuficiente ? (
             <span className="text-red-700 dark:text-red-300">Stock insuficiente</span>
@@ -363,6 +392,7 @@ export function AjusteInventarioForm({
           id="ajuste-observaciones"
           value={observaciones}
           onChange={(e) => setObservaciones(e.target.value)}
+          onFocus={() => setTecladoActivo(false)}
           maxLength={MAX_OBSERVACIONES}
           rows={3}
           placeholder="Detalle opcional del ajuste..."

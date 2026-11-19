@@ -278,8 +278,16 @@ export function InventarioScreen({
 /** Per-row ⋯ menu: "Ajustar" (prefill by code) and "Historial" (filtered history). */
 function MenuFila({ codigo, nombre }: { readonly codigo: string; readonly nombre: string }) {
   const [abierto, setAbierto] = useState(false);
+  // Close on focus leaving the menu entirely: `relatedTarget` is the element
+  // gaining focus, so moving focus INTO the items (click or Tab) must not
+  // close the menu before the item's click lands.
   return (
-    <div className="relative" onBlur={() => setAbierto(false)}>
+    <div
+      className="relative"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setAbierto(false);
+      }}
+    >
       <button
         type="button"
         aria-haspopup="menu"

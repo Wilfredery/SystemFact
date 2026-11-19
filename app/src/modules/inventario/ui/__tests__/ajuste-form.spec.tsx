@@ -96,7 +96,7 @@ function confirmar(): HTMLElement {
 }
 
 function escribirCantidad(valor: string): void {
-  fireEvent.change(screen.getByLabelText("Nueva cantidad *"), { target: { value: valor } });
+  fireEvent.change(screen.getByLabelText("Cantidad a ajustar *"), { target: { value: valor } });
 }
 
 async function elegirProducto(opcion = "P-007 — Arroz"): Promise<void> {
@@ -186,7 +186,7 @@ describe("AjusteInventarioForm — drawn layout (S3, S4)", () => {
     expect(screen.getByLabelText("Producto *")).toHaveAttribute("placeholder", "Seleccionar producto...");
     expect(screen.getByText("Tipo de ajuste *")).toBeInTheDocument();
     expect(screen.getByLabelText("Motivo *")).toBeInTheDocument();
-    const cantidad = screen.getByLabelText("Nueva cantidad *");
+    const cantidad = screen.getByLabelText("Cantidad a ajustar *");
     expect(cantidad).toHaveValue("0");
     expect(cantidad).toHaveAttribute("inputmode", "decimal");
     expect(cantidad).toHaveAttribute("placeholder", "0");
@@ -206,6 +206,13 @@ describe("AjusteInventarioForm — drawn layout (S3, S4)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Salida" }));
     expect(screen.getByRole("button", { name: "Salida" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Entrada" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("labels the quantity field as drawn by board-04 (S20)", () => {
+    render(<AjusteInventarioForm />);
+
+    expect(screen.getByText("Cantidad a ajustar *")).toBeInTheDocument();
+    expect(screen.queryByText("Nueva cantidad *")).not.toBeInTheDocument();
   });
 
   it("offers the placeholder and exactly the six standard motivos", () => {
@@ -448,6 +455,64 @@ describe("AjusteInventarioForm — confirm gating and live line (S2)", () => {
   });
 });
 
+describe("AjusteInventarioForm — NumericKeypad (board-04 S21)", () => {
+  it("opens the keypad when the quantity field takes focus", () => {
+    render(<AjusteInventarioForm />);
+
+    expect(
+      screen.queryByRole("group", { name: "Teclado numérico cantidad a ajustar" }),
+    ).not.toBeInTheDocument();
+    fireEvent.focus(screen.getByLabelText("Cantidad a ajustar *"));
+    expect(
+      screen.getByRole("group", { name: "Teclado numérico cantidad a ajustar" }),
+    ).toBeInTheDocument();
+  });
+
+  it("composes the quantity through the keypad keys, honoring the 3-decimal cap", async () => {
+    render(<AjusteInventarioForm />);
+    await elegirProducto();
+    fireEvent.click(screen.getByRole("button", { name: "Entrada" }));
+    fireEvent.change(screen.getByLabelText("Motivo *"), { target: { value: "Merma" } });
+    fireEvent.focus(screen.getByLabelText("Cantidad a ajustar *"));
+
+    fireEvent.click(screen.getByRole("button", { name: "1" }));
+    fireEvent.click(screen.getByRole("button", { name: "0" }));
+    fireEvent.click(screen.getByRole("button", { name: "." }));
+    fireEvent.click(screen.getByRole("button", { name: "5" }));
+    expect(screen.getByLabelText("Cantidad a ajustar *")).toHaveValue("10.5");
+    expect(screen.getByText("Existencia actual 150 → quedará 160.5")).toBeInTheDocument();
+
+    // The composer allows up to 3 decimals; the 4th is refused.
+    fireEvent.click(screen.getByRole("button", { name: "5" }));
+    expect(screen.getByLabelText("Cantidad a ajustar *")).toHaveValue("10.55");
+    fireEvent.click(screen.getByRole("button", { name: "5" }));
+    expect(screen.getByLabelText("Cantidad a ajustar *")).toHaveValue("10.555");
+    fireEvent.click(screen.getByRole("button", { name: "5" }));
+    expect(screen.getByLabelText("Cantidad a ajustar *")).toHaveValue("10.555");
+
+    fireEvent.click(screen.getByRole("button", { name: "CLR" }));
+    expect(screen.getByLabelText("Cantidad a ajustar *")).toHaveValue("");
+
+    fireEvent.click(screen.getByRole("button", { name: "2" }));
+    fireEvent.click(screen.getByRole("button", { name: "BSP" }));
+    expect(screen.getByLabelText("Cantidad a ajustar *")).toHaveValue("");
+  });
+
+  it("closes the keypad when another field takes focus", async () => {
+    render(<AjusteInventarioForm />);
+    await elegirProducto();
+    fireEvent.focus(screen.getByLabelText("Cantidad a ajustar *"));
+    expect(
+      screen.getByRole("group", { name: "Teclado numérico cantidad a ajustar" }),
+    ).toBeInTheDocument();
+
+    fireEvent.focus(screen.getByLabelText("Observaciones"));
+    expect(
+      screen.queryByRole("group", { name: "Teclado numérico cantidad a ajustar" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("AjusteInventarioForm — submit", () => {
   it("sends the unsigned amount for Entrada with the bare motivo, then goes to /inventario", async () => {
     render(<AjusteInventarioForm />);
@@ -463,6 +528,24 @@ describe("AjusteInventarioForm — submit", () => {
       requestId: expect.any(String),
     });
     expect(push).toHaveBeenCalledWith("/inventario");
+  });
+
+  it("rides the detail as separate observaciones; the enum reason stays pure (S22)", async () => {
+    render(<AjusteInventarioForm />);
+    await completar("Salida", "2.5", "Producto dañado");
+    fireEvent.change(screen.getByLabelText("Observaciones"), {
+      target: { value: "  Saco roto en el almacén  " },
+    });
+
+    await enviar();
+
+    expect(mockAjustar).toHaveBeenCalledWith({
+      productoId: 7,
+      cantidad: "-2.5",
+      motivo: "Producto dañado",
+      observaciones: "Saco roto en el almacén",
+      requestId: expect.any(String),
+    });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -480,35 +563,17 @@ describe("AjusteInventarioForm — submit", () => {
     });
   });
 
-  it("keeps the longest motivo plus the longest observaciones under the backend limit of 255", async () => {
+  it("keeps the longest observaciones at the 200-character cap, riding separately", async () => {
     render(<AjusteInventarioForm />);
     await completar("Entrada", "10", "Corrección de error");
     fireEvent.change(screen.getByLabelText("Observaciones"), { target: { value: "x".repeat(200) } });
 
     await enviar();
 
-    const enviado = mockAjustar.mock.calls[0][0] as { motivo: string };
-    expect(enviado.motivo).toBe("Corrección de error: " + "x".repeat(200));
-    expect(enviado.motivo.length).toBeLessThanOrEqual(255);
+    const enviado = mockAjustar.mock.calls[0][0] as { motivo: string; observaciones: string };
+    expect(enviado.motivo).toBe("Corrección de error");
+    expect(enviado.observaciones).toBe("x".repeat(200));
     expect(screen.getByLabelText("Observaciones")).toHaveAttribute("maxlength", "200");
-  });
-
-  it("sends a negative amount for Salida and appends the trimmed observaciones to the motivo", async () => {
-    render(<AjusteInventarioForm />);
-    await completar("Salida", "2.5", "Producto dañado");
-    fireEvent.change(screen.getByLabelText("Observaciones"), {
-      target: { value: "  Saco roto en el almacén  " },
-    });
-
-    await enviar();
-
-    expect(mockAjustar).toHaveBeenCalledWith({
-      productoId: 7,
-      cantidad: "-2.5",
-      motivo: "Producto dañado: Saco roto en el almacén",
-      requestId: expect.any(String),
-    });
-    expect(push).toHaveBeenCalledWith("/inventario");
   });
 
   it("treats whitespace-only observaciones as absent", async () => {
@@ -597,7 +662,7 @@ describe("AjusteInventarioForm — submit", () => {
       "/inventario",
     );
     // The fields are locked so the retry carries exactly the same data.
-    expect(screen.getByLabelText("Nueva cantidad *")).toBeDisabled();
+    expect(screen.getByLabelText("Cantidad a ajustar *")).toBeDisabled();
     expect(screen.getByLabelText("Motivo *")).toBeDisabled();
     expect(screen.getByLabelText("Observaciones")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Entrada" })).toBeDisabled();

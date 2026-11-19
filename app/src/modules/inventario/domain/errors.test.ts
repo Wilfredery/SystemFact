@@ -7,6 +7,7 @@ import {
   InventarioDomainError,
   messageFor,
   CANTIDAD_INVALIDA,
+  MOTIVO_NO_VALIDO,
   MOTIVO_VACIO,
   STOCK_INSUFICIENTE,
   STOCK_INSUFICIENTE_BLOQUEO,
@@ -28,6 +29,7 @@ describe("inventario error catalog", () => {
     const expectedCodes: readonly InventarioErrorCode[] = [
       CANTIDAD_INVALIDA,
       MOTIVO_VACIO,
+      MOTIVO_NO_VALIDO,
       STOCK_INSUFICIENTE,
       STOCK_INSUFICIENTE_BLOQUEO,
       STOCK_MAXIMO_EXCEDIDO,
@@ -55,6 +57,7 @@ describe("inventario error catalog", () => {
   it("pins the key business messages (stable contract for the UI)", () => {
     expect(messageFor(CANTIDAD_INVALIDA)).toContain("cantidad");
     expect(messageFor(MOTIVO_VACIO)).toContain("motivo");
+    expect(messageFor(MOTIVO_NO_VALIDO)).toContain("motivo");
     expect(messageFor(STOCK_INSUFICIENTE)).toContain("negativo");
     expect(messageFor(STOCK_INSUFICIENTE_BLOQUEO)).toContain("salida de venta");
     expect(messageFor(INVENTARIO_NO_ENCONTRADO)).toContain("inventario");

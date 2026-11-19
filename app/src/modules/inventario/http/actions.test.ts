@@ -132,7 +132,7 @@ describe("ajustarInventarioAction", () => {
   const validInput = {
     productoId: 5,
     cantidad: "5",
-    motivo: "Inventario físico",
+    motivo: "Conteo físico",
     requestId: "11111111-2222-4333-8444-555555555555",
   };
 
@@ -178,7 +178,7 @@ describe("ajustarInventarioAction", () => {
     expect(ajustarInventario).toHaveBeenCalledWith(expect.anything(), mockCtx, {
       productoId: 5,
       cantidad: "5",
-      motivo: "Inventario físico",
+      motivo: "Conteo físico",
       claveIdempotencia: "11111111-2222-4333-8444-555555555555",
     });
   });
@@ -212,6 +212,17 @@ describe("ajustarInventarioAction", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe(SESION_INVALIDA);
+    expect(ajustarInventario).not.toHaveBeenCalled();
+  });
+
+  it("rejects a free-text reason outside the frozen enum with VALIDATION_ERROR (board-04 S22)", async () => {
+    const result = await ajustarInventarioAction({
+      ...validInput,
+      motivo: "Motivo inventado",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(VALIDATION_ERROR);
     expect(ajustarInventario).not.toHaveBeenCalled();
   });
 

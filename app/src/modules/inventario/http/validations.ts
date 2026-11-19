@@ -1,4 +1,5 @@
 import { z } from "@/lib/zod";
+import { MOTIVOS_AJUSTE } from "../domain/inventario";
 import { TIPOS_MOVIMIENTO } from "../domain/movimientos";
 
 // Pagination for the stock listing (spec: default 25, max 100). Coercion lets
@@ -10,26 +11,12 @@ export const zListarInventarioQuery = z.object({
 
 export type ListarInventarioQueryDto = z.infer<typeof zListarInventarioQuery>;
 
-// Manual adjustment. `cantidad` is a SIGNED delta (negative reduces stock) as a
-// bounded decimal string: an optional sign, up to 9 integer digits and 3
-// decimals, matching the DB `Decimal(12,3)` column magnitude headroom. The sign
-// is validated here for shape; the domain validators still guard the magnitude
-// and the non-negative stock invariant downstream.
-const CANTIDAD_RE = /^[+-]?\d{1,9}(\.\d{1,3})?$/;
-
-export const zAjustarInventarioInput = z.object({
-  productoId: z.number().int().positive(),
-  cantidad: z
-    .string()
-    .regex(CANTIDAD_RE, "Cantidad inválida (máx 9 enteros y 3 decimales)"),
-  motivo: z.string().trim().min(1).max(255),
-  // One-time id of the user's intention (the form generates a UUID). The server
-  // dedupes on it per inventory row, so a retried request is applied once.
-  requestId: z.string().min(8).max(255),
-});
-
-export type AjustarInventarioInputDto = z.infer<typeof zAjustarInventarioInput>;
-
+// Manual adjustment DTO — declared AFTER `vacioAUndefined` (it reuses it).
+// `cantidad` is a SIGNED delta (negative reduces stock) as a bounded decimal
+// string: an optional sign, up to 9 integer digits and 3 decimals, matching the
+// DB `Decimal(12,3)` column magnitude headroom. The sign is validated here for
+// shape; the domain validators still guard the magnitude and the non-negative
+// stock invariant downstream.
 // Inventario consulta screen: pagination + the three wireframe filters. Empty
 // strings from a cleared form field count as "no filter".
 // Largest value of a Postgres int4 id column: beyond it the database raises a
@@ -37,6 +24,28 @@ export type AjustarInventarioInputDto = z.infer<typeof zAjustarInventarioInput>;
 const MAX_ID_INT4 = 2147483647;
 
 const vacioAUndefined = (v: unknown) => (v === "" || v === null ? undefined : v);
+
+const CANTIDAD_RE_AJUSTE = /^[+-]?\d{1,9}(\.\d{1,3})?$/;
+
+export const zAjustarInventarioInput = z.object({
+  productoId: z.number().int().positive(),
+  cantidad: z
+    .string()
+    .regex(CANTIDAD_RE_AJUSTE, "Cantidad inválida (máx 9 enteros y 3 decimales)"),
+  // Board-04 S22: the reason is a FROZEN enum, validated server-side; free
+  // text never crosses the HTTP boundary as a reason.
+  motivo: z.enum(MOTIVOS_AJUSTE),
+  // Optional detail, composed into the stored reason by the use case.
+  observaciones: z.preprocess(
+    vacioAUndefined,
+    z.string().trim().max(200).optional(),
+  ),
+  // One-time id of the user's intention (the form generates a UUID). The server
+  // dedupes on it per inventory row, so a retried request is applied once.
+  requestId: z.string().min(8).max(255),
+});
+
+export type AjustarInventarioInputDto = z.infer<typeof zAjustarInventarioInput>;
 
 export const zConsultarInventarioQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),

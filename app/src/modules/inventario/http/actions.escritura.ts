@@ -24,10 +24,10 @@ import {
 /**
  * Authorized manual stock adjustment.
  *
- * Validates the DTO, resolves the tenant session, gates Administrador /
- * Operador, and runs the atomic stock update + movement + audit inside the
- * tenant transaction. The signed `cantidad` delta and the mandatory `motivo`
- * are validated by the use case.
+ * Validates the DTO, resolves the tenant session, gates the manage group
+ * (Administrador only, ROLES_GESTION_INVENTARIO), and runs the atomic stock
+ * update + movement + audit inside the tenant transaction. The signed
+ * `cantidad` delta and the frozen-enum `motivo` are validated by the use case.
  */
 export async function ajustarInventarioAction(
   input: unknown,
@@ -66,6 +66,7 @@ export async function ajustarInventarioAction(
       productoId: parsed.productoId,
       cantidad: parsed.cantidad,
       motivo: parsed.motivo,
+      observaciones: parsed.observaciones,
       claveIdempotencia: parsed.requestId,
     });
     if (!result.ok) {

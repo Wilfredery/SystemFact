@@ -29,7 +29,7 @@ import {
 import {
   INVENTORY_SOURCE,
   validateAdjustmentQuantity,
-  validateMotivo,
+  validarMotivoAjuste,
 } from "../domain/inventario";
 import { ajustarStockEnTx } from "../infrastructure/inventario-repository";
 
@@ -37,7 +37,10 @@ export interface AjustarInventarioInput {
   readonly productoId: number;
   /** Signed delta as a bounded decimal string, e.g. "5.000" or "-4". */
   readonly cantidad: string;
+  /** One of the frozen MOTIVOS_AJUSTE reasons (board-04 S22). */
   readonly motivo: string;
+  /** Optional detail composed into the stored reason: "Motivo: detalle". */
+  readonly observaciones?: string;
   /** Client-generated id of this intention; a repeat returns the first result. */
   readonly claveIdempotencia: string;
 }
@@ -64,11 +67,14 @@ export async function ajustarInventario(
   ctx: TenantCtx,
   input: AjustarInventarioInput,
 ): Promise<AjustarInventarioResult> {
-  // Mandatory audit reason first — an adjustment without a motive is a gap.
-  const motivoError = validateMotivo(input.motivo);
+  // The reason must come from the frozen enum — validated BEFORE composition,
+  // so the detail can never smuggle a free-text reason past the whitelist.
+  const motivoError = validarMotivoAjuste(input.motivo);
   if (motivoError !== null) {
     return buildError(motivoError);
   }
+  const detalle = (input.observaciones ?? "").trim();
+  const motivoFinal = detalle === "" ? input.motivo : `${input.motivo}: ${detalle}`;
 
   // Parse the signed delta. A malformed value is rejected before any DB access.
   let delta: Decimal;
@@ -94,7 +100,7 @@ export async function ajustarInventario(
     const moved = await ajustarStockEnTx(tx, ctx, {
       productoId: input.productoId,
       delta: delta.toString(),
-      motivo: input.motivo.trim(),
+      motivo: motivoFinal,
       source: INVENTORY_SOURCE.MANUAL,
       claveIdempotencia: input.claveIdempotencia,
     });
