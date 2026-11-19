@@ -28,9 +28,11 @@ import type { ReactNode } from "react";
 import { CxcBoardScreen } from "@/modules/cobros/ui/CxcBoardScreen";
 import { EstadoDeCuentaScreen } from "@/modules/cobros/ui/EstadoDeCuentaScreen";
 import { ReciboReprintScreen } from "@/modules/cobros/ui/ReciboReprintScreen";
+import { DetalleFacturaScreen } from "@/modules/cobros/ui/DetalleFacturaScreen";
 import {
   consultarEstadoDeCuentaAction,
   consultarSaldoCxcAction,
+  obtenerDetalleCxcAction,
   registrarCobroAction,
   consultarReciboAction,
 } from "@/modules/cobros/http/actions";
@@ -40,6 +42,7 @@ import type {
   SaldoCxCVistaPagina,
   SaldoCxCVistaTablero,
 } from "@/modules/cobros/application/consultar-saldo-cxc";
+import type { DetalleCxcVista } from "@/modules/cobros/application/consultar-detalle-cxc";
 
 // next/link renders a plain anchor in the test host (no App Router context).
 jest.mock("next/link", () => ({
@@ -66,12 +69,14 @@ jest.mock("next/navigation", () => ({
 jest.mock("@/modules/cobros/http/actions", () => ({
   consultarSaldoCxcAction: jest.fn(),
   consultarEstadoDeCuentaAction: jest.fn(),
+  obtenerDetalleCxcAction: jest.fn(),
   registrarCobroAction: jest.fn(),
   consultarReciboAction: jest.fn(),
 }));
 
 const mockSaldo = jest.mocked(consultarSaldoCxcAction);
 const mockEstado = jest.mocked(consultarEstadoDeCuentaAction);
+const mockDetalle = jest.mocked(obtenerDetalleCxcAction);
 const mockCobro = jest.mocked(registrarCobroAction);
 const mockRecibo = jest.mocked(consultarReciboAction);
 
@@ -142,6 +147,7 @@ async function settle(): Promise<void> {
 beforeEach(() => {
   mockSaldo.mockReset();
   mockEstado.mockReset();
+  mockDetalle.mockReset();
   mockCobro.mockReset();
   mockRecibo.mockReset();
 });
@@ -423,5 +429,237 @@ describe("Receipt reprint (R-C4 non-fiscal)", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("[PAGO_NO_ENCONTRADO]");
     expect(alert.textContent).not.toMatch(/Prisma|Error:|at /);
+  });
+});
+
+/** One per-invoice detail payload (S13) — the HTTP DTO the screen renders. */
+function detalle(over: Partial<DetalleCxcVista> = {}): DetalleCxcVista {
+  return {
+    facturaId: 12,
+    ncf: "B0200001218",
+    correlativoInterno: "FAC-001218",
+    fechaEmision: "2026-07-01T16:00:00.000Z",
+    vencimiento: "2026-07-31",
+    clienteId: 3,
+    clienteNombre: "Ana Martínez",
+    clienteRnc: "123-45678-9",
+    tipoCliente: "CREDITO",
+    total: "82500.00",
+    abonado: "0.00",
+    saldo: "82500.00",
+    diasVencida: 36,
+    enMora: true,
+    historial: [],
+    ...over,
+  };
+}
+
+describe("Detalle de factura (S13 per-invoice detail)", () => {
+  it("renders the invoice header, the derived mora badge and the días vencida", async () => {
+    mockDetalle.mockResolvedValue({ ok: true, data: detalle() });
+    render(<DetalleFacturaScreen facturaId={12} />);
+    await settle();
+
+    // It reads ONLY the per-invoice detail action, tenant-scoped by the payload.
+    expect(mockDetalle).toHaveBeenCalledTimes(1);
+    expect(mockDetalle).toHaveBeenCalledWith({ facturaId: 12 });
+
+    const cabecera = screen.getByTestId("detalle-factura-cabecera").textContent ?? "";
+    expect(cabecera).toContain("FAC-001218");
+    expect(cabecera).toContain("B0200001218");
+    expect(cabecera).toContain("Ana Martínez");
+    expect(cabecera).toContain("123-45678-9");
+    expect(cabecera).toContain("Crédito");
+    expect(cabecera).toMatch(/82,500\.00/); // Total
+    expect(cabecera).toContain("En Mora");
+    expect(cabecera).toContain("36 días vencida");
+
+    // No Fecha del pago / Referencia fields yet (that is S14/T10, not this task).
+    expect(screen.queryByLabelText(/Fecha del pago/i)).toBeNull();
+    expect(screen.queryByLabelText(/Referencia/i)).toBeNull();
+  });
+
+  it("shows a CONTADO client as Contado and hides the mora badge when not overdue", async () => {
+    mockDetalle.mockResolvedValue({
+      ok: true,
+      data: detalle({ tipoCliente: "MINORISTA", enMora: false, diasVencida: -21 }),
+    });
+    render(<DetalleFacturaScreen facturaId={12} />);
+    await settle();
+
+    const cabecera = screen.getByTestId("detalle-factura-cabecera").textContent ?? "";
+    expect(cabecera).toContain("Contado");
+    expect(cabecera).not.toContain("En Mora");
+    expect(cabecera).not.toContain("días vencida");
+  });
+
+  it("lists the payment history newest-first and shows the empty state", async () => {
+    mockDetalle.mockResolvedValue({
+      ok: true,
+      data: detalle({
+        abonado: "1500.00",
+        saldo: "81000.00",
+        historial: [
+          {
+            correlativoRecibo: 43,
+            fecha: "2026-08-03T10:00:00.000Z",
+            tipo: "COBRO",
+            estado: "APLICADO",
+            monto: "500.00",
+            metodoPago: "EFECTIVO",
+            referencia: null,
+            usuarioNombre: "Ana",
+          },
+          {
+            correlativoRecibo: 42,
+            fecha: "2026-08-02T14:00:00.000Z",
+            tipo: "REEMBOLSO",
+            estado: "REGISTRADO",
+            monto: "100.00",
+            metodoPago: "EFECTIVO",
+            referencia: "REF-9",
+            usuarioNombre: "Luis",
+          },
+        ],
+      }),
+    });
+    const { unmount } = render(<DetalleFacturaScreen facturaId={12} />);
+    await settle();
+
+    const filaAlta = screen.getByTestId("detalle-pago-43").textContent ?? "";
+    expect(filaAlta).toMatch(/500\.00/);
+    expect(filaAlta).toContain("Cobro");
+    expect(filaAlta).toContain("Ana");
+    expect(filaAlta).toContain("43");
+    // The SD calendar day of the UTC instant (2026-08-03T10:00Z → 06:00 SD, same day).
+    expect(filaAlta).toContain("03/08/2026");
+    const filaBaja = screen.getByTestId("detalle-pago-42").textContent ?? "";
+    expect(filaBaja).toContain("Reembolso");
+    expect(filaBaja).toContain("REF-9");
+
+    unmount();
+    mockDetalle.mockResolvedValue({ ok: true, data: detalle() });
+    render(<DetalleFacturaScreen facturaId={12} />);
+    await settle();
+    expect(screen.getByText("Sin pagos registrados")).toBeInTheDocument();
+  });
+
+  it("prefills the pending balance and confirms ONE payment, then reloads the invoice", async () => {
+    mockDetalle.mockResolvedValue({ ok: true, data: detalle() });
+    render(<DetalleFacturaScreen facturaId={12} />);
+    await settle();
+
+    const monto = screen.getByLabelText("Monto del pago factura 12");
+    // Prefilled with the derived pending balance (behaviour like PaymentForm).
+    expect(monto).toHaveValue("82500.00");
+    expect(monto).toHaveAttribute("inputmode", "decimal");
+    // The saldo note rides the panel.
+    expect(screen.getByTestId("detalle-saldo-pendiente").textContent).toMatch(
+      /82,500\.00/,
+    );
+
+    let resolver:
+      | ((v: {
+          ok: true;
+          data: { pagoId: number; correlativoRecibo: number; total: string; saldoPendiente: string };
+        }) => void)
+      | null = null;
+    mockCobro.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolver = resolve;
+        }),
+    );
+
+    const submit = screen.getByRole("button", { name: "Confirmar pago factura 12" });
+    fireEvent.click(submit);
+    expect(submit).toBeDisabled();
+    fireEvent.click(submit);
+    expect(mockCobro).toHaveBeenCalledTimes(1);
+    expect(mockCobro).toHaveBeenCalledWith({ facturaId: 12, monto: "82500.00" });
+
+    // The reload serves the updated derived saldo (never a client-side sum).
+    mockDetalle.mockResolvedValue({
+      ok: true,
+      data: detalle({ abonado: "82500.00", saldo: "0.00", enMora: false, diasVencida: 36 }),
+    });
+    resolver!({
+      ok: true,
+      data: { pagoId: 500, correlativoRecibo: 42, total: "82500.00", saldoPendiente: "0.00" },
+    });
+    await settle();
+
+    expect(mockDetalle).toHaveBeenCalledTimes(2);
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toContain("Pago registrado");
+    expect(status.textContent).toMatch(/0\.00/);
+    expect(screen.getByRole("link", { name: "Reimprimir recibo 42" })).toHaveAttribute(
+      "href",
+      "/cobros/recibo/42",
+    );
+  });
+
+  it("surfaces the stable over-payment code without stack traces and re-enables", async () => {
+    mockDetalle.mockResolvedValue({ ok: true, data: detalle() });
+    render(<DetalleFacturaScreen facturaId={12} />);
+    await settle();
+
+    mockCobro.mockResolvedValue({
+      ok: false,
+      error: {
+        code: "COBRO_EXCEDE_SALDO",
+        message: "El cobro supera el saldo pendiente de la factura; ajuste el monto",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar pago factura 12" }));
+
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toContain("[COBRO_EXCEDE_SALDO]");
+    expect(status.textContent).toContain("supera el saldo");
+    expect(status.textContent).not.toMatch(/at .*\.ts|Prisma|Error:/);
+    expect(
+      await screen.findByRole("button", { name: "Confirmar pago factura 12" }),
+    ).toBeEnabled();
+  });
+
+  it("offers Volver back to the collections board", async () => {
+    mockDetalle.mockResolvedValue({ ok: true, data: detalle() });
+    render(<DetalleFacturaScreen facturaId={12} />);
+    await settle();
+
+    expect(screen.getByRole("link", { name: "Volver" })).toHaveAttribute(
+      "href",
+      "/cobros/cxc-board",
+    );
+  });
+
+  it("surfaces the catalog error when the invoice is missing or not VIGENTE", async () => {
+    mockDetalle.mockResolvedValue({
+      ok: false,
+      error: {
+        code: "FACTURA_COBRO_NO_VIGENTE",
+        message: "La factura no está vigente; no se puede registrar un cobro",
+      },
+    });
+    render(<DetalleFacturaScreen facturaId={99} />);
+    await settle();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("[FACTURA_COBRO_NO_VIGENTE]");
+    expect(alert.textContent).not.toMatch(/Prisma|Error:|at /);
+  });
+
+  it("navigates a board row to the detail route while the inline form still works", async () => {
+    mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
+    render(<CxcBoardScreen />);
+    await settle();
+    // Additive navigation: the detail link sits next to the unchanged Cobrar button.
+    expect(
+      screen.getByRole("link", { name: "Ver detalle factura 1" }),
+    ).toHaveAttribute("href", "/cobros/factura/1");
+    const cobrar = screen.getByRole("button", { name: "Cobrar factura 1" });
+    expect(cobrar).toBeInTheDocument();
+    fireEvent.click(cobrar);
+    expect(await screen.findByTestId("cobro-form-1")).toBeInTheDocument();
   });
 });

@@ -13,9 +13,14 @@ import {
   type ReciboVista,
 } from "../application/consultar-recibo";
 import {
+  consultarDetalleCxc,
+  type DetalleCxcVista,
+} from "../application/consultar-detalle-cxc";
+import {
   SESION_INVALIDA,
   VALIDATION_ERROR,
   mensajeTransporte,
+  zConsultarDetalleCxcInput,
   zConsultarEstadoCuentaInput,
   zConsultarSaldoCxcInput,
   zConsultarReciboInput,
@@ -94,6 +99,40 @@ export async function consultarEstadoDeCuentaAction(
       return fail(PAGO_NO_AUTORIZADO, messageFor(PAGO_NO_AUTORIZADO));
     }
     const result = await consultarSaldoCxC(tx, ctx);
+    if (!result.ok) return fail(result.code, result.message);
+    return ok(result.data);
+  });
+}
+
+/**
+ * The per-invoice detail read (board-03 S13) behind `/cobros/factura/[facturaId]`:
+ * Zod-parsed invoice id, session, and the SAME cobros role gate as every other
+ * read in the module (S9 — Administrador/Operador/Cobrador; a Despachador is
+ * denied server-side, never by hiding a link). Delegates to the use case, which
+ * reads the canonical balance of that one invoice plus its payment history.
+ * `facturaId` is the only transport input, so an over- or under-shaped payload is
+ * rejected BEFORE any session or DB work.
+ */
+export async function obtenerDetalleCxcAction(
+  input: unknown,
+): Promise<ActionResult<DetalleCxcVista>> {
+  const parsed = zConsultarDetalleCxcInput.safeParse(input ?? {});
+  if (!parsed.success) return fail(VALIDATION_ERROR, mensajeTransporte(VALIDATION_ERROR));
+
+  const ctx = await resolverCtx();
+  if (ctx === null) return fail(SESION_INVALIDA, mensajeTransporte(SESION_INVALIDA));
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const permitido = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_COBROS,
+    );
+    if (!permitido) {
+      return fail(PAGO_NO_AUTORIZADO, messageFor(PAGO_NO_AUTORIZADO));
+    }
+    const result = await consultarDetalleCxc(tx, ctx, parsed.data);
     if (!result.ok) return fail(result.code, result.message);
     return ok(result.data);
   });

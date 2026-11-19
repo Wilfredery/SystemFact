@@ -212,3 +212,59 @@ export async function revertirPagosAplicadosDeVentaEnTx(
     monto: p.monto.toFixed(2),
   }));
 }
+
+/**
+ * One row of an invoice's payment history (board-03 S13 "Historial de Pagos"):
+ * the persisted payment facts plus the acting user's name and the receipt
+ * correlativo, so the history needs no follow-up query (AGENTS.md "No N+1").
+ * `monto` is the frozen `Decimal(12,2)` string.
+ */
+export interface FilaPagoHistorial {
+  readonly correlativoRecibo: number;
+  readonly fecha: Date;
+  readonly tipo: TipoPago;
+  readonly estado: EstadoPago;
+  readonly monto: string;
+  readonly metodoPago: string;
+  readonly usuarioNombre: string;
+}
+
+/**
+ * EVERY payment row of one invoice, newest first (board-03 S13) — the collection
+ * history a receipt-level view shows, with no state filter: an `APLICADO` cobro,
+ * a `REGISTRADO`/`APLICADO` refund and a `REVERTIDO` row are all part of the
+ * document's story, so nothing is hidden here (the DERIVED balance is the
+ * canonical fragment's job, never this list's). The `empresaId` pin plus the RLS
+ * GUCs keep the read tenant-bound; `facturaId` alone is never trusted. Ordering
+ * is `fecha DESC` with an `id DESC` tie-break so two payments registered in the
+ * same instant still render deterministically. `monto` crosses as a string
+ * (never a float); the PAGO table carries no free-text referencia in V1.
+ */
+export async function leerHistorialPagosFacturaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  facturaId: number,
+): Promise<FilaPagoHistorial[]> {
+  const pagos = await tx.pago.findMany({
+    where: { facturaId, empresaId: ctx.empresaId },
+    select: {
+      correlativoRecibo: true,
+      fecha: true,
+      tipo: true,
+      estado: true,
+      monto: true,
+      metodoPago: true,
+      usuario: { select: { nombre: true } },
+    },
+    orderBy: [{ fecha: "desc" }, { id: "desc" }],
+  });
+  return pagos.map((p) => ({
+    correlativoRecibo: p.correlativoRecibo,
+    fecha: p.fecha,
+    tipo: p.tipo,
+    estado: p.estado,
+    monto: p.monto.toFixed(2),
+    metodoPago: p.metodoPago,
+    usuarioNombre: p.usuario.nombre,
+  }));
+}

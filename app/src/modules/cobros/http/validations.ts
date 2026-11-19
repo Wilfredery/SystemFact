@@ -75,6 +75,15 @@ export const zConsultarSaldoCxcInput = z
 // account every read (whole view incl. settled rows — R-C7 statement semantics).
 export const zConsultarEstadoCuentaInput = z.object({}).optional();
 
+// The per-invoice detail read (board-03 S13) is addressed by the invoice id only:
+// a positive integer, so a malformed route segment never reaches the use case.
+// A cancelled/annulled/foreign invoice is the domain catalog's case (Zod owns the
+// SHAPE only, never a business verdict).
+export const zConsultarDetalleCxcInput = z.object({
+  facturaId: zFacturaId,
+});
+export type ConsultarDetalleCxcDto = z.infer<typeof zConsultarDetalleCxcInput>;
+
 // A receipt reprint is addressed by its company-serialized correlativoRecibo (R-C4).
 // A positive integer only — the domain/catalog owns the not-found case; Zod owns the
 // SHAPE (an id-less reprint request never reaches the read use case).

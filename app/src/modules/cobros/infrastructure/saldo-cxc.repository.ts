@@ -830,3 +830,72 @@ export interface PerfilCredito {
   readonly limiteCredito: string;
   readonly plazoCreditoDias: number;
 }
+
+/**
+ * ONE invoice's header as the per-invoice detail page renders it (board-03 S13):
+ * the canonical derived balance of that invoice (total / abonado / saldo) plus
+ * the fiscal identity (NCF, correlativo) and the client facts (name, RNC,
+ * `tipoCliente`, credit term) the header needs. Money stays the canonical
+ * `Decimal(12,2)` text.
+ *
+ * Only VIGENTE invoices exist in the canonical fragment — a cancelled, annulled,
+ * foreign or missing invoice yields `null`, and the use case maps that to the
+ * catalog's `FACTURA_COBRO_NO_VIGENTE` (a screen never invents a balance for a
+ * document that is no longer collectable).
+ */
+export interface FilaDetalleCxc {
+  readonly facturaId: number;
+  readonly clienteId: number;
+  readonly ncf: string;
+  readonly correlativoInterno: string;
+  readonly fechaEmision: Date;
+  readonly total: string;
+  readonly cobrosAplicados: string;
+  readonly saldoPendiente: string;
+  readonly clienteNombre: string;
+  readonly clienteIdentificacionFiscal: string | null;
+  /** Schema `TipoCliente` literal (`MINORISTA` / `MAYORISTA` / `CREDITO`). */
+  readonly clienteTipoCliente: string;
+  readonly plazoCreditoDias: number;
+}
+
+/**
+ * The per-invoice detail header (board-03 S13). It reads the SAME canonical
+ * ADR-017 fragment the board, the aging report and the over-payment guard use —
+ * narrowed to one invoice — and adds the identity joins, so the detail page can
+ * never show a balance that differs from the board's row for that invoice
+ * (single formula; no second derivation). The invoice narrowing is applied on
+ * the fragment alias and every join re-pins `empresaId` (defense in depth over
+ * the RLS GUCs already in force inside the caller's transaction). CxC is
+ * company-wide by design, so no branch pin is added here — the canonical query
+ * does not have one either.
+ */
+export async function consultarDetalleCxcEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  facturaId: number,
+): Promise<FilaDetalleCxc | null> {
+  const rows = await tx.$queryRaw<FilaDetalleCxc[]>`
+    SELECT
+      s."facturaId"                                                    AS "facturaId",
+      s."clienteId"                                                    AS "clienteId",
+      f."ncf"                                                          AS "ncf",
+      f."correlativoInterno"                                           AS "correlativoInterno",
+      s."fechaEmision"                                                 AS "fechaEmision",
+      s."total"                                                        AS "total",
+      s."cobrosAplicados"                                              AS "cobrosAplicados",
+      s."saldoPendiente"                                               AS "saldoPendiente",
+      COALESCE(c."nombre", '')                                         AS "clienteNombre",
+      c."identificacionFiscal"                                         AS "clienteIdentificacionFiscal",
+      COALESCE(c."tipoCliente"::text, '')                              AS "clienteTipoCliente",
+      COALESCE(c."plazoCreditoDias", 0)::int                           AS "plazoCreditoDias"
+    FROM (${saldoCxcFragmentoCanonico(ctx)}) s
+    JOIN "FACTURA" f
+      ON f."id" = s."facturaId"
+      AND f."empresaId" = ${ctx.empresaId}
+    LEFT JOIN "CLIENTE" c
+      ON c."id" = s."clienteId"
+      AND c."empresaId" = ${ctx.empresaId}
+    WHERE s."facturaId" = ${facturaId}`;
+  return rows[0] ?? null;
+}

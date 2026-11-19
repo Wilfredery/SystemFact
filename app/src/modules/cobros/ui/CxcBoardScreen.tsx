@@ -35,7 +35,9 @@
  *
  * A row can open the inline `PaymentForm`; after a committed collection the
  * board RELOADS the same server page, so the row's new state and any bucket
- * move reflect the latest committed payment immediately.
+ * move reflect the latest committed payment immediately. A row ALSO links (S13)
+ * to the per-invoice detail route `/cobros/factura/[facturaId]` — additive
+ * navigation only: the inline form and its reload semantics are unchanged.
  *
  * Server components by default; this is a client island purely for the
  * interactivity (fetch on mount, search, pagination, inline payment). The board
@@ -513,13 +515,22 @@ function FilaCobro({
           </Badge>
         </TableCell>
         <TableCell className="text-right">
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Link
               href={`/cobros/estado-cuenta/${fila.clienteId}`}
               aria-label={`Estado de cuenta cliente ${fila.clienteId}`}
               className={buttonVariants({ variant: "outline", size: "sm" })}
             >
               Estado de cuenta
+            </Link>
+            {/* S13 additive navigation: the per-invoice detail (header + payment
+                history) next to the unchanged inline collection form below. */}
+            <Link
+              href={`/cobros/factura/${fila.facturaId}`}
+              aria-label={`Ver detalle factura ${fila.facturaId}`}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              Detalle
             </Link>
             <Button
               type="button"

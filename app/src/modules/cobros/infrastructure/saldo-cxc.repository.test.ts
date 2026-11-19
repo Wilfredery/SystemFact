@@ -5,6 +5,7 @@ import {
   contarSaldoCxcEnTx,
   consultarProximasAVencerEnTx,
   consultarSaldoCxcTableroEnTx,
+  consultarDetalleCxcEnTx,
 } from "./saldo-cxc.repository";
 
 /** Unit stub of the client has no `Prisma.sql`: a minimal tagged-template fragment (strings + values). */
@@ -237,5 +238,63 @@ describe("consultarProximasAVencerEnTx (S12 side panel)", () => {
     // Tenant pins preserved on the fragment and the client join.
     expect(sql).toContain('c."empresaId" =');
     expect(valores).toContain(ctx.empresaId);
+  });
+});
+
+describe("consultarDetalleCxcEnTx (S13 per-invoice header)", () => {
+  it("embeds the ONE canonical fragment narrowed to the invoice, tenant-pinned end to end", async () => {
+    const { tx, queryRaw } = txCon([
+      {
+        facturaId: 12,
+        clienteId: 3,
+        ncf: "B0200001218",
+        correlativoInterno: "FAC-001218",
+        fechaEmision: AHORA,
+        total: "82500.00",
+        cobrosAplicados: "0.00",
+        saldoPendiente: "82500.00",
+        clienteNombre: "Ana Martínez",
+        clienteIdentificacionFiscal: "123-45678-9",
+        clienteTipoCliente: "CREDITO",
+        plazoCreditoDias: 30,
+      },
+    ]);
+
+    const detalle = await consultarDetalleCxcEnTx(tx, ctx, 12);
+
+    expect(detalle?.facturaId).toBe(12);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    const { sql, valores } = sqlDe(queryRaw);
+    // ONE balance formula: the canonical fragment rides verbatim — only an
+    // APLICADO cobro / a committed refund / a VIGENTE note move the balance.
+    expect(sql).toContain(`"estado" = 'APLICADO'`);
+    expect(sql).toContain(`"estado" IN ('REGISTRADO', 'APLICADO')`);
+    expect(sql).toContain(`f."estado" = 'VIGENTE'`);
+    // ... and no SECOND formula: no correlated per-invoice SUM statement.
+    expect(sql).not.toContain("SELECT SUM");
+    // The invoice narrowing plus the three tenant pins (fragment, FACTURA, CLIENTE).
+    expect(sql).toContain('s."facturaId" =');
+    expect(sql).toContain('f."empresaId" =');
+    expect(sql).toContain('c."empresaId" =');
+    expect(valores).toContain(12);
+    expect(valores).toContain(ctx.empresaId);
+    // Header projection: NCF/correlativo, client identity/type and the credit term.
+    expect(sql).toContain('f."ncf"');
+    expect(sql).toContain('f."correlativoInterno"');
+    expect(sql).toContain('c."identificacionFiscal"');
+    expect(sql).toContain('c."tipoCliente"::text');
+    expect(sql).toContain('COALESCE(c."plazoCreditoDias", 0)');
+    // Money crosses as Decimal(12,2) text of the canonical columns (never a float).
+    expect(sql).toContain('s."total"');
+    expect(sql).toContain('s."cobrosAplicados"');
+    expect(sql).toContain('s."saldoPendiente"');
+    // A single invoice by id: no paging tail.
+    expect(sql).not.toContain("LIMIT");
+    expect(sql).not.toContain("OFFSET");
+  });
+
+  it("returns null for a missing, foreign or non-VIGENTE invoice", async () => {
+    const { tx } = txCon([]);
+    await expect(consultarDetalleCxcEnTx(tx, ctx, 99)).resolves.toBeNull();
   });
 });
