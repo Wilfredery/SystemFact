@@ -169,6 +169,10 @@ export function ModalRegistrarPago({
       <DialogContent
         data-testid={`modal-cobro-${facturaId}`}
         aria-label={`Confirmar pago factura ${facturaId}`}
+        // The keypad + quick-amounts content can exceed a short viewport: the
+        // panel itself must scroll or Confirmar Pago is unreachable (e2e
+        // screenshot proof, cobros.spec.ts:208).
+        className="max-h-[calc(100dvh-2rem)] overflow-y-auto"
       >
         <DialogHeader>
           <DialogTitle>Confirmar Pago</DialogTitle>
