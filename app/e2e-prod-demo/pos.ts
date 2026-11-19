@@ -175,8 +175,10 @@ export async function confirmDraft(
   // receipt route; CREDITO (or a warned CONTADO) stays with the banner. The
   // banner and the navigation fire in the same continuation, so the URL wins.
   const rutaRecibo = /\/venta\/factura\/(\d+)$/;
+  // Generous window: on the hosted stack the receipt route can take seconds
+  // to answer, so a short settle would misread a CONTADO confirm as CREDITO.
   const enRecibo = await page
-    .waitForURL(rutaRecibo, { timeout: 1_500 })
+    .waitForURL(rutaRecibo, { timeout: 10_000 })
     .then(() => true, () => false);
 
   if (enRecibo) {

@@ -42,6 +42,12 @@ export const EXEMPT_GLOBS = [
   "**/*.spec.ts",
   "**/*.spec.tsx",
   "app/tools/**",
+  // Enmienda del owner 2026-11-19: los tres carriles de navegador (e2e local,
+  // prod smoke y demo lane) no pueden cambiar lo que producción sirve — ni
+  // sus specs (ya exentos por extensión) ni sus helpers .ts.
+  "app/e2e/**",
+  "app/e2e-prod/**",
+  "app/e2e-prod-demo/**",
 ];
 
 /** Los tres archivos que debe tocar el PR para satisfacer el bump. */
