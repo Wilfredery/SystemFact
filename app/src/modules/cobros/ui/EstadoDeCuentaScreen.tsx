@@ -14,7 +14,8 @@
  * fully settled (`PAGADA`) invoices, because a statement lists the whole
  * account, not just what is collectable.
  *
- * Client island for the fetch + inline collection only; it computes NO money.
+ * Client island for the fetch + the S15 collection modal only; it computes NO
+ * money.
  */
 
 import { useEffect, useState } from "react";
@@ -24,7 +25,7 @@ import { consultarEstadoDeCuentaAction } from "@/modules/cobros/http/actions";
 import type { SaldoCxCVista } from "@/modules/cobros/application/consultar-saldo-cxc";
 import type { EstadoPagoDerivado } from "@/modules/cobros/domain/pago";
 import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
-import { PaymentForm } from "./PaymentForm";
+import { ModalRegistrarPago } from "./ModalRegistrarPago";
 
 const ETIQUETA_ESTADO: Record<EstadoPagoDerivado, string> = {
   PENDIENTE: "Pendiente",
@@ -42,7 +43,12 @@ export function EstadoDeCuentaScreen({ clienteId }: { readonly clienteId: number
   const [filas, setFilas] = useState<readonly SaldoCxCVista[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [abierto, setAbierto] = useState<number | null>(null);
+  // S15: the shared confirmation modal, opened for ONE invoice at a time. The
+  // pending balance is a snapshot of the canonical read, never a computed value.
+  const [cobro, setCobro] = useState<{
+    facturaId: number;
+    saldoPendiente: string;
+  } | null>(null);
 
   function aplicar(r: Awaited<ReturnType<typeof consultarEstadoDeCuentaAction>>): void {
     if (r.ok) {
@@ -140,29 +146,34 @@ export function EstadoDeCuentaScreen({ clienteId }: { readonly clienteId: number
                     {!pagada && (
                       <button
                         type="button"
-                        onClick={() => setAbierto(abierto === f.facturaId ? null : f.facturaId)}
+                        onClick={() =>
+                          setCobro({
+                            facturaId: f.facturaId,
+                            saldoPendiente: f.saldoPendiente,
+                          })
+                        }
                         aria-label={`Cobrar factura ${f.facturaId}`}
-                        aria-expanded={abierto === f.facturaId}
+                        aria-haspopup="dialog"
                         className="shrink-0 rounded border border-line px-2 py-1 text-xs font-medium text-ink hover:bg-surface-muted"
                       >
-                        {abierto === f.facturaId ? "Ocultar" : "Cobrar"}
+                        Cobrar
                       </button>
                     )}
                   </div>
-                  {abierto === f.facturaId && !pagada && (
-                    <PaymentForm
-                      facturaId={f.facturaId}
-                      saldoPendiente={f.saldoPendiente}
-                      onCobrado={recargar}
-                      onCerrar={() => setAbierto(null)}
-                    />
-                  )}
                 </li>
               );
             })}
           </ul>
         </>
       )}
+
+      <ModalRegistrarPago
+        abierto={cobro !== null}
+        facturaId={cobro?.facturaId ?? 0}
+        saldoPendiente={cobro?.saldoPendiente ?? "0.00"}
+        onCerrar={() => setCobro(null)}
+        onCobrado={recargar}
+      />
     </div>
   );
 }

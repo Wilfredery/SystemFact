@@ -55,8 +55,8 @@ export interface PagoHistorialVista {
   readonly monto: string;
   readonly metodoPago: string;
   /**
-   * Free-text payment reference. V1's `PAGO` has no such column, so this rides
-   * `null` and the history renders it unchanged once S14/T10 adds the field.
+   * Free-text payment reference (S14). Stored on the `PAGO` row for a collection;
+   * `null` when the user left it blank (or for a refund, which carries none).
    */
   readonly referencia: string | null;
   readonly usuarioNombre: string;
@@ -144,7 +144,7 @@ function derivarDetalle(
       estado: p.estado,
       monto: p.monto,
       metodoPago: p.metodoPago,
-      referencia: null,
+      referencia: p.referencia,
       usuarioNombre: p.usuarioNombre,
     })),
   };

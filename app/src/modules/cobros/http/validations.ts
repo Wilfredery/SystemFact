@@ -39,9 +39,34 @@ const zMontoPositivo = z
 
 const zFacturaId = z.number().int().positive();
 
+// S14 — the OPTIONAL editable Fecha del pago as an SD CALENDAR DATE: the shape
+// only (`YYYY-MM-DD` and a day that really exists). The BAND (future / retroactive
+// horizon) is a server-clock business rule and lives in
+// `cobros/domain/fecha-cobro.ts`, never in the transport grammar.
+const zFechaCobro = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "fecha inválida")
+  .refine((v) => {
+    const [y, mo, d] = v.split("-").map(Number);
+    const fecha = new Date(Date.UTC(y, mo - 1, d, 12));
+    return (
+      !Number.isNaN(fecha.getTime()) &&
+      fecha.getUTCFullYear() === y &&
+      fecha.getUTCMonth() === mo - 1 &&
+      fecha.getUTCDate() === d
+    );
+  }, "fecha inválida");
+
+// S14 — the OPTIONAL free-text payment reference, bounded to the
+// `PAGO.referencia` VarChar(80) column so the transport can never overflow it.
+// Trimmed here: a padded value is stored exactly as the user meant it.
+const zReferencia = z.string().trim().max(80, "referencia demasiado larga");
+
 export const zRegistrarCobroInput = z.object({
   facturaId: zFacturaId,
   monto: zMontoPositivo,
+  fechaCobro: zFechaCobro.optional(),
+  referencia: zReferencia.optional(),
 });
 export type RegistrarCobroDto = z.infer<typeof zRegistrarCobroInput>;
 

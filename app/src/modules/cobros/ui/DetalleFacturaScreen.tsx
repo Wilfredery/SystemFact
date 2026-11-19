@@ -12,33 +12,26 @@
  * collection RELOADS the same read, so the header and the history always show the
  * latest committed state.
  *
- * Boundary discipline mirrors `PaymentForm` (whose use case is reused verbatim —
- * `registrarCobroAction`, no second write path): the amount is validated with the
- * SHARED `zRegistrarCobroInput` before any call, the submit control is disabled on
- * the FIRST click (single-flight guard plus the disabled button) and the server
- * revalidates everything inside `withTenantTransaction`.
+ * One payment path only: the modal reuses the SAME `registrarCobroAction` (no
+ * second write path), the SAME `zRegistrarCobroInput` grammar, the first-click
+ * disable and the server revalidation inside `withTenantTransaction`.
  *
- * S13 scope only: no editable Fecha del pago and no Referencia (S14/T10), and no
- * keypad/modal upgrade (S15/T10). Money entry behaves like `PaymentForm`.
+ * S13/S14/S15: the detail header, the payment history and the "Registrar Pago"
+ * panel, whose confirm opens the SHARED `ModalRegistrarPago` (editable Fecha del
+ * pago + Referencia + NumericKeypad inside the modal). No second payment path.
  *
  * F0 primitives + token classes only (S16): no raw palette, no `dark:` overrides.
  */
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  obtenerDetalleCxcAction,
-  registrarCobroAction,
-} from "@/modules/cobros/http/actions";
+import { obtenerDetalleCxcAction } from "@/modules/cobros/http/actions";
 import type {
   DetalleCxcVista,
   PagoHistorialVista,
 } from "@/modules/cobros/application/consultar-detalle-cxc";
-import {
-  zRegistrarCobroInput,
-  VALIDATION_ERROR,
-} from "@/modules/cobros/http/validations";
 import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
+import { ModalRegistrarPago } from "./ModalRegistrarPago";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -48,8 +41,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -270,16 +261,12 @@ function HistorialPagos({
   );
 }
 
-type Mensaje =
-  | { readonly kind: "ok"; readonly text: string }
-  | { readonly kind: "error"; readonly code: string; readonly text: string }
-  | null;
-
 /**
- * "Registrar Pago" (S13 scope): monto del pago prefilled with the derived pending
- * balance, the saldo note and the confirm action wired to the EXISTING
- * `registrarCobroAction`. Fecha/Referencia and the keypad/modal confirm are
- * S14/S15 (T10) — deliberately absent here.
+ * "Registrar Pago" (S13/S14/S15): the derived saldo plus the entry point into the
+ * SHARED confirmation modal. The modal owns the amount (keypad + quick amounts),
+ * the editable Fecha del pago, the Referencia and the single-flight confirm; this
+ * panel only surfaces the saldo note and opens it — one payment path for the whole
+ * module, no per-screen payload assembly.
  */
 function RegistrarPagoPanel({
   facturaId,
@@ -292,45 +279,7 @@ function RegistrarPagoPanel({
   /** Notified after a committed collection so the screen reloads the invoice. */
   readonly onCobrado: () => Promise<void> | void;
 }) {
-  const [monto, setMonto] = useState(saldo);
-  const [enviando, setEnviando] = useState(false);
-  const [mensaje, setMensaje] = useState<Mensaje>(null);
-  const [reciboEmitido, setReciboEmitido] = useState<number | null>(null);
-
-  async function enviar(): Promise<void> {
-    // Single-flight guard (belt-and-braces with the disabled button): a second
-    // event in the SAME render cycle must never fire a second collection.
-    if (enviando) return;
-
-    const parsed = zRegistrarCobroInput.safeParse({
-      facturaId,
-      monto: monto.trim(),
-    });
-    if (!parsed.success) {
-      setMensaje({
-        kind: "error",
-        code: VALIDATION_ERROR,
-        text: "Ingresa un monto válido mayor que cero.",
-      });
-      return;
-    }
-
-    // Disable on the FIRST click: flip `enviando` before the await.
-    setEnviando(true);
-    setMensaje(null);
-    const r = await registrarCobroAction(parsed.data);
-    if (r.ok) {
-      setReciboEmitido(r.data.correlativoRecibo);
-      setMensaje({
-        kind: "ok",
-        text: `Pago registrado. Nuevo saldo: ${formatearMonto(r.data.saldoPendiente)}.`,
-      });
-      await onCobrado();
-    } else {
-      setMensaje({ kind: "error", code: r.error.code, text: r.error.message });
-    }
-    setEnviando(false);
-  }
+  const [abierto, setAbierto] = useState(false);
 
   return (
     <Card size="sm" aria-label="Registrar Pago">
@@ -341,68 +290,30 @@ function RegistrarPagoPanel({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {mensaje !== null && (
-          <p
-            role="status"
-            aria-live="polite"
-            className={
-              mensaje.kind === "ok"
-                ? "rounded-md bg-success-bg px-3 py-2 text-sm text-ink"
-                : "rounded-md bg-danger/10 px-3 py-2 text-sm text-danger"
-            }
-          >
-            {mensaje.kind === "error" && (
-              <span className="mr-2 font-mono text-xs">[{mensaje.code}]</span>
-            )}
-            {mensaje.text}
-          </p>
-        )}
+        <p data-testid="detalle-saldo-pendiente" className="text-sm text-ink-muted">
+          Saldo pendiente:{" "}
+          <span className="font-medium tabular-nums text-ink">
+            {formatearMonto(saldo)}
+          </span>
+        </p>
 
-        {mensaje?.kind === "ok" && reciboEmitido !== null && (
-          <Link
-            href={`/cobros/recibo/${reciboEmitido}`}
-            data-testid={`detalle-recibo-link-${reciboEmitido}`}
-            aria-label={`Reimprimir recibo ${reciboEmitido}`}
-            className="text-sm font-medium text-link hover:underline"
-          >
-            Ver / reimprimir recibo #{reciboEmitido} (no fiscal)
-          </Link>
-        )}
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void enviar();
-          }}
-          className="flex flex-col gap-3"
+        <Button
+          type="button"
+          className="w-fit"
+          aria-haspopup="dialog"
+          onClick={() => setAbierto(true)}
         >
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="detalle-monto-pago">Monto del pago (RD$)</Label>
-            <Input
-              id="detalle-monto-pago"
-              value={monto}
-              inputMode="decimal"
-              disabled={enviando}
-              aria-label={`Monto del pago factura ${facturaId}`}
-              onChange={(e) => setMonto(e.target.value)}
-              className="max-w-48"
-            />
-          </div>
-
-          <p data-testid="detalle-saldo-pendiente" className="text-sm text-ink-muted">
-            Saldo pendiente: <span className="font-medium text-ink">{formatearMonto(saldo)}</span>
-          </p>
-
-          <Button
-            type="submit"
-            disabled={enviando}
-            aria-label={`Confirmar pago factura ${facturaId}`}
-            className="w-fit"
-          >
-            {enviando ? "Registrando…" : "Confirmar Pago"}
-          </Button>
-        </form>
+          Registrar Pago
+        </Button>
       </CardContent>
+
+      <ModalRegistrarPago
+        abierto={abierto}
+        facturaId={facturaId}
+        saldoPendiente={saldo}
+        onCerrar={() => setAbierto(false)}
+        onCobrado={onCobrado}
+      />
     </Card>
   );
 }

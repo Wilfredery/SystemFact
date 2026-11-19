@@ -58,6 +58,7 @@ function pago(over: Record<string, unknown> = {}) {
     estado: "APLICADO" as const,
     monto: "1500.00",
     metodoPago: "EFECTIVO",
+    referencia: null,
     usuarioNombre: "Ana",
     ...over,
   };
@@ -142,7 +143,12 @@ describe("consultarDetalleCxc (S13 invoice header)", () => {
   it("carries the payment history newest-first as the repository serves it", async () => {
     mockDetalle.mockResolvedValue(fila({ cobrosAplicados: "1500.00", saldoPendiente: "81000.00" }));
     mockHistorial.mockResolvedValue([
-      pago({ correlativoRecibo: 43, fecha: new Date("2026-08-03T10:00:00.000Z"), monto: "500.00" }),
+      pago({
+        correlativoRecibo: 43,
+        fecha: new Date("2026-08-03T10:00:00.000Z"),
+        monto: "500.00",
+        referencia: "REF-9",
+      }),
       pago(),
     ]);
 
@@ -161,9 +167,8 @@ describe("consultarDetalleCxc (S13 invoice header)", () => {
       estado: "APLICADO",
       monto: "500.00",
       metodoPago: "EFECTIVO",
-      // V1's PAGO carries no referencia column; the field rides as null until
-      // S14/T10 adds it, so the history renders it unchanged when it lands.
-      referencia: null,
+      // S14: the reference captured with the payment rides the history verbatim.
+      referencia: "REF-9",
       usuarioNombre: "Ana",
     });
     // The invoice read is tenant-pinned by the repository signature.

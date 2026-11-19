@@ -19,10 +19,15 @@ import { calcularVuelto } from "./credito";
  * Quick-amounts row (board 02 decision S2): exact payment = 1 tap. Rendered
  * only inside the money-received slot (vueltoSlot) — Totales keeps today's
  * shape when the slot props are absent.
+ *
+ * EXPORTED for board 03 (S15): the cobros payment-confirmation modal reuses the
+ * SAME row and wording, with `total` bound to the invoice's derived pending
+ * balance, so "Exact" means "pay the whole receivable" on both surfaces and the
+ * amount shape stays one definition.
  */
 const MONTOS_RAPIDOS = [100, 200, 500, 1000, 2000, 5000] as const;
 
-function MontosRapidos({
+export function MontosRapidos({
   onSeleccion,
   total,
 }: {

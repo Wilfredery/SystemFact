@@ -33,14 +33,15 @@
  *     overrides) and the unchanged section order En mora → Parciales →
  *     Pendientes with the existing aria/role conventions.
  *
- * A row can open the inline `PaymentForm`; after a committed collection the
- * board RELOADS the same server page, so the row's new state and any bucket
- * move reflect the latest committed payment immediately. A row ALSO links (S13)
- * to the per-invoice detail route `/cobros/factura/[facturaId]` — additive
- * navigation only: the inline form and its reload semantics are unchanged.
+ * A row opens the shared S15 confirmation modal (`ModalRegistrarPago`); after a
+ * committed collection the board RELOADS the same server page, so the row's new
+ * state and any bucket move reflect the latest committed payment immediately. A
+ * row ALSO links (S13) to the per-invoice detail route
+ * `/cobros/factura/[facturaId]` — additive navigation only; both entry points
+ * open the SAME modal, so the collection surface never diverges.
  *
  * Server components by default; this is a client island purely for the
- * interactivity (fetch on mount, search, pagination, inline payment). The board
+ * interactivity (fetch on mount, search, pagination, payment modal). The board
  * NEVER computes money.
  */
 
@@ -58,7 +59,7 @@ import type { EstadoPagoDerivado } from "@/modules/cobros/domain/pago";
 import type { ProximidadVencimiento } from "@/modules/cobros/domain/en-mora";
 import { clasificarTableroCxc, etiquetaDiasTranscurridos, paginar } from "./board";
 import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
-import { PaymentForm } from "./PaymentForm";
+import { ModalRegistrarPago } from "./ModalRegistrarPago";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -79,8 +80,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-/** Which bucket is open for payment (a single invoice at a time). */
-type Abierto = number | null;
+/** Which invoice is open in the shared confirmation modal (one at a time). */
+type CobroAbierto = {
+  readonly facturaId: number;
+  readonly saldoPendiente: string;
+};
 
 const ETIQUETA_ESTADO: Record<EstadoPagoDerivado, string> = {
   PENDIENTE: "Pendiente",
@@ -115,7 +119,7 @@ export function CxcBoardScreen() {
   const [servida, setServida] = useState<SaldoCxCVistaPagina | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [abierto, setAbierto] = useState<Abierto>(null);
+  const [cobro, setCobro] = useState<CobroAbierto | null>(null);
   // The input's text (what the user types) and the search actually served by the
   // server — nothing is filtered client-side (S12: the LIKE runs in SQL).
   const [texto, setTexto] = useState("");
@@ -272,29 +276,33 @@ export function CxcBoardScreen() {
             titulo="En mora"
             tono="mora"
             pagina={enMora}
-            abierto={abierto}
-            onAbrir={setAbierto}
-            onCobrado={recargar}
+            onAbrir={setCobro}
           />
           <SeccionCobros
             titulo="Parciales"
             tono="parcial"
             pagina={parcial}
-            abierto={abierto}
-            onAbrir={setAbierto}
-            onCobrado={recargar}
+            onAbrir={setCobro}
           />
           <SeccionCobros
             titulo="Pendientes"
             tono="pendiente"
             pagina={pendiente}
-            abierto={abierto}
-            onAbrir={setAbierto}
-            onCobrado={recargar}
+            onAbrir={setCobro}
           />
         </div>
         <ProximasAVencer proximas={servida.proximas} />
       </div>
+
+      {/* S15: ONE shared confirmation modal for the whole module. Opening it
+          confirms nothing — `registrarCobroAction` is the fiscal authority. */}
+      <ModalRegistrarPago
+        abierto={cobro !== null}
+        facturaId={cobro?.facturaId ?? 0}
+        saldoPendiente={cobro?.saldoPendiente ?? "0.00"}
+        onCerrar={() => setCobro(null)}
+        onCobrado={recargar}
+      />
     </div>
   );
 }
@@ -411,16 +419,12 @@ function SeccionCobros({
   titulo,
   tono,
   pagina,
-  abierto,
   onAbrir,
-  onCobrado,
 }: {
   readonly titulo: string;
   readonly tono: Tono;
   readonly pagina: ReturnType<typeof paginar<SaldoCxCVistaTablero>>;
-  readonly abierto: Abierto;
-  readonly onAbrir: (id: Abierto) => void;
-  readonly onCobrado: () => Promise<void> | void;
+  readonly onAbrir: (fila: CobroAbierto) => void;
 }) {
   return (
     <Card aria-label={titulo} size="sm">
@@ -459,9 +463,7 @@ function SeccionCobros({
                   key={f.facturaId}
                   fila={f}
                   tono={tono}
-                  abierto={abierto === f.facturaId}
                   onAbrir={onAbrir}
-                  onCobrado={onCobrado}
                 />
               ))}
             </TableBody>
@@ -475,19 +477,14 @@ function SeccionCobros({
 function FilaCobro({
   fila,
   tono,
-  abierto,
   onAbrir,
-  onCobrado,
 }: {
   readonly fila: SaldoCxCVistaTablero;
   readonly tono: Tono;
-  readonly abierto: boolean;
-  readonly onAbrir: (id: Abierto) => void;
-  readonly onCobrado: () => Promise<void> | void;
+  readonly onAbrir: (fila: CobroAbierto) => void;
 }) {
   return (
-    <>
-      <TableRow data-testid={`cxc-fila-${fila.facturaId}`}>
+    <TableRow data-testid={`cxc-fila-${fila.facturaId}`}>
         <TableCell>
           <p className="max-w-56 truncate font-medium text-ink">
             {fila.clienteNombre}
@@ -524,7 +521,7 @@ function FilaCobro({
               Estado de cuenta
             </Link>
             {/* S13 additive navigation: the per-invoice detail (header + payment
-                history) next to the unchanged inline collection form below. */}
+                history) next to the S15 Cobrar affordance. */}
             <Link
               href={`/cobros/factura/${fila.facturaId}`}
               aria-label={`Ver detalle factura ${fila.facturaId}`}
@@ -536,28 +533,20 @@ function FilaCobro({
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => onAbrir(abierto ? null : fila.facturaId)}
+              onClick={() =>
+                onAbrir({
+                  facturaId: fila.facturaId,
+                  saldoPendiente: fila.saldoPendiente,
+                })
+              }
               aria-label={`Cobrar factura ${fila.facturaId}`}
-              aria-expanded={abierto}
+              aria-haspopup="dialog"
             >
-              {abierto ? "Ocultar" : "Cobrar"}
+              Cobrar
             </Button>
           </div>
         </TableCell>
       </TableRow>
-      {abierto && (
-        <TableRow>
-          <TableCell colSpan={8} className="whitespace-normal">
-            <PaymentForm
-              facturaId={fila.facturaId}
-              saldoPendiente={fila.saldoPendiente}
-              onCobrado={onCobrado}
-              onCerrar={() => onAbrir(null)}
-            />
-          </TableCell>
-        </TableRow>
-      )}
-    </>
   );
 }
 

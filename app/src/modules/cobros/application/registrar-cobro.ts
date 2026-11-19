@@ -9,6 +9,8 @@
  * Guarantees:
  *   • the invoice must exist for this tenant and be `VIGENTE`, else
  *     `FACTURA_COBRO_NO_VIGENTE` and NOTHING is written;
+ *   • the optional `fechaCobro` is bounded to the tenant's SD date band (S14)
+ *     before the lock, so a future/out-of-horizon date writes nothing;
  *   • the invoice row is locked (`FOR UPDATE`) and the pending balance is
  *     recomputed INSIDE the transaction, so a concurrent collection is judged
  *     against the balance at its own snapshot;
@@ -33,9 +35,15 @@ import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import {
   COBRO_EXCEDE_SALDO,
   FACTURA_COBRO_NO_VIGENTE,
+  CobroDomainError,
   messageFor,
   type CobroErrorCode,
 } from "../domain/errors";
+import {
+  instanteDeFechaCobroSD,
+  validarFechaCobro,
+} from "../domain/fecha-cobro";
+import { leerRetroactivoFechaVentaEnTx } from "@/modules/venta/infrastructure/config-repository";
 import {
   ESTADO_PAGO,
   TIPO_PAGO,
@@ -54,8 +62,14 @@ export interface RegistrarCobroInput {
   readonly facturaId: number;
   /** Positive `Decimal(12,2)` amount as a string (Zod guarantees the shape). */
   readonly monto: string;
-  /** Payment instant; defaults to now (the acting server clock). */
-  readonly fecha?: Date;
+  /**
+   * S14 optional `Fecha del pago` as an SD calendar date (`YYYY-MM-DD`). Absent
+   * means "the server instant"; present means the user picked a past day, which is
+   * bounded by {@link resolverFechaCobroEnTx} against the SERVER's SD clock.
+   */
+  readonly fechaCobro?: string;
+  /** S14 optional free-text reference stored on the `PAGO` row (≤ 80). */
+  readonly referencia?: string;
 }
 
 /** Committed collection: the persisted payment and the new pending balance. */
@@ -68,6 +82,51 @@ export interface RegistrarCobroOutput {
 
 function buildError(code: CobroErrorCode): CobroResult<never> {
   return { ok: false, code, message: messageFor(code) };
+}
+
+/**
+ * S14 — resolve the payment instant and bound it to the tenant's SD date band.
+ *
+ * Both bounds come from the SERVER clock: the horizon is the tenant parameter
+ * (`leerRetroactivoFechaVentaEnTx`, the SAME seam the sale date uses) and the wire
+ * date is compared against that same instant, so a stale or hostile client clock
+ * cannot widen the band. A `CobroDomainError` (one of the two frozen catalog
+ * codes) becomes a typed result; ANY other throw is a config/defect and
+ * propagates (a tenant without the horizon has no legal band — fail loud).
+ */
+async function resolverFechaCobroEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  input: RegistrarCobroInput,
+): Promise<{ ok: true; fecha: Date } | { ok: false; code: CobroErrorCode; message: string }> {
+  const ahora = new Date();
+  const fecha =
+    input.fechaCobro === undefined
+      ? ahora
+      : instanteDeFechaCobroSD(input.fechaCobro);
+  const horizonteDias = await leerRetroactivoFechaVentaEnTx(
+    tx,
+    ctx.empresaId,
+    ahora,
+  );
+  try {
+    validarFechaCobro(fecha, horizonteDias, ahora);
+    return { ok: true, fecha };
+  } catch (err) {
+    if (err instanceof CobroDomainError) {
+      // The catalog code is the ONLY rejection surface — never a raw Prisma or
+      // stack trace. A malformed date is Zod's job and is rejected at the
+      // transport boundary before this use case runs.
+      return { ok: false, code: err.code, message: err.message };
+    }
+    throw err;
+  }
+}
+
+/** A trimmed reference or `null` (an absent/blank value is never stored as ""). */
+function normalizarReferencia(referencia: string | undefined): string | null {
+  const limpio = referencia?.trim() ?? "";
+  return limpio === "" ? null : limpio;
 }
 
 /**
@@ -86,6 +145,11 @@ export async function registrarCobro(
     // fails loud and rolls the transaction back rather than inventing a code.
     throw new Error("registrarCobro: el monto debe ser mayor que cero");
   }
+
+  // S14: bound the editable payment date BEFORE the invoice lock, the receipt
+  // allocation or any write — a rejected date burns nothing.
+  const fechaOk = await resolverFechaCobroEnTx(tx, ctx, input);
+  if (!fechaOk.ok) return fechaOk;
 
   // Lock the invoice and recompute its pending balance atomically (R-C2). A
   // missing / cross-tenant / non-VIGENTE invoice collapses to `null`.
@@ -110,10 +174,11 @@ export async function registrarCobro(
     tipo: TIPO_PAGO.COBRO,
     estado: ESTADO_PAGO.APLICADO,
     monto: monto.toFixed(2),
-    fecha: input.fecha ?? new Date(),
+    fecha: fechaOk.fecha,
     correlativoRecibo,
     idempotencyKey: null,
     autorizadoPor: null,
+    referencia: normalizarReferencia(input.referencia),
   });
 
   // R-C8: append exactly one `PAGAR` audit row, INSIDE this same transaction and

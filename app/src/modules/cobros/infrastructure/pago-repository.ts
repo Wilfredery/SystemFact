@@ -30,6 +30,8 @@ export interface CrearPagoInput {
   readonly idempotencyKey: string | null;
   /** Authorizer for a REEMBOLSO; `null` for a COBRO (§10). */
   readonly autorizadoPor: number | null;
+  /** S14 free-text reference (≤ 80) or `null`; never an empty string. */
+  readonly referencia: string | null;
 }
 
 /** Persists a `PAGO` inside the caller's tenant transaction; returns its id. */
@@ -53,6 +55,7 @@ export async function crearPagoEnTx(
       autorizadoPor: input.autorizadoPor,
       correlativoRecibo: input.correlativoRecibo,
       idempotencyKey: input.idempotencyKey,
+      referencia: input.referencia,
     },
     select: { id: true },
   });
@@ -226,6 +229,8 @@ export interface FilaPagoHistorial {
   readonly estado: EstadoPago;
   readonly monto: string;
   readonly metodoPago: string;
+  /** S14 optional reference captured with the payment (or `null`). */
+  readonly referencia: string | null;
   readonly usuarioNombre: string;
 }
 
@@ -238,7 +243,7 @@ export interface FilaPagoHistorial {
  * GUCs keep the read tenant-bound; `facturaId` alone is never trusted. Ordering
  * is `fecha DESC` with an `id DESC` tie-break so two payments registered in the
  * same instant still render deterministically. `monto` crosses as a string
- * (never a float); the PAGO table carries no free-text referencia in V1.
+ * (never a float); `referencia` is the S14 optional free-text reference.
  */
 export async function leerHistorialPagosFacturaEnTx(
   tx: PrismaTx,
@@ -254,6 +259,7 @@ export async function leerHistorialPagosFacturaEnTx(
       estado: true,
       monto: true,
       metodoPago: true,
+      referencia: true,
       usuario: { select: { nombre: true } },
     },
     orderBy: [{ fecha: "desc" }, { id: "desc" }],
@@ -265,6 +271,7 @@ export async function leerHistorialPagosFacturaEnTx(
     estado: p.estado,
     monto: p.monto.toFixed(2),
     metodoPago: p.metodoPago,
+    referencia: p.referencia,
     usuarioNombre: p.usuario.nombre,
   }));
 }

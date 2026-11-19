@@ -23,7 +23,7 @@
  */
 
 import "@testing-library/jest-dom";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { CxcBoardScreen } from "@/modules/cobros/ui/CxcBoardScreen";
 import { EstadoDeCuentaScreen } from "@/modules/cobros/ui/EstadoDeCuentaScreen";
@@ -287,15 +287,106 @@ describe("CxC board (R-C9 server page, buckets classified per page)", () => {
   });
 });
 
-describe("Payment form first-click disable (R-C7 non-droppable line)", () => {
-  it("disables submit on the FIRST click and a rapid double-click calls the action once", async () => {
+/** Today's `America/Santo_Domingo` calendar day — the default Fecha del pago (S14). */
+function hoySD(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santo_Domingo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/** Open the shared confirmation modal from the board's inline Cobrar affordance. */
+async function abrirModalTablero(facturaId: number): Promise<HTMLElement> {
+  fireEvent.click(screen.getByRole("button", { name: `Cobrar factura ${facturaId}` }));
+  return screen.findByRole("dialog");
+}
+
+describe("Payment confirmation modal (S15 — 03-Modal-Confirmar-Pago)", () => {
+  it("opens from the board's Cobrar affordance with the wireframe content", async () => {
     mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
     render(<CxcBoardScreen />);
     await settle();
 
-    // Open the inline payment form on the pending row.
-    fireEvent.click(screen.getByRole("button", { name: "Cobrar factura 1" }));
-    const submit = await screen.findByRole("button", { name: "Confirmar cobro factura 1" });
+    const dialog = await abrirModalTablero(1);
+
+    // 03-Modal-Confirmar-Pago: Monto del pago + Saldo pendiente + Método + confirm.
+    expect(dialog.textContent).toContain("Confirmar Pago");
+    const monto = within(dialog).getByLabelText("Monto del pago factura 1");
+    expect(monto).toHaveValue("1000.00");
+    expect(monto).toHaveAttribute("inputmode", "decimal");
+    expect(within(dialog).getByTestId("cobro-saldo-pendiente-1").textContent).toMatch(
+      /1,000\.00/,
+    );
+    // Método stays FROZEN to EFECTIVO (V1): a display, never a selector.
+    expect(within(dialog).getByTestId("cobro-metodo-pago-1").textContent).toBe("EFECTIVO");
+    expect(within(dialog).queryByRole("combobox")).toBeNull();
+    expect(within(dialog).queryByRole("listbox")).toBeNull();
+    // S14 fields: an editable SD payment date (default today) and a reference.
+    expect(within(dialog).getByLabelText("Fecha del pago factura 1")).toHaveValue(hoySD());
+    expect(within(dialog).getByLabelText("Referencia factura 1")).toHaveValue("");
+    // Nothing is confirmed server-side just by opening the modal.
+    expect(mockCobro).not.toHaveBeenCalled();
+  });
+
+  it("feeds the monto input from the shared NumericKeypad (touch-first entry)", async () => {
+    mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
+    render(<CxcBoardScreen />);
+    await settle();
+    const dialog = await abrirModalTablero(1);
+
+    const monto = within(dialog).getByLabelText("Monto del pago factura 1");
+    // Focusing the money input retargets the keypad onto it (PosScreen pattern).
+    fireEvent.focus(monto);
+    fireEvent.click(within(dialog).getByRole("button", { name: "CLR" }));
+    expect(monto).toHaveValue("");
+    for (const tecla of ["5", "0", "0"]) {
+      fireEvent.click(within(dialog).getByRole("button", { name: tecla }));
+    }
+    expect(monto).toHaveValue("500");
+    // The SHARED decimal parser still floors money at 2 decimals.
+    fireEvent.click(within(dialog).getByRole("button", { name: "." }));
+    for (const tecla of ["2", "5", "9"]) {
+      fireEvent.click(within(dialog).getByRole("button", { name: tecla }));
+    }
+    expect(monto).toHaveValue("500.25");
+    // Backspace drops the last digit, never below empty.
+    fireEvent.click(within(dialog).getByRole("button", { name: "BSP" }));
+    expect(monto).toHaveValue("500.2");
+  });
+
+  it("offers Exact (saldo pendiente) plus RD$100/200/500/1000/2000/5000", async () => {
+    mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
+    render(<CxcBoardScreen />);
+    await settle();
+    const dialog = await abrirModalTablero(1);
+
+    const monto = within(dialog).getByLabelText("Monto del pago factura 1");
+    for (const valor of [100, 200, 500, 1000, 2000, 5000]) {
+      expect(
+        within(dialog).getByRole("button", { name: `Quick amount ${valor}` }),
+      ).toBeInTheDocument();
+    }
+    // A full abono is one tap: the exact amount IS the derived pending balance.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Quick amount exact total" }));
+    expect(monto).toHaveValue("1000.00");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Quick amount 500" }));
+    expect(monto).toHaveValue("500");
+  });
+
+  it("confirms exactly once on the first click and sends the editable date + reference", async () => {
+    mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
+    render(<CxcBoardScreen />);
+    await settle();
+    const dialog = await abrirModalTablero(1);
+
+    fireEvent.change(within(dialog).getByLabelText("Fecha del pago factura 1"), {
+      target: { value: "2026-08-10" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Referencia factura 1"), {
+      target: { value: "  REF-9  " },
+    });
 
     // Controllable pending promise so `enviando` stays true across the double click.
     let resolver:
@@ -308,12 +399,18 @@ describe("Payment form first-click disable (R-C7 non-droppable line)", () => {
         }),
     );
 
+    const submit = within(dialog).getByRole("button", { name: "Confirmar pago factura 1" });
     fireEvent.click(submit);
     expect(submit).toBeDisabled();
     // Same-cycle second click must NOT fire a second collection (single-shot).
     fireEvent.click(submit);
     expect(mockCobro).toHaveBeenCalledTimes(1);
-    expect(mockCobro).toHaveBeenCalledWith({ facturaId: 1, monto: "1000.00" });
+    expect(mockCobro).toHaveBeenCalledWith({
+      facturaId: 1,
+      monto: "1000.00",
+      fechaCobro: "2026-08-10",
+      referencia: "REF-9",
+    });
 
     resolver!({
       ok: true,
@@ -321,24 +418,46 @@ describe("Payment form first-click disable (R-C7 non-droppable line)", () => {
     });
     await settle();
     const status = await screen.findByRole("status");
-    expect(status.textContent).toContain("Cobro registrado");
-    // The success links to the (non-fiscal) reprint page.
-    expect(
-      screen.getByRole("link", { name: "Reimprimir recibo 42" }),
-    ).toBeInTheDocument();
+    expect(status.textContent).toContain("Pago registrado");
+    // Success feedback links to the (non-fiscal) reprint page.
+    expect(screen.getByRole("link", { name: "Reimprimir recibo 42" })).toHaveAttribute(
+      "href",
+      "/cobros/recibo/42",
+    );
+    // The board reloaded through the canonical read (nothing summed client-side).
+    expect(mockSaldo).toHaveBeenCalledTimes(2);
+  });
+
+  it("omits a blank reference from the payload", async () => {
+    mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
+    render(<CxcBoardScreen />);
+    await settle();
+    const dialog = await abrirModalTablero(1);
+
+    mockCobro.mockResolvedValue({
+      ok: true,
+      data: { pagoId: 500, correlativoRecibo: 42, total: "1000.00", saldoPendiente: "0.00" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar pago factura 1" }));
+    await settle();
+
+    expect(mockCobro).toHaveBeenCalledTimes(1);
+    const payload = mockCobro.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload.fechaCobro).toBe(hoySD());
+    expect(payload.referencia).toBeUndefined();
   });
 
   it("surfaces the stable over-payment code without stack traces and re-enables", async () => {
     mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
     render(<CxcBoardScreen />);
     await settle();
-    fireEvent.click(screen.getByRole("button", { name: "Cobrar factura 1" }));
+    const dialog = await abrirModalTablero(1);
 
     mockCobro.mockResolvedValue({
       ok: false,
       error: { code: "COBRO_EXCEDE_SALDO", message: "El cobro supera el saldo pendiente de la factura" },
     });
-    const submit = screen.getByRole("button", { name: "Confirmar cobro factura 1" });
+    const submit = within(dialog).getByRole("button", { name: "Confirmar pago factura 1" });
     fireEvent.click(submit);
 
     const status = await screen.findByRole("status");
@@ -347,8 +466,25 @@ describe("Payment form first-click disable (R-C7 non-droppable line)", () => {
     expect(status.textContent).not.toMatch(/at .*\.ts|Prisma|Error:/);
     // Back to enabled: the server revalidated, nothing persisted.
     expect(
-      await screen.findByRole("button", { name: "Confirmar cobro factura 1" }),
+      within(dialog).getByRole("button", { name: "Confirmar pago factura 1" }),
     ).toBeEnabled();
+  });
+
+  it("surfaces the fecha-band catalog code when the server rejects the date", async () => {
+    mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
+    render(<CxcBoardScreen />);
+    await settle();
+    const dialog = await abrirModalTablero(1);
+
+    mockCobro.mockResolvedValue({
+      ok: false,
+      error: { code: "FECHA_COBRO_FUTURA", message: "La fecha del pago no puede ser futura" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar pago factura 1" }));
+
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toContain("[FECHA_COBRO_FUTURA]");
+    expect(status.textContent).toContain("no puede ser futura");
   });
 });
 
@@ -474,7 +610,7 @@ describe("Detalle de factura (S13 per-invoice detail)", () => {
     expect(cabecera).toContain("En Mora");
     expect(cabecera).toContain("36 días vencida");
 
-    // No Fecha del pago / Referencia fields yet (that is S14/T10, not this task).
+    // The header itself stays read-only: no payment entry outside the modal.
     expect(screen.queryByLabelText(/Fecha del pago/i)).toBeNull();
     expect(screen.queryByLabelText(/Referencia/i)).toBeNull();
   });
@@ -544,19 +680,27 @@ describe("Detalle de factura (S13 per-invoice detail)", () => {
     expect(screen.getByText("Sin pagos registrados")).toBeInTheDocument();
   });
 
-  it("prefills the pending balance and confirms ONE payment, then reloads the invoice", async () => {
+  it("opens the shared confirmation modal from the Registrar Pago panel and confirms ONE payment", async () => {
     mockDetalle.mockResolvedValue({ ok: true, data: detalle() });
     render(<DetalleFacturaScreen facturaId={12} />);
     await settle();
 
-    const monto = screen.getByLabelText("Monto del pago factura 12");
-    // Prefilled with the derived pending balance (behaviour like PaymentForm).
-    expect(monto).toHaveValue("82500.00");
-    expect(monto).toHaveAttribute("inputmode", "decimal");
-    // The saldo note rides the panel.
+    // S15: the panel's confirm is an explicit modal (F0 dialog), not an inline form.
     expect(screen.getByTestId("detalle-saldo-pendiente").textContent).toMatch(
       /82,500\.00/,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Registrar Pago" }));
+    const dialog = await screen.findByRole("dialog");
+
+    const monto = within(dialog).getByLabelText("Monto del pago factura 12");
+    // Prefilled with the derived pending balance.
+    expect(monto).toHaveValue("82500.00");
+    expect(monto).toHaveAttribute("inputmode", "decimal");
+    expect(within(dialog).getByTestId("cobro-saldo-pendiente-12").textContent).toMatch(
+      /82,500\.00/,
+    );
+    expect(within(dialog).getByLabelText("Fecha del pago factura 12")).toHaveValue(hoySD());
+    expect(within(dialog).getByLabelText("Referencia factura 12")).toHaveValue("");
 
     let resolver:
       | ((v: {
@@ -571,12 +715,16 @@ describe("Detalle de factura (S13 per-invoice detail)", () => {
         }),
     );
 
-    const submit = screen.getByRole("button", { name: "Confirmar pago factura 12" });
+    const submit = within(dialog).getByRole("button", { name: "Confirmar pago factura 12" });
     fireEvent.click(submit);
     expect(submit).toBeDisabled();
     fireEvent.click(submit);
     expect(mockCobro).toHaveBeenCalledTimes(1);
-    expect(mockCobro).toHaveBeenCalledWith({ facturaId: 12, monto: "82500.00" });
+    expect(mockCobro).toHaveBeenCalledWith({
+      facturaId: 12,
+      monto: "82500.00",
+      fechaCobro: hoySD(),
+    });
 
     // The reload serves the updated derived saldo (never a client-side sum).
     mockDetalle.mockResolvedValue({
@@ -603,6 +751,8 @@ describe("Detalle de factura (S13 per-invoice detail)", () => {
     mockDetalle.mockResolvedValue({ ok: true, data: detalle() });
     render(<DetalleFacturaScreen facturaId={12} />);
     await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Registrar Pago" }));
+    const dialog = await screen.findByRole("dialog");
 
     mockCobro.mockResolvedValue({
       ok: false,
@@ -611,14 +761,14 @@ describe("Detalle de factura (S13 per-invoice detail)", () => {
         message: "El cobro supera el saldo pendiente de la factura; ajuste el monto",
       },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar pago factura 12" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar pago factura 12" }));
 
     const status = await screen.findByRole("status");
     expect(status.textContent).toContain("[COBRO_EXCEDE_SALDO]");
     expect(status.textContent).toContain("supera el saldo");
     expect(status.textContent).not.toMatch(/at .*\.ts|Prisma|Error:/);
     expect(
-      await screen.findByRole("button", { name: "Confirmar pago factura 12" }),
+      within(dialog).getByRole("button", { name: "Confirmar pago factura 12" }),
     ).toBeEnabled();
   });
 
@@ -649,17 +799,17 @@ describe("Detalle de factura (S13 per-invoice detail)", () => {
     expect(alert.textContent).not.toMatch(/Prisma|Error:|at /);
   });
 
-  it("navigates a board row to the detail route while the inline form still works", async () => {
+  it("navigates a board row to the detail route while the Cobrar modal still works", async () => {
     mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
     render(<CxcBoardScreen />);
     await settle();
-    // Additive navigation: the detail link sits next to the unchanged Cobrar button.
+    // Additive navigation: the detail link sits next to the Cobrar affordance.
     expect(
       screen.getByRole("link", { name: "Ver detalle factura 1" }),
     ).toHaveAttribute("href", "/cobros/factura/1");
-    const cobrar = screen.getByRole("button", { name: "Cobrar factura 1" });
-    expect(cobrar).toBeInTheDocument();
-    fireEvent.click(cobrar);
-    expect(await screen.findByTestId("cobro-form-1")).toBeInTheDocument();
+    const dialog = await abrirModalTablero(1);
+    expect(within(dialog).getByLabelText("Monto del pago factura 1")).toHaveValue(
+      "1000.00",
+    );
   });
 });

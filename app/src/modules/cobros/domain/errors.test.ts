@@ -20,12 +20,14 @@ import {
   FACTURA_COBRO_NO_VIGENTE,
   PAGO_NO_AUTORIZADO,
   PAGO_NO_ENCONTRADO,
+  FECHA_COBRO_FUTURA,
+  FECHA_COBRO_RETROACTIVA_EXCEDIDA,
   messageFor,
   type CobroErrorCode,
 } from "./errors";
 
 describe("cobros error catalog (600-series, R-C5)", () => {
-  it("owns exactly the ten spec-listed codes", () => {
+  it("owns exactly the twelve spec-listed codes", () => {
     // toStrictEqual (not toEqual): an unknowingly-missing export imports as
     // `undefined`, and toEqual IGNORES undefined array entries — which would let
     // this exact-list assertion pass vacuously before the code exists (TDD red).
@@ -41,8 +43,21 @@ describe("cobros error catalog (600-series, R-C5)", () => {
         PAGO_NO_AUTORIZADO,
         PAGO_NO_ENCONTRADO,
         PAGO_IDEMPOTENCIA_RESERVADA,
+        FECHA_COBRO_FUTURA,
+        FECHA_COBRO_RETROACTIVA_EXCEDIDA,
       ].sort(),
     );
+  });
+
+  it("the payment-date band codes follow the documented extension protocol", () => {
+    // constant + union member + MESSAGES entry + census: all four land together,
+    // so the catalog can never carry a code without user copy (S14).
+    expect(FECHA_COBRO_FUTURA).toBe("FECHA_COBRO_FUTURA");
+    expect(FECHA_COBRO_RETROACTIVA_EXCEDIDA).toBe(
+      "FECHA_COBRO_RETROACTIVA_EXCEDIDA",
+    );
+    expect(messageFor(FECHA_COBRO_FUTURA)).toMatch(/futura/i);
+    expect(messageFor(FECHA_COBRO_RETROACTIVA_EXCEDIDA)).toMatch(/retroactivo/i);
   });
 
   it.each(COBRO_ERROR_CODES.map((code) => [code]) as [CobroErrorCode][])(
