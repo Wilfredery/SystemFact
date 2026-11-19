@@ -225,3 +225,18 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   hardcoded number, MOTIVO_NO_VALIDO unreachable via HTTP (defense in
   depth), chip clear does not update the URL, version bump owed at PR time.
   Next board: 05 Compras.
+- L16: v0.38.0 shipped end-to-end 2026-11-19 (PR #253 merged as af7dc36; tag
+  + release; prod deploy; Pago.referencia migration applied on production via
+  the supabase MCP; prod smoke 10/0/0 after PR #255 fixed the smoke census and
+  board-03 markup; demo lane 5/0/0 after PRs #256–#259 aligned the demo/smoke
+  helpers to the shipped flows and amended the version-bump guard with the
+  browser-lane exemption, bumps 0.38.1/0.38.2). NCF counters by SELECT:
+  B01 35/100, B02 141/200, B04 228/300 — every delta accounted for. Real
+  product bugs fixed by the lanes: server-side buttonVariants() RSC crash,
+  payment-modal Confirm unreachable on short viewports. Patches tagged
+  v0.38.1/v0.38.2 (test-only, no redeploy).
+- L17 (owner, 2026-11-19): "go with recommendations" resolves the BOARD
+  REPORT 05 items: D1 sucursal stays read-only, D2 view-only list keeps
+  Operador/Despachador, D3 nota-fiscal banner added, F1 F0 retrofit, P1
+  NumericKeypad on quantity/cost. Board 05 implementation is the first task
+  of the next session (S25+ to be written at that time).
