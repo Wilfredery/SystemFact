@@ -31,7 +31,9 @@
   --warn-bg: #fff3cd;
   --link: #0066cc;
   --danger: #8b0000;
+  /* success pair (board-04 S24): --success-fg on --success-bg = 7.0:1, WCAG AA. */
   --success-bg: #e8f5e9;
+  --success-fg: #1b5e20;
 }
 
 /* Dark registry — authored ONCE, applied via two pure-CSS triggers. */
@@ -50,6 +52,7 @@
     --link: #7fb8ff;
     --danger: #ff6e6e;
     --success-bg: #17331d;
+    --success-fg: #a5d6a7;
   }
 }
 
@@ -69,6 +72,7 @@
   --link: #7fb8ff;
   --danger: #ff6e6e;
   --success-bg: #17331d;
+  --success-fg: #a5d6a7;
 }
 
 /* Tailwind 4 token mapping — `inline` so utilities emit var(--ink)-style
@@ -87,6 +91,7 @@
   --color-link: var(--link);
   --color-danger: var(--danger);
   --color-success-bg: var(--success-bg);
+  --color-success-fg: var(--success-fg);
   --font-sans: var(--font-source-sans);
 }
 

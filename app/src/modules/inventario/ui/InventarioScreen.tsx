@@ -12,6 +12,10 @@
  * product's code) and "Historial" (opens the movement history filtered to the
  * product). Both destinations are Administrador-only server-side, so the menu
  * renders only when the page grants `puedeAjustar`.
+ *
+ * Board-04 S24: F0 primitives + token classes only (no raw palette, no
+ * dark-mode overrides). The `normal` status badge uses the `--success-bg`/`--success-fg`
+ * pair added for this board.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,6 +24,23 @@ import { consultarInventarioAction } from "@/modules/inventario/http/actions";
 import type { ConsultarInventarioOutput } from "@/modules/inventario/application/consultar-inventario";
 import type { StockKpi } from "@/modules/inventario/domain/inventario";
 import { formatearMonto } from "@/shared/ui/format";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { TAMANO_PAGINA } from "./paginacion";
 
 const DEBOUNCE_BUSQUEDA_MS = 300;
@@ -41,18 +62,18 @@ const ETIQUETA_ESTADO: Record<StockKpi, string> = {
   agotado: "Agotado",
 };
 
+/** Status badge tone per stock state (F0.1 registry only — the registries own both modes). */
 const CLASE_ESTADO: Record<StockKpi, string> = {
-  normal: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-  bajo_stock: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-  agotado: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+  normal: "border-transparent bg-success-bg text-success-fg",
+  bajo_stock: "border-transparent bg-warn-bg text-warn",
+  agotado: "border-transparent bg-danger/10 text-danger",
 };
 
-const CLASE_CONTROL =
-  "min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
-const CLASE_BOTON =
-  "min-h-11 rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300";
+/** Native <select> face, token-bound (the F0 Select primitive is not used here). */
+const CLASE_SELECT =
+  "min-h-11 rounded-lg border border-line bg-surface px-2.5 text-sm text-ink";
 const CLASE_ALERTA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+  "rounded-md bg-danger/10 px-3 py-2 text-sm text-danger";
 
 function construirQuery(filtros: FiltrosInventario, page: number) {
   return {
@@ -146,13 +167,13 @@ export function InventarioScreen({
       </section>
 
       <div className="flex flex-col gap-2 sm:flex-row">
-        <input
+        <Input
           type="search"
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           placeholder="Buscar por nombre o código..."
           aria-label="Buscar producto"
-          className={`${CLASE_CONTROL} sm:flex-1`}
+          className="sm:flex-1"
         />
         <select
           value={filtros.categoriaId === null ? "" : String(filtros.categoriaId)}
@@ -167,7 +188,7 @@ export function InventarioScreen({
             )
           }
           aria-label="Filtrar por categoría"
-          className={CLASE_CONTROL}
+          className={CLASE_SELECT}
         >
           <option value="">Todas las categorías</option>
           {data.categorias.map((c) => (
@@ -189,7 +210,7 @@ export function InventarioScreen({
             )
           }
           aria-label="Filtrar por estado"
-          className={CLASE_CONTROL}
+          className={CLASE_SELECT}
         >
           <option value="">Todos los estados</option>
           <option value="normal">Disponible</option>
@@ -199,77 +220,77 @@ export function InventarioScreen({
       </div>
 
       {data.items.length === 0 ? (
-        <p className="rounded-md border border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+        <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
           No hay productos que coincidan con los filtros.
         </p>
       ) : (
         <div
-          className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800"
+          className="overflow-x-auto rounded-lg border border-line"
           aria-busy={cargando}
         >
-          <table className="w-full text-left text-sm">
-            <thead className="bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
-              <tr>
-                <th scope="col" className="px-4 py-2">Código</th>
-                <th scope="col" className="px-4 py-2">Nombre</th>
-                <th scope="col" className="px-4 py-2">Categoría</th>
-                <th scope="col" className="px-4 py-2">Und.</th>
-                <th scope="col" className="px-4 py-2 text-right">Existencia</th>
-                <th scope="col" className="px-4 py-2 text-right">Stock mín.</th>
-                <th scope="col" className="px-4 py-2">Estado</th>
+          <Table>
+            <TableHeader className="bg-surface-muted text-xs uppercase">
+              <TableRow>
+                <TableHead scope="col" className="px-4">Código</TableHead>
+                <TableHead scope="col" className="px-4">Nombre</TableHead>
+                <TableHead scope="col" className="px-4">Categoría</TableHead>
+                <TableHead scope="col" className="px-4">Und.</TableHead>
+                <TableHead scope="col" className="px-4 text-right">Existencia</TableHead>
+                <TableHead scope="col" className="px-4 text-right">Stock mín.</TableHead>
+                <TableHead scope="col" className="px-4">Estado</TableHead>
                 {puedeAjustar && (
-                  <th scope="col" className="px-4 py-2">Acciones</th>
+                  <TableHead scope="col" className="px-4">Acciones</TableHead>
                 )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {data.items.map((p) => (
-                <tr key={p.productoId} data-testid={`inventario-fila-${p.productoId}`}>
-                  <td className="px-4 py-2 font-mono text-xs">{p.codigo}</td>
-                  <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">{p.nombre}</td>
-                  <td className="px-4 py-2">{p.categoria}</td>
-                  <td className="px-4 py-2">{p.unidadMedida}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{p.cantidad}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{p.stockMinimo}</td>
-                  <td className="px-4 py-2">
-                    <span className={`rounded px-2 py-1 text-xs font-medium ${CLASE_ESTADO[p.estado]}`}>
+                <TableRow key={p.productoId} data-testid={`inventario-fila-${p.productoId}`}>
+                  <TableCell className="px-4 py-2 font-mono text-xs">{p.codigo}</TableCell>
+                  <TableCell className="px-4 py-2 font-medium text-ink">{p.nombre}</TableCell>
+                  <TableCell className="px-4 py-2">{p.categoria}</TableCell>
+                  <TableCell className="px-4 py-2">{p.unidadMedida}</TableCell>
+                  <TableCell className="px-4 py-2 text-right tabular-nums">{p.cantidad}</TableCell>
+                  <TableCell className="px-4 py-2 text-right tabular-nums">{p.stockMinimo}</TableCell>
+                  <TableCell className="px-4 py-2">
+                    <Badge className={CLASE_ESTADO[p.estado]}>
                       {ETIQUETA_ESTADO[p.estado]}
-                    </span>
-                  </td>
+                    </Badge>
+                  </TableCell>
                   {puedeAjustar && (
-                    <td className="px-4 py-2">
+                    <TableCell className="px-4 py-2">
                       <MenuFila codigo={p.codigo} nombre={p.nombre} />
-                    </td>
+                    </TableCell>
                   )}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 
       <nav aria-label="Paginación inventario" className="flex items-center justify-between gap-2">
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={() => void consultar(filtros, data.page - 1)}
           disabled={cargando || busquedaPendiente || data.page <= 1}
           aria-label="Página anterior"
-          className={CLASE_BOTON}
         >
           Anterior
-        </button>
-        <span className="text-sm text-zinc-500">
+        </Button>
+        <span className="text-sm text-ink-muted">
           Página {data.page} de {totalPaginas}
         </span>
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={() => void consultar(filtros, data.page + 1)}
           disabled={cargando || busquedaPendiente || data.page >= totalPaginas}
           aria-label="Página siguiente"
-          className={CLASE_BOTON}
         >
           Siguiente
-        </button>
+        </Button>
       </nav>
     </div>
   );
@@ -288,34 +309,36 @@ function MenuFila({ codigo, nombre }: { readonly codigo: string; readonly nombre
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setAbierto(false);
       }}
     >
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="icon"
         aria-haspopup="menu"
         aria-expanded={abierto}
         aria-label={`Acciones ${codigo}`}
         data-testid={`menu-fila-${codigo}`}
         onClick={() => setAbierto((v) => !v)}
-        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-zinc-300 text-lg text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+        className="text-lg"
       >
         <span aria-hidden="true">⋯</span>
-      </button>
+      </Button>
       {abierto && (
         <div
           role="menu"
           aria-label={`Acciones ${codigo}`}
-          className="absolute right-0 z-10 mt-1 flex flex-col overflow-hidden rounded-md border border-zinc-200 bg-white shadow-md dark:border-zinc-700 dark:bg-zinc-900"
+          className="absolute right-0 z-10 mt-1 flex flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-md"
         >
           <Link
             role="menuitem"
             href={`/inventario/ajuste?producto=${encodeURIComponent(codigo)}`}
-            className="min-h-11 px-4 py-2 text-sm text-zinc-900 hover:bg-zinc-100 dark:text-zinc-50 dark:hover:bg-zinc-800"
+            className="min-h-11 px-4 py-2 text-sm text-ink hover:bg-surface-muted"
           >
             Ajustar {nombre}
           </Link>
           <Link
             role="menuitem"
             href={`/inventario/movimientos?producto=${encodeURIComponent(codigo)}`}
-            className="min-h-11 px-4 py-2 text-sm text-zinc-900 hover:bg-zinc-100 dark:text-zinc-50 dark:hover:bg-zinc-800"
+            className="min-h-11 px-4 py-2 text-sm text-ink hover:bg-surface-muted"
           >
             Historial
           </Link>
@@ -335,12 +358,11 @@ function TarjetaKpi({
   readonly valor: string;
 }) {
   return (
-    <div
-      data-testid={`inventario-kpi-${testid}`}
-      className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
-    >
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">{etiqueta}</p>
-      <p className="mt-2 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">{valor}</p>
-    </div>
+    <Card size="sm" data-testid={`inventario-kpi-${testid}`} className="gap-1">
+      <CardHeader>
+        <CardDescription>{etiqueta}</CardDescription>
+        <CardTitle className="text-2xl font-semibold tabular-nums">{valor}</CardTitle>
+      </CardHeader>
+    </Card>
   );
 }

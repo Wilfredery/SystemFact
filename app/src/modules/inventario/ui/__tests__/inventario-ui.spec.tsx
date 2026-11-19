@@ -106,6 +106,20 @@ describe("InventarioScreen — rows, badges and KPIs", () => {
     expect(within(screen.getByTestId("inventario-fila-9")).getByText("Agotado")).toBeInTheDocument();
   });
 
+  it("pins each status badge to its F0 token pair", () => {
+    montar();
+
+    expect(
+      within(screen.getByTestId("inventario-fila-7")).getByText("Disponible"),
+    ).toHaveClass("bg-success-bg", "text-success-fg");
+    expect(
+      within(screen.getByTestId("inventario-fila-8")).getByText("Bajo stock"),
+    ).toHaveClass("bg-warn-bg", "text-warn");
+    expect(
+      within(screen.getByTestId("inventario-fila-9")).getByText("Agotado"),
+    ).toHaveClass("bg-danger/10", "text-danger");
+  });
+
   it("shows the four KPI cards with the value formatted as RD$", () => {
     montar();
 

@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
 import { obtenerPermisosInventarioAction } from "@/modules/inventario/http/actions";
 import { AjusteInventarioForm } from "@/modules/inventario/ui/AjusteInventarioForm";
+import { buttonVariants } from "@/components/ui/button";
 
 async function puedeAjustarInventario(): Promise<boolean> {
   try {
@@ -51,15 +52,12 @@ export default async function InventarioAjustePage({
         <AjusteInventarioForm productoPreseleccionado={productoPreseleccionado} />
       ) : (
         <div className="flex flex-col items-start gap-4">
-          <p
-            role="alert"
-            className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
-          >
+          <p role="alert" className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">
             No tiene permisos para ajustar inventario.
           </p>
           <Link
             href="/inventario"
-            className="inline-flex min-h-12 items-center rounded-md border border-zinc-300 px-5 text-sm font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+            className={buttonVariants({ variant: "outline", size: "pos" })}
           >
             Volver a Inventario
           </Link>

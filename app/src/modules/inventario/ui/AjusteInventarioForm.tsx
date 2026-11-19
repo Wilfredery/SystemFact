@@ -13,6 +13,9 @@
  * the first click, and when the outcome is unknown (the action rejects, i.e.
  * timeout/network) the fields stay locked and the retry repeats the same
  * `requestId`, so the server applies the request at most once.
+ *
+ * Board-04 S24: F0 primitives + token classes only (no raw palette, no
+ * dark-mode overrides).
  */
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -20,6 +23,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Decimal from "decimal.js";
 import { NumericKeypad, type TeclaNumerica } from "@/components/ui/numeric-keypad";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { componerValor } from "@/modules/venta/ui/carro";
 import {
   ajustarInventarioAction,
@@ -51,11 +57,11 @@ interface ProductoElegible {
   readonly cantidad: string;
 }
 
+/** Native <select>/<textarea> face, token-bound (the F0 Select is not used here). */
 const CLASE_CONTROL =
-  "min-h-11 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
-const CLASE_ETIQUETA = "text-sm font-medium text-zinc-900 dark:text-zinc-50";
+  "min-h-11 w-full rounded-lg border border-line bg-surface px-2.5 text-sm text-ink";
 const CLASE_ALERTA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+  "rounded-md bg-danger/10 px-3 py-2 text-sm text-danger";
 
 /** Why an amount typed by the user is not accepted; null while untouched or valid. */
 function explicarCantidad(texto: string): string | null {
@@ -245,19 +251,17 @@ export function AjusteInventarioForm({
         <Link
           href="/inventario"
           aria-label="Volver"
-          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-xl text-zinc-700 dark:text-zinc-300"
+          className={buttonVariants({ variant: "ghost", size: "icon", className: "text-xl" })}
         >
           <span aria-hidden="true">←</span>
         </Link>
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Ajuste de Inventario</h1>
+        <h1 className="text-2xl font-semibold text-ink">Ajuste de Inventario</h1>
       </div>
 
       <fieldset disabled={camposBloqueados} className="m-0 flex min-w-0 flex-col gap-6 border-0 p-0">
       <div className="flex flex-col gap-2">
-        <label htmlFor="ajuste-producto" className={CLASE_ETIQUETA}>
-          Producto *
-        </label>
-        <input
+        <Label htmlFor="ajuste-producto">Producto *</Label>
+        <Input
           id="ajuste-producto"
           type="search"
           autoComplete="off"
@@ -265,29 +269,28 @@ export function AjusteInventarioForm({
           onChange={(e) => cambiarTexto(e.target.value)}
           onFocus={() => setTecladoActivo(false)}
           placeholder="Seleccionar producto..."
-          className={CLASE_CONTROL}
         />
         {avisoBusqueda !== null && (
-          <p role="status" className="text-sm text-red-700 dark:text-red-300">
+          <p role="status" className="text-sm text-danger">
             {avisoBusqueda}
           </p>
         )}
         {resultados.length > 0 && (
           <ul
             aria-label="Productos encontrados"
-            className="divide-y divide-zinc-100 rounded-md border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800"
+            className="divide-y divide-line rounded-lg border border-line"
           >
             {resultados.map((p) => (
               <li key={p.productoId}>
                 <button
                   type="button"
                   onClick={() => elegirProducto(p)}
-                  className="flex min-h-11 w-full items-center justify-between gap-4 px-3 py-2 text-left text-sm text-zinc-900 dark:text-zinc-50"
+                  className="flex min-h-11 w-full items-center justify-between gap-4 px-3 py-2 text-left text-sm text-ink"
                 >
                   <span>
                     {p.codigo} — {p.nombre}
                   </span>
-                  <span className="text-zinc-500 dark:text-zinc-400">
+                  <span className="text-ink-muted">
                     Stock: {new Decimal(p.cantidad).toFixed()}
                   </span>
                 </button>
@@ -298,32 +301,27 @@ export function AjusteInventarioForm({
       </div>
 
       <div role="group" aria-labelledby="ajuste-tipo" className="flex flex-col gap-2">
-        <span id="ajuste-tipo" className={CLASE_ETIQUETA}>
+        <span id="ajuste-tipo" className="text-sm font-medium text-ink">
           Tipo de ajuste *
         </span>
         <div className="grid grid-cols-2 gap-2">
           {(["ENTRADA", "SALIDA"] as const).map((valor) => (
-            <button
+            <Button
               key={valor}
               type="button"
+              size="pos"
+              variant={tipo === valor ? "default" : "outline"}
               aria-pressed={tipo === valor}
               onClick={() => setTipo(valor)}
-              className={`min-h-12 rounded-md border px-4 text-sm font-medium ${
-                tipo === valor
-                  ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-                  : "border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-              }`}
             >
               {valor === "ENTRADA" ? "Entrada" : "Salida"}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
 
       <div className="flex flex-col gap-2">
-        <label htmlFor="ajuste-motivo" className={CLASE_ETIQUETA}>
-          Motivo *
-        </label>
+        <Label htmlFor="ajuste-motivo">Motivo *</Label>
         <select
           id="ajuste-motivo"
           value={motivo}
@@ -341,10 +339,8 @@ export function AjusteInventarioForm({
       </div>
 
       <div className="flex flex-col gap-2">
-        <label htmlFor="ajuste-cantidad" className={CLASE_ETIQUETA}>
-          Cantidad a ajustar *
-        </label>
-        <input
+        <Label htmlFor="ajuste-cantidad">Cantidad a ajustar *</Label>
+        <Input
           id="ajuste-cantidad"
           type="text"
           inputMode="decimal"
@@ -357,7 +353,6 @@ export function AjusteInventarioForm({
           }}
           placeholder="0"
           aria-describedby="ajuste-cantidad-detalle"
-          className={CLASE_CONTROL}
         />
         {tecladoActivo && (
           <NumericKeypad
@@ -368,15 +363,15 @@ export function AjusteInventarioForm({
         )}
         <p id="ajuste-cantidad-detalle" aria-live="polite" className="min-h-5 text-sm">
           {stockInsuficiente ? (
-            <span className="text-red-700 dark:text-red-300">Stock insuficiente</span>
+            <span className="text-danger">Stock insuficiente</span>
           ) : excedeMaximo ? (
-            <span className="text-red-700 dark:text-red-300">{MENSAJE_STOCK_MAXIMO}</span>
+            <span className="text-danger">{MENSAJE_STOCK_MAXIMO}</span>
           ) : avisoCantidad !== null ? (
-            <span className="text-red-700 dark:text-red-300">{avisoCantidad}</span>
+            <span className="text-danger">{avisoCantidad}</span>
           ) : (
             existencia !== null &&
             quedara !== null && (
-              <span className="text-zinc-600 dark:text-zinc-400">
+              <span className="text-ink-muted">
                 Existencia actual {existencia.toFixed()} → quedará {quedara.toFixed()}
               </span>
             )
@@ -385,9 +380,7 @@ export function AjusteInventarioForm({
       </div>
 
       <div className="flex flex-col gap-2">
-        <label htmlFor="ajuste-observaciones" className={CLASE_ETIQUETA}>
-          Observaciones
-        </label>
+        <Label htmlFor="ajuste-observaciones">Observaciones</Label>
         <textarea
           id="ajuste-observaciones"
           value={observaciones}
@@ -419,17 +412,13 @@ export function AjusteInventarioForm({
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Link
           href="/inventario"
-          className="inline-flex min-h-12 items-center justify-center rounded-md border border-zinc-300 px-5 text-sm font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+          className={buttonVariants({ variant: "outline", size: "pos" })}
         >
           Cancelar
         </Link>
-        <button
-          type="submit"
-          disabled={!puedeConfirmar}
-          className="min-h-12 rounded-md bg-zinc-900 px-5 text-sm font-medium text-white disabled:opacity-40 dark:bg-zinc-50 dark:text-zinc-900"
-        >
+        <Button type="submit" size="pos" disabled={!puedeConfirmar}>
           {envio === "desconocido" ? "Reintentar ajuste" : "Confirmar Ajuste"}
-        </button>
+        </Button>
       </div>
     </form>
   );
