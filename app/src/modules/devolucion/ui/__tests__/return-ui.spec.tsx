@@ -260,9 +260,15 @@ describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
   // Board 02 remediation (JD-A, MEDIUM): a role ROLES_DEVOLUCION denies
   // (e.g. Despachador) never sees the return affordance — no dead button.
   it("hides the Return control when puedeDevolver is false", async () => {
+    // Positive control first: the CONFIRMADA row IS rendered (non-vacuous).
+    mockListar.mockResolvedValue({
+      ok: true as const,
+      data: { items: [CONFIRMADA_7], total: 1, page: 1, limit: 25 },
+    });
     render(<PosScreen esAdmin={false} />);
     await settle();
     fireEvent.click(await screen.findByRole("button", { name: /My drafts/ }));
+    expect(await screen.findByTestId("venta-fila-7")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Return sale 7" })).toBeNull();
   });
 });
