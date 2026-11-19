@@ -252,6 +252,9 @@ export async function leerHistorialPagosFacturaEnTx(
 ): Promise<FilaPagoHistorial[]> {
   const pagos = await tx.pago.findMany({
     where: { facturaId, empresaId: ctx.empresaId },
+    // JD-A remediation: a detail page is paginated even for a bounded
+    // per-invoice sub-list (lists ALWAYS paginated, max 100).
+    take: 100,
     select: {
       correlativoRecibo: true,
       fecha: true,

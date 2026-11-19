@@ -160,7 +160,10 @@ export function ModalRegistrarPago({
     <Dialog
       open={abierto}
       onOpenChange={(open) => {
-        if (!open) onCerrar();
+        // JD-A remediation: Escape/overlay close is BLOCKED while a confirm is
+        // in flight — closing would reset `enviando` and let a second Confirm
+        // fire a second COBRO while the first is still pending.
+        if (!open && !enviando) onCerrar();
       }}
     >
       <DialogContent

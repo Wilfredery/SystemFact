@@ -100,10 +100,13 @@ async function resolverFechaCobroEnTx(
   input: RegistrarCobroInput,
 ): Promise<{ ok: true; fecha: Date } | { ok: false; code: CobroErrorCode; message: string }> {
   const ahora = new Date();
-  const fecha =
-    input.fechaCobro === undefined
-      ? ahora
-      : instanteDeFechaCobroSD(input.fechaCobro);
+  if (input.fechaCobro === undefined) {
+    // JD-A remediation: the retroactive-horizon config is only needed when the
+    // caller actually sends a date — a tenant without the key keeps collecting
+    // with the server clock (the historical default).
+    return { ok: true, fecha: ahora };
+  }
+  const fecha = instanteDeFechaCobroSD(input.fechaCobro);
   const horizonteDias = await leerRetroactivoFechaVentaEnTx(
     tx,
     ctx.empresaId,

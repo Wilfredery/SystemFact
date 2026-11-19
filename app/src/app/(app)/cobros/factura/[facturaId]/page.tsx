@@ -31,7 +31,8 @@ export default async function DetalleFacturaPage({
   }
 
   const { facturaId: raw } = await params;
-  const facturaId = Number.parseInt(raw, 10);
+  // Strict digits only: `12abc` must not parse as 12 (JD-A remediation).
+  const facturaId = /^\d+$/.test(raw) ? Number(raw) : NaN;
   if (!Number.isInteger(facturaId) || facturaId <= 0) {
     redirect("/cobros/cxc-board");
   }
