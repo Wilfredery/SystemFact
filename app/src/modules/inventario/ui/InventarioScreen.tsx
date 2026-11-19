@@ -301,7 +301,8 @@ export function InventarioScreen({
  * Per-row ⋯ menu: "Ajustar" (prefill by code) and "Historial" (exact-code
  * filtered history). The panel renders through a portal with fixed position so
  * the table's `overflow-x-auto` wrapper can never clip it (JD-B-003); it closes
- * on Escape or on a press outside both the panel and the button.
+ * on Escape, on a press outside both the panel and the button, or on
+ * scroll/resize — and focus returns to the ⋯ button on every close (JD-A N3).
  */
 function MenuFila({ codigo }: { readonly codigo: string }) {
   const [abierto, setAbierto] = useState(false);
@@ -309,11 +310,21 @@ function MenuFila({ codigo }: { readonly codigo: string }) {
   const botonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Keyboard access (JD-A round-2 N3): on open, focus lands on the panel's
-  // first item, so Tab reaches the items and Shift+Tab returns to the button.
+  // Keyboard access (JD-A N3): on open, focus lands on the panel's first item
+  // (Tab then moves between the two portal items); on close, focus returns to
+  // the ⋯ button so the next Tab resumes at the following row. The mount pass
+  // (never opened) must not steal focus.
+  const algunaVezAbierto = useRef(false);
   useEffect(() => {
-    if (!abierto) return;
-    menuRef.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus();
+    if (abierto) {
+      algunaVezAbierto.current = true;
+      menuRef.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus();
+      return;
+    }
+    if (algunaVezAbierto.current) {
+      algunaVezAbierto.current = false;
+      botonRef.current?.focus();
+    }
   }, [abierto]);
 
   // A scroll or resize moves a fixed panel out from under its button: close it

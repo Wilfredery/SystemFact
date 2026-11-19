@@ -196,7 +196,12 @@ describe("listarMovimientosInventario (real DB, app role + RLS)", () => {
     expect(nada.data).toMatchObject({ items: [], total: 0 });
   });
 
-  it("filters by EXACT productoCodigo (board-04 S19): only that product's rows, prefix-safe", async () => {
+  // Exactness discriminator lives in the repository UNIT pin (toEqual on the
+  // where clause: plain equality, never contains). The DB-level pin here
+  // proves the filter returns only that product's rows; a discriminating
+  // prefix sibling would need a fixture product whose code extends prodA1's
+  // (logged rider, odd/tasks/uiux-alignment.md L15).
+  it("filters by EXACT productoCodigo (board-04 S19): only that product's rows", async () => {
     const exacto = await motivos({
       page: 1,
       limit: 100,

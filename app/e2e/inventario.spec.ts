@@ -133,7 +133,7 @@ async function verInventario(
   if (veAjustar) {
     await accionPrimera.click();
     const menu = page.getByRole("menu").first();
-    await expect(menu.getByRole("menuitem", { name: "Ajustar" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Ajustar", exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Historial" })).toBeVisible();
   } else {
     await expect(accionPrimera).toHaveCount(0);

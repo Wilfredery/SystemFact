@@ -189,6 +189,21 @@ describe("InventarioScreen — row ⋯ menu (board-04 S19)", () => {
     expect(historial).toHaveAttribute("href", "/inventario/movimientos?productoCodigo=P-007");
   });
 
+  it("moves focus to the first item on open and back to the button on Escape (JD-A N3)", async () => {
+    montarConMenu();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("menu-fila-P-007"));
+    });
+    expect(document.activeElement?.getAttribute("role")).toBe("menuitem");
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "Escape" });
+    });
+    expect(screen.queryByRole("menu", { name: "Acciones P-007" })).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByTestId("menu-fila-P-007"));
+  });
+
   it("closes the menu with Escape", async () => {
     montarConMenu();
 
