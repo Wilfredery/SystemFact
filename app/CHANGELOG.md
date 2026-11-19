@@ -1,3 +1,9 @@
+## [0.38.1](https://github.com/Wilfredery/SystemFact/compare/v0.38.0...v0.38.1) (2026-11-19)
+
+### Fixed
+
+* **smoke/demo lanes:** the production smoke now covers the new `/cobros/factura/[facturaId]` route and matches the board-03 F0 markup; the demo POS helper follows the shipped post-confirm flow (S5 receipt navigation, collapsed draft list S6) and validates the NCF grammar on both surfaces. Test-only; no production code changed.
+
 ## [0.38.0](https://github.com/Wilfredery/SystemFact/compare/v0.37.3...v0.38.0) (2026-11-19)
 
 ### Added
