@@ -59,10 +59,13 @@ describe("venta error catalog — 5c confirm delta (R-V13 / R-V15)", () => {
     // code, mapped to venta's own copy by the confirmed-cancel reposition and
     // the VENDIBLE return (both THROW it so the transaction rolls back).
     STOCK_MAXIMO_EXCEDIDO: true,
+    // Board 02 remediation: promoted from an ad-hoc PosScreen UI code into
+    // the frozen catalog (discounted drafts are view/cancel only, ADR-018).
+    EDICION_DESCUENTO_NO_DISPONIBLE: true,
   };
 
-  it("carries exactly 28 stable codes (26 + the L6 stock-ceiling delta + the print-view FACTURA_NO_ENCONTRADA)", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(28);
+  it("carries exactly 29 stable codes (28 + the board-02 EDICION delta)", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(29);
   });
 
   it("exposes the stock-ceiling code with venta's own copy (never inventario's)", () => {

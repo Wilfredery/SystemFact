@@ -73,6 +73,7 @@ describe("buildTenantContext", () => {
       sucursalId: 10,
       usuarioId: 100,
       esAdmin: true,
+      roles: ["Despachador", "Administrador"],
     });
   });
 
@@ -110,7 +111,13 @@ describe("buildTenantContext", () => {
     // Las propiedades son `readonly` por tipo; esto verifica que el objeto
     // es un POJO plano y comparable.
     expect(JSON.stringify(ctx)).toBe(
-      JSON.stringify({ empresaId: 1, sucursalId: 1, usuarioId: 1, esAdmin: true }),
+      JSON.stringify({
+        empresaId: 1,
+        sucursalId: 1,
+        usuarioId: 1,
+        esAdmin: true,
+        roles: ["Administrador"],
+      }),
     );
   });
 

@@ -14,6 +14,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import { ROLES_DEVOLUCION } from "@/modules/devolucion/http/actions.shared";
 import { PosScreen } from "@/modules/venta/ui/PosScreen";
 
 export default async function VentaPage() {
@@ -23,5 +24,11 @@ export default async function VentaPage() {
     redirect("/login");
   }
 
-  return <PosScreen esAdmin={ctx.esAdmin} />;
+  // Board 02 remediation (JD-A): the return affordance is gated server-side by
+  // the session user's actual roles (ROLES_DEVOLUCION); deny when unknown.
+  const puedeDevolver = (ctx.roles ?? []).some((rol) =>
+    (ROLES_DEVOLUCION as readonly string[]).includes(rol),
+  );
+
+  return <PosScreen esAdmin={ctx.esAdmin} puedeDevolver={puedeDevolver} />;
 }

@@ -34,9 +34,10 @@ import {
   obtenerVentaAction,
   listarVentasAction,
 } from "../http/actions";
-import type { StockWarning } from "../domain/errors";
+import { EDICION_DESCUENTO_NO_DISPONIBLE, messageFor, type StockWarning } from "../domain/errors";
 import {
   DESCUENTO_CERO,
+  DESCUENTO_TIPO,
   ESTADO_VENTA,
   estadoVentaDesdeDb,
   type Descuento,
@@ -77,7 +78,15 @@ type Mensaje =
 /** A stock warning enriched with the cart product name for display only. */
 type AvisoStock = StockWarning & { nombre: string };
 
-export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
+export function PosScreen({
+  esAdmin,
+  puedeDevolver = false,
+}: {
+  readonly esAdmin: boolean;
+  /** Board 02 remediation (JD-A): server-derived gate for the return affordance
+   * (ROLES_DEVOLUCION). Deny-by-default; the server action stays the real gate. */
+  readonly puedeDevolver?: boolean;
+}) {
   const [lineas, setLineas] = useState<readonly CarroLinea[]>([]);
   const [cliente, setCliente] = useState<SeleccionCliente>({
     id: null,
@@ -243,25 +252,25 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
     // is MONTO, so it is reconstructible. For PORCENTAJE, proration makes the
     // original percentage unrecoverable, so percentage discounts remain blocked.
     const headerDescuento =
-      d.descuento !== "0.00" && d.descuentoTipo === "MONTO"
-        ? { descuentoTipo: "MONTO" as const, descuentoValor: d.descuento }
+      d.descuento !== "0.00" && d.descuentoTipo === DESCUENTO_TIPO.MONTO
+        ? { descuentoTipo: DESCUENTO_TIPO.MONTO, descuentoValor: d.descuento }
         : d.descuento !== "0.00"
           ? null
           : DESCUENTO_CERO;
     if (headerDescuento === null) {
       setMensaje({
         kind: "error",
-        code: "EDICION_DESCUENTO_NO_DISPONIBLE",
-        text: "Drafts with a discount cannot be re-edited here (the percentage is not recoverable); cancel and recreate instead.",
+        code: EDICION_DESCUENTO_NO_DISPONIBLE,
+        text: messageFor(EDICION_DESCUENTO_NO_DISPONIBLE),
       });
       return;
     }
     for (const l of d.lineas) {
-      if (l.descuentoLinea !== "0.00" && l.descuentoTipo !== "MONTO") {
+      if (l.descuentoLinea !== "0.00" && l.descuentoTipo !== DESCUENTO_TIPO.MONTO) {
         setMensaje({
           kind: "error",
-          code: "EDICION_DESCUENTO_NO_DISPONIBLE",
-          text: "Drafts with a discount cannot be re-edited here (the percentage is not recoverable); cancel and recreate instead.",
+          code: EDICION_DESCUENTO_NO_DISPONIBLE,
+          text: messageFor(EDICION_DESCUENTO_NO_DISPONIBLE),
         });
         return;
       }
@@ -275,8 +284,8 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
         precioUnitario: l.precioUnitario,
         tasaItbis: l.tasaItbis,
         descuento:
-          l.descuentoLinea !== "0.00" && l.descuentoTipo === "MONTO"
-            ? { descuentoTipo: "MONTO" as const, descuentoValor: l.descuentoLinea }
+          l.descuentoLinea !== "0.00" && l.descuentoTipo === DESCUENTO_TIPO.MONTO
+            ? { descuentoTipo: DESCUENTO_TIPO.MONTO, descuentoValor: l.descuentoLinea }
             : DESCUENTO_CERO,
       })),
     );
@@ -344,8 +353,15 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
         kind: "ok",
         text: `Sale #${r.data.id} confirmed — invoice ${r.data.ncf}.`,
       });
-      // Board 02 (S5): straight to the emitted receipt after a cash confirm.
-      if (r.data.facturaId !== null) {
+      // Board 02 (S5 remediation, JD-A): route to the receipt ONLY for a cash
+      // confirm WITHOUT an NCF warning — a CREDITO confirm must stay on screen
+      // so the user reads the due-date verdict, and an NCF_UMBRAL_90 confirm
+      // must keep its warning banner visible. Navigation never unmounts them.
+      if (
+        r.data.facturaId !== null &&
+        r.data.credito.forma === "CONTADO" &&
+        r.data.ncfWarning === null
+      ) {
         router.push(`/venta/factura/${r.data.facturaId}`);
       }
       if (r.data.ncfWarning !== null) setAvisoNcf(r.data.ncfWarning);
@@ -563,6 +579,7 @@ export function PosScreen({ esAdmin }: { readonly esAdmin: boolean }) {
         editandoId={editandoId}
         confirmandoId={confirmandoId}
         puedeAnular={esAdmin}
+        puedeDevolver={puedeDevolver}
         onLoad={(id) => void cargarBorrador(id)}
         onCancel={(id) => void cancelarBorrador(id)}
         onConfirm={(id) => void confirmarBorrador(id)}

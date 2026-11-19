@@ -40,6 +40,13 @@ export type TenantCtx = {
   readonly sucursalId: number;
   readonly usuarioId: number;
   readonly esAdmin: boolean;
+  /**
+   * Raw role names of the session user (board 02 remediation, JD-A finding:
+   * the UI must gate module-specific affordances — e.g. returns — by role,
+   * not by esAdmin). Optional for backward compatibility with existing
+   * mock contexts; absence means DENY in any derived gate.
+   */
+  readonly roles?: readonly string[];
 };
 
 /**
@@ -74,6 +81,7 @@ export function buildTenantContext(
     sucursalId: usuario.sucursalId,
     usuarioId: usuario.id,
     esAdmin: roles.includes("Administrador"),
+    roles,
   };
 }
 

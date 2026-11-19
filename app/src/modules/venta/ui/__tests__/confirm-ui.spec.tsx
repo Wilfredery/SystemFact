@@ -173,6 +173,32 @@ describe("POS confirm control (R-V14 5c slice)", () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/venta/factura/77"));
   });
 
+  // S5 remediation (JD-A): only a cash confirm without NCF warning routes to
+  // the receipt; a CREDITO confirm stays so the due-date verdict is readable.
+  it("does NOT route for a CREDITO confirm — the verdict stays on screen", async () => {
+    mockConfirmar.mockResolvedValue({
+      ...exitoConfirmar(),
+      data: {
+        ...exitoConfirmar().data,
+        credito: { forma: "CREDITO", plazoCreditoDias: 15, fechaEmision: "2026-03-01T15:00:00.000Z" },
+      },
+    });
+    await renderPos([BORRADOR_3]);
+    await expandirBorradores();
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm draft 3" }));
+    expect(await screen.findByText(/Due date:/)).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("does NOT route when the confirm carries the NCF_UMBRAL_90 warning", async () => {
+    mockConfirmar.mockResolvedValue(exitoConfirmar("NCF_UMBRAL_90"));
+    await renderPos([BORRADOR_3]);
+    await expandirBorradores();
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm draft 3" }));
+    expect(await screen.findByText(/NCF_UMBRAL_90/)).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
   it("surfaces a stable confirm error code without stack traces and keeps the draft", async () => {
     await renderPos([BORRADOR_3]);
       await expandirBorradores();

@@ -45,6 +45,7 @@ export function DraftList({
   editandoId,
   confirmandoId,
   puedeAnular,
+  puedeDevolver,
   onLoad,
   onCancel,
   onConfirm,
@@ -58,6 +59,10 @@ export function DraftList({
   /** UI gate only (D5): non-admin sessions never see the Void control; the
    * server action's role path stays the real authorization (R-V16). */
   readonly puedeAnular: boolean;
+  /** Board 02 remediation (JD-A): hide the return affordance for roles that
+   * ROLES_DEVOLUCION denies (e.g. Despachador) instead of showing a button
+   * that always fails NO_AUTORIZADO. Server-side gate unchanged. */
+  readonly puedeDevolver?: boolean;
   readonly onLoad: (id: number) => void;
   readonly onCancel: (id: number) => void;
   readonly onConfirm: (id: number) => void;
@@ -165,7 +170,7 @@ export function DraftList({
                       </>
                     ) : (
                       <>
-                        <DevolverButton ventaId={d.id} />
+                        {puedeDevolver && <DevolverButton ventaId={d.id} />}
                         {puedeAnular && (
                           <Button
                             type="button"
