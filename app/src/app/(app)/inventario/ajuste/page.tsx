@@ -24,19 +24,31 @@ async function puedeAjustarInventario(): Promise<boolean> {
   }
 }
 
-export default async function InventarioAjustePage() {
+type Param = string | string[] | undefined;
+
+export default async function InventarioAjustePage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<Record<string, Param>>;
+}) {
   const supabase = await createClient();
   const ctx = await getCurrentTenantContext(supabase);
   if (ctx === null) {
     redirect("/login");
   }
 
+  const params = await searchParams;
+  const productoParam = (Array.isArray(params.producto) ? params.producto[0] : params.producto) ?? "";
+  // Row-menu prefill (board-04 S19): the product's code. Sanitized like every
+  // free-text query; the form resolves it through the same search action.
+  const productoPreseleccionado = productoParam.trim().slice(0, 100);
+
   const puedeAjustar = await puedeAjustarInventario();
 
   return (
     <main className="mx-auto w-full max-w-2xl px-6 py-10">
       {puedeAjustar ? (
-        <AjusteInventarioForm />
+        <AjusteInventarioForm productoPreseleccionado={productoPreseleccionado} />
       ) : (
         <div className="flex flex-col items-start gap-4">
           <p

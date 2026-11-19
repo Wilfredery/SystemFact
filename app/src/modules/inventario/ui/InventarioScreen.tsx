@@ -7,11 +7,15 @@
  * load (already read through `consultarInventarioAction`), and every filter or
  * page change re-queries that same action. The screen never computes money — the
  * KPI value arrives as a Decimal string and is only formatted for display.
- * No adjust button and no row actions here: those belong to the Administrador-only
- * adjust flow (Step 1b).
+ * Per the board-04 decision (odd/tasks/uiux-alignment.md S19), rows for the
+ * manage group carry a ⋯ menu with "Ajustar" (prefills the adjust form with the
+ * product's code) and "Historial" (opens the movement history filtered to the
+ * product). Both destinations are Administrador-only server-side, so the menu
+ * renders only when the page grants `puedeAjustar`.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { consultarInventarioAction } from "@/modules/inventario/http/actions";
 import type { ConsultarInventarioOutput } from "@/modules/inventario/application/consultar-inventario";
 import type { StockKpi } from "@/modules/inventario/domain/inventario";
@@ -63,9 +67,12 @@ function construirQuery(filtros: FiltrosInventario, page: number) {
 export function InventarioScreen({
   inicial,
   filtrosIniciales,
+  puedeAjustar = false,
 }: {
   readonly inicial: InventarioInicial;
   readonly filtrosIniciales: FiltrosInventario;
+  /** Menu column on each row (adjust + history): manage group only. */
+  readonly puedeAjustar?: boolean;
 }) {
   const [data, setData] = useState<ConsultarInventarioOutput | null>(
     inicial.ok ? inicial.data : null,
@@ -210,6 +217,9 @@ export function InventarioScreen({
                 <th scope="col" className="px-4 py-2 text-right">Existencia</th>
                 <th scope="col" className="px-4 py-2 text-right">Stock mín.</th>
                 <th scope="col" className="px-4 py-2">Estado</th>
+                {puedeAjustar && (
+                  <th scope="col" className="px-4 py-2">Acciones</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -226,6 +236,11 @@ export function InventarioScreen({
                       {ETIQUETA_ESTADO[p.estado]}
                     </span>
                   </td>
+                  {puedeAjustar && (
+                    <td className="px-4 py-2">
+                      <MenuFila codigo={p.codigo} nombre={p.nombre} />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -256,6 +271,48 @@ export function InventarioScreen({
           Siguiente
         </button>
       </nav>
+    </div>
+  );
+}
+
+/** Per-row ⋯ menu: "Ajustar" (prefill by code) and "Historial" (filtered history). */
+function MenuFila({ codigo, nombre }: { readonly codigo: string; readonly nombre: string }) {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <div className="relative" onBlur={() => setAbierto(false)}>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={abierto}
+        aria-label={`Acciones ${codigo}`}
+        data-testid={`menu-fila-${codigo}`}
+        onClick={() => setAbierto((v) => !v)}
+        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-zinc-300 text-lg text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+      >
+        <span aria-hidden="true">⋯</span>
+      </button>
+      {abierto && (
+        <div
+          role="menu"
+          aria-label={`Acciones ${codigo}`}
+          className="absolute right-0 z-10 mt-1 flex flex-col overflow-hidden rounded-md border border-zinc-200 bg-white shadow-md dark:border-zinc-700 dark:bg-zinc-900"
+        >
+          <Link
+            role="menuitem"
+            href={`/inventario/ajuste?producto=${encodeURIComponent(codigo)}`}
+            className="min-h-11 px-4 py-2 text-sm text-zinc-900 hover:bg-zinc-100 dark:text-zinc-50 dark:hover:bg-zinc-800"
+          >
+            Ajustar {nombre}
+          </Link>
+          <Link
+            role="menuitem"
+            href={`/inventario/movimientos?producto=${encodeURIComponent(codigo)}`}
+            className="min-h-11 px-4 py-2 text-sm text-zinc-900 hover:bg-zinc-100 dark:text-zinc-50 dark:hover:bg-zinc-800"
+          >
+            Historial
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

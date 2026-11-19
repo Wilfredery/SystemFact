@@ -56,8 +56,8 @@ const mockContexto = jest.mocked(getCurrentTenantContext);
 
 const MENSAJE_ACCESO = "No tiene permisos para ajustar inventario.";
 
-async function renderizarPagina(): Promise<void> {
-  render(await InventarioAjustePage());
+async function renderizarPagina(params: Record<string, string> = {}): Promise<void> {
+  render(await InventarioAjustePage({ searchParams: Promise.resolve(params) }));
 }
 
 function esperarSoloMensajeDeAcceso(): void {
@@ -121,10 +121,20 @@ describe("InventarioAjustePage — gating", () => {
     esperarSoloMensajeDeAcceso();
   });
 
+  it("passes the row-menu preselection to the form (board-04 S19)", async () => {
+    mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeAjustar: true } });
+
+    await renderizarPagina({ producto: "P-007" });
+
+    expect(screen.getByRole("heading", { name: "Ajuste de Inventario" })).toBeInTheDocument();
+  });
+
   it("redirects to /login without a session and never asks for permissions", async () => {
     mockContexto.mockResolvedValueOnce(null);
 
-    await expect(InventarioAjustePage()).rejects.toThrow("NEXT_REDIRECT:/login");
+    await expect(
+      InventarioAjustePage({ searchParams: Promise.resolve({}) }),
+    ).rejects.toThrow("NEXT_REDIRECT:/login");
 
     expect(redirect).toHaveBeenCalledWith("/login");
     expect(mockPermisos).not.toHaveBeenCalled();

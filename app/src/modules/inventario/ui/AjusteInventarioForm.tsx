@@ -81,7 +81,12 @@ function leerCantidad(texto: string): Decimal | null {
   return valor.gt(0) ? valor : null;
 }
 
-export function AjusteInventarioForm() {
+export function AjusteInventarioForm({
+  productoPreseleccionado = "",
+}: {
+  /** Row-menu prefill (board-04 S19): the product's code from the ⋯ menu. */
+  readonly productoPreseleccionado?: string;
+}) {
   const router = useRouter();
   const [texto, setTexto] = useState("");
   const [producto, setProducto] = useState<ProductoElegible | null>(null);
@@ -127,6 +132,30 @@ export function AjusteInventarioForm() {
     }, DEBOUNCE_BUSQUEDA_MS);
     return () => clearTimeout(timer);
   }, [texto, producto]);
+
+  // Prefill from the consulta ⋯ menu: resolve the code through the same search
+  // action and pick the exact-code match once. Only the latest request settles.
+  useEffect(() => {
+    const codigo = productoPreseleccionado.trim();
+    if (codigo === "") return;
+    const solicitud = ++ultimaBusqueda.current;
+    void (async () => {
+      try {
+        const r = await consultarInventarioAction({ page: 1, limit: LIMITE_BUSQUEDA, busqueda: codigo });
+        if (solicitud !== ultimaBusqueda.current) return;
+        if (r.ok) {
+          const exacto = r.data.items.find((p) => p.codigo === codigo);
+          if (exacto !== undefined) {
+            setProducto(exacto);
+            setTexto(`${exacto.codigo} — ${exacto.nombre}`);
+          }
+        }
+      } catch {
+        // Prefill is a courtesy: a failed lookup leaves the form untouched.
+      }
+    })();
+    // Runs once per mount/preselection value; user choices below take over.
+  }, [productoPreseleccionado]);
 
   function cambiarTexto(valor: string) {
     ultimaBusqueda.current++;

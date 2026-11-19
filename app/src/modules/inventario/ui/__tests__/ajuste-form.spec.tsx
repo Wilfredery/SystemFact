@@ -140,6 +140,43 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+describe("AjusteInventarioForm — row-menu prefill (board-04 S19)", () => {
+  it("resolves the preselection code through the search action and selects the exact match", async () => {
+    jest.useFakeTimers();
+    render(<AjusteInventarioForm productoPreseleccionado="P-007" />);
+
+    expect(mockConsultar).toHaveBeenCalledWith({ page: 1, limit: 25, busqueda: "P-007" });
+    await act(async () => {
+      jest.advanceTimersByTime(0);
+    });
+    expect(screen.getByLabelText("Producto *")).toHaveValue("P-007 — Arroz");
+  });
+
+  it("leaves the form untouched when the code has no exact match", async () => {
+    jest.useFakeTimers();
+    const sinExacto = resultadoBusqueda();
+    render(<AjusteInventarioForm productoPreseleccionado="P-404" />);
+    await act(async () => {
+      jest.advanceTimersByTime(0);
+    });
+
+    expect(screen.getByLabelText("Producto *")).toHaveValue(sinExacto.items.length === 0 ? "" : "");
+    expect(confirmar()).toBeDisabled();
+  });
+
+  it("prefill failure is a courtesy: the form stays usable", async () => {
+    jest.useFakeTimers();
+    mockConsultar.mockRejectedValueOnce(new Error("timeout"));
+    render(<AjusteInventarioForm productoPreseleccionado="P-007" />);
+    await act(async () => {
+      jest.advanceTimersByTime(0);
+    });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(confirmar()).toBeDisabled();
+  });
+});
+
 describe("AjusteInventarioForm — drawn layout (S3, S4)", () => {
   it("renders the title, back arrow, labels, placeholders and buttons as drawn", () => {
     render(<AjusteInventarioForm />);

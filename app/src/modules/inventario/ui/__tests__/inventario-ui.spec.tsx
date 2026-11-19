@@ -144,6 +144,58 @@ describe("InventarioScreen — rows, badges and KPIs", () => {
   });
 });
 
+describe("InventarioScreen — row ⋯ menu (board-04 S19)", () => {
+  function montarConMenu() {
+    return render(
+      <InventarioScreen inicial={{ ok: true, data: salida() }} filtrosIniciales={SIN_FILTROS} puedeAjustar />,
+    );
+  }
+
+  it("adds the Acciones column with a per-row ⋯ menu for the manage group", () => {
+    montarConMenu();
+
+    expect(screen.getByRole("columnheader", { name: "Acciones" })).toBeInTheDocument();
+    expect(screen.getByTestId("menu-fila-P-007")).toBeInTheDocument();
+    // Closed by default: the wireframe's clean state.
+    expect(screen.queryByRole("menu", { name: "Acciones P-007" })).not.toBeInTheDocument();
+  });
+
+  it("opens a menu with Ajustar (prefill by code) and Historial (filtered history)", async () => {
+    montarConMenu();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("menu-fila-P-007"));
+    });
+
+    const menu = screen.getByRole("menu", { name: "Acciones P-007" });
+    const ajustar = within(menu).getByRole("menuitem", { name: "Ajustar Arroz" });
+    expect(ajustar).toHaveAttribute("href", "/inventario/ajuste?producto=P-007");
+    const historial = within(menu).getByRole("menuitem", { name: "Historial" });
+    expect(historial).toHaveAttribute("href", "/inventario/movimientos?producto=P-007");
+  });
+
+  it("toggles the menu closed on a second click", async () => {
+    montarConMenu();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("menu-fila-P-007"));
+    });
+    expect(screen.getByRole("menu", { name: "Acciones P-007" })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("menu-fila-P-007"));
+    });
+    expect(screen.queryByRole("menu", { name: "Acciones P-007" })).not.toBeInTheDocument();
+  });
+
+  it("has no ⋯ menu without the manage group (default)", () => {
+    montar();
+
+    expect(screen.queryByRole("columnheader", { name: "Acciones" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("menu-fila-P-007")).not.toBeInTheDocument();
+  });
+});
+
 describe("InventarioScreen — errors", () => {
   it("shows a business error from the first load in a visible alert", () => {
     montar({ ok: false, message: "No tiene permisos para consultar inventario" });
