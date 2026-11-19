@@ -30,6 +30,9 @@ export interface MovimientosFiltros {
   readonly tipo?: TipoMovimientoInventario;
   /** Text matched (case-insensitive contains) against producto codigo OR nombre. */
   readonly producto?: string;
+  /** Board-04 S19: EXACT producto codigo (the row menu's Historial filter). When
+   * present it takes precedence over the free-text `producto` contains. */
+  readonly productoCodigo?: string;
 }
 
 export interface MovimientosPagina {
@@ -80,7 +83,8 @@ function movimientosWhere(
   ctx: TenantCtx,
   filtros: MovimientosFiltros,
 ): Prisma.MovimientoInventarioWhereInput {
-  const termino = filtros.producto?.trim();
+  const codigoExacto = filtros.productoCodigo?.trim();
+  const termino = codigoExacto ? undefined : filtros.producto?.trim();
   // Prisma `contains` does not escape LIKE wildcards: escape them so `%` and `_` match literally.
   const texto = termino ? escaparLike(termino) : undefined;
   return {
@@ -88,6 +92,9 @@ function movimientosWhere(
     ...(filtros.tipo === undefined ? {} : { tipoMovimiento: filtros.tipo }),
     inventario: {
       ...inventarioTenantWhere(ctx),
+      // Exact code (row-menu filter) never widens to other products: "P-007"
+      // must not match "P-0070" or a name containing the code.
+      ...(codigoExacto ? { producto: { codigo: codigoExacto } } : {}),
       ...(texto
         ? {
             producto: {

@@ -14,6 +14,7 @@
  * — a persisted `PORCENTAJE` discount is not recoverable, ADR-018).
  */
 
+import { useState } from "react";
 import { ESTADO_VENTA, type EstadoVenta } from "../domain/venta";
 import { DevolverButton } from "@/modules/devolucion/ui/DevolverButton";
 import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
@@ -44,6 +45,7 @@ export function DraftList({
   editandoId,
   confirmandoId,
   puedeAnular,
+  puedeDevolver,
   onLoad,
   onCancel,
   onConfirm,
@@ -57,23 +59,41 @@ export function DraftList({
   /** UI gate only (D5): non-admin sessions never see the Void control; the
    * server action's role path stays the real authorization (R-V16). */
   readonly puedeAnular: boolean;
+  /** Board 02 remediation (JD-A): hide the return affordance for roles that
+   * ROLES_DEVOLUCION denies (e.g. Despachador) instead of showing a button
+   * that always fails NO_AUTORIZADO. Server-side gate unchanged. */
+  readonly puedeDevolver?: boolean;
   readonly onLoad: (id: number) => void;
   readonly onCancel: (id: number) => void;
   readonly onConfirm: (id: number) => void;
   /** Opens the mandatory-reason void Dialog (R-V24); never cancels directly. */
   readonly onAnular: (id: number) => void;
 }) {
+  // Board 02 (S6): collapsed by default so the POS screen matches the
+  // wireframe's clean state; the header toggles the row list.
+  const [abierto, setAbierto] = useState(false);
   return (
     <Card aria-label="My drafts">
       <CardHeader>
-        <CardTitle className="text-sm font-semibold">My drafts</CardTitle>
+        <button
+          type="button"
+          onClick={() => setAbierto((v) => !v)}
+          aria-expanded={abierto}
+          aria-controls="my-drafts-list"
+          className="flex w-full items-center justify-between text-left"
+        >
+          <CardTitle className="text-sm font-semibold">My drafts</CardTitle>
+          <span className="text-xs text-ink-muted">
+            {items.length > 0 && !abierto ? `${items.length} row(s) — tap to expand` : abierto ? "▾" : "▸"}
+          </span>
+        </button>
       </CardHeader>
-      <CardContent>
+      <CardContent id="my-drafts-list">
         {cargando && <p className="text-sm text-ink-muted">Loading…</p>}
         {!cargando && items.length === 0 && (
           <p className="text-sm text-ink-muted">No saved drafts yet.</p>
         )}
-        {!cargando && items.length > 0 && (
+        {!cargando && items.length > 0 && abierto && (
           <ul className="divide-y divide-line">
             {items.map((d) => {
               // A discounted draft is view/cancel only (see `cargarBorrador`).
@@ -101,7 +121,7 @@ export function DraftList({
                             <a
                               href={`/venta/factura/${d.facturaId}`}
                               aria-label={`Ver factura ${d.ncf ?? ""}`.trim()}
-                              className="ml-1 text-xs text-indigo-600 hover:underline dark:text-indigo-400"
+                              className="ml-1 text-xs text-link hover:underline"
                             >
                               Ver factura
                             </a>
@@ -150,7 +170,7 @@ export function DraftList({
                       </>
                     ) : (
                       <>
-                        <DevolverButton ventaId={d.id} />
+                        {puedeDevolver && <DevolverButton ventaId={d.id} />}
                         {puedeAnular && (
                           <Button
                             type="button"

@@ -22,10 +22,8 @@ export default async function CxcBoardPage() {
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-10">
-      <h1 className="mb-1 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Cuentas por cobrar
-      </h1>
-      <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
+      <h1 className="mb-1 text-2xl font-semibold text-ink">Cuentas por cobrar</h1>
+      <p className="mb-6 text-sm text-ink-muted">
         Pendientes, parciales y en mora — saldo derivado de la consulta canónica única.
       </p>
       <CxcBoardScreen />

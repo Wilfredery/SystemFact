@@ -1,0 +1,319 @@
+"use client";
+
+/**
+ * Per-invoice CxC detail (board-03 S13; wireframe `03-Cobros-Detalle`).
+ *
+ * One invoice, one screen: the header card (NCF, fecha, vence, cliente, RNC,
+ * tipo, Total / Abonado / Saldo and the En Mora + "N días vencida" badge), the
+ * payment history and the "Registrar Pago" panel. EVERY number and flag comes
+ * from the single `obtenerDetalleCxcAction` read — the canonical derived balance
+ * of that invoice plus the SD due/mora facts the board also uses (ADR-017: no
+ * per-screen balance query, nothing cached, nothing summed here). A committed
+ * collection RELOADS the same read, so the header and the history always show the
+ * latest committed state.
+ *
+ * One payment path only: the modal reuses the SAME `registrarCobroAction` (no
+ * second write path), the SAME `zRegistrarCobroInput` grammar, the first-click
+ * disable and the server revalidation inside `withTenantTransaction`.
+ *
+ * S13/S14/S15: the detail header, the payment history and the "Registrar Pago"
+ * panel, whose confirm opens the SHARED `ModalRegistrarPago` (editable Fecha del
+ * pago + Referencia + NumericKeypad inside the modal). No second payment path.
+ *
+ * F0 primitives + token classes only (S16): no raw palette, no `dark:` overrides.
+ */
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { obtenerDetalleCxcAction } from "@/modules/cobros/http/actions";
+import type {
+  DetalleCxcVista,
+  PagoHistorialVista,
+} from "@/modules/cobros/application/consultar-detalle-cxc";
+import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
+import { ModalRegistrarPago } from "./ModalRegistrarPago";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+/** The wireframe says "Tipo: Crédito"; everything else is a contado client. */
+function etiquetaTipoCliente(tipoCliente: string): string {
+  return tipoCliente === "CREDITO" ? "Crédito" : "Contado";
+}
+
+/** "36 días vencida" (singular for one full SD day past due). */
+function etiquetaDiasVencida(dias: number): string {
+  return dias === 1 ? "1 día vencida" : `${dias} días vencida`;
+}
+
+/** Wireframe payment-history labels for the two frozen payment directions. */
+const ETIQUETA_TIPO_PAGO: Record<string, string> = {
+  COBRO: "Cobro",
+  REEMBOLSO: "Reembolso",
+};
+
+export function DetalleFacturaScreen({ facturaId }: { readonly facturaId: number }) {
+  const [detalle, setDetalle] = useState<DetalleCxcVista | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  function aplicar(r: Awaited<ReturnType<typeof obtenerDetalleCxcAction>>): void {
+    if (r.ok) {
+      setDetalle(r.data);
+      setError(null);
+    } else {
+      setError(`[${r.error.code}] ${r.error.message}`);
+    }
+    setCargando(false);
+  }
+
+  // Reload after a committed collection (a normal handler call, not in an effect).
+  async function recargar(): Promise<void> {
+    aplicar(await obtenerDetalleCxcAction({ facturaId }));
+  }
+
+  // The mount fetch settles state from the action's resolution callback (an
+  // external-system boundary), never synchronously in the effect body.
+  useEffect(() => {
+    void obtenerDetalleCxcAction({ facturaId }).then(aplicar);
+  }, [facturaId]);
+
+  if (cargando) {
+    return <p className="text-sm text-ink-muted">Cargando factura…</p>;
+  }
+  if (error !== null || detalle === null) {
+    // Stable catalog surface only — never a stack trace or a Prisma internal.
+    return (
+      <p role="alert" className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">
+        {error ?? "No se pudo cargar la factura."}
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-lg font-semibold text-ink">
+          Detalle de Factura {detalle.correlativoInterno}
+        </h1>
+        <Link
+          href="/cobros/cxc-board"
+          className={buttonVariants({ variant: "outline", size: "sm" })}
+        >
+          Volver
+        </Link>
+      </div>
+
+      <CabeceraFactura detalle={detalle} />
+
+      <HistorialPagos historial={detalle.historial} />
+
+      <RegistrarPagoPanel
+        facturaId={detalle.facturaId}
+        saldo={detalle.saldo}
+        onCobrado={recargar}
+      />
+    </div>
+  );
+}
+
+/** The invoice header card: fiscal identity, client facts and the derived money. */
+function CabeceraFactura({ detalle }: { readonly detalle: DetalleCxcVista }) {
+  return (
+    <Card data-testid="detalle-factura-cabecera">
+      <CardHeader>
+        <CardTitle>{detalle.clienteNombre}</CardTitle>
+        <CardDescription>NCF {detalle.ncf}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+          <Dato etiqueta="Factura" valor={detalle.correlativoInterno} />
+          <Dato etiqueta="NCF" valor={detalle.ncf} />
+          <Dato etiqueta="Fecha" valor={formatearFechaSD(detalle.fechaEmision)} />
+          <Dato etiqueta="Vence" valor={formatearFechaSD(detalle.vencimiento)} />
+          <Dato etiqueta="Cliente" valor={detalle.clienteNombre} />
+          <Dato etiqueta="RNC" valor={detalle.clienteRnc ?? "—"} />
+          <Dato etiqueta="Tipo" valor={etiquetaTipoCliente(detalle.tipoCliente)} />
+          <Dato etiqueta="Total" valor={formatearMonto(detalle.total)} />
+          <Dato etiqueta="Abonado" valor={formatearMonto(detalle.abonado)} />
+          <Dato
+            etiqueta="Saldo"
+            valor={formatearMonto(detalle.saldo)}
+            testId="detalle-saldo"
+            enfasis
+          />
+        </dl>
+
+        {detalle.enMora && (
+          // Mora semantic (design-system gap #3): the --danger family, never a
+          // raw red palette and never a `dark:` override.
+          <div className="flex flex-wrap items-center gap-2" data-testid="detalle-mora">
+            <Badge variant="destructive">En Mora</Badge>
+            <span className="text-sm font-medium text-danger">
+              {etiquetaDiasVencida(detalle.diasVencida)}
+            </span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Dato({
+  etiqueta,
+  valor,
+  testId,
+  enfasis = false,
+}: {
+  readonly etiqueta: string;
+  readonly valor: string;
+  readonly testId?: string;
+  readonly enfasis?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <dt className="text-xs text-ink-muted">{etiqueta}</dt>
+      <dd
+        data-testid={testId}
+        className={
+          enfasis
+            ? "text-base font-semibold tabular-nums text-ink"
+            : "tabular-nums text-ink"
+        }
+      >
+        {valor}
+      </dd>
+    </div>
+  );
+}
+
+/** The invoice's full payment history, newest first (wireframe empty state). */
+function HistorialPagos({
+  historial,
+}: {
+  readonly historial: readonly PagoHistorialVista[];
+}) {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>Historial de Pagos</CardTitle>
+        <CardDescription>Pagos registrados sobre esta factura.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {historial.length === 0 && (
+          <p className="text-sm text-ink-muted">Sin pagos registrados</p>
+        )}
+
+        {historial.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead className="text-right">Monto</TableHead>
+                <TableHead>Método</TableHead>
+                <TableHead>Referencia</TableHead>
+                <TableHead>Usuario</TableHead>
+                <TableHead className="text-right">Recibo</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {historial.map((p) => (
+                <TableRow key={p.correlativoRecibo} data-testid={`detalle-pago-${p.correlativoRecibo}`}>
+                  <TableCell className="tabular-nums">
+                    {formatearFechaSD(p.fecha)}
+                  </TableCell>
+                  <TableCell>
+                    {ETIQUETA_TIPO_PAGO[p.tipo] ?? p.tipo}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatearMonto(p.monto)}
+                  </TableCell>
+                  <TableCell>{p.metodoPago}</TableCell>
+                  <TableCell className="text-ink-muted">
+                    {p.referencia ?? "—"}
+                  </TableCell>
+                  <TableCell>{p.usuarioNombre}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {p.correlativoRecibo}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * "Registrar Pago" (S13/S14/S15): the derived saldo plus the entry point into the
+ * SHARED confirmation modal. The modal owns the amount (keypad + quick amounts),
+ * the editable Fecha del pago, the Referencia and the single-flight confirm; this
+ * panel only surfaces the saldo note and opens it — one payment path for the whole
+ * module, no per-screen payload assembly.
+ */
+function RegistrarPagoPanel({
+  facturaId,
+  saldo,
+  onCobrado,
+}: {
+  readonly facturaId: number;
+  /** The derived pending balance to prefill a full payment (`Decimal(12,2)`). */
+  readonly saldo: string;
+  /** Notified after a committed collection so the screen reloads the invoice. */
+  readonly onCobrado: () => Promise<void> | void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+
+  return (
+    <Card size="sm" aria-label="Registrar Pago">
+      <CardHeader>
+        <CardTitle>Registrar Pago</CardTitle>
+        <CardDescription>
+          El saldo se recalcula con la consulta canónica al confirmar.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p data-testid="detalle-saldo-pendiente" className="text-sm text-ink-muted">
+          Saldo pendiente:{" "}
+          <span className="font-medium tabular-nums text-ink">
+            {formatearMonto(saldo)}
+          </span>
+        </p>
+
+        <Button
+          type="button"
+          className="w-fit"
+          aria-haspopup="dialog"
+          onClick={() => setAbierto(true)}
+        >
+          Registrar Pago
+        </Button>
+      </CardContent>
+
+      <ModalRegistrarPago
+        abierto={abierto}
+        facturaId={facturaId}
+        saldoPendiente={saldo}
+        onCerrar={() => setAbierto(false)}
+        onCobrado={onCobrado}
+      />
+    </Card>
+  );
+}

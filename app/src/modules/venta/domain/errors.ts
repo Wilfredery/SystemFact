@@ -80,6 +80,11 @@ export const DEVOLUCION_YA_REGISTRADA = "DEVOLUCION_YA_REGISTRADA"; // 605
 // `domain/fecha-venta.ts` against the SERVER clock in `America/Santo_Domingo`.
 export const FECHA_VENTA_FUTURA = "FECHA_VENTA_FUTURA";
 export const FECHA_VENTA_RETROACTIVA_EXCEDIDA = "FECHA_VENTA_RETROACTIVA_EXCEDIDA";
+// Board 02 (v0.37.x remediation): promoted from an ad-hoc UI code in
+// PosScreen.cargarBorrador into the frozen catalog — a persisted PORCENTAJE
+// discount is not recoverable at re-edit (ADR-018 proration), so a discounted
+// draft is view/cancel only.
+export const EDICION_DESCUENTO_NO_DISPONIBLE = "EDICION_DESCUENTO_NO_DISPONIBLE";
 
 export type VentaErrorCode =
   | typeof VENTA_NO_ENCONTRADO
@@ -109,7 +114,8 @@ export type VentaErrorCode =
   | typeof VENTA_NO_CONFIRMADA
   | typeof DEVOLUCION_YA_REGISTRADA
   | typeof FECHA_VENTA_FUTURA
-  | typeof FECHA_VENTA_RETROACTIVA_EXCEDIDA;
+  | typeof FECHA_VENTA_RETROACTIVA_EXCEDIDA
+  | typeof EDICION_DESCUENTO_NO_DISPONIBLE;
 
 const MESSAGES: Record<VentaErrorCode, string> = {
   [VENTA_NO_ENCONTRADO]: "La venta no existe en la empresa",
@@ -154,6 +160,8 @@ const MESSAGES: Record<VentaErrorCode, string> = {
   [FECHA_VENTA_FUTURA]: "La fecha de la venta no puede ser futura",
   [FECHA_VENTA_RETROACTIVA_EXCEDIDA]:
     "La fecha de la venta supera el horizonte retroactivo permitido",
+  [EDICION_DESCUENTO_NO_DISPONIBLE]:
+    "Los borradores con descuento no se pueden re-editar aquí (el porcentaje no es recuperable); cancele y vuelva a crear",
 };
 
 export function messageFor(code: VentaErrorCode): string {

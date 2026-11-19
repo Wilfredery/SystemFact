@@ -29,7 +29,7 @@ import { test, expect, type Page } from "@playwright/test";
 import "dotenv/config";
 import { login } from "./utils/login";
 import { openDb, usuarioPrecond, type UsuarioPrecond } from "./utils/db";
-import { E2E_PASSWORD, E2E_PRODUCT, E2E_USER } from "./utils/venta-pos";
+import { E2E_PASSWORD, E2E_PRODUCT, E2E_USER, buscarYAgregar, guardarYConfirmar } from "./utils/venta-pos";
 
 // Superuser read for ASSERTIONS ONLY (RLS would tenant-filter the probe);
 // queries never mutate.
@@ -84,22 +84,17 @@ async function crearVentaConfirmada(page: Page): Promise<{ ventaId: number; ncf:
   await page.goto("/venta");
   await page.getByRole("heading", { name: "Point of sale" }).waitFor();
 
-  await page.getByLabel("Search products").fill(E2E_PRODUCT);
-  await page.getByRole("button", { name: "Search" }).click();
-  await page.getByRole("button", { name: "Add" }).first().click();
-  await page.getByRole("button", { name: "Save draft" }).click();
+  await buscarYAgregar(page, E2E_PRODUCT);
+  const { ventaId, ncf } = await guardarYConfirmar(page, pool);
 
-  const confirm = page.getByRole("button", { name: /Confirm draft \d+/ });
-  await confirm.waitFor();
-  await confirm.click();
-
-  const status = page.getByRole("status");
-  await expect(status).toContainText(/confirmed — invoice B\d+/);
-  const text = (await status.textContent())!;
-  return {
-    ventaId: Number(text.match(/#(\d+)/)![1]),
-    ncf: text.match(/invoice (B\d+)/)![1],
-  };
+  // Board-02 S5: this sale is CONTADO (no client selected), so the confirm
+  // leaves the POS on the invoice receipt. The Return control lives on the
+  // CONFIRMADA row of /venta, so go back and re-expand the draft list (S6).
+  await page.goto("/venta");
+  await page.getByRole("heading", { name: "Point of sale" }).waitFor();
+  await page.getByRole("button", { name: /My drafts/ }).click();
+  await page.getByTestId(`venta-fila-${ventaId}`).waitFor();
+  return { ventaId, ncf };
 }
 
 test.describe("devolucion smoke (fase-5d task 2.3)", () => {
@@ -129,9 +124,10 @@ test.describe("devolucion smoke (fase-5d task 2.3)", () => {
     await page.getByLabel(new RegExp(`Qty to return for ${E2E_PRODUCT}`)).fill("1");
     await page.getByRole("button", { name: "Emit credit note" }).click();
 
-    // The page may hold TWO status banners at this moment (the persisting
-    // "Sale #N confirmed" poster and the fresh NC poster). getByRole("status")
-    // alone is a strict-mode violation, so anchor to the NC text itself.
+    // The NC poster is the only status banner left on this fresh /venta render
+    // (the sale's own confirm banner died with the receipt navigation), but
+    // anchor to the NC copy anyway so a second banner can never be a
+    // strict-mode violation.
     const status = page.getByText(/Credit note NC #\d+ issued/);
     await expect(status).toContainText(/Credit note NC #\d+ issued — NCF B0400000\d+/);
     const statusText = (await status.textContent())!;

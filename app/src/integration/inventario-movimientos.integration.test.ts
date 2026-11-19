@@ -196,6 +196,36 @@ describe("listarMovimientosInventario (real DB, app role + RLS)", () => {
     expect(nada.data).toMatchObject({ items: [], total: 0 });
   });
 
+  // Exactness discriminator lives in the repository UNIT pin (toEqual on the
+  // where clause: plain equality, never contains). The DB-level pin here
+  // proves the filter returns only that product's rows; a discriminating
+  // prefix sibling would need a fixture product whose code extends prodA1's
+  // (logged rider, odd/tasks/uiux-alignment.md L15).
+  it("filters by EXACT productoCodigo (board-04 S19): only that product's rows", async () => {
+    const exacto = await motivos({
+      page: 1,
+      limit: 100,
+      productoCodigo: fixture.productos.prodA1.codigo,
+      ...RANGO,
+    });
+
+    expect(exacto.data.total).toBe(exacto.motivos.length);
+    // Every returned movement belongs to the exact code (never a name or a
+    // sibling code that merely contains it).
+    for (const fila of exacto.data.items) {
+      expect(fila.productoCodigo).toBe(fixture.productos.prodA1.codigo);
+    }
+
+    // A code that extends prodA1's matches nothing (an exact code, not a text).
+    const prefijo = await motivos({
+      page: 1,
+      limit: 100,
+      productoCodigo: `${fixture.productos.prodA1.codigo}-X`,
+      ...RANGO,
+    });
+    expect(prefijo.data).toMatchObject({ items: [], total: 0 });
+  });
+
   it("treats % and _ in the producto text literally (no wildcard)", async () => {
     const porcentaje = await motivos({ page: 1, limit: 100, producto: "%", ...RANGO });
     const guion = await motivos({ page: 1, limit: 100, producto: "_", ...RANGO });

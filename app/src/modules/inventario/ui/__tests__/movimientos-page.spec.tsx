@@ -135,6 +135,19 @@ describe("InventarioMovimientosPage — gating", () => {
     });
   });
 
+  it("forwards the row-menu exact product-code filter (board-04 S19, JD-B-003 pin)", async () => {
+    mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeAjustar: true } });
+    mockMovimientos.mockResolvedValueOnce({ ok: true, data: DATA });
+
+    await renderizarMovimientos({ productoCodigo: " P-007 " });
+
+    expect(mockMovimientos).toHaveBeenCalledWith({
+      page: 1,
+      limit: 25,
+      productoCodigo: "P-007",
+    });
+  });
+
   it("ignores malformed URL filters instead of forwarding them", async () => {
     mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeAjustar: true } });
     mockMovimientos.mockResolvedValueOnce({ ok: true, data: DATA });

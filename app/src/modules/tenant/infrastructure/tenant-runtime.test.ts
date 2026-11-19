@@ -74,6 +74,7 @@ describe("getCurrentTenantContext — resolution by sub, NOT by email", () => {
       sucursalId: 3,
       usuarioId: 42,
       esAdmin: true,
+      roles: ["Administrador"],
     });
   });
 
@@ -95,6 +96,7 @@ describe("getCurrentTenantContext — resolution by sub, NOT by email", () => {
       sucursalId: 3,
       usuarioId: 42,
       esAdmin: false,
+      roles: ["Cajero"],
     });
   });
 

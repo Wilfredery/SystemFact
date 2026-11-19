@@ -115,7 +115,7 @@ async function confirmarAjuste(
   await tipo.click();
   await expect(tipo).toHaveAttribute("aria-pressed", "true");
   await page.getByLabel("Motivo *").selectOption({ label: datos.motivo });
-  await page.getByLabel("Nueva cantidad *").fill(String(datos.cantidad));
+  await page.getByLabel("Cantidad a ajustar *").fill(String(datos.cantidad));
   await page.getByLabel("Observaciones").fill(datos.observaciones);
   const confirmar = page.getByRole("button", { name: "Confirmar Ajuste" });
   await expect(confirmar).toBeEnabled();
@@ -173,13 +173,13 @@ test.describe("/inventario/ajuste (inventario-ajuste T3)", () => {
     // A Salida above the stock is refused in the form: message and disabled button.
     await page.getByRole("button", { name: "Salida", exact: true }).click();
     await page.getByLabel("Motivo *").selectOption({ label: "Merma" });
-    await page.getByLabel("Nueva cantidad *").fill(String(x + 1));
+    await page.getByLabel("Cantidad a ajustar *").fill(String(x + 1));
     await expect(page.getByText("Stock insuficiente")).toBeVisible();
     await expect(page.getByRole("button", { name: "Confirmar Ajuste" })).toBeDisabled();
 
     // Entrada 5: the live line says what the stock will become (S2).
     await page.getByRole("button", { name: "Entrada", exact: true }).click();
-    await page.getByLabel("Nueva cantidad *").fill("5");
+    await page.getByLabel("Cantidad a ajustar *").fill("5");
     await expect(page.getByText(`Existencia actual ${x} → quedará ${x + 5}`)).toBeVisible();
     await expect(page.getByText("Stock insuficiente")).toHaveCount(0);
 
@@ -209,7 +209,7 @@ test.describe("/inventario/ajuste (inventario-ajuste T3)", () => {
     expect(segunda.codigo).toBe(codigo);
     expect(segunda.stock, "the list now shows the adjusted stock").toBe(x + 5);
     await page.getByRole("button", { name: "Salida", exact: true }).click();
-    await page.getByLabel("Nueva cantidad *").fill("5");
+    await page.getByLabel("Cantidad a ajustar *").fill("5");
     await expect(page.getByText(`Existencia actual ${x + 5} → quedará ${x}`)).toBeVisible();
 
     await confirmarAjuste(page, {

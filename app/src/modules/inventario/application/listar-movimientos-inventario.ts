@@ -33,6 +33,8 @@ export interface ListarMovimientosQuery {
   readonly limit: number;
   readonly tipo?: TipoMovimientoInventario;
   readonly producto?: string;
+  /** Board-04 S19: exact producto codigo (row-menu Historial filter). */
+  readonly productoCodigo?: string;
   /** SD business day `YYYY-MM-DD` (inclusive). Defaults to 29 days before `hasta`. */
   readonly desde?: string;
   /** SD business day `YYYY-MM-DD` (inclusive). Defaults to today in SD. */
@@ -109,6 +111,7 @@ export async function listarMovimientosInventario(
     fin: rango.rango.fin,
     ...(query.tipo === undefined ? {} : { tipo: query.tipo }),
     ...(query.producto === undefined ? {} : { producto: query.producto }),
+    ...(query.productoCodigo === undefined ? {} : { productoCodigo: query.productoCodigo }),
   };
 
   const [items, total] = await Promise.all([

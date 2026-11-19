@@ -1,6 +1,7 @@
 export { registrarCobroAction, registrarReembolsoAction } from "./actions.escritura";
 export {
   consultarEstadoDeCuentaAction,
+  obtenerDetalleCxcAction,
   consultarSaldoCxcAction,
   consultarReciboAction,
 } from "./actions.lectura";

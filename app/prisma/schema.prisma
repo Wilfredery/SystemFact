@@ -618,6 +618,10 @@ model Pago {
   // NULLABLE so every COBRO and every legacy row keeps a NULL; Postgres permits
   // multiple NULLs, so only non-NULL keys participate in uniqueness (design.md).
   idempotencyKey    String?         @db.VarChar(255)
+  // S14 (board 03) optional free-text payment reference captured with a COBRO
+  // (transfer number, cheque, note). NULLABLE: an absent/blank value is stored as
+  // NULL, never "", and every legacy row keeps NULL.
+  referencia        String?         @db.VarChar(80)
   createdAt         DateTime        @default(now()) @db.Timestamptz(6)
 
   factura              Factura  @relation(fields: [facturaId], references: [id], onDelete: Restrict)

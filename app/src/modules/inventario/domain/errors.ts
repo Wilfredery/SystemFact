@@ -10,13 +10,17 @@
  * `messageFor` lookup, and an `InventarioDomainError` carrying the stable code.
  *
  * `SESION_INVALIDA` and `VALIDATION_ERROR` are part of the catalog in addition
- * to the seven inventory-specific codes because the thin HTTP adapter needs a
+ * to the eight inventory-specific codes because the thin HTTP adapter needs a
  * stable code for a missing session and for a zod-rejected DTO — mirroring the
  * producto/categoria adapters. They are documented in the apply notes.
  */
 
 export const CANTIDAD_INVALIDA = "CANTIDAD_INVALIDA";
 export const MOTIVO_VACIO = "MOTIVO_VACIO";
+// Board-04 (odd/tasks/uiux-alignment.md S22): the adjust reason is a FROZEN
+// enum, not free text — the audit trail stays queryable and the client offers
+// exactly the domain options. `MOTIVO_VACIO` still covers a blank value.
+export const MOTIVO_NO_VALIDO = "MOTIVO_NO_VALIDO";
 export const STOCK_INSUFICIENTE = "STOCK_INSUFICIENTE";
 // Hard block on a confirmed-sale exit batch (fase-5c). Distinct from the
 // manual-adjustment `STOCK_INSUFICIENTE`: the sale-exit batch MUST throw (never
@@ -43,6 +47,7 @@ export const VALIDATION_ERROR = "VALIDATION_ERROR";
 export type InventarioErrorCode =
   | typeof CANTIDAD_INVALIDA
   | typeof MOTIVO_VACIO
+  | typeof MOTIVO_NO_VALIDO
   | typeof STOCK_INSUFICIENTE
   | typeof STOCK_INSUFICIENTE_BLOQUEO
   | typeof STOCK_MAXIMO_EXCEDIDO
@@ -60,6 +65,7 @@ export type InventarioErrorCode =
 export const INVENTARIO_ERROR_CODES: readonly InventarioErrorCode[] = [
   CANTIDAD_INVALIDA,
   MOTIVO_VACIO,
+  MOTIVO_NO_VALIDO,
   STOCK_INSUFICIENTE,
   STOCK_INSUFICIENTE_BLOQUEO,
   STOCK_MAXIMO_EXCEDIDO,
@@ -78,6 +84,7 @@ const MESSAGES: Readonly<Record<InventarioErrorCode, string>> = {
   [CANTIDAD_INVALIDA]:
     "La cantidad debe ser un número con hasta 3 decimales y no puede ser negativa.",
   [MOTIVO_VACIO]: "El motivo del ajuste es obligatorio.",
+  [MOTIVO_NO_VALIDO]: "El motivo seleccionado no es válido.",
   [STOCK_INSUFICIENTE]:
     "El ajuste dejaría el stock en negativo; la cantidad disponible es insuficiente.",
   [STOCK_INSUFICIENTE_BLOQUEO]:

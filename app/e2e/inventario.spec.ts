@@ -4,7 +4,9 @@
  * Operador and Despachador are view-only and the Administrador manages. All
  * three roles see the same list, KPIs, search and status filter; only the
  * Administrador also sees the "+ Ajustar" link (its form is covered by
- * inventario-ajuste.spec.ts). Nobody gets an "Acciones" column.
+ * inventario-ajuste.spec.ts). Only the Administrador gets the row "Acciones"
+ * column (board-04 S19 ⋯ menu: adjust prefill + filtered history) — it links
+ * only to Administrador-only destinations.
  * One test per role, each signing in through the real login form with that
  * role's own identity (provisioned by .github/ci/provision-local-e2e.sh).
  *
@@ -125,7 +127,17 @@ async function verInventario(
   await expect(page.getByRole("link", { name: "Ver historial de movimientos" })).toHaveCount(
     veAjustar ? 1 : 0,
   );
-  await expect(page.getByRole("columnheader", { name: "Acciones" })).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "Acciones" })).toHaveCount(veAjustar ? 1 : 0);
+  // Manage group only: the ⋯ menu opens with the two per-row destinations.
+  const accionPrimera = page.getByRole("button", { name: /^Acciones / }).first();
+  if (veAjustar) {
+    await accionPrimera.click();
+    const menu = page.getByRole("menu").first();
+    await expect(menu.getByRole("menuitem", { name: "Ajustar", exact: true })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Historial" })).toBeVisible();
+  } else {
+    await expect(accionPrimera).toHaveCount(0);
+  }
 }
 
 test.describe("/inventario consulta (inventario-consulta T4)", () => {

@@ -176,56 +176,211 @@ function saldoCxcFragmentoCanonico(ctx: TenantCtx): Prisma.Sql {
 }
 
 /**
+ * The BOARD page's row: the canonical aggregate columns plus the two facts only
+ * the board needs (board-03 S10): the client NAME and the SD calendar days the
+ * invoice has been outstanding (`dias`). Both are projected by
+ * {@link consultarSaldoCxcTableroEnTx}; every money field stays the canonical
+ * `Decimal(12,2)` text.
+ */
+export interface FilaCxcTablero extends SaldoCxcFila {
+  readonly clienteNombre: string;
+  /** Whole SD calendar days since `fechaEmision` (0 = issued today). */
+  readonly dias: number;
+}
+
+/**
+ * The board page's narrowed read intent: the SD clock the Días column needs and
+ * the ALREADY-NORMALIZED search term (`normalizarBusquedaCxc` → `null` = no
+ * filter). Paging still rides `Paginacion` (R-C9: LIMIT/OFFSET in SQL).
+ */
+export interface FiltroTableroCxc {
+  readonly now: Date;
+  readonly busqueda: string | null;
+}
+
+/**
+ * The board query's OPTIONAL search predicate (board-03 S12): a literal
+ * case-insensitive LIKE over the client NAME or the invoice number. `busqueda`
+ * arrives already trimmed/collapsed/escaped and lowercased by the domain
+ * normalizer, so `%` and `_` match literally; when it is `null` the predicate
+ * collapses to `TRUE` (no filter, never a wildcard-only pattern). The same
+ * fragment is interpolated by BOTH the page query and the counts query, so the
+ * rows, the pagination total and the KPI strip can never disagree about what
+ * the current search matches.
+ */
+function busquedaWhereSql(busqueda: string | null): Prisma.Sql {
+  if (busqueda === null) return Prisma.sql`TRUE`;
+  const patron = `%${busqueda}%`;
+  return Prisma.sql`(COALESCE(c."nombre", '') ILIKE ${patron}
+        OR s."facturaId"::text ILIKE ${patron})`;
+}
+
+/**
  * The board's SERVED set: the canonical fragment narrowed to the OUTSTANDING
- * receivables (`cobrosAplicados < total`), the pinned `fechaEmision DESC,
+ * receivables (`cobrosAplicados < total`), enriched with the client NAME and the
+ * SD-past-emission day count (board-03 S10), optionally narrowed by the
+ * normalized search term (S12), with the pinned `fechaEmision DESC,
  * "facturaId" DESC` order re-applied by the WRAPPER (identical to the canonical
- * order — the inner alias IS the canonical `f."id"`), and the page cut executed
- * in SQL via the shared `limitePaginaSql` tail (D1 OFFSET, D2 pin). The filter
- * re-encodes ONLY the `clasificarEstadoPago` PAGADA threshold: rows the pure
- * classifier would call PAGADA (applied ≥ total, raw or via nota-de-débito
- * re-inflation) can never appear, and every remaining row derives PENDIENTE or
- * PARCIAL — whose parity is pinned by the tablero integration suite (R-C9).
+ * order — the inner alias IS the canonical `f."id"`) and the page cut executed
+ * in SQL via the shared `limitePaginaSql` tail (D1 OFFSET, D2 pin) — the R-C9
+ * cut is untouched. The filter re-encodes ONLY the `clasificarEstadoPago` PAGADA
+ * threshold: rows the pure classifier would call PAGADA (applied ≥ total, raw or
+ * via nota-de-débito re-inflation) can never appear, and every remaining row
+ * derives PENDIENTE or PARCIAL — whose parity is pinned by the tablero
+ * integration suite (R-C9).
+ *
+ * The `dias` column reuses the SAME SD day expression the aging order pins
+ * (`diasVencidoSql` with a `0`-day term ⇒ days since emission): `date − date` in
+ * `America/Santo_Domingo`, never manual hour arithmetic. `CLIENTE` is joined
+ * with the explicit `empresaId` pin (defense in depth over the RLS GUCs).
  */
 export async function consultarSaldoCxcTableroEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
-  pag?: Paginacion,
-): Promise<SaldoCxcFila[]> {
-  return tx.$queryRaw<SaldoCxcFila[]>`
-    SELECT s.*
+  opts: { readonly pag?: Paginacion } & FiltroTableroCxc,
+): Promise<FilaCxcTablero[]> {
+  return tx.$queryRaw<FilaCxcTablero[]>`
+    SELECT
+      s.*,
+      COALESCE(c."nombre", '')                                         AS "clienteNombre",
+      ${diasDesdeEmisionSql(opts.now)}                                   AS "dias"
     FROM (${saldoCxcFragmentoCanonico(ctx)}) s
+    LEFT JOIN "CLIENTE" c
+      ON c."id" = s."clienteId"
+      AND c."empresaId" = ${ctx.empresaId}
     WHERE s."cobrosAplicados"::numeric < s."total"::numeric
+      AND ${busquedaWhereSql(opts.busqueda)}
     ORDER BY s."fechaEmision" DESC, s."facturaId" DESC
-    ${limitePaginaSql(pag)}`;
+    ${limitePaginaSql(opts.pag)}`;
 }
 
-/** The two counts the board page needs, computed over the SAME fragment. */
+/** The board page/KPI counts, computed over the SAME fragment and search predicate. */
 export interface SaldoCxcConteo {
   /** VIGENTE invoices of every derived payment state. */
   readonly total: number;
   /** The board's filtered set: VIGENTE with `cobrosAplicados < total`. */
   readonly pendientes: number;
+  /** Σ open balance over the WHOLE filtered set (never page-scoped), as text. */
+  readonly saldoPendienteTotal: string;
+  /** How many of the filtered set are in mora (≥ 1 full SD day past due). */
+  readonly enMora: number;
+  /** Σ open balance of the en-mora subset, as `Decimal(12,2)` text. */
+  readonly saldoEnMora: string;
 }
 
 /**
  * Server-side filtered total (R-C9 "the server MUST compute … the filtered total
- * count"): ONE COUNT over the same canonical fragment with the SAME filtering
- * threshold — never a page-limited subset, never a different predicate than the
- * page query. One statement returns both counts (`FILTER` clause), so page and
- * total are a single round-trip over identical row predicates.
+ * count") plus the board's GLOBAL KPI figures (board-03 S11), in ONE statement
+ * over the same canonical fragment with the SAME filtering threshold and search
+ * predicate as the page query: never a page-limited subset, never a second
+ * balance formula, never a query per row (no N+1).
+ *
+ * `enMora` re-encodes the {@link enMora} rule as `diasVencido > 0`, where
+ * `diasVencido` is the age-pinned SD day expression over the client's own
+ * `plazoCreditoDias` (0 when absent) — exactly the term `derivarVista` resolves
+ * for the JS flag, so the KPI count and the rows' badges cannot disagree. Money
+ * is summed NUMERICALLY and crosses as `Decimal(12,2)` text (the canonical
+ * columns are text — summing them lexicographically would be wrong).
  */
 export async function contarSaldoCxcEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
+  filtro: FiltroTableroCxc,
 ): Promise<SaldoCxcConteo> {
-  const rows = await tx.$queryRaw<{ total: number; pendientes: number }[]>`
+  const pendiente = Prisma.sql`s."cobrosAplicados"::numeric < s."total"::numeric`;
+  const mora = Prisma.sql`${diasVencidoSql(filtro.now, plazoClienteSql())} > 0`;
+  const rows = await tx.$queryRaw<
+    {
+      total: number;
+      pendientes: number;
+      saldoPendienteTotal: string;
+      enMora: number;
+      saldoEnMora: string;
+    }[]
+  >`
     SELECT
       COUNT(*)::int                                                      AS "total",
-      COUNT(*) FILTER (
-        WHERE s."cobrosAplicados"::numeric < s."total"::numeric
-      )::int                                                             AS "pendientes"
-    FROM (${saldoCxcFragmentoCanonico(ctx)}) s`;
-  return rows[0] ?? { total: 0, pendientes: 0 };
+      COUNT(*) FILTER (WHERE ${pendiente})::int                          AS "pendientes",
+      COALESCE(SUM(s."saldoPendiente"::numeric) FILTER (WHERE ${pendiente}), 0)::numeric(12, 2)::text AS "saldoPendienteTotal",
+      COUNT(*) FILTER (WHERE ${pendiente} AND ${mora})::int              AS "enMora",
+      COALESCE(SUM(s."saldoPendiente"::numeric) FILTER (WHERE ${pendiente} AND ${mora}), 0)::numeric(12, 2)::text AS "saldoEnMora"
+    FROM (${saldoCxcFragmentoCanonico(ctx)}) s
+    LEFT JOIN "CLIENTE" c
+      ON c."id" = s."clienteId"
+      AND c."empresaId" = ${ctx.empresaId}
+    WHERE ${busquedaWhereSql(filtro.busqueda)}`;
+  return (
+    rows[0] ?? {
+      total: 0,
+      pendientes: 0,
+      saldoPendienteTotal: "0.00",
+      enMora: 0,
+      saldoEnMora: "0.00",
+    }
+  );
+}
+
+/** How many "Próximas a vencer" entries the board's side panel shows (S12). */
+export const LIMITE_PROXIMAS_A_VENCER = 5;
+/** How many SD days BEFORE its due date an invoice still counts as "próxima". */
+export const DIAS_VENTANA_PROXIMAS_A_VENCER = 7;
+/** How far BACK an already-overdue invoice may be listed in the panel. */
+export const DIAS_VENTANA_VENCIDAS_PROXIMAS = 30;
+
+/**
+ * One "Próximas a vencer" candidate: the invoice identity, the client name, its
+ * open balance and the two facts the pure panel derivation needs — the emission
+ * instant and the client's resolved credit term. The SQL only selects and orders
+ * the WINDOW; the day count, the due date and the badge are recomputed PURELY in
+ * the application (`diasHastaVencimientoEnSD` + `clasificarProximidadVencimiento`),
+ * the same way the aging page recomputes its day/bucket facts on the served rows.
+ */
+export interface FilaProximaVencer {
+  readonly facturaId: number;
+  readonly clienteId: number;
+  readonly clienteNombre: string;
+  readonly saldoPendiente: string;
+  readonly fechaEmision: Date;
+  readonly plazoCreditoDias: number;
+}
+
+/**
+ * The board's "Próximas a vencer" window (board-03 S12): the open receivables
+ * NEAREST their SD due date on either side — not page-scoped, so a page cut can
+ * never hide the invoice that is due tomorrow. `ABS(dias)` orders by proximity,
+ * the window bounds the list to [-{@link DIAS_VENTANA_VENCIDAS_PROXIMAS},
+ * {DIAS_VENTANA_PROXIMAS_A_VENCER}] days around today, and `facturaId ASC`
+ * breaks ties deterministically. `saldoPendiente > 0` keeps genuinely
+ * collectable invoices only (a fully credited row is not "about to be due").
+ */
+export async function consultarProximasAVencerEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  opts: {
+    readonly now: Date;
+    readonly limite: number;
+  },
+): Promise<FilaProximaVencer[]> {
+  const dias = diasHastaVencimientoSql(opts.now, plazoClienteSql());
+  const desde = -DIAS_VENTANA_VENCIDAS_PROXIMAS;
+  const hasta = DIAS_VENTANA_PROXIMAS_A_VENCER;
+  return tx.$queryRaw<FilaProximaVencer[]>`
+    SELECT
+      s."facturaId"::int                                                AS "facturaId",
+      s."clienteId"::int                                                AS "clienteId",
+      COALESCE(c."nombre", '')                                         AS "clienteNombre",
+      s."saldoPendiente"                                                AS "saldoPendiente",
+      s."fechaEmision"                                                  AS "fechaEmision",
+      ${plazoClienteSql()}                                              AS "plazoCreditoDias"
+    FROM (${saldoCxcFragmentoCanonico(ctx)}) s
+    LEFT JOIN "CLIENTE" c
+      ON c."id" = s."clienteId"
+      AND c."empresaId" = ${ctx.empresaId}
+    WHERE s."cobrosAplicados"::numeric < s."total"::numeric
+      AND s."saldoPendiente"::numeric > 0
+      AND ${dias} BETWEEN ${desde} AND ${hasta}
+    ORDER BY ABS(${dias}) ASC, s."facturaId" ASC
+    LIMIT ${opts.limite}`;
 }
 
 /**
@@ -279,20 +434,50 @@ function plazoResueltoSql(dbPlazo: number | null): Prisma.Sql {
 }
 
 /**
- * The SD past-due day-count expression (D2, computed-field case): the client's
- * SOUTH-DOMINGO calendar due date is `fechaEmision + plazo days` resolved with
- * the same `AT TIME ZONE 'America/Santo_Domingo'::date` idiom the codebase
- * already ratifies for SD calendar days (no manual hour arithmetic); `date -
- * date` subtracts whole SD days and `GREATEST(..., 0)` clamps the not-yet-due
- * flank — exactly `diasVencidoEnSD`'s rule. Run inside the aging fragment so
+ * The signed SD day distance to the due date (D2, computed-field case), the ONE
+ * day-count expression of the module: `> 0` = that many full SD days PAST the
+ * due date, `0` = due today, `< 0` = the absolute value is the days REMAINING.
+ * The due date is `fechaEmision + plazo days` resolved with the
+ * `AT TIME ZONE 'America/Santo_Domingo'` idiom the codebase already ratifies for
+ * SD calendar days (no manual hour arithmetic); `date - date` subtracts whole SD
+ * days. Needs the `s."fechaEmision"` alias of the enclosing fragment.
+ */
+function diasHastaVencimientoSql(now: Date, plazo: Prisma.Sql): Prisma.Sql {
+  return Prisma.sql`(((${now} AT TIME ZONE 'America/Santo_Domingo')::date
+         - ((s."fechaEmision" + (${plazo}::text || ' days')::interval)
+            AT TIME ZONE 'America/Santo_Domingo')::date))::int`;
+}
+
+/**
+ * The SD past-due day-count expression (D2, computed-field case): the signed
+ * distance clamped at zero, exactly `GREATEST(diasHastaVencimientoEnSD, 0)` —
+ * identical to `diasVencidoEnSD`'s rule. Run inside the fragment so
  * `s."fechaEmision"` and the CLIENTE alias exist.
  */
 function diasVencidoSql(now: Date, plazo: Prisma.Sql): Prisma.Sql {
-  return Prisma.sql`GREATEST(
-        ((${now} AT TIME ZONE 'America/Santo_Domingo')::date
-         - ((s."fechaEmision" + (${plazo}::text || ' days')::interval)
-            AT TIME ZONE 'America/Santo_Domingo')::date)::int,
-        0)`;
+  return Prisma.sql`GREATEST(${diasHastaVencimientoSql(now, plazo)}, 0)`;
+}
+
+/**
+ * The CLIENT's resolved credit term as SQL, mirroring `TerminosCredito`'s board
+ * resolution exactly (`terminos?.plazoCreditoDias ?? 0` in the application): a
+ * missing client row or a `0` term means "due on issuance". Deliberately NOT the
+ * DB `PLAZO_CREDITO` fallback the aging report uses — the board's rows derive
+ * their mora from the client term only, so the SQL and the pure derivation stay
+ * term-for-term identical.
+ */
+function plazoClienteSql(): Prisma.Sql {
+  return Prisma.sql`COALESCE(c."plazoCreditoDias", 0)::int`;
+}
+
+/**
+ * The SD days OUTSTANDING of an invoice (board-03 S10): the same padded day count
+ * with a `0`-day term, i.e. SD calendar days since `fechaEmision` (0 = issued
+ * today). Uses the aging-pinned expression, so the board's Días column and the
+ * aging order can never disagree about what a calendar day means.
+ */
+function diasDesdeEmisionSql(now: Date): Prisma.Sql {
+  return diasVencidoSql(now, Prisma.sql`0`);
 }
 
 /**
@@ -644,4 +829,73 @@ export interface PerfilCredito {
   /** Frozen `Decimal(12,2)` limit as a string. */
   readonly limiteCredito: string;
   readonly plazoCreditoDias: number;
+}
+
+/**
+ * ONE invoice's header as the per-invoice detail page renders it (board-03 S13):
+ * the canonical derived balance of that invoice (total / abonado / saldo) plus
+ * the fiscal identity (NCF, correlativo) and the client facts (name, RNC,
+ * `tipoCliente`, credit term) the header needs. Money stays the canonical
+ * `Decimal(12,2)` text.
+ *
+ * Only VIGENTE invoices exist in the canonical fragment — a cancelled, annulled,
+ * foreign or missing invoice yields `null`, and the use case maps that to the
+ * catalog's `FACTURA_COBRO_NO_VIGENTE` (a screen never invents a balance for a
+ * document that is no longer collectable).
+ */
+export interface FilaDetalleCxc {
+  readonly facturaId: number;
+  readonly clienteId: number;
+  readonly ncf: string;
+  readonly correlativoInterno: string;
+  readonly fechaEmision: Date;
+  readonly total: string;
+  readonly cobrosAplicados: string;
+  readonly saldoPendiente: string;
+  readonly clienteNombre: string;
+  readonly clienteIdentificacionFiscal: string | null;
+  /** Schema `TipoCliente` literal (`MINORISTA` / `MAYORISTA` / `CREDITO`). */
+  readonly clienteTipoCliente: string;
+  readonly plazoCreditoDias: number;
+}
+
+/**
+ * The per-invoice detail header (board-03 S13). It reads the SAME canonical
+ * ADR-017 fragment the board, the aging report and the over-payment guard use —
+ * narrowed to one invoice — and adds the identity joins, so the detail page can
+ * never show a balance that differs from the board's row for that invoice
+ * (single formula; no second derivation). The invoice narrowing is applied on
+ * the fragment alias and every join re-pins `empresaId` (defense in depth over
+ * the RLS GUCs already in force inside the caller's transaction). CxC is
+ * company-wide by design, so no branch pin is added here — the canonical query
+ * does not have one either.
+ */
+export async function consultarDetalleCxcEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  facturaId: number,
+): Promise<FilaDetalleCxc | null> {
+  const rows = await tx.$queryRaw<FilaDetalleCxc[]>`
+    SELECT
+      s."facturaId"                                                    AS "facturaId",
+      s."clienteId"                                                    AS "clienteId",
+      f."ncf"                                                          AS "ncf",
+      f."correlativoInterno"                                           AS "correlativoInterno",
+      s."fechaEmision"                                                 AS "fechaEmision",
+      s."total"                                                        AS "total",
+      s."cobrosAplicados"                                              AS "cobrosAplicados",
+      s."saldoPendiente"                                               AS "saldoPendiente",
+      COALESCE(c."nombre", '')                                         AS "clienteNombre",
+      c."identificacionFiscal"                                         AS "clienteIdentificacionFiscal",
+      COALESCE(c."tipoCliente"::text, '')                              AS "clienteTipoCliente",
+      COALESCE(c."plazoCreditoDias", 0)::int                           AS "plazoCreditoDias"
+    FROM (${saldoCxcFragmentoCanonico(ctx)}) s
+    JOIN "FACTURA" f
+      ON f."id" = s."facturaId"
+      AND f."empresaId" = ${ctx.empresaId}
+    LEFT JOIN "CLIENTE" c
+      ON c."id" = s."clienteId"
+      AND c."empresaId" = ${ctx.empresaId}
+    WHERE s."facturaId" = ${facturaId}`;
+  return rows[0] ?? null;
 }

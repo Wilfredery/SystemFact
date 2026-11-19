@@ -22,6 +22,12 @@ import {
   listarVentasAction,
   obtenerVentaAction,
 } from "@/modules/venta/http/actions";
+// Board 02 (S4/S5): PosScreen now mounts Next's router — mock it like the actions.
+const mockPush = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush, refresh: jest.fn() }),
+}));
+
 import { listarProductosAction } from "@/modules/producto/http/actions";
 import { listarClientesAction } from "@/modules/cliente/http/actions";
 import { devolverVentaAction } from "@/modules/devolucion/http/actions";
@@ -114,8 +120,12 @@ async function renderPos(): Promise<void> {
     ok: true as const,
     data: { items: [], total: 0, page: 1 },
   });
-  render(<PosScreen esAdmin={false} />);
+  // Board 02 remediation (JD-A): the return button is gated by puedeDevolver;
+  // these tests exercise the authorized-role path.
+  render(<PosScreen esAdmin={false} puedeDevolver />);
   await settle();
+  // Board 02 (S6): the drafts list is collapsed by default; expand to reach rows.
+  fireEvent.click(await screen.findByRole("button", { name: /My drafts/ }));
 }
 
 describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
@@ -245,5 +255,20 @@ describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
     expect(select).toBeInTheDocument();
     expect((select as unknown as HTMLSelectElement).textContent).toContain("VENDIBLE");
     expect((select as unknown as HTMLSelectElement).textContent).toContain("DANADO");
+  });
+
+  // Board 02 remediation (JD-A, MEDIUM): a role ROLES_DEVOLUCION denies
+  // (e.g. Despachador) never sees the return affordance — no dead button.
+  it("hides the Return control when puedeDevolver is false", async () => {
+    // Positive control first: the CONFIRMADA row IS rendered (non-vacuous).
+    mockListar.mockResolvedValue({
+      ok: true as const,
+      data: { items: [CONFIRMADA_7], total: 1, page: 1, limit: 25 },
+    });
+    render(<PosScreen esAdmin={false} />);
+    await settle();
+    fireEvent.click(await screen.findByRole("button", { name: /My drafts/ }));
+    expect(await screen.findByTestId("venta-fila-7")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Return sale 7" })).toBeNull();
   });
 });

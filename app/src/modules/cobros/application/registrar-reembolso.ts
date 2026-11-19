@@ -269,6 +269,9 @@ async function registrarReembolsoCore(
       correlativoRecibo,
       idempotencyKey,
       autorizadoPor,
+      // A refund carries no free-text reference in V1 (S14 is the collection
+      // surface); the column is nullable by design.
+      referencia: null,
     });
 
     // R-C8: append exactly one `PAGAR` audit row strictly AFTER the `Pago`

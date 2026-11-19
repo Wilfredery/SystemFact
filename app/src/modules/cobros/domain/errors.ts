@@ -38,6 +38,11 @@ export const PAGO_NO_AUTORIZADO = "PAGO_NO_AUTORIZADO"; // 612
 export const PAGO_NO_ENCONTRADO = "PAGO_NO_ENCONTRADO"; // 613
 export const REEMBOLSO_EXCEDE_SALDO = "REEMBOLSO_EXCEDE_SALDO"; // 614
 export const PAGO_IDEMPOTENCIA_RESERVADA = "PAGO_IDEMPOTENCIA_RESERVADA"; // 615
+// Board 03 S14 (payment-date band) — the two editable-Fecha-del-pago rejections.
+// Added through the documented catalog-extension protocol: constant + union member
+// + MESSAGES entry + census test + count bump, so a code never exists without copy.
+export const FECHA_COBRO_FUTURA = "FECHA_COBRO_FUTURA"; // 616
+export const FECHA_COBRO_RETROACTIVA_EXCEDIDA = "FECHA_COBRO_RETROACTIVA_EXCEDIDA"; // 617
 
 export type CobroErrorCode =
   | typeof PAGO_IDEMPOTENCIA_CONFLICTO
@@ -49,7 +54,9 @@ export type CobroErrorCode =
   | typeof PAGO_NO_AUTORIZADO
   | typeof PAGO_NO_ENCONTRADO
   | typeof REEMBOLSO_EXCEDE_SALDO
-  | typeof PAGO_IDEMPOTENCIA_RESERVADA;
+  | typeof PAGO_IDEMPOTENCIA_RESERVADA
+  | typeof FECHA_COBRO_FUTURA
+  | typeof FECHA_COBRO_RETROACTIVA_EXCEDIDA;
 
 /** Ordered catalog — tests assert every code yields a stable message. */
 export const COBRO_ERROR_CODES: readonly CobroErrorCode[] = [
@@ -63,6 +70,8 @@ export const COBRO_ERROR_CODES: readonly CobroErrorCode[] = [
   PAGO_NO_ENCONTRADO,
   REEMBOLSO_EXCEDE_SALDO,
   PAGO_IDEMPOTENCIA_RESERVADA,
+  FECHA_COBRO_FUTURA,
+  FECHA_COBRO_RETROACTIVA_EXCEDIDA,
 ];
 
 const MESSAGES: Readonly<Record<CobroErrorCode, string>> = {
@@ -85,6 +94,9 @@ const MESSAGES: Readonly<Record<CobroErrorCode, string>> = {
     "El reembolso supera el monto efectivamente cobrado en la factura; ajuste el monto",
   [PAGO_IDEMPOTENCIA_RESERVADA]:
     "La clave de idempotencia usa un prefijo reservado del sistema; use otra clave",
+  [FECHA_COBRO_FUTURA]: "La fecha del pago no puede ser futura",
+  [FECHA_COBRO_RETROACTIVA_EXCEDIDA]:
+    "La fecha del pago supera el horizonte retroactivo permitido",
 };
 
 export function messageFor(code: CobroErrorCode): string {

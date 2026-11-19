@@ -25,10 +25,11 @@ import { registrarReembolso } from "@/modules/cobros/application/registrar-reemb
 import { consultarSaldoCxC } from "@/modules/cobros/application/consultar-saldo-cxc";
 import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
-// Same allow-lists as cobros/http/actions.ts (re-declared so the "use server"
-// module is not imported into a plain node integration test).
-const ROLES_COBROS = ["Administrador", "Operador"];
-const ROLES_REEMBOLSO = ["Administrador"];
+// Board 03 remediation (JD-A/B-001): import the REAL allow-lists from the
+// module instead of re-declaring a drift-prone local copy — this file now pins
+// the Cobrador grant against the real DB. The constants live in a plain
+// `actions.shared` module (no "use server"), so importing it here is safe.
+import { ROLES_COBROS, ROLES_REEMBOLSO } from "@/modules/cobros/http/shared";
 
 let fixture: TenantFixture | null = null;
 let ctxAdminA: TenantCtx;
@@ -148,6 +149,28 @@ describe("cobros role gating + tenant isolation (real DB, RLS on; R-C6/R-B1)", (
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe(PAGO_NO_AUTORIZADO);
     expect(await db.pago.count({ where: { empresaId: ctxAdminA.empresaId } })).toBe(antes);
+  });
+
+  // Board 03 (S9): Cobrador is GRANTED Cobros against the real DB (the stale
+  // local copy never exercised this grant).
+  it("Cobrador is allowed a collection through the real gate", async () => {
+    const db = getHarnessDb();
+    const cobradorId = await crearUsuarioConRol("Cobrador", "CobradorA");
+    const ctxCobrador = { ...ctxAdminA, usuarioId: cobradorId, esAdmin: false };
+
+    const result = await withTenantTransaction(ctxCobrador, async (tx) => {
+      const permitido = await tieneRolPermitidoEnTx(
+        tx,
+        ctxCobrador.usuarioId,
+        ctxCobrador.empresaId,
+        ROLES_COBROS,
+      );
+      if (!permitido) return { ok: false as const, error: { code: PAGO_NO_AUTORIZADO, message: messageFor(PAGO_NO_AUTORIZADO) } };
+      const r = await registrarCobro(tx, ctxCobrador, { facturaId: facturaA, monto: "100.00" });
+      return r.ok ? { ok: true as const, data: r.data } : { ok: false as const, error: { code: r.code, message: r.message } };
+    });
+
+    expect(result.ok).toBe(true);
   });
 
   it("unauthorized refund actor → PAGO_NO_AUTORIZADO, no row and no receipt burned", async () => {

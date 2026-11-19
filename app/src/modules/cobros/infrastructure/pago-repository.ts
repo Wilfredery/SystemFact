@@ -30,6 +30,8 @@ export interface CrearPagoInput {
   readonly idempotencyKey: string | null;
   /** Authorizer for a REEMBOLSO; `null` for a COBRO (§10). */
   readonly autorizadoPor: number | null;
+  /** S14 free-text reference (≤ 80) or `null`; never an empty string. */
+  readonly referencia: string | null;
 }
 
 /** Persists a `PAGO` inside the caller's tenant transaction; returns its id. */
@@ -53,6 +55,7 @@ export async function crearPagoEnTx(
       autorizadoPor: input.autorizadoPor,
       correlativoRecibo: input.correlativoRecibo,
       idempotencyKey: input.idempotencyKey,
+      referencia: input.referencia,
     },
     select: { id: true },
   });
@@ -210,5 +213,68 @@ export async function revertirPagosAplicadosDeVentaEnTx(
     id: p.id,
     tipo: p.tipo,
     monto: p.monto.toFixed(2),
+  }));
+}
+
+/**
+ * One row of an invoice's payment history (board-03 S13 "Historial de Pagos"):
+ * the persisted payment facts plus the acting user's name and the receipt
+ * correlativo, so the history needs no follow-up query (AGENTS.md "No N+1").
+ * `monto` is the frozen `Decimal(12,2)` string.
+ */
+export interface FilaPagoHistorial {
+  readonly correlativoRecibo: number;
+  readonly fecha: Date;
+  readonly tipo: TipoPago;
+  readonly estado: EstadoPago;
+  readonly monto: string;
+  readonly metodoPago: string;
+  /** S14 optional reference captured with the payment (or `null`). */
+  readonly referencia: string | null;
+  readonly usuarioNombre: string;
+}
+
+/**
+ * EVERY payment row of one invoice, newest first (board-03 S13) — the collection
+ * history a receipt-level view shows, with no state filter: an `APLICADO` cobro,
+ * a `REGISTRADO`/`APLICADO` refund and a `REVERTIDO` row are all part of the
+ * document's story, so nothing is hidden here (the DERIVED balance is the
+ * canonical fragment's job, never this list's). The `empresaId` pin plus the RLS
+ * GUCs keep the read tenant-bound; `facturaId` alone is never trusted. Ordering
+ * is `fecha DESC` with an `id DESC` tie-break so two payments registered in the
+ * same instant still render deterministically. `monto` crosses as a string
+ * (never a float); `referencia` is the S14 optional free-text reference.
+ */
+export async function leerHistorialPagosFacturaEnTx(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  facturaId: number,
+): Promise<FilaPagoHistorial[]> {
+  const pagos = await tx.pago.findMany({
+    where: { facturaId, empresaId: ctx.empresaId },
+    // JD-A remediation: a detail page is paginated even for a bounded
+    // per-invoice sub-list (lists ALWAYS paginated, max 100).
+    take: 100,
+    select: {
+      correlativoRecibo: true,
+      fecha: true,
+      tipo: true,
+      estado: true,
+      monto: true,
+      metodoPago: true,
+      referencia: true,
+      usuario: { select: { nombre: true } },
+    },
+    orderBy: [{ fecha: "desc" }, { id: "desc" }],
+  });
+  return pagos.map((p) => ({
+    correlativoRecibo: p.correlativoRecibo,
+    fecha: p.fecha,
+    tipo: p.tipo,
+    estado: p.estado,
+    monto: p.monto.toFixed(2),
+    metodoPago: p.metodoPago,
+    referencia: p.referencia,
+    usuarioNombre: p.usuario.nombre,
   }));
 }

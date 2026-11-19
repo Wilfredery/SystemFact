@@ -47,6 +47,12 @@ jest.mock("@/modules/cliente/http/actions", () => ({
   listarClientesAction: jest.fn(),
 }));
 
+// Board 02 (S5): the receipt route after confirm goes through Next's router.
+const mockPush = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush, refresh: jest.fn() }),
+}));
+
 const mockConfirmar = jest.mocked(confirmarVentaAction);
 const mockCancelar = jest.mocked(cancelarVentaAction);
 const mockListar = jest.mocked(listarVentasAction);
@@ -105,6 +111,10 @@ function exitoConfirmar(ncfWarning?: "NCF_UMBRAL_90") {
   };
 }
 
+async function expandirBorradores(): Promise<void> {
+  fireEvent.click(await screen.findByRole("button", { name: /My drafts/ }));
+}
+
 async function settle(): Promise<void> {
   await act(async () => {
     await Promise.resolve();
@@ -131,6 +141,7 @@ describe("POS confirm control (R-V14 5c slice)", () => {
 
   it("renders a single-shot confirm control for a BORRADOR draft and calls the action once", async () => {
     await renderPos([BORRADOR_3]);
+      await expandirBorradores();
     const confirm = await screen.findByRole("button", { name: "Confirm draft 3" });
 
     // Controllable pending promise: the button must disable on FIRST click.
@@ -151,8 +162,46 @@ describe("POS confirm control (R-V14 5c slice)", () => {
     await waitFor(() => expect(screen.getByText(/B0200000101/)).toBeInTheDocument());
   });
 
+  // Board 02 (S5): a confirmed sale's receipt is the next stop — the confirm
+  // result carries `facturaId` (confirmar-venta result type), so the screen
+  // routes to the receipt view instead of dead-ending in the drafts list.
+  it("routes to the emitted invoice receipt after a successful confirm", async () => {
+    mockConfirmar.mockResolvedValue(exitoConfirmar());
+    await renderPos([BORRADOR_3]);
+      await expandirBorradores();
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm draft 3" }));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/venta/factura/77"));
+  });
+
+  // S5 remediation (JD-A): only a cash confirm without NCF warning routes to
+  // the receipt; a CREDITO confirm stays so the due-date verdict is readable.
+  it("does NOT route for a CREDITO confirm — the verdict stays on screen", async () => {
+    mockConfirmar.mockResolvedValue({
+      ...exitoConfirmar(),
+      data: {
+        ...exitoConfirmar().data,
+        credito: { forma: "CREDITO", plazoCreditoDias: 15, fechaEmision: "2026-03-01T15:00:00.000Z" },
+      },
+    });
+    await renderPos([BORRADOR_3]);
+    await expandirBorradores();
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm draft 3" }));
+    expect(await screen.findByText(/Due date:/)).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("does NOT route when the confirm carries the NCF_UMBRAL_90 warning", async () => {
+    mockConfirmar.mockResolvedValue(exitoConfirmar("NCF_UMBRAL_90"));
+    await renderPos([BORRADOR_3]);
+    await expandirBorradores();
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm draft 3" }));
+    expect(await screen.findByText(/NCF_UMBRAL_90/)).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
   it("surfaces a stable confirm error code without stack traces and keeps the draft", async () => {
     await renderPos([BORRADOR_3]);
+      await expandirBorradores();
     mockConfirmar.mockResolvedValue({
       ok: false,
       error: { code: "NCF_AGOTADA", message: "El rango de secuencias NCF está agotado; no se puede confirmar la venta" },
@@ -172,6 +221,7 @@ describe("POS confirm control (R-V14 5c slice)", () => {
 
   it("shows the NCF_UMBRAL_90 warning banner alongside the success", async () => {
     await renderPos([BORRADOR_3]);
+      await expandirBorradores();
     mockConfirmar.mockResolvedValue(exitoConfirmar("NCF_UMBRAL_90"));
 
     fireEvent.click(await screen.findByRole("button", { name: "Confirm draft 3" }));
@@ -185,6 +235,7 @@ describe("POS confirm control (R-V14 5c slice)", () => {
 
   it("renders CONFIRMADA rows with their NCF and an admin-only void control routed through the reason Dialog", async () => {
     await renderPos([CONFIRMADA_4], true);
+      await expandirBorradores();
     // CONFIRMADA rows are not editable draft rows anymore: no draft controls.
     expect(screen.queryByRole("button", { name: "Edit draft 4" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Confirm draft 4" })).toBeNull();
@@ -215,6 +266,7 @@ describe("POS confirm control (R-V14 5c slice)", () => {
 
   it("never renders payment controls (Fase 6 boundary holds)", async () => {
     await renderPos([BORRADOR_3, CONFIRMADA_4]);
+      await expandirBorradores();
     expect(screen.queryByRole("button", { name: /cobrar|pay|payment/i })).toBeNull();
   });
 
@@ -227,6 +279,7 @@ describe("POS confirm control (R-V14 5c slice)", () => {
     ["CREDITO_NO_HABILITADO", "Credit not enabled for this client", "Sell cash instead: select a non-credit client or keep Consumidor Final, which stays un-gated."],
   ])("renders the distinct rejection surface for %s", async (code, titulo, texto) => {
     await renderPos([BORRADOR_3]);
+      await expandirBorradores();
     mockConfirmar.mockResolvedValue({
       ok: false,
       error: { code: code as string, message: `server message for ${code}` },
@@ -243,6 +296,7 @@ describe("POS confirm control (R-V14 5c slice)", () => {
 
   it("falls back to the generic [CODE] banner for a non-cataloged code", async () => {
     await renderPos([BORRADOR_3]);
+      await expandirBorradores();
     mockConfirmar.mockResolvedValue({
       ok: false,
       error: { code: "NCF_AGOTADA", message: "El rango de secuencias NCF está agotado" },

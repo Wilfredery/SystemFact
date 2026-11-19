@@ -35,7 +35,7 @@ describe("concurrent adjustments (real DB)", () => {
         ajustarInventario(tx, ctx, {
           productoId: fixture.productos.prodA1.id,
           cantidad: "-4",
-          motivo: "Mismo clic dos veces",
+          motivo: "Conteo físico",
           claveIdempotencia: "concurrente-misma-0001",
         }),
       ),
@@ -63,7 +63,7 @@ describe("concurrent adjustments (real DB)", () => {
         ajustarInventario(tx, ctx, {
           productoId: fixture.productos.prodA1.id,
           cantidad: "-8",
-          motivo: "Salida concurrente",
+          motivo: "Merma",
           claveIdempotencia: `concurrente-distinta-${i}`,
         }),
       ),

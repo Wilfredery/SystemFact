@@ -11,6 +11,7 @@ import { ajustarStockEnTx } from "../infrastructure/inventario-repository";
 import {
   CANTIDAD_INVALIDA,
   INVENTARIO_NO_ENCONTRADO,
+  MOTIVO_NO_VALIDO,
   MOTIVO_VACIO,
   STOCK_INSUFICIENTE,
   STOCK_MAXIMO_EXCEDIDO,
@@ -51,7 +52,7 @@ describe("ajustarInventario", () => {
     const result = await ajustarInventario(tx, ctx, {
       productoId: 5,
       cantidad: "5",
-      motivo: "Inventario físico inicial",
+      motivo: "Conteo físico",
       claveIdempotencia: "k-ntariotestts-50",
     });
 
@@ -71,7 +72,7 @@ describe("ajustarInventario", () => {
       expect.objectContaining({
         productoId: 5,
         delta: "5",
-        motivo: "Inventario físico inicial",
+        motivo: "Conteo físico",
       }),
     );
   });
@@ -86,7 +87,7 @@ describe("ajustarInventario", () => {
     const result = await ajustarInventario(makeTx(), ctx, {
       productoId: 5,
       cantidad: "-4",
-      motivo: "Merma por rotura",
+      motivo: "Merma",
       claveIdempotencia: "k-ntariotestts-84",
     });
 
@@ -108,11 +109,67 @@ describe("ajustarInventario", () => {
     expect(ajustarStockEnTx).not.toHaveBeenCalled();
   });
 
+  it("rejects a reason outside the frozen enum with MOTIVO_NO_VALIDO and does not mutate", async () => {
+    const result = await ajustarInventario(makeTx(), ctx, {
+      productoId: 5,
+      cantidad: "5",
+      motivo: "Motivo inventado",
+      claveIdempotencia: "k-ntariotestts-102",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(MOTIVO_NO_VALIDO);
+    expect(ajustarStockEnTx).not.toHaveBeenCalled();
+  });
+
+  it("composes the frozen reason and the detail into one stored motivo", async () => {
+    (ajustarStockEnTx as jest.Mock).mockResolvedValue({
+      inventoryId: 100,
+      previousQuantity: "3.000",
+      newQuantity: "8.000",
+    });
+
+    await ajustarInventario(makeTx(), ctx, {
+      productoId: 5,
+      cantidad: "5",
+      motivo: "Merma",
+      observaciones: "Saco roto en el almacén",
+      claveIdempotencia: "k-ntariotestts-103",
+    });
+
+    expect(ajustarStockEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      ctx,
+      expect.objectContaining({ motivo: "Merma: Saco roto en el almacén" }),
+    );
+  });
+
+  it("stores the bare enum reason when there are no observaciones", async () => {
+    (ajustarStockEnTx as jest.Mock).mockResolvedValue({
+      inventoryId: 100,
+      previousQuantity: "3.000",
+      newQuantity: "8.000",
+    });
+
+    await ajustarInventario(makeTx(), ctx, {
+      productoId: 5,
+      cantidad: "5",
+      motivo: "Conteo físico",
+      claveIdempotencia: "k-ntariotestts-104",
+    });
+
+    expect(ajustarStockEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      ctx,
+      expect.objectContaining({ motivo: "Conteo físico" }),
+    );
+  });
+
   it("rejects a zero adjustment with CANTIDAD_INVALIDA and no DB access", async () => {
     const result = await ajustarInventario(makeTx(), ctx, {
       productoId: 5,
       cantidad: "0",
-      motivo: "Sin efecto",
+      motivo: "Merma",
       claveIdempotencia: "k-ntariotestts-108",
     });
 
@@ -125,7 +182,7 @@ describe("ajustarInventario", () => {
     const result = await ajustarInventario(makeTx(), ctx, {
       productoId: 5,
       cantidad: "abc",
-      motivo: "Razón válida",
+      motivo: "Corrección de error",
       claveIdempotencia: "k-ntariotestts-120",
     });
 
@@ -142,7 +199,7 @@ describe("ajustarInventario", () => {
     const result = await ajustarInventario(makeTx(), ctx, {
       productoId: 5,
       cantidad: "-4",
-      motivo: "Salida mayor al stock",
+      motivo: "Merma",
       claveIdempotencia: "k-ntariotestts-136",
     });
 
@@ -160,7 +217,7 @@ describe("ajustarInventario", () => {
     await ajustarInventario(makeTx(), ctx, {
       productoId: 5,
       cantidad: "5",
-      motivo: "Conteo",
+      motivo: "Conteo físico",
       claveIdempotencia: "clave-unica-123",
     });
 
@@ -179,7 +236,7 @@ describe("ajustarInventario", () => {
     const result = await ajustarInventario(makeTx(), ctx, {
       productoId: 5,
       cantidad: "7",
-      motivo: "Misma clave, otra cantidad",
+      motivo: "Otro",
       claveIdempotencia: "clave-unica-123",
     });
 
@@ -195,7 +252,7 @@ describe("ajustarInventario", () => {
     const result = await ajustarInventario(makeTx(), ctx, {
       productoId: 5,
       cantidad: "999999999",
-      motivo: "Entrada enorme",
+      motivo: "Conteo físico",
       claveIdempotencia: "k-ntariotestts-151",
     });
 
@@ -211,7 +268,7 @@ describe("ajustarInventario", () => {
     const result = await ajustarInventario(makeTx(), ctx, {
       productoId: 999,
       cantidad: "5",
-      motivo: "Intento cross-tenant",
+      motivo: "Conteo físico",
       claveIdempotencia: "k-ntariotestts-166",
     });
 
@@ -226,7 +283,7 @@ describe("ajustarInventario", () => {
       ajustarInventario(makeTx(), ctx, {
         productoId: 5,
         cantidad: "5",
-        motivo: "Razón válida",
+        motivo: "Corrección de error",
         claveIdempotencia: "k-ntariotestts-180",
       }),
     ).rejects.toThrow("boom");

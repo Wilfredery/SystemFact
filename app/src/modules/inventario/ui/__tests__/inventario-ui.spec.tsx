@@ -106,6 +106,20 @@ describe("InventarioScreen — rows, badges and KPIs", () => {
     expect(within(screen.getByTestId("inventario-fila-9")).getByText("Agotado")).toBeInTheDocument();
   });
 
+  it("pins each status badge to its F0 token pair", () => {
+    montar();
+
+    expect(
+      within(screen.getByTestId("inventario-fila-7")).getByText("Disponible"),
+    ).toHaveClass("bg-success-bg", "text-success-fg");
+    expect(
+      within(screen.getByTestId("inventario-fila-8")).getByText("Bajo stock"),
+    ).toHaveClass("bg-warn-bg", "text-warn");
+    expect(
+      within(screen.getByTestId("inventario-fila-9")).getByText("Agotado"),
+    ).toHaveClass("bg-danger/10", "text-danger");
+  });
+
   it("shows the four KPI cards with the value formatted as RD$", () => {
     montar();
 
@@ -141,6 +155,102 @@ describe("InventarioScreen — rows, badges and KPIs", () => {
     expect(screen.getByText("No hay productos que coincidan con los filtros.")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByText("Página 1 de 1")).toBeInTheDocument();
+  });
+});
+
+describe("InventarioScreen — row ⋯ menu (board-04 S19)", () => {
+  function montarConMenu() {
+    return render(
+      <InventarioScreen inicial={{ ok: true, data: salida() }} filtrosIniciales={SIN_FILTROS} puedeAjustar />,
+    );
+  }
+
+  it("adds the Acciones column with a per-row ⋯ menu for the manage group", () => {
+    montarConMenu();
+
+    expect(screen.getByRole("columnheader", { name: "Acciones" })).toBeInTheDocument();
+    expect(screen.getByTestId("menu-fila-P-007")).toBeInTheDocument();
+    // Closed by default: the wireframe's clean state.
+    expect(screen.queryByRole("menu", { name: "Acciones P-007" })).not.toBeInTheDocument();
+  });
+
+  it("opens a menu with Ajustar (prefill by code) and Historial (filtered history)", async () => {
+    montarConMenu();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("menu-fila-P-007"));
+    });
+
+    const menu = screen.getByRole("menu", { name: "Acciones P-007" });
+    const ajustar = within(menu).getByRole("menuitem", { name: "Ajustar" });
+    expect(ajustar).toHaveAttribute("href", "/inventario/ajuste?producto=P-007");
+    // Exact-code filter (JD-A-003): the history is filtered to that ONE product.
+    const historial = within(menu).getByRole("menuitem", { name: "Historial" });
+    expect(historial).toHaveAttribute("href", "/inventario/movimientos?productoCodigo=P-007");
+  });
+
+  it("moves focus to the first item on open and back to the button on Escape (JD-A N3)", async () => {
+    montarConMenu();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("menu-fila-P-007"));
+    });
+    expect(document.activeElement?.getAttribute("role")).toBe("menuitem");
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "Escape" });
+    });
+    expect(screen.queryByRole("menu", { name: "Acciones P-007" })).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByTestId("menu-fila-P-007"));
+  });
+
+  it("closes the menu with Escape", async () => {
+    montarConMenu();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("menu-fila-P-007"));
+    });
+    expect(screen.getByRole("menu", { name: "Acciones P-007" })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "Escape" });
+    });
+    expect(screen.queryByRole("menu", { name: "Acciones P-007" })).not.toBeInTheDocument();
+  });
+
+  it("closes the menu on a press outside of it", async () => {
+    montarConMenu();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("menu-fila-P-007"));
+    });
+    expect(screen.getByRole("menu", { name: "Acciones P-007" })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.mouseDown(document.body);
+    });
+    expect(screen.queryByRole("menu", { name: "Acciones P-007" })).not.toBeInTheDocument();
+  });
+
+  it("toggles the menu closed on a second click", async () => {
+    montarConMenu();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("menu-fila-P-007"));
+    });
+    expect(screen.getByRole("menu", { name: "Acciones P-007" })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("menu-fila-P-007"));
+    });
+    expect(screen.queryByRole("menu", { name: "Acciones P-007" })).not.toBeInTheDocument();
+  });
+
+  it("has no ⋯ menu without the manage group (default)", () => {
+    montar();
+
+    expect(screen.queryByRole("columnheader", { name: "Acciones" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("menu-fila-P-007")).not.toBeInTheDocument();
   });
 });
 

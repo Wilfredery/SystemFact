@@ -12,7 +12,54 @@ import { formatearMonto } from "@/shared/ui/format";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { calcularVuelto } from "./credito";
+
+/**
+ * Quick-amounts row (board 02 decision S2): exact payment = 1 tap. Rendered
+ * only inside the money-received slot (vueltoSlot) — Totales keeps today's
+ * shape when the slot props are absent.
+ *
+ * EXPORTED for board 03 (S15): the cobros payment-confirmation modal reuses the
+ * SAME row and wording, with `total` bound to the invoice's derived pending
+ * balance, so "Exact" means "pay the whole receivable" on both surfaces and the
+ * amount shape stays one definition.
+ */
+const MONTOS_RAPIDOS = [100, 200, 500, 1000, 2000, 5000] as const;
+
+export function MontosRapidos({
+  onSeleccion,
+  total,
+}: {
+  readonly onSeleccion: (v: string) => void;
+  readonly total: string;
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Quick amounts">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label="Quick amount exact total"
+        onClick={() => onSeleccion(total)}
+      >
+        Exact
+      </Button>
+      {MONTOS_RAPIDOS.map((monto) => (
+        <Button
+          key={monto}
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-label={`Quick amount ${monto}`}
+          onClick={() => onSeleccion(String(monto))}
+        >
+          RD${monto.toLocaleString("en-US")}
+        </Button>
+      ))}
+    </div>
+  );
+}
 
 function Fila({ etiqueta, valor, fuerte = false }: { readonly etiqueta: string; readonly valor: string; readonly fuerte?: boolean }) {
   return (
@@ -63,6 +110,7 @@ export function Totales({
               placeholder="0.00"
               className="min-h-12 w-full text-right"
             />
+            <MontosRapidos onSeleccion={onDineroRecibidoChange} total={totales.total} />
             {estado === "VUELTO" && (
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-sm font-semibold text-ink">

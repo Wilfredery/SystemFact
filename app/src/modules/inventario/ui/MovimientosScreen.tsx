@@ -9,6 +9,9 @@
  * filter or page change re-queries that same action. Quantities arrive as Decimal
  * strings and are only displayed (a sign is prefixed as text, never arithmetic);
  * dates are UTC instants rendered in America/Santo_Domingo.
+ *
+ * Board-04 S24: F0 primitives + token classes only (no raw palette, no
+ * dark-mode overrides).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,6 +23,16 @@ import {
   type TipoMovimientoInventario,
 } from "@/modules/inventario/domain/movimientos";
 import { formatearFechaHoraSD } from "@/shared/ui/format";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { TAMANO_PAGINA } from "./paginacion";
 
 const DEBOUNCE_BUSQUEDA_MS = 300;
@@ -33,17 +46,18 @@ export type MovimientosInicial =
 export interface FiltrosMovimientos {
   readonly tipo: TipoMovimientoInventario | null;
   readonly producto: string;
+  /** Board-04 S19: exact product code from the consulta row menu (sticky filter). */
+  readonly productoCodigo: string;
   /** `YYYY-MM-DD` or "" (= default range). */
   readonly desde: string;
   readonly hasta: string;
 }
 
+/** Native <select>/<input type=date> face, token-bound (no F0 primitive needed). */
 const CLASE_CONTROL =
-  "min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
-const CLASE_BOTON =
-  "min-h-11 rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300";
+  "min-h-11 rounded-lg border border-line bg-surface px-2.5 text-sm text-ink";
 const CLASE_ALERTA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+  "rounded-md bg-danger/10 px-3 py-2 text-sm text-danger";
 
 function construirQuery(filtros: FiltrosMovimientos, page: number) {
   return {
@@ -51,6 +65,7 @@ function construirQuery(filtros: FiltrosMovimientos, page: number) {
     limit: TAMANO_PAGINA,
     ...(filtros.tipo === null ? {} : { tipo: filtros.tipo }),
     ...(filtros.producto.trim() === "" ? {} : { producto: filtros.producto.trim() }),
+    ...(filtros.productoCodigo.trim() === "" ? {} : { productoCodigo: filtros.productoCodigo.trim() }),
     ...(filtros.desde === "" ? {} : { desde: filtros.desde }),
     ...(filtros.hasta === "" ? {} : { hasta: filtros.hasta }),
   };
@@ -127,13 +142,13 @@ export function MovimientosScreen({
       )}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-        <input
+        <Input
           type="search"
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           placeholder="Buscar por nombre o código..."
           aria-label="Buscar producto"
-          className={`${CLASE_CONTROL} sm:flex-1`}
+          className="sm:flex-1"
         />
         <select
           value={filtros.tipo ?? ""}
@@ -157,7 +172,7 @@ export function MovimientosScreen({
             </option>
           ))}
         </select>
-        <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+        <label className="flex flex-col gap-1 text-xs text-ink-muted">
           Desde
           <input
             type="date"
@@ -166,7 +181,7 @@ export function MovimientosScreen({
             className={CLASE_CONTROL}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+        <label className="flex flex-col gap-1 text-xs text-ink-muted">
           Hasta
           <input
             type="date"
@@ -177,76 +192,93 @@ export function MovimientosScreen({
         </label>
       </div>
 
+      {/* Board-04 S19: the row-menu exact filter is sticky; make it visible
+          and clearable, otherwise the search box would silently do nothing. */}
+      {filtros.productoCodigo.trim() !== "" && (
+        <div data-testid="filtro-producto-codigo" className="flex items-center gap-2 text-sm">
+          <span className="text-ink-muted">Producto:</span>
+          <span className="font-mono text-ink">{filtros.productoCodigo.trim()}</span>
+          <button
+            type="button"
+            aria-label="Quitar filtro de producto"
+            onClick={() => void consultar({ ...filtros, productoCodigo: "" }, 1)}
+            className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-md border border-line text-ink hover:bg-surface-muted"
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+        </div>
+      )}
+
       {data !== null && data.items.length === 0 && (
-        <p className="rounded-md border border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+        <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
           No hay movimientos que coincidan con los filtros.
         </p>
       )}
 
       {data !== null && data.items.length > 0 && (
         <div
-          className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800"
+          className="overflow-x-auto rounded-lg border border-line"
           aria-busy={cargando}
         >
-          <table className="w-full text-left text-sm">
-            <thead className="bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
-              <tr>
-                <th scope="col" className="px-4 py-2">Fecha</th>
-                <th scope="col" className="px-4 py-2">Producto</th>
-                <th scope="col" className="px-4 py-2">Tipo</th>
-                <th scope="col" className="px-4 py-2 text-right">Cantidad movida</th>
-                <th scope="col" className="px-4 py-2 text-right">Cantidad anterior</th>
-                <th scope="col" className="px-4 py-2 text-right">Cantidad nueva</th>
-                <th scope="col" className="px-4 py-2">Usuario</th>
-                <th scope="col" className="px-4 py-2">Motivo</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <Table>
+            <TableHeader className="bg-surface-muted text-xs uppercase">
+              <TableRow>
+                <TableHead scope="col" className="px-4">Fecha</TableHead>
+                <TableHead scope="col" className="px-4">Producto</TableHead>
+                <TableHead scope="col" className="px-4">Tipo</TableHead>
+                <TableHead scope="col" className="px-4 text-right">Cantidad movida</TableHead>
+                <TableHead scope="col" className="px-4 text-right">Cantidad anterior</TableHead>
+                <TableHead scope="col" className="px-4 text-right">Cantidad nueva</TableHead>
+                <TableHead scope="col" className="px-4">Usuario</TableHead>
+                <TableHead scope="col" className="px-4">Motivo</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {data.items.map((m) => (
-                <tr key={m.id} data-testid={`movimiento-fila-${m.id}`}>
-                  <td className="whitespace-nowrap px-4 py-2 tabular-nums">
+                <TableRow key={m.id} data-testid={`movimiento-fila-${m.id}`}>
+                  <TableCell className="whitespace-nowrap px-4 py-2 tabular-nums">
                     {formatearFechaHoraSD(new Date(m.fecha))}
-                  </td>
-                  <td className="px-4 py-2">
+                  </TableCell>
+                  <TableCell className="px-4 py-2">
                     <span className="font-mono text-xs">{m.productoCodigo}</span>{" "}
-                    <span className="font-medium text-zinc-900 dark:text-zinc-50">{m.productoNombre}</span>
-                  </td>
-                  <td className="px-4 py-2">{etiquetaTipoMovimiento(m.tipo)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{cantidadConSigno(m.cantidadMovida)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{m.cantidadAnterior}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{m.cantidadNueva}</td>
-                  <td className="px-4 py-2">{m.usuarioNombre ?? SIN_USUARIO}</td>
-                  <td className="px-4 py-2">{m.motivo}</td>
-                </tr>
+                    <span className="font-medium text-ink">{m.productoNombre}</span>
+                  </TableCell>
+                  <TableCell className="px-4 py-2">{etiquetaTipoMovimiento(m.tipo)}</TableCell>
+                  <TableCell className="px-4 py-2 text-right tabular-nums">{cantidadConSigno(m.cantidadMovida)}</TableCell>
+                  <TableCell className="px-4 py-2 text-right tabular-nums">{m.cantidadAnterior}</TableCell>
+                  <TableCell className="px-4 py-2 text-right tabular-nums">{m.cantidadNueva}</TableCell>
+                  <TableCell className="px-4 py-2">{m.usuarioNombre ?? SIN_USUARIO}</TableCell>
+                  <TableCell className="px-4 py-2">{m.motivo}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 
       {data !== null && (
         <nav aria-label="Paginación historial" className="flex items-center justify-between gap-2">
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={() => void consultar(filtros, data.page - 1)}
             disabled={cargando || busquedaPendiente || data.page <= 1}
             aria-label="Página anterior"
-            className={CLASE_BOTON}
           >
             Anterior
-          </button>
-          <span className="text-sm text-zinc-500">
+          </Button>
+          <span className="text-sm text-ink-muted">
             Página {data.page} de {totalPaginas}
           </span>
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={() => void consultar(filtros, data.page + 1)}
             disabled={cargando || busquedaPendiente || data.page >= totalPaginas}
             aria-label="Página siguiente"
-            className={CLASE_BOTON}
           >
             Siguiente
-          </button>
+          </Button>
         </nav>
       )}
     </div>

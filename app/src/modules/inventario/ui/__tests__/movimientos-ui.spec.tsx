@@ -25,7 +25,7 @@ jest.mock("@/modules/inventario/http/actions", () => ({
 
 const mockListar = jest.mocked(listarMovimientosInventarioAction);
 
-const SIN_FILTROS: FiltrosMovimientos = { tipo: null, producto: "", desde: "", hasta: "" };
+const SIN_FILTROS: FiltrosMovimientos = { tipo: null, producto: "", productoCodigo: "", desde: "", hasta: "" };
 
 function salida(parcial: Partial<ListarMovimientosOutput> = {}): ListarMovimientosOutput {
   return {

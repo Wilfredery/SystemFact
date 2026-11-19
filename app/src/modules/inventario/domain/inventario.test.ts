@@ -7,6 +7,8 @@ import {
   INVENTORY_SOURCE,
   classifyStockKpi,
   validateAdjustmentQuantity,
+  MOTIVOS_AJUSTE,
+  validarMotivoAjuste,
   validateMotivo,
   type InventoryEntryPort,
   type InventoryExitPort,
@@ -14,7 +16,7 @@ import {
   type InventoryMovementResult,
   type StockKpi,
 } from "./inventario";
-import { CANTIDAD_INVALIDA, MOTIVO_VACIO } from "./errors";
+import { CANTIDAD_INVALIDA, MOTIVO_NO_VALIDO, MOTIVO_VACIO } from "./errors";
 
 describe("classifyStockKpi", () => {
   it("flags stock above the minimum as normal", () => {
@@ -62,7 +64,7 @@ describe("validateAdjustmentQuantity", () => {
 });
 
 describe("validateMotivo", () => {
-  it("accepts a non-empty trimmed reason", () => {
+  it("accepts a non-empty trimmed reason (purchase/sale flows carry free text)", () => {
     expect(validateMotivo("Ajuste por inventario físico")).toBeNull();
   });
 
@@ -70,6 +72,24 @@ describe("validateMotivo", () => {
     expect(validateMotivo("")).toBe(MOTIVO_VACIO);
     expect(validateMotivo("   ")).toBe(MOTIVO_VACIO);
     expect(validateMotivo("\t \n")).toBe(MOTIVO_VACIO);
+  });
+});
+
+describe("validarMotivoAjuste (board-04 S22 frozen enum)", () => {
+  it("accepts every frozen enum reason", () => {
+    for (const motivo of MOTIVOS_AJUSTE) {
+      expect(validarMotivoAjuste(motivo)).toBeNull();
+    }
+  });
+
+  it("rejects empty and whitespace-only reasons with MOTIVO_VACIO", () => {
+    expect(validarMotivoAjuste("")).toBe(MOTIVO_VACIO);
+    expect(validarMotivoAjuste("   ")).toBe(MOTIVO_VACIO);
+  });
+
+  it("rejects free text outside the frozen enum with MOTIVO_NO_VALIDO", () => {
+    expect(validarMotivoAjuste("Motivo inventado")).toBe(MOTIVO_NO_VALIDO);
+    expect(validarMotivoAjuste("Conteo físico: con detalle")).toBe(MOTIVO_NO_VALIDO);
   });
 });
 

@@ -1,6 +1,12 @@
 import type { PrismaTx } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
-import { contarFacturasConSaldoDeSucursalEnTx } from "./saldo-cxc.repository";
+import {
+  contarFacturasConSaldoDeSucursalEnTx,
+  contarSaldoCxcEnTx,
+  consultarProximasAVencerEnTx,
+  consultarSaldoCxcTableroEnTx,
+  consultarDetalleCxcEnTx,
+} from "./saldo-cxc.repository";
 
 /** Unit stub of the client has no `Prisma.sql`: a minimal tagged-template fragment (strings + values). */
 interface FragmentoSql {
@@ -16,6 +22,7 @@ jest.mock("@/generated/prisma/client", () => ({
       values,
       sql: strings.join("?"),
     }),
+    empty: { strings: [""], values: [], sql: "" },
   },
 }));
 
@@ -53,5 +60,241 @@ describe("contarFacturasConSaldoDeSucursalEnTx", () => {
   it("returns 0 when the aggregate yields no row", async () => {
     const { tx } = txCon([]);
     await expect(contarFacturasConSaldoDeSucursalEnTx(tx, ctx, 9)).resolves.toBe(0);
+  });
+});
+
+/** The full SQL text of one `$queryRaw` call, flattening nested `Prisma.Sql` fragments. */
+function textoDeSql(strings: readonly string[], valores: readonly unknown[]): string {
+  const anidados = valores
+    .filter(
+      (v): v is FragmentoSql =>
+        typeof v === "object" && v !== null && "strings" in v && "sql" in v,
+    )
+    .map((f) => textoDeSql(f.strings, f.values));
+  return [strings.join("?"), ...anidados].join(" ");
+}
+
+/** Every scalar bind of the statement, flattening the nested `Prisma.Sql` fragments. */
+function aplanarValores(valores: readonly unknown[]): unknown[] {
+  return valores.flatMap((v) =>
+    typeof v === "object" && v !== null && "strings" in v && "values" in v
+      ? aplanarValores((v as FragmentoSql).values)
+      : [v],
+  );
+}
+
+function sqlDe(queryRaw: jest.Mock, llamada = 0): { sql: string; valores: unknown[] } {
+  const [strings, ...valores] = queryRaw.mock.calls[llamada] as [
+    readonly string[],
+    ...unknown[],
+  ];
+  return { sql: textoDeSql(strings, valores), valores: aplanarValores(valores) };
+}
+
+const AHORA = new Date("2026-04-15T14:00:00.000Z");
+
+describe("consultarSaldoCxcTableroEnTx (S10 cliente name + SD días, S12 search)", () => {
+  it("joins CLIENTE tenant-pinned, projects the SD days column and keeps the R-C9 page cut", async () => {
+    const { tx, queryRaw } = txCon([
+      {
+        facturaId: 7,
+        clienteId: 3,
+        clienteNombre: "Ferretería del Valle",
+        dias: 12,
+      },
+    ]);
+
+    await expect(
+      consultarSaldoCxcTableroEnTx(tx, ctx, {
+        pag: { offset: 0, limit: 25 },
+        now: AHORA,
+        busqueda: null,
+      }),
+    ).resolves.toHaveLength(1);
+
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    const { sql, valores } = sqlDe(queryRaw);
+    // S10: the client-name join is TENANT-PINNED.
+    expect(sql).toContain('LEFT JOIN "CLIENTE" c');
+    expect(sql).toContain('c."nombre"');
+    expect(sql).toContain('c."empresaId" =');
+    // S10: the Días column is the SD calendar-day count (no manual hour math).
+    expect(sql).toContain('AS "dias"');
+    expect(sql).toContain("AT TIME ZONE 'America/Santo_Domingo'");
+    expect(valores).toContain(AHORA);
+    // R-C9: pinned order + the paging tail, unchanged.
+    expect(sql).toContain('ORDER BY s."fechaEmision" DESC, s."facturaId" DESC');
+    expect(sql).toContain("LIMIT");
+    expect(sql).toContain("OFFSET");
+    expect(valores).toContain(25);
+    expect(valores).toContain(0);
+    // The canonical ADR-017 fragment rides verbatim (single balance formula).
+    expect(sql).toContain(`"estado" = 'APLICADO'`);
+    expect(sql).toContain(`f."estado" = 'VIGENTE'`);
+    expect(valores).toContain(ctx.empresaId);
+    // No search → no LIKE predicate at all.
+    expect(sql).not.toContain("ILIKE");
+  });
+
+  it("narrows by client name or invoice number with a normalized LIKE pattern", async () => {
+    const { tx, queryRaw } = txCon([]);
+
+    await consultarSaldoCxcTableroEnTx(tx, ctx, {
+      now: AHORA,
+      busqueda: "ferretería",
+    });
+
+    const { sql, valores } = sqlDe(queryRaw);
+    expect(sql).toContain("ILIKE");
+    expect(sql).toContain('c."nombre"');
+    expect(sql).toContain('s."facturaId"::text');
+    expect(valores).toContain("%ferretería%");
+  });
+});
+
+describe("contarSaldoCxcEnTx (S11 KPI strip, global — never page-scoped)", () => {
+  it("returns the pending-set sum/count plus the en-mora count/sum from ONE FILTER statement", async () => {
+    const { tx, queryRaw } = txCon([
+      {
+        total: 9,
+        pendientes: 6,
+        saldoPendienteTotal: "4500.00",
+        enMora: 2,
+        saldoEnMora: "1500.00",
+      },
+    ]);
+
+    await expect(
+      contarSaldoCxcEnTx(tx, ctx, { now: AHORA, busqueda: null }),
+    ).resolves.toEqual({
+      total: 9,
+      pendientes: 6,
+      saldoPendienteTotal: "4500.00",
+      enMora: 2,
+      saldoEnMora: "1500.00",
+    });
+
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    const { sql, valores } = sqlDe(queryRaw);
+    expect(sql).toContain("COUNT(*) FILTER (WHERE");
+    // Money sums stay numeric then cross as Decimal(12,2) text (never a float).
+    expect(sql).toContain('SUM(s."saldoPendiente"::numeric)');
+    expect(sql).toContain("::numeric(12, 2)::text");
+    // Mora predicate: the SAME SD day expression, fires at ONE full SD day.
+    expect(sql).toContain("AT TIME ZONE 'America/Santo_Domingo'");
+    expect(sql).toContain("> 0");
+    // The client term is the board's own resolution (client plazo, 0 when absent).
+    expect(sql).toContain('COALESCE(c."plazoCreditoDias", 0)');
+    expect(valores).toContain(AHORA);
+    expect(valores).toContain(ctx.empresaId);
+    // No LIMIT/OFFSET: the KPIs are global, not page-scoped.
+    expect(sql).not.toContain("LIMIT");
+    expect(sql).not.toContain("OFFSET");
+  });
+
+  it("falls back to zeroed KPI figures when the aggregate yields no row", async () => {
+    const { tx } = txCon([]);
+    await expect(
+      contarSaldoCxcEnTx(tx, ctx, { now: AHORA, busqueda: null }),
+    ).resolves.toEqual({
+      total: 0,
+      pendientes: 0,
+      saldoPendienteTotal: "0.00",
+      enMora: 0,
+      saldoEnMora: "0.00",
+    });
+  });
+});
+
+describe("consultarProximasAVencerEnTx (S12 side panel)", () => {
+  it("selects the open receivables nearest their due date inside a bounded window", async () => {
+    const { tx, queryRaw } = txCon([
+      {
+        facturaId: 11,
+        clienteId: 4,
+        clienteNombre: "Colmado Ana",
+        saldoPendiente: "900.00",
+        fechaEmision: AHORA,
+        plazoCreditoDias: 30,
+      },
+    ]);
+
+    await expect(
+      consultarProximasAVencerEnTx(tx, ctx, { now: AHORA, limite: 5 }),
+    ).resolves.toHaveLength(1);
+
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    const { sql, valores } = sqlDe(queryRaw);
+    // Only genuinely collectable invoices.
+    expect(sql).toContain('s."saldoPendiente"::numeric > 0');
+    expect(sql).toContain('s."cobrosAplicados"::numeric < s."total"::numeric');
+    // Nearest due in EITHER direction, on the SD calendar, bounded both ways.
+    expect(sql).toContain("BETWEEN");
+    expect(sql).toContain("ABS(");
+    expect(sql).toContain("ORDER BY");
+    expect(valores).toContain(-30);
+    expect(valores).toContain(7);
+    expect(valores).toContain(5);
+    // Tenant pins preserved on the fragment and the client join.
+    expect(sql).toContain('c."empresaId" =');
+    expect(valores).toContain(ctx.empresaId);
+  });
+});
+
+describe("consultarDetalleCxcEnTx (S13 per-invoice header)", () => {
+  it("embeds the ONE canonical fragment narrowed to the invoice, tenant-pinned end to end", async () => {
+    const { tx, queryRaw } = txCon([
+      {
+        facturaId: 12,
+        clienteId: 3,
+        ncf: "B0200001218",
+        correlativoInterno: "FAC-001218",
+        fechaEmision: AHORA,
+        total: "82500.00",
+        cobrosAplicados: "0.00",
+        saldoPendiente: "82500.00",
+        clienteNombre: "Ana Martínez",
+        clienteIdentificacionFiscal: "123-45678-9",
+        clienteTipoCliente: "CREDITO",
+        plazoCreditoDias: 30,
+      },
+    ]);
+
+    const detalle = await consultarDetalleCxcEnTx(tx, ctx, 12);
+
+    expect(detalle?.facturaId).toBe(12);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    const { sql, valores } = sqlDe(queryRaw);
+    // ONE balance formula: the canonical fragment rides verbatim — only an
+    // APLICADO cobro / a committed refund / a VIGENTE note move the balance.
+    expect(sql).toContain(`"estado" = 'APLICADO'`);
+    expect(sql).toContain(`"estado" IN ('REGISTRADO', 'APLICADO')`);
+    expect(sql).toContain(`f."estado" = 'VIGENTE'`);
+    // ... and no SECOND formula: no correlated per-invoice SUM statement.
+    expect(sql).not.toContain("SELECT SUM");
+    // The invoice narrowing plus the three tenant pins (fragment, FACTURA, CLIENTE).
+    expect(sql).toContain('s."facturaId" =');
+    expect(sql).toContain('f."empresaId" =');
+    expect(sql).toContain('c."empresaId" =');
+    expect(valores).toContain(12);
+    expect(valores).toContain(ctx.empresaId);
+    // Header projection: NCF/correlativo, client identity/type and the credit term.
+    expect(sql).toContain('f."ncf"');
+    expect(sql).toContain('f."correlativoInterno"');
+    expect(sql).toContain('c."identificacionFiscal"');
+    expect(sql).toContain('c."tipoCliente"::text');
+    expect(sql).toContain('COALESCE(c."plazoCreditoDias", 0)');
+    // Money crosses as Decimal(12,2) text of the canonical columns (never a float).
+    expect(sql).toContain('s."total"');
+    expect(sql).toContain('s."cobrosAplicados"');
+    expect(sql).toContain('s."saldoPendiente"');
+    // A single invoice by id: no paging tail.
+    expect(sql).not.toContain("LIMIT");
+    expect(sql).not.toContain("OFFSET");
+  });
+
+  it("returns null for a missing, foreign or non-VIGENTE invoice", async () => {
+    const { tx } = txCon([]);
+    await expect(consultarDetalleCxcEnTx(tx, ctx, 99)).resolves.toBeNull();
   });
 });

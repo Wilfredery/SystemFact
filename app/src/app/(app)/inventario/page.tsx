@@ -74,25 +74,29 @@ export default async function InventarioPage({
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Inventario</h1>
+        <h1 className="text-2xl font-semibold text-ink">Inventario</h1>
         {puedeAjustar && (
           <div className="flex items-center gap-3">
             <Link
               href="/inventario/movimientos"
-              className="inline-flex min-h-12 items-center rounded-md border border-zinc-300 px-5 text-sm font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+              className={"inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-surface-muted hover:text-ink select-none"}
             >
               Ver historial de movimientos
             </Link>
             <Link
               href="/inventario/ajuste"
-              className="inline-flex min-h-12 items-center rounded-md bg-zinc-900 px-5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900"
+              className={"inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-fg whitespace-nowrap transition-colors outline-none select-none hover:bg-accent/80"}
             >
               + Ajustar
             </Link>
           </div>
         )}
       </div>
-      <InventarioScreen inicial={inicial} filtrosIniciales={filtros} />
+      <InventarioScreen
+        inicial={inicial}
+        filtrosIniciales={filtros}
+        puedeAjustar={puedeAjustar}
+      />
     </main>
   );
 }

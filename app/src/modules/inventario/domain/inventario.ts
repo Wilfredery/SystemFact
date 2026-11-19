@@ -11,11 +11,29 @@
 import { Decimal } from "decimal.js";
 import {
   CANTIDAD_INVALIDA,
+  MOTIVO_NO_VALIDO,
   MOTIVO_VACIO,
   STOCK_MAXIMO_EXCEDIDO,
   InventarioDomainError,
   type InventarioErrorCode,
 } from "./errors";
+
+/**
+ * Board-04 (odd/tasks/uiux-alignment.md S22): the manual-adjustment reason is a
+ * FROZEN enum, the single source both the form's options and the server-side
+ * validation share. A new reason is a deliberate domain change, never a typed
+ * string.
+ */
+export const MOTIVOS_AJUSTE = [
+  "Conteo físico",
+  "Merma",
+  "Producto dañado",
+  "Producto vencido",
+  "Corrección de error",
+  "Otro",
+] as const;
+
+export type MotivoAjuste = (typeof MOTIVOS_AJUSTE)[number];
 
 /**
  * Origin of an inventory movement.
@@ -125,15 +143,35 @@ export function validateAdjustmentQuantity(cantidad: string): InventarioErrorCod
 }
 
 /**
- * Validates that an adjustment `motivo` is present. The audit trail is only
+ * Validates that a movement reason is present. The audit trail is only
  * meaningful when every correction carries a reason, so an empty or whitespace
- * value is rejected at the domain boundary.
+ * value is rejected at the domain boundary. Reason VOCABULARY is flow-specific:
+ * purchase/sale flows carry their own free-text reasons, so membership belongs
+ * to {@link validarMotivoAjuste} only.
  *
  * @returns `null` when valid, otherwise the stable `MOTIVO_VACIO` code.
  */
 export function validateMotivo(motivo: string): InventarioErrorCode | null {
   if (motivo.trim().length === 0) {
     return MOTIVO_VACIO;
+  }
+  return null;
+}
+
+/**
+ * Board-04 (odd/tasks/uiux-alignment.md S22): the MANUAL-adjustment reason is
+ * one of the frozen {@link MOTIVOS_AJUSTE} reasons — validated before any
+ * composition so free text can never smuggle past the whitelist.
+ *
+ * @returns `null` when valid, otherwise the stable `MOTIVO_VACIO` or
+ *   `MOTIVO_NO_VALIDO` code.
+ */
+export function validarMotivoAjuste(motivo: string): InventarioErrorCode | null {
+  if (motivo.trim().length === 0) {
+    return MOTIVO_VACIO;
+  }
+  if (!MOTIVOS_AJUSTE.some((m) => m === motivo)) {
+    return MOTIVO_NO_VALIDO;
   }
   return null;
 }

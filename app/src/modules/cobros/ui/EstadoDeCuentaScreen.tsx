@@ -14,7 +14,8 @@
  * fully settled (`PAGADA`) invoices, because a statement lists the whole
  * account, not just what is collectable.
  *
- * Client island for the fetch + inline collection only; it computes NO money.
+ * Client island for the fetch + the S15 collection modal only; it computes NO
+ * money.
  */
 
 import { useEffect, useState } from "react";
@@ -24,7 +25,7 @@ import { consultarEstadoDeCuentaAction } from "@/modules/cobros/http/actions";
 import type { SaldoCxCVista } from "@/modules/cobros/application/consultar-saldo-cxc";
 import type { EstadoPagoDerivado } from "@/modules/cobros/domain/pago";
 import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
-import { PaymentForm } from "./PaymentForm";
+import { ModalRegistrarPago } from "./ModalRegistrarPago";
 
 const ETIQUETA_ESTADO: Record<EstadoPagoDerivado, string> = {
   PENDIENTE: "Pendiente",
@@ -33,16 +34,21 @@ const ETIQUETA_ESTADO: Record<EstadoPagoDerivado, string> = {
 };
 
 const CLASE_ESTADO: Record<EstadoPagoDerivado, string> = {
-  PENDIENTE: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
-  PARCIAL: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  PAGADA: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+  PENDIENTE: "bg-surface-raised text-ink",
+  PARCIAL: "bg-warn-bg text-warn",
+  PAGADA: "bg-success-bg text-ink",
 };
 
 export function EstadoDeCuentaScreen({ clienteId }: { readonly clienteId: number }) {
   const [filas, setFilas] = useState<readonly SaldoCxCVista[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [abierto, setAbierto] = useState<number | null>(null);
+  // S15: the shared confirmation modal, opened for ONE invoice at a time. The
+  // pending balance is a snapshot of the canonical read, never a computed value.
+  const [cobro, setCobro] = useState<{
+    facturaId: number;
+    saldoPendiente: string;
+  } | null>(null);
 
   function aplicar(r: Awaited<ReturnType<typeof consultarEstadoDeCuentaAction>>): void {
     if (r.ok) {
@@ -76,11 +82,11 @@ export function EstadoDeCuentaScreen({ clienteId }: { readonly clienteId: number
     .toFixed(2);
 
   if (cargando) {
-    return <p className="text-sm text-zinc-500">Cargando estado de cuenta…</p>;
+    return <p className="text-sm text-ink-muted">Cargando estado de cuenta…</p>;
   }
   if (error !== null) {
     return (
-      <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
+      <p role="alert" className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">
         {error}
       </p>
     );
@@ -89,31 +95,31 @@ export function EstadoDeCuentaScreen({ clienteId }: { readonly clienteId: number
   return (
     <div className="flex flex-col gap-4">
       <header className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-lg font-semibold text-ink">
           Estado de cuenta · Cliente #{clienteId}
         </h1>
         <Link
           href="/cobros/cxc-board"
-          className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+          className="rounded border border-line px-2 py-1 text-xs font-medium text-ink"
         >
           Volver al tablero
         </Link>
       </header>
 
       {cuentas.length === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-ink-muted">
           Sin facturas vigentes para este cliente.
         </p>
       ) : (
         <>
           <p
             data-testid="estado-cuenta-pendiente-total"
-            className="text-sm text-zinc-700 dark:text-zinc-200"
+            className="text-sm text-ink"
           >
             Saldo total pendiente:{" "}
             <span className="font-semibold">{formatearMonto(totalPend)}</span>
           </p>
-          <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
+          <ul className="divide-y divide-line rounded-lg border border-line bg-surface">
             {cuentas.map((f) => {
               const pagada = f.estadoPago === "PAGADA";
               return (
@@ -124,10 +130,10 @@ export function EstadoDeCuentaScreen({ clienteId }: { readonly clienteId: number
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                      <p className="truncate text-sm font-medium text-ink">
                         Factura #{f.facturaId} · Total {formatearMonto(f.total)}
                       </p>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      <p className="text-xs text-ink-muted">
                         Cobros aplicados {formatearMonto(f.cobrosAplicados)} · Pendiente{" "}
                         {formatearMonto(f.saldoPendiente)} ·{" "}
                         <span className={`rounded px-1.5 py-0.5 font-medium ${CLASE_ESTADO[f.estadoPago]}`}>
@@ -140,29 +146,34 @@ export function EstadoDeCuentaScreen({ clienteId }: { readonly clienteId: number
                     {!pagada && (
                       <button
                         type="button"
-                        onClick={() => setAbierto(abierto === f.facturaId ? null : f.facturaId)}
+                        onClick={() =>
+                          setCobro({
+                            facturaId: f.facturaId,
+                            saldoPendiente: f.saldoPendiente,
+                          })
+                        }
                         aria-label={`Cobrar factura ${f.facturaId}`}
-                        aria-expanded={abierto === f.facturaId}
-                        className="shrink-0 rounded border border-emerald-300 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-zinc-800"
+                        aria-haspopup="dialog"
+                        className="shrink-0 rounded border border-line px-2 py-1 text-xs font-medium text-ink hover:bg-surface-muted"
                       >
-                        {abierto === f.facturaId ? "Ocultar" : "Cobrar"}
+                        Cobrar
                       </button>
                     )}
                   </div>
-                  {abierto === f.facturaId && !pagada && (
-                    <PaymentForm
-                      facturaId={f.facturaId}
-                      saldoPendiente={f.saldoPendiente}
-                      onCobrado={recargar}
-                      onCerrar={() => setAbierto(null)}
-                    />
-                  )}
                 </li>
               );
             })}
           </ul>
         </>
       )}
+
+      <ModalRegistrarPago
+        abierto={cobro !== null}
+        facturaId={cobro?.facturaId ?? 0}
+        saldoPendiente={cobro?.saldoPendiente ?? "0.00"}
+        onCerrar={() => setCobro(null)}
+        onCobrado={recargar}
+      />
     </div>
   );
 }
