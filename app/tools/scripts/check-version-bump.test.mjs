@@ -115,6 +115,11 @@ describe("isExempt (S3: los globs exentos de AGENTS.md)", () => {
     "app/src/app/(app)/page.spec.tsx",
     "app/tools/scripts/check-version-bump.mjs",
     "app/tools/ci/check-conventional-commits.ts",
+    // Enmienda 2026-11-19: helpers de los carriles de navegador.
+    "app/e2e/utils/venta-pos.ts",
+    "app/e2e-prod/session-smoke.spec.ts",
+    "app/e2e-prod-demo/pos.ts",
+    "app/e2e-prod-demo/fixtures.ts",
   ];
 
   const notExempt = [
@@ -153,6 +158,9 @@ describe("isExempt (S3: los globs exentos de AGENTS.md)", () => {
       "**/*.spec.ts",
       "**/*.spec.tsx",
       "app/tools/**",
+      "app/e2e/**",
+      "app/e2e-prod/**",
+      "app/e2e-prod-demo/**",
     ]);
   });
 
