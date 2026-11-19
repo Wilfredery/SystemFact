@@ -87,6 +87,7 @@ export default async function InventarioMovimientosPage({
   const filtros: FiltrosMovimientos = {
     tipo: TIPOS_MOVIMIENTO.find((t) => t === primero(params.tipo)) ?? null,
     producto: primero(params.producto).trim().slice(0, 100),
+    productoCodigo: primero(params.productoCodigo).trim().slice(0, 100),
     desde: fechaSD(params.desde),
     hasta: fechaSD(params.hasta),
   };
@@ -96,6 +97,7 @@ export default async function InventarioMovimientosPage({
     limit: TAMANO_PAGINA,
     ...(filtros.tipo === null ? {} : { tipo: filtros.tipo }),
     ...(filtros.producto === "" ? {} : { producto: filtros.producto }),
+    ...(filtros.productoCodigo === "" ? {} : { productoCodigo: filtros.productoCodigo }),
     ...(filtros.desde === "" ? {} : { desde: filtros.desde }),
     ...(filtros.hasta === "" ? {} : { hasta: filtros.hasta }),
   });
