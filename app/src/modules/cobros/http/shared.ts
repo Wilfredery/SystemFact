@@ -30,7 +30,7 @@ import { SESION_INVALIDA, VALIDATION_ERROR } from "./validations";
 
 /**
  * Cobros collections + reads. Board 03 of the factura.penpot wireframe is the
- * source of truth (owner, 2026-11-19, "wireframe wins" per the board-02
+ * source of truth (owner, 2026-11-18, "wireframe wins" per the board-02
  * precedent): its header shows a Cobrador collecting, so Cobrador joins.
  * Despachador stays denied (R-C6) — unchanged.
  */

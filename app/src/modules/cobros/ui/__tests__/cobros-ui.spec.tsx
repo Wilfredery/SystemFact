@@ -35,8 +35,10 @@ import {
   consultarReciboAction,
 } from "@/modules/cobros/http/actions";
 import type {
-  SaldoCxCVista,
+  ProximaAVencer,
+  ResumenTableroCxc,
   SaldoCxCVistaPagina,
+  SaldoCxCVistaTablero,
 } from "@/modules/cobros/application/consultar-saldo-cxc";
 
 // next/link renders a plain anchor in the test host (no App Router context).
@@ -73,9 +75,13 @@ const mockEstado = jest.mocked(consultarEstadoDeCuentaAction);
 const mockCobro = jest.mocked(registrarCobroAction);
 const mockRecibo = jest.mocked(consultarReciboAction);
 
-function fila(over: Partial<SaldoCxCVista> & { facturaId: number }): SaldoCxCVista {
+function fila(
+  over: Partial<SaldoCxCVistaTablero> & { facturaId: number },
+): SaldoCxCVistaTablero {
   return {
     clienteId: 10,
+    clienteNombre: "Ferretería del Valle",
+    dias: 12,
     total: "1000.00",
     cobrosAplicados: "0.00",
     saldoPendiente: "1000.00",
@@ -88,9 +94,30 @@ function fila(over: Partial<SaldoCxCVista> & { facturaId: number }): SaldoCxCVis
   };
 }
 
+/** The KPI strip's global figures (S11) — never page-scoped. */
+const RESUMEN: ResumenTableroCxc = {
+  totalPendiente: "1600.00",
+  facturasPendientes: 3,
+  enMora: 1,
+  saldoEnMora: "1000.00",
+};
+
+/** One "Próximas a vencer" entry (S12). */
+function proxima(over: Partial<ProximaAVencer> & { facturaId: number }): ProximaAVencer {
+  return {
+    clienteId: 10,
+    clienteNombre: "Ferretería del Valle",
+    saldoPendiente: "600.00",
+    vencimiento: "2026-02-10",
+    diasHastaVencimiento: -3,
+    proximidad: "PROXIMA",
+    ...over,
+  };
+}
+
 /** Wrap one page's rows into the typed server metadata payload (R-C9/D4). */
 function servida(
-  filas: readonly SaldoCxCVista[],
+  filas: readonly SaldoCxCVistaTablero[],
   over: Partial<Omit<SaldoCxCVistaPagina, "filas">> = {},
 ): SaldoCxCVistaPagina {
   return {
@@ -99,6 +126,8 @@ function servida(
     page: 1,
     pageSize: 25,
     totalPages: 1,
+    resumen: RESUMEN,
+    proximas: [],
     ...over,
   };
 }
@@ -143,6 +172,83 @@ describe("CxC board (R-C9 server page, buckets classified per page)", () => {
     expect(screen.queryByTestId("cxc-fila-4")).toBeNull();
     // The mora row is labelled En Mora.
     expect(screen.getByTestId("cxc-fila-3").textContent).toContain("En mora");
+  });
+
+  it("shows the client NAME and the SD días outstanding on each row (S10)", async () => {
+    mockSaldo.mockResolvedValue({
+      ok: true,
+      data: servida([
+        fila({ facturaId: 1, clienteNombre: "Colmado Ana", dias: 0 }),
+        fila({ facturaId: 2, clienteNombre: "Ferretería del Valle", dias: 31 }),
+      ]),
+    });
+    render(<CxcBoardScreen />);
+    await settle();
+
+    const primera = screen.getByTestId("cxc-fila-1").textContent ?? "";
+    expect(primera).toContain("Colmado Ana");
+    expect(primera).toContain("Hoy");
+
+    const segunda = screen.getByTestId("cxc-fila-2").textContent ?? "";
+    expect(segunda).toContain("Ferretería del Valle");
+    expect(segunda).toContain("31 días");
+  });
+
+  it("renders the global KPI strip from the server summary (S11)", async () => {
+    mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
+    render(<CxcBoardScreen />);
+    await settle();
+
+    const total = screen.getByTestId("cxc-kpi-total-pendiente").textContent ?? "";
+    expect(total).toMatch(/1,600\.00/);
+    expect(screen.getByTestId("cxc-kpi-facturas-pendientes").textContent).toBe("3");
+    const mora = screen.getByTestId("cxc-kpi-en-mora").textContent ?? "";
+    expect(mora).toContain("1");
+    expect(mora).toMatch(/1,000\.00/);
+    // The wireframe's ">30 días" wording is dropped (S11).
+    expect(document.body.textContent).not.toMatch(/>\s*30\s*días/);
+  });
+
+  it("searches server-side by client or invoice and re-queries page 1 (S12)", async () => {
+    mockSaldo.mockResolvedValue({ ok: true, data: servida([fila({ facturaId: 1 })]) });
+    render(<CxcBoardScreen />);
+    await settle();
+
+    const buscador = screen.getByLabelText("Buscar cliente o factura");
+    fireEvent.change(buscador, { target: { value: "  Ferretería  " } });
+    fireEvent.submit(buscador);
+
+    await settle();
+    // The raw text rides the transport; the SERVER normalizes it (S12).
+    expect(mockSaldo).toHaveBeenLastCalledWith({ page: 1, busqueda: "Ferretería" });
+
+    // Clearing the search returns to the unfiltered board.
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar búsqueda" }));
+    await settle();
+    expect(mockSaldo).toHaveBeenLastCalledWith({ page: 1 });
+  });
+
+  it("lists the nearest due invoices with Próxima / Vence hoy / Vencida badges (S12)", async () => {
+    mockSaldo.mockResolvedValue({
+      ok: true,
+      data: servida([fila({ facturaId: 1 })], {
+        proximas: [
+          proxima({ facturaId: 21, clienteNombre: "Colmado Ana" }),
+          proxima({ facturaId: 22, diasHastaVencimiento: 0, proximidad: "VENCE_HOY" }),
+          proxima({ facturaId: 23, diasHastaVencimiento: 9, proximidad: "VENCIDA" }),
+        ],
+      }),
+    });
+    render(<CxcBoardScreen />);
+    await settle();
+
+    const panel = screen.getByRole("complementary", { name: "Próximas a vencer" });
+    expect(panel.textContent).toContain("Colmado Ana");
+    expect(screen.getByTestId("cxc-proxima-21").textContent).toContain("Próxima");
+    expect(screen.getByTestId("cxc-proxima-22").textContent).toContain("Vence hoy");
+    expect(screen.getByTestId("cxc-proxima-23").textContent).toContain("Vencida");
+    // No Estado dropdown was introduced (S12 rejects it).
+    expect(screen.queryByRole("combobox")).toBeNull();
   });
 
   it("navigates server pages honoring totalPages (Anterior disabled on page 1)", async () => {

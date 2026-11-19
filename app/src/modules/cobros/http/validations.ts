@@ -59,10 +59,15 @@ export type RegistrarReembolsoDto = z.infer<typeof zRegistrarReembolsoInput>;
 // normalization playbook (`normalizarPagina`/`normalizarTamanoPagina`) owns the
 // caps: any raw number is NORMALIZED before data access (R-C9 "outside the clamp
 // MUST be normalized") — 0/absent → 25, 250 → 100, page floor ≥ 1.
+// The BOARD search (board-03 S12) rides the same read: raw text only, bounded so
+// a hostile payload cannot build an unbounded LIKE pattern. The SERVER normalizes
+// it (`normalizarBusquedaCxc`: trim, collapse, case-fold, LIKE-escape) and a
+// blank value means "no filter" — Zod owns the SHAPE, never the normalization.
 export const zConsultarSaldoCxcInput = z
   .object({
     page: z.number().optional(),
     pageSize: z.number().optional(),
+    busqueda: z.string().max(200).optional(),
   })
   .optional();
 

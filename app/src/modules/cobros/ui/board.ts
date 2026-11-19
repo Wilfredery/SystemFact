@@ -22,11 +22,16 @@
 import type { SaldoCxCVista, SaldoCxCVistaPagina } from "../application/consultar-saldo-cxc";
 import { ESTADO_PAGO_DERIVADO } from "../domain/pago";
 
-/** The three outstanding-receivable buckets the board renders (spec R-C7). */
-export interface TableroCxc {
-  readonly pendiente: readonly SaldoCxCVista[];
-  readonly parcial: readonly SaldoCxCVista[];
-  readonly enMora: readonly SaldoCxCVista[];
+/**
+ * The three outstanding-receivable buckets the board renders (spec R-C7).
+ * Generic over the row type (`SaldoCxCVista` by default) so the paged board's
+ * enriched `SaldoCxCVistaTablero` rows — client name + Días — flow through the
+ * classifier without a cast or a re-derivation.
+ */
+export interface TableroCxc<T extends SaldoCxCVista = SaldoCxCVista> {
+  readonly pendiente: readonly T[];
+  readonly parcial: readonly T[];
+  readonly enMora: readonly T[];
 }
 
 /**
@@ -43,12 +48,12 @@ export interface TableroCxc {
  * Mora takes precedence over the PENDIENTE/PARCIAL split because a past-due
  * partial is a collection-urgency signal the board must surface once, not twice.
  */
-export function clasificarTableroCxc(
-  filas: readonly SaldoCxCVista[],
-): TableroCxc {
-  const pendiente: SaldoCxCVista[] = [];
-  const parcial: SaldoCxCVista[] = [];
-  const enMora: SaldoCxCVista[] = [];
+export function clasificarTableroCxc<T extends SaldoCxCVista>(
+  filas: readonly T[],
+): TableroCxc<T> {
+  const pendiente: T[] = [];
+  const parcial: T[] = [];
+  const enMora: T[] = [];
 
   for (const fila of filas) {
     const pagada = fila.estadoPago === ESTADO_PAGO_DERIVADO.PAGADA;
@@ -99,4 +104,15 @@ export function paginar<T>(
     totalPages,
     total: items.length,
   };
+}
+
+/**
+ * The Días column label (board-03 S10): the SD calendar days since the invoice
+ * was issued. `0` reads "Hoy" (issued today), `1` is singular, everything else
+ * is plural. Pure and total — a negative count (clock skew) clamps to "Hoy"
+ * rather than rendering a nonsense past date.
+ */
+export function etiquetaDiasTranscurridos(dias: number): string {
+  if (dias <= 0) return "Hoy";
+  return dias === 1 ? "1 día" : `${dias} días`;
 }

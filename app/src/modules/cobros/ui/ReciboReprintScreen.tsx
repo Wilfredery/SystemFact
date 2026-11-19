@@ -43,17 +43,17 @@ export function ReciboReprintScreen({ correlativo }: { readonly correlativo: num
   }, [correlativo]);
 
   if (cargando) {
-    return <p className="text-sm text-zinc-500">Cargando recibo…</p>;
+    return <p className="text-sm text-ink-muted">Cargando recibo…</p>;
   }
   if (error !== null || recibo === null) {
     return (
       <div className="flex flex-col gap-3">
-        <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
+        <p role="alert" className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">
           {error ?? "Recibo no encontrado."}
         </p>
         <Link
           href="/cobros/cxc-board"
-          className="text-xs text-indigo-600 hover:underline dark:text-indigo-400"
+          className="text-xs text-link hover:underline"
         >
           Volver al tablero
         </Link>
@@ -66,7 +66,7 @@ export function ReciboReprintScreen({ correlativo }: { readonly correlativo: num
       <div className="flex items-center justify-between">
         <Link
           href="/cobros/cxc-board"
-          className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+          className="rounded border border-line px-2 py-1 text-xs font-medium text-ink"
         >
           Volver al tablero
         </Link>
@@ -77,7 +77,7 @@ export function ReciboReprintScreen({ correlativo }: { readonly correlativo: num
             if (typeof window !== "undefined") window.print();
           }}
           aria-label="Imprimir recibo"
-          className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white"
+          className="rounded bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg"
         >
           Imprimir
         </button>
@@ -85,49 +85,49 @@ export function ReciboReprintScreen({ correlativo }: { readonly correlativo: num
 
       <article
         data-testid="recibo-reprint"
-        className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900"
+        className="rounded-lg border border-line bg-surface p-6"
       >
-        <header className="border-b border-dashed border-zinc-300 pb-3 dark:border-zinc-700">
-          <h1 className="text-base font-bold text-zinc-900 dark:text-zinc-50">
+        <header className="border-b border-dashed border-line pb-3">
+          <h1 className="text-base font-bold text-ink">
             {recibo.empresaNombre}
           </h1>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">Recibo de cobro</p>
+          <p className="text-xs text-ink-muted">Recibo de cobro</p>
         </header>
 
         <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-          <dt className="text-zinc-500">Recibo #</dt>
-          <dd data-testid="recibo-correlativo" className="font-mono text-zinc-900 dark:text-zinc-50">
+          <dt className="text-ink-muted">Recibo #</dt>
+          <dd data-testid="recibo-correlativo" className="font-mono text-ink">
             {recibo.correlativoRecibo}
           </dd>
-          <dt className="text-zinc-500">Fecha</dt>
-          <dd className="text-zinc-900 dark:text-zinc-50">
+          <dt className="text-ink-muted">Fecha</dt>
+          <dd className="text-ink">
             {formatearFechaSD(recibo.fecha)}
           </dd>
-          <dt className="text-zinc-500">Cliente</dt>
-          <dd className="text-zinc-900 dark:text-zinc-50">{recibo.clienteNombre}</dd>
-          <dt className="text-zinc-500">Factura (NCF)</dt>
-          <dd className="font-mono text-xs text-zinc-900 dark:text-zinc-50">
+          <dt className="text-ink-muted">Cliente</dt>
+          <dd className="text-ink">{recibo.clienteNombre}</dd>
+          <dt className="text-ink-muted">Factura (NCF)</dt>
+          <dd className="font-mono text-xs text-ink">
             {recibo.facturaNcf}
           </dd>
-          <dt className="text-zinc-500">Concepto</dt>
-          <dd className="text-zinc-900 dark:text-zinc-50">
+          <dt className="text-ink-muted">Concepto</dt>
+          <dd className="text-ink">
             {recibo.tipo === "REEMBOLSO" ? "Reembolso" : "Cobro"} · {recibo.metodoPago}
           </dd>
-          <dt className="text-zinc-500">Atendió</dt>
-          <dd className="text-zinc-900 dark:text-zinc-50">{recibo.usuarioNombre}</dd>
-          <dt className="mt-2 text-base font-semibold text-zinc-900 dark:text-zinc-50">
+          <dt className="text-ink-muted">Atendió</dt>
+          <dd className="text-ink">{recibo.usuarioNombre}</dd>
+          <dt className="mt-2 text-base font-semibold text-ink">
             Monto
           </dt>
           <dd
             data-testid="recibo-monto"
-            className="mt-2 text-right text-base font-bold text-zinc-900 dark:text-zinc-50"
+            className="mt-2 text-right text-base font-bold text-ink"
           >
             {formatearMonto(recibo.monto)}
           </dd>
         </dl>
 
         {/* R-C4: this is explicitly NOT a fiscal document. */}
-        <p className="mt-4 rounded bg-zinc-100 px-3 py-2 text-center text-[11px] uppercase tracking-wide text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+        <p className="mt-4 rounded bg-surface-raised px-3 py-2 text-center text-[11px] uppercase tracking-wide text-ink-muted">
           Documento no fiscal — copia de recibo de cobro
         </p>
       </article>

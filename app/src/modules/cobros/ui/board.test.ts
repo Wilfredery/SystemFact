@@ -1,4 +1,4 @@
-import { clasificarTableroCxc, paginar } from "./board";
+import { clasificarTableroCxc, etiquetaDiasTranscurridos, paginar } from "./board";
 import type { SaldoCxCVista } from "../application/consultar-saldo-cxc";
 import type { EstadoPagoDerivado } from "../domain/pago";
 
@@ -71,5 +71,14 @@ describe("paginar (composition over server pages, R-C9)", () => {
     expect(p.items).toHaveLength(0);
     expect(p.totalPages).toBe(1);
     expect(p.total).toBe(0);
+  });
+});
+
+describe("etiquetaDiasTranscurridos (S10 Días column)", () => {
+  it("labels the SD days outstanding: 0 today, 1 singular, rest plural", () => {
+    expect(etiquetaDiasTranscurridos(0)).toBe("Hoy");
+    expect(etiquetaDiasTranscurridos(1)).toBe("1 día");
+    expect(etiquetaDiasTranscurridos(2)).toBe("2 días");
+    expect(etiquetaDiasTranscurridos(120)).toBe("120 días");
   });
 });

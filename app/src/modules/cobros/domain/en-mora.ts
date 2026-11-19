@@ -43,6 +43,30 @@ function indiceDiaUTCDia(fechaSD: string): number {
 }
 
 /**
+ * SIGNED Santo Domingo calendar-day distance to the due date
+ * (`fechaEmision + plazoCreditoDias`):
+ *   • `> 0` — the receivable is that many full SD days PAST due (also in mora);
+ *   • `0` — due TODAY in SD; the collection is due, not yet overdue;
+ *   • `< 0` — the absolute value is how many SD days REMAIN until the due date.
+ *
+ * This is the ONE due-date day count of the module: {@link diasVencidoEnSD} is
+ * its `GREATEST(…, 0)` clamp (the SQL expression the aging aggregate pushes down)
+ * and {@link clasificarProximidadVencimiento} is its three-way reading, so mora,
+ * aging and the board's "Próximas a vencer" panel can never disagree. Both ends
+ * are resolved in SD (`en-CA` `YYYY-MM-DD` → UTC day index difference), never by
+ * raw UTC instant comparison and never with manual hour arithmetic.
+ */
+export function diasHastaVencimientoEnSD(params: {
+  readonly fechaEmision: Date;
+  readonly plazoCreditoDias: number;
+  readonly now: Date;
+}): number {
+  const vencimientoSD = fechaVencimiento(params.fechaEmision, params.plazoCreditoDias);
+  const hoySD = fechaEnSD(params.now);
+  return indiceDiaUTCDia(hoySD) - indiceDiaUTCDia(vencimientoSD);
+}
+
+/**
  * Full Santo Domingo calendar days the receivable is PAST its due date
  * (`fechaEmision + plazoCreditoDias`). `0` (or negative → clamped to `0`) when
  * not yet due or due today; `31` on the 31st day past due. The credit gate uses
@@ -56,10 +80,34 @@ export function diasVencidoEnSD(params: {
   readonly plazoCreditoDias: number;
   readonly now: Date;
 }): number {
-  const vencimientoSD = fechaVencimiento(params.fechaEmision, params.plazoCreditoDias);
-  const hoySD = fechaEnSD(params.now);
-  const dias = indiceDiaUTCDia(hoySD) - indiceDiaUTCDia(vencimientoSD);
+  const dias = diasHastaVencimientoEnSD(params);
   return dias > 0 ? dias : 0;
+}
+
+/**
+ * The three due-date proximity states the board's "Próximas a vencer" panel
+ * badges (board-03 S12). Frozen mirrors of the domain literals, like
+ * `ESTADO_PAGO_DERIVADO` in `./pago`.
+ */
+export const PROXIMIDAD_VENCIMIENTO = {
+  PROXIMA: "PROXIMA",
+  VENCE_HOY: "VENCE_HOY",
+  VENCIDA: "VENCIDA",
+} as const;
+export type ProximidadVencimiento =
+  (typeof PROXIMIDAD_VENCIMIENTO)[keyof typeof PROXIMIDAD_VENCIMIENTO];
+
+/**
+ * Reads the signed SD day count into the panel's badge state. `VENCIDA` is
+ * exactly the {@link enMora} truth (at least ONE full SD day past due) — the
+ * mora flag and this badge are the same rule seen from two screens.
+ */
+export function clasificarProximidadVencimiento(
+  diasHastaVencimiento: number,
+): ProximidadVencimiento {
+  if (diasHastaVencimiento > 0) return PROXIMIDAD_VENCIMIENTO.VENCIDA;
+  if (diasHastaVencimiento === 0) return PROXIMIDAD_VENCIMIENTO.VENCE_HOY;
+  return PROXIMIDAD_VENCIMIENTO.PROXIMA;
 }
 
 /**

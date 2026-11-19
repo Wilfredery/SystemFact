@@ -30,11 +30,14 @@ import {
 } from "./shared";
 
 /**
- * The CxC board page read (R-C9, design D4): the thin adapter forwards the
- * optional transport paging intent and returns the typed server metadata
- * `{filas, total, page, pageSize, totalPages}` — the page cut, the pinned order
- * and the filtered total all happened in SQL inside the use case; zero business
- * logic lives here (three steps only: zod, context, role gate + delegate).
+ * The CxC board page read (R-C9, design D4; board-03 S10/S11/S12): the thin
+ * adapter forwards the optional transport paging intent AND the raw search text,
+ * and returns the typed server metadata `{filas, total, page, pageSize,
+ * totalPages, resumen, proximas}` — the page cut, the pinned order, the filtered
+ * total, the client-name/días projection, the global KPI aggregate and the
+ * nearest-due window all happened in SQL/application inside the use case; the
+ * search normalization is the domain's. Zero business logic lives here (three
+ * steps only: zod, context, role gate + delegate).
  */
 export async function consultarSaldoCxcAction(
   input: unknown,
@@ -58,6 +61,7 @@ export async function consultarSaldoCxcAction(
     const result = await consultarSaldoCxcPaginado(tx, ctx, {
       page: parsed.data?.page,
       pageSize: parsed.data?.pageSize,
+      busqueda: parsed.data?.busqueda,
     });
     if (!result.ok) return fail(result.code, result.message);
     return ok(result.data);

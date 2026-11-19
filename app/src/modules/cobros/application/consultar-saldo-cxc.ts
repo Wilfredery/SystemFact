@@ -39,14 +39,25 @@ import {
   normalizarTamanoPagina,
 } from "@/shared/domain/pagination";
 import { clasificarEstadoPago } from "../domain/clasificar-estado-pago";
-import { enMora, fechaVencimiento } from "../domain/en-mora";
+import { normalizarBusquedaCxc } from "../domain/busqueda-cxc";
+import {
+  clasificarProximidadVencimiento,
+  diasHastaVencimientoEnSD,
+  enMora,
+  fechaVencimiento,
+  type ProximidadVencimiento,
+} from "../domain/en-mora";
 import type { CobroResult, EstadoPagoDerivado, SaldoCxcFila } from "../domain/pago";
 import type { TerminosCredito } from "../infrastructure/saldo-cxc.repository";
 import {
+  LIMITE_PROXIMAS_A_VENCER,
+  consultarProximasAVencerEnTx,
   consultarSaldoCxcEnTx,
   contarSaldoCxcEnTx,
   consultarSaldoCxcTableroEnTx,
   leerTerminosCreditoEnTx,
+  type FilaCxcTablero,
+  type FilaProximaVencer,
 } from "../infrastructure/saldo-cxc.repository";
 
 /**
@@ -68,6 +79,51 @@ export interface SaldoCxCVista {
   readonly limiteCredito: string;
 }
 
+/**
+ * One BOARD row (board-03 S10): the canonical derived facts plus the two facts
+ * only the board renders — the client's NAME and the SD calendar days the
+ * invoice has been outstanding. Deliberately a SUPERTYPE of {@link SaldoCxCVista}
+ * so the pure board classifier and the full statement/aging consumers keep
+ * working unchanged, and the full read (estado de cuenta) never pays for a join
+ * it does not render.
+ */
+export interface SaldoCxCVistaTablero extends SaldoCxCVista {
+  readonly clienteNombre: string;
+  readonly dias: number;
+}
+
+/**
+ * The board's GLOBAL KPI strip (board-03 S11): the pending set over EVERY page of
+ * the current search — never the served page. Money is `Decimal(12,2)` text.
+ */
+export interface ResumenTableroCxc {
+  /** Σ open balance over the whole filtered set. */
+  readonly totalPendiente: string;
+  /** How many invoices make up the filtered set (any derived state). */
+  readonly facturasPendientes: number;
+  /** How many of them are in mora (≥ 1 full SD day past due). */
+  readonly enMora: number;
+  /** Σ open balance of the en-mora subset. */
+  readonly saldoEnMora: string;
+}
+
+/**
+ * One "Próximas a vencer" entry (board-03 S12): the invoice nearest its due date
+ * with its derived due date, the SIGNED SD day distance (`> 0` overdue, `0` due
+ * today, `< 0` days remaining) and the badge it resolves to. Every derived fact
+ * is computed PURELY on the SQL-selected row — the SQL only picks the window.
+ */
+export interface ProximaAVencer {
+  readonly facturaId: number;
+  readonly clienteId: number;
+  readonly clienteNombre: string;
+  readonly saldoPendiente: string;
+  /** SD calendar due date (`YYYY-MM-DD`). */
+  readonly vencimiento: string;
+  readonly diasHastaVencimiento: number;
+  readonly proximidad: ProximidadVencimiento;
+}
+
 /** Options for the full read; `now` is injected for deterministic mora tests. */
 export interface ConsultarSaldoCxcInput {
   readonly now?: Date;
@@ -82,11 +138,15 @@ export interface ConsultarSaldoCxcInput {
  * layer (D3 — the shared contract does NOT force one shape).
  */
 export interface SaldoCxCVistaPagina {
-  readonly filas: readonly SaldoCxCVista[];
+  readonly filas: readonly SaldoCxCVistaTablero[];
   readonly total: number;
   readonly page: number;
   readonly pageSize: number;
   readonly totalPages: number;
+  /** GLOBAL KPI strip figures over the current search (S11 — never page-scoped). */
+  readonly resumen: ResumenTableroCxc;
+  /** The nearest-due open invoices, not page-scoped (S12). */
+  readonly proximas: readonly ProximaAVencer[];
 }
 
 /** Page input for the board serving mode; clamps ride the shared contract. */
@@ -94,6 +154,8 @@ export interface ConsultarSaldoCxcPaginaInput {
   readonly page?: number;
   readonly pageSize?: number;
   readonly now?: Date;
+  /** RAW board search text; normalized here before any data access (S12). */
+  readonly busqueda?: string;
 }
 
 /**
@@ -158,6 +220,13 @@ export async function consultarSaldoCxC(
  * the SQL wrapper executes the page cut with the pinned order and the count
  * carries the FILTERED total; nothing sends the full VIGENTE set to the
  * application. Derived facts stay pure on the page rows.
+ *
+ * Both new board surfaces ride the SAME read (board-03): the search term is
+ * normalized HERE (`normalizarBusquedaCxc` — blank → no filter) before it
+ * reaches SQL, so the page, the pagination total and the KPI strip are narrowed
+ * by one identical predicate; and the GLOBAL KPI figures plus the
+ * "Próximas a vencer" window are fetched alongside the page (three statements in
+ * one round-trip, no per-row query), never derived from the served page.
  */
 export async function consultarSaldoCxcPaginado(
   tx: PrismaTx,
@@ -166,16 +235,22 @@ export async function consultarSaldoCxcPaginado(
 ): Promise<CobroResult<SaldoCxCVistaPagina>> {
   const page = normalizarPagina(input.page);
   const pageSize = normalizarTamanoPagina(input.pageSize);
+  const now = input.now ?? new Date();
+  const busqueda = normalizarBusquedaCxc(input.busqueda);
+  const filtro = { now, busqueda };
 
-  const [conteo, filas] = await Promise.all([
-    contarSaldoCxcEnTx(tx, ctx),
+  const [conteo, filas, proximasFilas] = await Promise.all([
+    contarSaldoCxcEnTx(tx, ctx, filtro),
     consultarSaldoCxcTableroEnTx(tx, ctx, {
-      offset: calcularOffset(page, pageSize),
-      limit: pageSize,
+      pag: { offset: calcularOffset(page, pageSize), limit: pageSize },
+      ...filtro,
+    }),
+    consultarProximasAVencerEnTx(tx, ctx, {
+      now,
+      limite: LIMITE_PROXIMAS_A_VENCER,
     }),
   ]);
 
-  const now = input.now ?? new Date();
   // The batched client-terms read is narrowed to THE PAGE's distinct clients —
   // never the whole tenant's set (R-C9 smaller read than the full path).
   const clienteIds = [...new Set(filas.map((f) => f.clienteId))];
@@ -184,11 +259,61 @@ export async function consultarSaldoCxcPaginado(
   return {
     ok: true,
     data: {
-      filas: filas.map((f) => derivarVista(f, terminos.get(f.clienteId), now)),
+      filas: filas.map((f) => derivarVistaTablero(f, terminos.get(f.clienteId), now)),
       total: conteo.pendientes,
       page,
       pageSize,
       totalPages: calcularTotalPages(conteo.pendientes, pageSize),
+      resumen: {
+        totalPendiente: conteo.saldoPendienteTotal,
+        facturasPendientes: conteo.pendientes,
+        enMora: conteo.enMora,
+        saldoEnMora: conteo.saldoEnMora,
+      },
+      proximas: proximasFilas.map((f) => derivarProximaAVencer(f, now)),
     },
+  };
+}
+
+/**
+ * One board row: the shared derivation plus the two board-only facts the SQL
+ * projected (client NAME, SD days outstanding). Same single derivation — the
+ * paged path never re-implements money or mora.
+ */
+function derivarVistaTablero(
+  f: FilaCxcTablero,
+  terminos: TerminosCredito | undefined,
+  now: Date,
+): SaldoCxCVistaTablero {
+  return {
+    ...derivarVista(f, terminos, now),
+    clienteNombre: f.clienteNombre,
+    dias: f.dias,
+  };
+}
+
+/**
+ * The panel's derived entry: the SQL picks the window and the client term, while
+ * the due date, the signed SD day distance and the badge are recomputed here with
+ * the pure `en-mora` helpers (the same discipline the aging page applies to its
+ * served rows) — never a second day-count rule and never manual hour math.
+ */
+function derivarProximaAVencer(
+  f: FilaProximaVencer,
+  now: Date,
+): ProximaAVencer {
+  const diasHastaVencimiento = diasHastaVencimientoEnSD({
+    fechaEmision: f.fechaEmision,
+    plazoCreditoDias: f.plazoCreditoDias,
+    now,
+  });
+  return {
+    facturaId: f.facturaId,
+    clienteId: f.clienteId,
+    clienteNombre: f.clienteNombre,
+    saldoPendiente: f.saldoPendiente,
+    vencimiento: fechaVencimiento(f.fechaEmision, f.plazoCreditoDias),
+    diasHastaVencimiento,
+    proximidad: clasificarProximidadVencimiento(diasHastaVencimiento),
   };
 }
