@@ -143,13 +143,13 @@ const PAGES: readonly PageCheck[] = [
     path: "/cobros",
     heading: "Cuentas por cobrar",
     // The three derived-balance buckets always render (empty or not).
-    required: ['section[aria-label="Pendientes"]'],
+    required: ['[aria-label="Pendientes"]'],
   },
   {
     route: "/cobros/cxc-board",
     path: "/cobros/cxc-board",
     heading: "Cuentas por cobrar",
-    required: ['section[aria-label="Pendientes"]'],
+    required: ['[aria-label="Pendientes"]'],
   },
   {
     route: "/cobros/estado-cuenta/[clienteId]",
@@ -158,6 +158,14 @@ const PAGES: readonly PageCheck[] = [
     // The canonical read is tenant-scoped, so a foreign id is an EMPTY
     // statement, never a cross-tenant leak (ADR-017).
     required: ["text=Sin facturas vigentes para este cliente."],
+  },
+  {
+    route: "/cobros/factura/[facturaId]",
+    path: `/cobros/factura/${SENTINEL_ID}`,
+    // Board-03 S13: consultarDetalleCxcAction answers FACTURA_COBRO_NO_VIGENTE
+    // for a sentinel id — a typed alert, never another tenant's invoice.
+    alert: "La factura no está vigente; no se puede registrar un cobro",
+    forbidden: ['[data-testid="detalle-factura-cabecera"]', '[aria-label="Registrar Pago"]'],
   },
   {
     route: "/cobros/recibo/[correlativo]",
@@ -460,7 +468,7 @@ test.describe("production session smoke", () => {
       "/cobros must serve the CxC board heading",
     ).toHaveText("Cuentas por cobrar", { timeout: 15_000 });
     await expect(
-      page.locator('section[aria-label="Pendientes"]'),
+      page.locator('[aria-label="Pendientes"]'),
       "/cobros must render the receivables board (empty state counts too)",
     ).toBeVisible({ timeout: 15_000 });
     await expect(
