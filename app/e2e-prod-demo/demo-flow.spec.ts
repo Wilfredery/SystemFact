@@ -133,11 +133,16 @@ test.describe("demo sales flow (S1: cash B02, credit B01 + partial cobro, return
     const facturaId = created[0];
     run.facturaId = facturaId;
 
-    // Partial cobro: half of the prefilled pending balance, rounded down to cents.
+    // Partial cobro (board-03 S15): the Cobrar button opens the SHARED payment
+    // modal with the pending balance prefilled — half of it, rounded down to
+    // cents, then confirmed through the modal's own contract.
     const row = page.getByTestId(`estado-cuenta-fila-${facturaId}`);
     await expect(row).toContainText("Pendiente");
     await row.getByRole("button", { name: `Cobrar factura ${facturaId}` }).click();
-    const amount = page.getByLabel(`Monto de cobro para factura ${facturaId}`);
+
+    const modal = page.getByTestId(`modal-cobro-${facturaId}`);
+    await expect(modal, "the shared payment modal must open").toBeVisible({ timeout: SLOW });
+    const amount = modal.getByLabel(`Monto del pago factura ${facturaId}`);
     const pending = new Decimal(await amount.inputValue());
     const partial = pending.div(2).toDecimalPlaces(2, Decimal.ROUND_DOWN);
     expect(
@@ -145,16 +150,13 @@ test.describe("demo sales flow (S1: cash B02, credit B01 + partial cobro, return
       "the invoice must be large enough to take a PARTIAL payment",
     ).toBe(true);
     await amount.fill(partial.toFixed(2));
-    await page.getByRole("button", { name: `Confirmar cobro factura ${facturaId}` }).click();
+    await modal.getByRole("button", { name: `Confirmar pago factura ${facturaId}` }).click();
 
     const remaining = pending.minus(partial);
-    await expect(
-      page.getByText(`Cobro registrado. Nuevo saldo: ${formatearMonto(remaining.toFixed(2))}.`),
-    ).toBeVisible({ timeout: SLOW });
-    const receiptLink = page.locator('[data-testid^="recibo-reprint-link-"]');
-    await expect(receiptLink, "the cobro must issue a receipt").toBeVisible();
+    const receiptLink = modal.locator(`[data-testid^="cobro-recibo-link-"]`);
+    await expect(receiptLink, "the cobro must issue a receipt").toBeVisible({ timeout: SLOW });
     run.receipt = Number(
-      (await receiptLink.getAttribute("data-testid"))!.replace("recibo-reprint-link-", ""),
+      (await receiptLink.getAttribute("data-testid"))!.replace("cobro-recibo-link-", ""),
     );
 
     // The derived statement reflects the payment: applied cobro, pending balance, Parcial.
