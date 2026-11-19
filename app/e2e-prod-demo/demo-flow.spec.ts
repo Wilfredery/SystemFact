@@ -176,6 +176,8 @@ test.describe("demo sales flow (S1: cash B02, credit B01 + partial cobro, return
     expect(sale, "the credit sale test must have confirmed a sale first").toBeDefined();
 
     await openPos(page);
+    // Board-02 S6: the drafts/confirmed-sells card is collapsed by default.
+    await page.getByRole("button", { name: /My drafts/ }).click();
     await page.getByRole("button", { name: `Return sale ${sale!.ventaId}` }).click();
     await expect(
       page.getByRole("heading", { name: new RegExp(`Return sale #${sale!.ventaId}`) }),
