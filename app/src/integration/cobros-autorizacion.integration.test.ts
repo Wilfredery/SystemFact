@@ -154,7 +154,6 @@ describe("cobros role gating + tenant isolation (real DB, RLS on; R-C6/R-B1)", (
   // Board 03 (S9): Cobrador is GRANTED Cobros against the real DB (the stale
   // local copy never exercised this grant).
   it("Cobrador is allowed a collection through the real gate", async () => {
-    const db = getHarnessDb();
     const cobradorId = await crearUsuarioConRol("Cobrador", "CobradorA");
     const ctxCobrador = { ...ctxAdminA, usuarioId: cobradorId, esAdmin: false };
 
