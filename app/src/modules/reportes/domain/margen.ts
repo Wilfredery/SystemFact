@@ -143,8 +143,8 @@ export interface RentabilidadFila {
   readonly unidadesCompradas: string;
   /** Ventas basis (Σ qty × price sold), `Decimal(12,2)` string. */
   readonly ventas: string;
-  /** Costo de lo vendido = precioSalida × unidadesVendidas (the term the margen subtracts),
-   *  `Decimal(12,2)` string. Board 07a wireframe column (owner go-with-recommendations, S36). */
+  /** Costo de lo vendido (COGS) = unidadesVendidas × costoPromedio — the exact term the
+   *  margen subtracts (REN-1). `Decimal(12,2)` string. Board 07a wireframe column (S36). */
   readonly costo: string;
   /** Inversión = Σ(purchase qty × costoUnitario), `Decimal(12,2)` string. */
   readonly inversion: string;
