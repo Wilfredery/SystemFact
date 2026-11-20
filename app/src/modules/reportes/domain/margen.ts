@@ -143,6 +143,9 @@ export interface RentabilidadFila {
   readonly unidadesCompradas: string;
   /** Ventas basis (Σ qty × price sold), `Decimal(12,2)` string. */
   readonly ventas: string;
+  /** Costo de lo vendido = precioSalida × unidadesVendidas (the term the margen subtracts),
+   *  `Decimal(12,2)` string. Board 07a wireframe column (owner go-with-recommendations, S36). */
+  readonly costo: string;
   /** Inversión = Σ(purchase qty × costoUnitario), `Decimal(12,2)` string. */
   readonly inversion: string;
   /** Capital = current stock × costoPromedio, `Decimal(12,2)` string. */
@@ -168,6 +171,9 @@ export function calcularFilaRentabilidad(insumo: RentabilidadInsumo): Rentabilid
     unidadesVendidas: insumo.unidadesVendidas,
     costoPromedio: insumo.costoPromedio,
   });
+  // Board 07a (S36): the cost of goods sold is the SAME term the margin subtracts —
+  // one definition of "costo" for the screen, never a re-derivation.
+  const costo = dinero(new Decimal(precioSalida).times(new Decimal(insumo.unidadesVendidas)));
   const margenPorciento = calcularMargenPorciento({
     margen,
     ventasBrutas: insumo.ventasBrutas,
@@ -184,6 +190,7 @@ export function calcularFilaRentabilidad(insumo: RentabilidadInsumo): Rentabilid
     unidadesVendidas: cantidad(new Decimal(insumo.unidadesVendidas)),
     unidadesCompradas: cantidad(new Decimal(insumo.unidadesCompradas)),
     ventas: dinero(new Decimal(insumo.ventasBrutas)),
+    costo,
     inversion: dinero(new Decimal(insumo.inversion)),
     capital,
     margen,
@@ -196,6 +203,8 @@ export interface RentabilidadResumen {
   readonly unidadesVendidas: string;
   readonly unidadesCompradas: string;
   readonly ventas: string;
+  /** Σ row costo (cost of goods sold), `Decimal(12,2)` string. Board 07a TOTAL row (S36). */
+  readonly costo: string;
   readonly inversion: string;
   readonly capital: string;
   readonly margen: string;
@@ -217,6 +226,7 @@ export function resumirRentabilidad(
   let unidadesVendidas = new Decimal(0);
   let unidadesCompradas = new Decimal(0);
   let ventas = new Decimal(0);
+  let costo = new Decimal(0);
   let inversion = new Decimal(0);
   let capital = new Decimal(0);
   let margen = new Decimal(0);
@@ -224,6 +234,7 @@ export function resumirRentabilidad(
     unidadesVendidas = unidadesVendidas.plus(new Decimal(f.unidadesVendidas));
     unidadesCompradas = unidadesCompradas.plus(new Decimal(f.unidadesCompradas));
     ventas = ventas.plus(new Decimal(f.ventas));
+    costo = costo.plus(new Decimal(f.costo));
     inversion = inversion.plus(new Decimal(f.inversion));
     capital = capital.plus(new Decimal(f.capital));
     margen = margen.plus(new Decimal(f.margen));
@@ -232,6 +243,7 @@ export function resumirRentabilidad(
     unidadesVendidas: cantidad(unidadesVendidas),
     unidadesCompradas: cantidad(unidadesCompradas),
     ventas: dinero(ventas),
+    costo: dinero(costo),
     inversion: dinero(inversion),
     capital: dinero(capital),
     margen: dinero(margen),

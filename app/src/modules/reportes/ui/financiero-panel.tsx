@@ -43,13 +43,35 @@ export type PanelFinancieroProps =
       readonly seleccion: SeleccionReporte;
     };
 
-const TH = "py-1 font-medium text-zinc-500 dark:text-zinc-400";
+const TH = "py-1 font-medium text-ink-muted";
 const TH_R = `${TH} text-right`;
-const TD = "py-1 text-zinc-900 dark:text-zinc-50";
+const TD = "py-1 text-ink";
 const TD_R = `${TD} text-right`;
 const BOTON =
-  "inline-flex items-center rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800";
-const CELDA = "border-t border-zinc-100 dark:border-zinc-800";
+  "inline-flex items-center rounded-md border border-line px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-surface-muted disabled:opacity-40";
+const CELDA = "border-t border-line";
+const CLASE_KPI_TITULO = "text-sm font-medium text-ink-muted";
+const CLASE_KPI_VALOR = "mt-1 text-2xl font-semibold text-ink";
+
+/** One wireframe KPI tile (board 07b S39). */
+function Kpi({
+  titulo,
+  valor,
+  testid,
+}: {
+  readonly titulo: string;
+  readonly valor: string;
+  readonly testid: string;
+}) {
+  return (
+    <div className="rounded-lg border border-line p-4">
+      <p className={CLASE_KPI_TITULO}>{titulo}</p>
+      <p data-testid={testid} className={CLASE_KPI_VALOR}>
+        {valor}
+      </p>
+    </div>
+  );
+}
 
 /** The shared panel chrome: title, summary strip, table (children), pagination + export control. */
 function Marco({
@@ -70,12 +92,12 @@ function Marco({
   return (
     <section
       aria-label={titulo}
-      className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
+      className="rounded-lg border border-line bg-surface p-5"
     >
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{titulo}</h2>
-          <div className="text-sm text-zinc-500 dark:text-zinc-400">{resumen}</div>
+          <h2 className="text-lg font-semibold text-ink">{titulo}</h2>
+          <div className="text-sm text-ink-muted">{resumen}</div>
         </div>
         <Link href={construirHrefExportar(seleccion)} className={BOTON}>
           Exportar CSV
@@ -83,9 +105,7 @@ function Marco({
       </div>
 
       {pagina.filas.length === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Sin resultados para el filtro seleccionado.
-        </p>
+        <p className="text-sm text-ink-muted">Sin resultados para el filtro seleccionado.</p>
       ) : (
         <table className="w-full text-left text-sm">{children}</table>
       )}
@@ -101,7 +121,7 @@ function Marco({
             Siguiente →
           </Link>
         )}
-        <span className="text-zinc-500 dark:text-zinc-400">
+        <span className="text-ink-muted">
           Página {formatearEntero(pagina.page)} de {formatearEntero(Math.max(1, pagina.totalPages))} ·{" "}
           {formatearEntero(pagina.total)} resultados
         </span>
@@ -204,47 +224,65 @@ export function PanelFinanciero(props: PanelFinancieroProps) {
     );
   }
 
-  // comparativa — current period per-day rows; Total row = CURRENT only (baseline in the strip).
+  // comparativa — board 07b (S38): the wireframe's PER-PERIOD rows with variación columns;
+  // the per-day detail stays available through the CSV export (FIN-5 semantics unchanged).
   const { pagina } = props;
   const pct = pagina.resumen.variacionPorciento ?? "0.00";
-  const signo = pct.startsWith("-") ? "" : "+";
+  const signoPct = pct.startsWith("-") ? "" : "+";
+  const varMonto = pagina.resumen.variacionMonto ?? "0.00";
+  const signoMonto = varMonto.startsWith("-") ? "" : "+";
   return (
-    <Marco
-      titulo="Comparativa de períodos"
-      resumen={
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span>Actual: {formatearMonto(pagina.resumen.montoActual ?? "0.00")}</span>
-          <span>Anterior: {formatearMonto(pagina.resumen.montoAnterior ?? "0.00")}</span>
-          <span>
-            Variación: {formatearMonto(pagina.resumen.variacionMonto ?? "0.00")} (
-            {signo}
-            {pct}%)
-          </span>
+    <section aria-label="Analítico comparativo" className="rounded-lg border border-line bg-surface p-5">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold text-ink">Analítico comparativo</h2>
+          {/* S39: the wireframe's four KPI tiles. */}
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Kpi titulo="Ventas período actual" valor={formatearMonto(pagina.resumen.montoActual ?? "0.00")} testid="r07b-kpi-actual" />
+            <Kpi titulo="Ventas período anterior" valor={formatearMonto(pagina.resumen.montoAnterior ?? "0.00")} testid="r07b-kpi-anterior" />
+            <Kpi titulo="Variación" valor={`${signoMonto}${formatearMonto(varMonto)}`} testid="r07b-kpi-variacion" />
+            <Kpi titulo="Variación %" valor={`${signoPct}${pct}%`} testid="r07b-kpi-variacion-pct" />
+          </div>
         </div>
-      }
-      pagina={pagina}
-      seleccion={seleccion}
-    >
-      <thead className={TH}>
-        <tr>
-          <th className={TH}>Fecha (SD)</th>
-          <th className={TH_R}>Monto</th>
-        </tr>
-      </thead>
-      <tbody>
-        {pagina.filas.map((f) => (
-          <tr key={f.fechaSD} className={CELDA}>
-            <td className={TD}>{f.fechaSD}</td>
-            <td className={TD_R}>{formatearMonto(f.monto)}</td>
+        <Link href={construirHrefExportar(seleccion)} className={BOTON}>
+          Exportar CSV
+        </Link>
+      </div>
+
+      <table className="w-full text-left text-sm">
+        <thead className={TH}>
+          <tr>
+            <th scope="col" className={TH}>Período</th>
+            <th scope="col" className={TH_R}>Ventas (RD$)</th>
+            <th scope="col" className={TH_R}>Variación (RD$)</th>
+            <th scope="col" className={TH_R}>Variación (%)</th>
           </tr>
-        ))}
-        <tr className={CELDA}>
-          <td className={`${TD} font-semibold`}>TOTAL (período actual)</td>
-          <td className={`${TD_R} font-semibold`}>
-            {formatearMonto(pagina.resumen.montoActual ?? "0.00")}
-          </td>
-        </tr>
-      </tbody>
-    </Marco>
+        </thead>
+        <tbody>
+          <tr className={CELDA}>
+            <td className={`${TD} font-medium`}>Período actual</td>
+            <td className={TD_R}>{formatearMonto(pagina.resumen.montoActual ?? "0.00")}</td>
+            <td className={TD_R}>{signoMonto}{formatearMonto(varMonto)}</td>
+            <td className={TD_R}>{signoPct}{pct}%</td>
+          </tr>
+          <tr className={CELDA}>
+            <td className={TD}>Período anterior</td>
+            <td className={TD_R}>{formatearMonto(pagina.resumen.montoAnterior ?? "0.00")}</td>
+            <td className={`${TD_R} text-ink-muted`}>—</td>
+            <td className={`${TD_R} text-ink-muted`}>—</td>
+          </tr>
+          <tr className={`${CELDA} font-semibold`}>
+            <td className={`${TD} font-semibold`}>Total</td>
+            <td className={`${TD_R} font-semibold`}>
+              {formatearMonto(pagina.resumen.montoActual ?? "0.00")}
+            </td>
+            <td className={`${TD_R} font-semibold`}>{signoMonto}{formatearMonto(varMonto)}</td>
+            <td className={`${TD_R} font-semibold`}>{signoPct}{pct}%</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p className="mt-4 text-xs text-ink-muted">Filtrado por empresa y sucursal activa</p>
+    </section>
   );
 }

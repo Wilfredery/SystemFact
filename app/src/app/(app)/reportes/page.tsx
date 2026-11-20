@@ -73,10 +73,10 @@ export default async function ReportesPage({ searchParams }: PageProps) {
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
-      <h1 className="mb-1 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+      <h1 className="mb-1 text-2xl font-semibold text-ink">
         Reportes
       </h1>
-      <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="mb-6 text-sm text-ink-muted">
         Seleccione un reporte para consultar sus resultados; la exportación está disponible
         desde cada panel de resultados.
       </p>
@@ -236,7 +236,7 @@ async function PanelReporte({
 
   // Not-yet-wired report — honest placeholder, no query.
   return (
-    <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+    <p className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-ink-muted">
       Este reporte se habilita en una entrega posterior.
     </p>
   );
@@ -252,7 +252,7 @@ function MensajeError({ code, message }: { readonly code: string; readonly messa
   return (
     <p
       role="alert"
-      className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+      className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger"
     >
       {code === REPORTE_NO_AUTORIZADO
         ? "No tiene permisos para consultar este reporte."
@@ -276,7 +276,7 @@ async function PanelDashboard() {
     return (
       <p
         role="alert"
-        className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+        className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger"
       >
         No tiene permisos para consultar este reporte.
       </p>
@@ -285,7 +285,7 @@ async function PanelDashboard() {
   return (
     <p
       role="alert"
-      className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+      className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger"
     >
       {resultado.error.message}
     </p>

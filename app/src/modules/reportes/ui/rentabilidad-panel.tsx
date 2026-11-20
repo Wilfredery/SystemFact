@@ -26,19 +26,21 @@ import { construirHref, construirHrefExportar } from "./url";
 import { formatearCantidad, formatearEntero } from "./format";
 import { formatearMonto } from "@/shared/ui/format";
 
-const TH = "py-1 font-medium text-zinc-500 dark:text-zinc-400";
+const TH = "py-1 font-medium text-ink-muted";
 const TH_R = `${TH} text-right`;
-const TD = "py-1 text-zinc-900 dark:text-zinc-50";
+const TD = "py-1 text-ink";
 const TD_R = `${TD} text-right`;
 const BOTON =
-  "inline-flex items-center rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800";
+  "inline-flex items-center rounded-md border border-line px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-surface-muted disabled:opacity-40";
+const CLASE_KPI_TITULO = "text-sm font-medium text-ink-muted";
+const CLASE_KPI_VALOR = "mt-1 text-2xl font-semibold text-ink";
 
 /** REN-3 — the visible, non-dismissible in-panel cost-basis disclaimer (same string as the CSV note). */
 function AvisoLimitacion() {
   return (
     <p
       role="note"
-      className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+      className="mb-4 rounded-md border border-warn bg-warn-bg px-3 py-2 text-sm text-ink"
     >
       {NOTA_LIMITACION_RENTABILIDAD}
     </p>
@@ -59,18 +61,25 @@ export function PanelRentabilidad({
   return (
     <section
       aria-label="Rentabilidad por producto"
-      className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
+      className="rounded-lg border border-line bg-surface p-5"
     >
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-            Rentabilidad por producto
-          </h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Ventas {formatearMonto(r.ventas ?? "0.00")} · Margen {formatearMonto(r.margen ?? "0.00")} (
-            {r.margenPorciento ?? "0.00"}%) · Inversión {formatearMonto(r.inversion ?? "0.00")} · Capital{" "}
-            {formatearMonto(r.capital ?? "0.00")}
-          </p>
+          <h2 className="text-lg font-semibold text-ink">Rentabilidad por producto</h2>
+          {/* Board 07a (S37): the wireframe's five KPI tiles, all page-independent
+              totals from the SAME summary the CSV shares (EXP-2). */}
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <Kpi titulo="Inversión" valor={formatearMonto(r.inversion ?? "0.00")} testid="r07a-kpi-inversion" />
+            <Kpi titulo="Entrada (unid.)" valor={formatearCantidad(r.unidadesCompradas ?? "0")} testid="r07a-kpi-entrada" />
+            <Kpi titulo="Salida (unid.)" valor={formatearCantidad(r.unidadesVendidas ?? "0")} testid="r07a-kpi-salida" />
+            <Kpi titulo="Capital en mercancía" valor={formatearMonto(r.capital ?? "0.00")} testid="r07a-kpi-capital" />
+            <Kpi
+              titulo="Margen de ganancia"
+              valor={formatearMonto(r.margen ?? "0.00")}
+              subvalor={`${r.margenPorciento ?? "0.00"}%`}
+              testid="r07a-kpi-margen"
+            />
+          </div>
         </div>
         <Link href={construirHrefExportar(seleccion)} className={BOTON}>
           Exportar CSV
@@ -81,35 +90,33 @@ export function PanelRentabilidad({
       <AvisoLimitacion />
 
       {pagina.filas.length === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Sin resultados para el filtro seleccionado.
-        </p>
+        <p className="text-sm text-ink-muted">Sin resultados para el filtro seleccionado.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className={TH}>
               <tr>
-                <th className={TH}>Producto</th>
-                <th className={TH_R}>Precio costo</th>
-                <th className={TH_R}>Precio salida</th>
-                <th className={TH_R}>Vendidas</th>
-                <th className={TH_R}>Compradas</th>
-                <th className={TH_R}>Inversión</th>
-                <th className={TH_R}>Capital</th>
-                <th className={TH_R}>Margen</th>
-                <th className={TH_R}>Margen %</th>
+                <th scope="col" className={TH}>Producto</th>
+                <th scope="col" className={TH_R}>P. costo</th>
+                <th scope="col" className={TH_R}>P. salida</th>
+                <th scope="col" className={TH_R}>Cant. vendida</th>
+                <th scope="col" className={TH_R}>Cant. comprada</th>
+                <th scope="col" className={TH_R}>Ventas</th>
+                <th scope="col" className={TH_R}>Costo</th>
+                <th scope="col" className={TH_R}>Margen</th>
+                <th scope="col" className={TH_R}>Margen %</th>
               </tr>
             </thead>
             <tbody>
               {pagina.filas.map((f) => (
-                <tr key={f.productoId} className="border-t border-zinc-100 dark:border-zinc-800">
+                <tr key={f.productoId} className="border-t border-line">
                   <td className={TD}>{f.nombre}</td>
                   <td className={TD_R}>{formatearMonto(f.precioCosto)}</td>
                   <td className={TD_R}>{formatearMonto(f.precioSalida)}</td>
                   <td className={TD_R}>{formatearCantidad(f.unidadesVendidas)}</td>
                   <td className={TD_R}>{formatearCantidad(f.unidadesCompradas)}</td>
-                  <td className={TD_R}>{formatearMonto(f.inversion)}</td>
-                  <td className={TD_R}>{formatearMonto(f.capital)}</td>
+                  <td className={TD_R}>{formatearMonto(f.ventas)}</td>
+                  <td className={TD_R}>{formatearMonto(f.costo)}</td>
                   <td className={TD_R}>{formatearMonto(f.margen)}</td>
                   <td className={TD_R}>{f.margenPorciento}%</td>
                 </tr>
@@ -130,11 +137,35 @@ export function PanelRentabilidad({
             Siguiente →
           </Link>
         )}
-        <span className="text-zinc-500 dark:text-zinc-400">
+        <span className="text-ink-muted">
           Página {formatearEntero(pagina.page)} de {formatearEntero(Math.max(1, pagina.totalPages))} ·{" "}
           {formatearEntero(pagina.total)} productos
         </span>
       </div>
+      <p className="mt-4 text-xs text-ink-muted">Filtrado por período y sucursal</p>
     </section>
+  );
+}
+
+/** One wireframe KPI tile (board 07a S37): title + Decimal-string value + optional sub-value. */
+function Kpi({
+  titulo,
+  valor,
+  subvalor,
+  testid,
+}: {
+  readonly titulo: string;
+  readonly valor: string;
+  readonly subvalor?: string;
+  readonly testid: string;
+}) {
+  return (
+    <div className="rounded-lg border border-line p-4">
+      <p className={CLASE_KPI_TITULO}>{titulo}</p>
+      <p data-testid={testid} className={CLASE_KPI_VALOR}>
+        {valor}
+      </p>
+      {subvalor !== undefined && <p className="text-sm text-ink-muted">{subvalor}</p>}
+    </div>
   );
 }

@@ -432,3 +432,36 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   read-only Caja view (no sales/payments/returns/login surface). BOARD 06
   shipped. Next: BOARD REPORT 07 pending owner approval (explorer map
   already gathered in session context).
+## Specs — Board 07 Reportes (owner: "Go", 2026-11-20, recommendations pre-approved)
+
+- S36: D1 — the 07a table adopts the wireframe's nine columns (Producto |
+  P. costo | P. salida | Cant. vendida | Cant. comprada | Ventas | Costo |
+  Margen | Margen %); Inversión/Capital move to the KPI tiles. New domain
+  field `costo` (the same term the margen subtracts — one definition, no
+  re-derivation) on RentabilidadFila + resumirRentabilidad; CSV contract
+  unchanged.
+- S37: D2 — 07a KPIs render as the wireframe's five tiles (Inversión,
+  Entrada (unid.), Salida (unid.), Capital en mercancía, Margen de ganancia
+  + %) from the page-independent summary (EXP-2).
+- S38: D3 — 07b renders PER-PERIOD rows (Período actual / Período anterior)
+  with Variación (RD$) and Variación (%) columns + TOTAL row (current +
+  variación, the FIN-5 convention); the per-day detail stays in the CSV.
+- S39: D4/D5 — 07b gets the four wireframe KPI tiles; per-board footer
+  strips ("Filtrado por período y sucursal" / "Filtrado por empresa y
+  sucursal activa"). D5 kept: single Exportar CSV link (the DGII split
+  menu belongs to the fiscal family) — [wireframe] drift tag. D6 kept:
+  no Empresa filter (one empresa per tenant) — [beyond-wireframe].
+- S40: F1 — F0 retrofit of 31 raw-palette lines across rentabilidad-panel,
+  financiero-panel, report-selector and the route page; guarded by a
+  source-level no-raw-palette test (rgb/hsl/oklch included). Panels stay
+  pure server components; the selector keeps its client island.
+- S41: Per protocol, the board 07 diff gets JD dual review.
+
+## Tasks — Board 07
+
+- T24 (S36,S37) code+test — domain costo field + 07a columns/tiles.
+- T25 (S38,S39) code+test — 07b per-period table + tiles + strips.
+- T26 (S40) code+test — F0 retrofit + guard.
+- T27 (S41) verify — JD dual review of the board 07 diff.
+
+## Tasks — Board 06
