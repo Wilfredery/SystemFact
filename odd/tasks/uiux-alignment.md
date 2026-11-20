@@ -126,6 +126,35 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   `--success` foreground token is added to globals.css; no raw palette or
   `dark:` overrides remain in inventario UI.
 
+## Specs — Board 05 Compras (owner: "go with recommendations", L17)
+
+- S25: Header fields follow wireframe 05a: proveedor + sucursal in the
+  header; sucursal stays read-only (D1) — it is assigned by context, never
+  edited in the form.
+- S26: Nota-fiscal banner (D3) added to the compra form per wireframe 05b:
+  static informational copy (from the wireframe), before confirmation there
+  is no NCF yet — the banner explains the fiscal-document behavior.
+- S27: Roles per wireframe (D2): the purchases list is view-only for
+  Operador/Despachador; write actions remain admin-gated server-side.
+  UI hides what the server denies; no new grants.
+- S28: NumericKeypad (P1) on Cantidad and Costo unitario entry in the compra
+  form — touch-first, same keypad primitive as boards 02–04.
+- S29: Full F0 retrofit (F1) of the compras UI (~38 raw-palette sites across
+  ComprasScreen, CompraFormulario, CxpPanel, ConfirmarCancelacionCompra):
+  all hardcoded palette colors map to system.md tokens/primitives; no
+  hardcoded palette remains in the module.
+- S30: Per protocol, after implementation the board 05 diff gets JD dual
+  review (jd-judge-a/b) before board 06 starts.
+
+## Tasks — Board 05
+
+- T16 (S27) code+test — view-only list for Operador/Despachador + admin
+  write-action gating (server-side check unchanged).
+- T17 (S26) code+test — nota-fiscal banner in CompraFormulario (05b copy).
+- T18 (S28) code+test — NumericKeypad on Cantidad and Costo unitario.
+- T19 (S29) code+test — F0 retrofit of the whole compras module UI.
+- T20 (S30) verify — JD dual review of the board 05 diff.
+
 ## Tasks — Board 04
 
 - T12 (S18,S19,S20,S23) code+test — Inventario-Consulta board: Disponible
@@ -240,3 +269,19 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   Operador/Despachador, D3 nota-fiscal banner added, F1 F0 retrofit, P1
   NumericKeypad on quantity/cost. Board 05 implementation is the first task
   of the next session (S25+ to be written at that time).
+- L18: Board 05 (Compras) implemented: S25–S29 landed in one work unit —
+  nota-fiscal banner (compra-nota-fiscal, B01/B11 kind + Art. 106/339 CT
+  copy, warn token styling), NumericKeypad on Cantidad (3 dec) and Costo
+  unitario (2 dec) focus-activated per line, full F0 retrofit of
+  ComprasScreen/CompraFormulario/CxpPanel/ConfirmarCancelacionCompra/
+  compra-form-utils/page.tsx (59 raw-palette sites → tokens, all dark:
+  variants dropped). S27 verified already satisfied by the capability gate
+  (puedeGestionar hides Acciones column + manage controls) — existing
+  compras-ui/compras-page pins cover it; no code change. New
+  compra-board05.spec.tsx (5 tests: banner B01 copy, keypad qty + cost
+  typing/CLR, source-level no-raw-palette guard over the 5 UI files).
+  compra README gained a UI (board 05) section. Verification: compra UI+HTTP
+  suites 96/96, full unit sweep 2746/2746, tsc + eslint clean. Keypad rule:
+  quantity default "1" / empty cost behave as the keypad base (first digit
+  replaces), lone "." → "0.", BSP/CLR delete; componerValor reused from
+  venta/ui/carro. JD dual review (T20) pending.

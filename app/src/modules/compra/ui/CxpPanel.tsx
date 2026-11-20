@@ -34,7 +34,7 @@ const TH_R = `${TH} text-right`;
 const TD = "px-4 py-2";
 const TD_R = `${TD} tabular-nums`;
 const ENLACE =
-  "inline-flex items-center rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300";
+  "inline-flex items-center rounded-md border border-line px-3 py-1.5 text-sm font-medium text-ink";
 
 export function CxpPanel({
   pagina,
@@ -51,25 +51,25 @@ export function CxpPanel({
   return (
     <section
       aria-label="Cuentas por pagar"
-      className="mt-10 rounded-lg border border-zinc-200 p-5 dark:border-zinc-800"
+      className="mt-10 rounded-lg border border-line p-5"
     >
       <div className="mb-3">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+        <h2 className="text-lg font-semibold text-ink">
           Cuentas por pagar
         </h2>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-ink-muted">
           Saldo pendiente total: {formatearMonto(saldoTotal)} · {comprasAbiertas} compras abiertas
         </p>
       </div>
 
       {pagina.filas.length === 0 ? (
-        <p className="rounded-md border border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+        <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
           No hay cuentas por pagar pendientes.
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-zinc-50 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+            <thead className="bg-surface-muted text-ink-muted">
               <tr>
                 <th scope="col" className={TH}>Documento</th>
                 <th scope="col" className={TH}>Proveedor</th>
@@ -81,11 +81,11 @@ export function CxpPanel({
                 <th scope="col" className={TH}>Estado</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <tbody className="divide-y divide-line">
               {pagina.filas.map((f) => (
                 <tr key={f.compraId} data-testid={`cxp-fila-${f.compraId}`}>
                   <td className={`${TD} font-mono text-xs`}>{f.compraId}</td>
-                  <td className={`${TD} font-medium text-zinc-900 dark:text-zinc-50`}>
+                  <td className={`${TD} font-medium text-ink`}>
                     {f.proveedorNombre}
                   </td>
                   <td className={TD}>{formatearFechaSD(f.fechaSD)}</td>
@@ -115,7 +115,7 @@ export function CxpPanel({
             Siguiente
           </a>
         )}
-        <span className="text-zinc-500 dark:text-zinc-400">
+        <span className="text-ink-muted">
           Página {pagina.page} de {totalPaginas} · {pagina.total} resultados
         </span>
       </nav>

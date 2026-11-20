@@ -68,7 +68,7 @@ export function formatearFechaCompra(iso: string): string {
 
 /** The one error banner style of the purchase screens (single definition). */
 export const CLASE_ALERTA_COMPRA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+  "rounded-md bg-danger/10 px-4 py-2 text-sm text-danger";
 
 /** The subset of a product the line editor needs (all from a read action). */
 export interface ProductoCompraOpcion {

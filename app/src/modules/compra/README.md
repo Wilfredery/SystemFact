@@ -73,6 +73,22 @@ Confirm and cancel write **NO** `MovimientoInventario` and never touch
 by delegating to inventario — never by writing inventory directly from this
 module.
 
+## UI (board 05 — UI/UX alignment)
+
+`ui/` mirrors the factura.penpot wireframes 05a/05b under the shared design
+system (`design/factura/system.md`, F0 tokens — no raw Tailwind palette):
+
+- **View-only list** for Operador/Despachador: the capability gate
+  (`obtenerPermisosCompraAction` → `puedeGestionar`) hides the Acciones column
+  and the manage controls client-side; every write action re-checks the role on
+  the server.
+- **Nota-fiscal banner** (`compra-nota-fiscal`): static informational copy in
+  the create/edit dialog naming the NCF kind (B01/B11) and retention articles —
+  a draft has no NCF yet; the server assigns it on confirmation.
+- **NumericKeypad** on Cantidad and Costo unitario (touch-first, focus-activated,
+  same F0 primitive as venta/cobros/inventario); quantity keeps 3 decimals,
+  cost 2.
+
 ## Operational prerequisite — retention configuration
 
 Confirm reads retention rates from `ConfiguracionEmpresa` keys
