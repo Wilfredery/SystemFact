@@ -421,3 +421,14 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   cannot drift. Verified: caja 162/162, tsc + eslint clean.
   BOARD 06 CLOSED: commits 15da26d, 921c75b, 983d6cd, + this fix. Next:
   board 07 Reportes.
+- L26: v0.40.0 shipped end-to-end 2026-11-20 (PR #261 squash-merged as
+  c05f0f3; tag + GitHub Release; Vercel prod deploy; no migration,
+  UI-only). CI: one infra flake — the workflow_dispatch run I raced against
+  the auto-trigger collided on the local Supabase port 54322; rerun of the
+  failed E2E job went green (rider: add a concurrency group to ci.yml).
+  One merge conflict in the three version files + the feature doc
+  (master's squash rewrote them); resolved with the branch's versions.
+  Prod smoke 10/0/0 (36.2s). NO demo lane: board 06 touches only the
+  read-only Caja view (no sales/payments/returns/login surface). BOARD 06
+  shipped. Next: BOARD REPORT 07 pending owner approval (explorer map
+  already gathered in session context).
