@@ -59,7 +59,7 @@ describe("Board 06 — F0 token retrofit (S31)", () => {
   const RAW_PALETTE =
     /(?:text|bg|border|ring|divide|from|to|placeholder|fill|stroke|shadow|outline|accent|caret|decoration)-(?:zinc|red|emerald|amber|indigo|gray|slate|neutral|stone|white|black|blue|green|sky|orange|violet|purple|yellow|rose|teal|cyan|lime|pink|fuchsia)-?[^\s"'`]*/g;
 
-  const ARBITRARY_HEX = /(?:text|bg|border|ring)-\[#[^\]]+\]/g;
+  const ARBITRARY_HEX = /(?:text|bg|border|ring)-\[(?:#|rgb|hsl|oklch)[^\]]+\]/g;
 
   it("keeps zero raw-palette classes in the caja UI files", () => {
     const ofensas = FILES.flatMap((archivo) => {
@@ -76,7 +76,7 @@ describe("Board 06 — F0 token retrofit (S31)", () => {
   it("styles a negative Diferencia with the danger token", () => {
     render(
       <CajaScreen
-        cierre={{ ...CIERRE_VACIO, diferencia: "-150.00" } as CierreDiarioDto}
+        cierre={{ ...CIERRE_VACIO, diferencia: "-150.00" }}
         resumen={RESUMEN_VACIO}
         alcanceNombre="Colmado El Sol · Sucursal Central"
       />,

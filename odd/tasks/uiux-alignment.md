@@ -411,3 +411,13 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   owner D2). Verified: caja 162/162, tsc + eslint clean; regex negative
   check: hex and palette guards both fire. JD round 2 re-judgment
   dispatched on the remediation commit.
+- L25: JD round 2: judge B PASS (all 4 verified with direct evidence); judge
+  A PASS (all 6 round-1 findings verified, compile check confirms
+  text-danger now the only colour rule on the negative Diferencia).
+  Deterministic round-2 residuals fixed inline: N1 hex guard widened to
+  rgb/hsl/oklch; N2 disabled button adopts the full compras recipe
+  (min-h-11 + border-line + text-ink + opacity-40); N3 redundant cast
+  removed; N4 CLASE_KPI_VALOR_NEGATIVO derived from the base constant so it
+  cannot drift. Verified: caja 162/162, tsc + eslint clean.
+  BOARD 06 CLOSED: commits 15da26d, 921c75b, 983d6cd, + this fix. Next:
+  board 07 Reportes.

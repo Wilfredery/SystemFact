@@ -1,7 +1,5 @@
-"use client";
-
 /**
- * `/caja` client island (S7): wireframe 06a "Cierre diario de caja" + 06b "Resumen del día".
+ * `/caja` screen (S7): wireframe 06a "Cierre diario de caja" + 06b "Resumen del día".
  *
  * A THIN projection of the two DTOs the server page hands it. It computes NOTHING: the use cases
  * own the SD day, the aggregates and the decimal math, the actions own the role gate, and the
@@ -9,7 +7,10 @@
  * close is always TODAY in America/Santo_Domingo (S1), the date arrives already resolved.
  *
  * The two boards are rendered as SEPARATE sections (S2: never mixed), with "Ver cierre de caja →"
- * anchoring the summary back to the close.
+ * anchoring the summary back to the close. SERVER component by default (AGENTS.md): this projection
+ * has no hooks, no handlers and no browser APIs — no "use client", zero JS shipped for this view
+ * (gga adjudication 2026-11-20; the board-06 spec's original "client island" wording was an
+ * implementation choice, not an owner exception).
  *
  * Deliberate non-affordances from the owner's decisions:
  *  - "Cerrar caja" is DISABLED with a visible "Próximamente" hint (S3). The ERD eliminated
@@ -44,8 +45,9 @@ const CLASE_KPI_VALOR = "mt-1 text-2xl font-semibold text-ink";
 /** Negative Diferencia (JD-A round 1 HIGH): a dedicated constant WITHOUT
  *  text-ink — both are single-class colour utilities on the same element and
  *  text-ink wins in the compiled CSS, so appending text-danger to a string
- *  containing text-ink rendered the value in ink, not danger. */
-const CLASE_KPI_VALOR_NEGATIVO = "mt-1 text-2xl font-semibold text-danger";
+ *  containing text-ink rendered the value in ink, not danger. Derived from
+ *  the base so future edits cannot drift (JD-A round 2 N4). */
+const CLASE_KPI_VALOR_NEGATIVO = CLASE_KPI_VALOR.replace("text-ink", "text-danger");
 const CLASE_CELDA = "py-1 pr-4";
 const CLASE_CELDA_NUM = "py-1 pr-4 text-right tabular-nums";
 
@@ -233,7 +235,7 @@ export function CajaScreen({
             type="button"
             disabled
             aria-describedby="caja-cerrar-hint"
-            className="rounded-md bg-surface-muted px-4 py-2 text-sm font-medium text-ink disabled:opacity-40"
+            className="min-h-11 rounded-md border border-line bg-surface-muted px-4 py-2 text-sm font-medium text-ink disabled:opacity-40"
           >
             Cerrar caja
           </button>
