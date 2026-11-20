@@ -100,7 +100,7 @@ describe("consultarFacturaParaImpresion (real DB, RLS on, S3/S4/S5)", () => {
       vigenciaFin: new Date("2030-06-30T23:59:59.000Z"),
     });
 
-    const { ventaId, facturaId } = await withTenantTransaction(ctx, async (tx) => {
+    const { facturaId } = await withTenantTransaction(ctx, async (tx) => {
       const r = await crearVenta(tx, ctx, {
         clienteId: null,
         fecha: new Date("2026-01-10T00:00:00.000Z"),

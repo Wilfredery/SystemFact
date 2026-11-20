@@ -126,6 +126,41 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   `--success` foreground token is added to globals.css; no raw palette or
   `dark:` overrides remain in inventario UI.
 
+## Specs — Board 05 Compras (owner: "go with recommendations", L17)
+
+- S25: Header fields follow wireframe 05a: proveedor + sucursal in the
+  header; sucursal stays read-only (D1) — it is assigned by context, never
+  edited in the form.
+- S26: Nota-fiscal banner (D3) added to the compra form per wireframe 05b:
+  informational copy before confirmation — a draft has no NCF yet.
+  OWNER DECISION (L21, resolves JD-B-107/JD-A N-2): the banner NCF kind
+  follows the SAME source as the Comprobante line (`tipoNcfParaCompra`:
+  MERCANCIA→B01, else B11) — single NCF source, the copy can never
+  contradict the screen. The retention law figures ("ISR 2%", "100% del
+  ITBIS") are fixed informational copy, NOT config-derived (owner-approved,
+  JD-A-004); applied rates remain DB parameters on confirm; the Desglose
+  carries the dynamic figures.
+- S27: Roles per wireframe (D2): the purchases list is view-only for
+  Operador/Despachador; write actions remain admin-gated server-side.
+  UI hides what the server denies; no new grants.
+- S28: NumericKeypad (P1) on Cantidad and Costo unitario entry in the compra
+  form — touch-first, same keypad primitive as boards 02–04.
+- S29: Full F0 retrofit (F1) of the compras UI (~38 raw-palette sites across
+  ComprasScreen, CompraFormulario, CxpPanel, ConfirmarCancelacionCompra):
+  all hardcoded palette colors map to system.md tokens/primitives; no
+  hardcoded palette remains in the module.
+- S30: Per protocol, after implementation the board 05 diff gets JD dual
+  review (jd-judge-a/b) before board 06 starts.
+
+## Tasks — Board 05
+
+- T16 (S27) code+test — view-only list for Operador/Despachador + admin
+  write-action gating (server-side check unchanged).
+- T17 (S26) code+test — nota-fiscal banner in CompraFormulario (05b copy).
+- T18 (S28) code+test — NumericKeypad on Cantidad and Costo unitario.
+- T19 (S29) code+test — F0 retrofit of the whole compras module UI.
+- T20 (S30) verify — JD dual review of the board 05 diff.
+
 ## Tasks — Board 04
 
 - T12 (S18,S19,S20,S23) code+test — Inventario-Consulta board: Disponible
@@ -225,3 +260,85 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   hardcoded number, MOTIVO_NO_VALIDO unreachable via HTTP (defense in
   depth), chip clear does not update the URL, version bump owed at PR time.
   Next board: 05 Compras.
+- L16: v0.38.0 shipped end-to-end 2026-11-19 (PR #253 merged as af7dc36; tag
+  + release; prod deploy; Pago.referencia migration applied on production via
+  the supabase MCP; prod smoke 10/0/0 after PR #255 fixed the smoke census and
+  board-03 markup; demo lane 5/0/0 after PRs #256–#259 aligned the demo/smoke
+  helpers to the shipped flows and amended the version-bump guard with the
+  browser-lane exemption, bumps 0.38.1/0.38.2). NCF counters by SELECT:
+  B01 35/100, B02 141/200, B04 228/300 — every delta accounted for. Real
+  product bugs fixed by the lanes: server-side buttonVariants() RSC crash,
+  payment-modal Confirm unreachable on short viewports. Patches tagged
+  v0.38.1/v0.38.2 (test-only, no redeploy).
+- L17 (owner, 2026-11-19): "go with recommendations" resolves the BOARD
+  REPORT 05 items: D1 sucursal stays read-only, D2 view-only list keeps
+  Operador/Despachador, D3 nota-fiscal banner added, F1 F0 retrofit, P1
+  NumericKeypad on quantity/cost. Board 05 implementation is the first task
+  of the next session (S25+ to be written at that time).
+- L18: Board 05 (Compras) implemented: S25–S29 landed in one work unit —
+  nota-fiscal banner (compra-nota-fiscal, B01/B11 kind + Art. 106/339 CT
+  copy, warn token styling), NumericKeypad on Cantidad (3 dec) and Costo
+  unitario (2 dec) focus-activated per line, full F0 retrofit of
+  ComprasScreen/CompraFormulario/CxpPanel/ConfirmarCancelacionCompra/
+  compra-form-utils/page.tsx (59 raw-palette sites → tokens, all dark:
+  variants dropped). S27 verified already satisfied by the capability gate
+  (puedeGestionar hides Acciones column + manage controls) — existing
+  compras-ui/compras-page pins cover it; no code change. New
+  compra-board05.spec.tsx (5 tests: banner B01 copy, keypad qty + cost
+  typing/CLR, source-level no-raw-palette guard over the 5 UI files).
+  compra README gained a UI (board 05) section. Verification: compra UI+HTTP
+  suites 96/96, full unit sweep 2746/2746, tsc + eslint clean. Keypad rule:
+  quantity default "1" / empty cost behave as the keypad base (first digit
+  replaces), lone "." → "0.", BSP/CLR delete; componerValor reused from
+  venta/ui/carro. JD dual review (T20) pending.
+- L19: JD round 1 (board 05, commit 64bf370): judge A 5 MEDIUM + 6 LOW, judge
+  B 1 HIGH + 4 LOW. Consolidated remediation: JD-B-101/A-010 keypad base
+  snapshot at focus (first tap REPLACES the focused-at value — stored draft
+  can never be silently extended; later taps append); JD-A-001 "." on the
+  untouched quantity now yields "0." (both fields); JD-A-002 "Ver detalle"
+  rendered for every read role (Acciones column always present; Editar/
+  Confirmar/Recibir/Cancelar stay puedeGestionar-gated; view-only tests
+  updated in compras-ui/compras-page); JD-A-003 banner kind from the
+  SUPPLIER class (esInformal → B11, aligned with Desglose); JD-A-004
+  retention figures recorded as owner-approved static copy (S26 exception
+  + README); JD-A-005/B-102 tautology fixed (real B11 assertions via
+  informal supplier + back-to-B01 switch test); JD-A-006/B-104 banner
+  ring-1 ring-warn; JD-A-007 role="note"; JD-A-008/B-105 keypad closes on
+  focus of supplier/fecha/tipo/product-search; JD-A-009/B-103 guard
+  broadened (extra palette families, arbitrary hex, page.tsx included);
+  JD-A-011 log keypad note corrected here. Verified: compra module
+  215/215, tsc + eslint clean. JD round 2 re-judgment pending.
+- L20: JD round 2 re-judgment: both judges verified all 4 JD-B + 7 JD-A
+  fixes but found the remediation itself defective — JD-B-106/A-010-N1
+  (HIGH): value-equality base re-created itself (fresh "1" + taps 1,2 →
+  "2"; draft "5" + taps 5,0 → "0"). Root cause: the untouched flag was
+  compared by value instead of consumed once. Fix: pristinoRef consumed
+  SYNCHRONOUSLY by the first tap (or any keyboard change) — ref, not render
+  closure, so batched taps chain correctly. New pins: 1,0→10; 1,.→1.5 (cost);
+  draft 5,0→50; keyboard-then-tap appends. JD-B-107/109/N-6 (dual NCF
+  source + page-1 supplier dependency): banner reverted to the wireframe
+  05b STATIC copy verbatim (the option JD-A-003 originally offered); one
+  NCF source = the Comprobante line; dynamic figures stay in the per-line
+  amounts and Desglose. The static copy is exactly what L17 D3 approved
+  ("static copy from wireframe 05b") — N-3 owner-evidence resolved by that
+  approval; S26 exception note updated. JD-A-008/N-4: keypad also closes on
+  focus of the receive checkbox, Agregar producto and Quitar buttons.
+  JD-B-108/N-5 pins: role="note", ring-1 ring-warn asserted. Verified:
+  compra module 218/218, tsc + eslint clean. JD round 3 (scoped, final)
+  dispatched on the round-2 fix commit.
+  Full unit sweep after the round-2 fix: 2754/2754 green (245 suites).
+- L21: JD round 3 (scoped, final): N-1 (HIGH keypad) VERIFIED FIXED via
+  dynamic simulation (9 scenarios, batched+unbatched); N-4 code fixed (pin
+  added); N-5 verified; N-2 corroborated (static banner vs dynamic
+  Comprobante line) and N-3 corroborated (stale S26/README). JD budget
+  exhausted → deterministic fixes verified by suite. Owner decided the N-2
+  wording ("professional, recent, practical, safe and security option"):
+  banner NCF kind DYNAMIC from tipoNcfParaCompra (same source as the
+  Comprobante line — B01 for MERCANCIA, B11 otherwise); retention law
+  figures stay fixed informational copy (owner-approved). S26 + README
+  rewritten to match; contradiction test replaced by same-source test
+  (type change flips banner AND comprobante in lockstep); checkbox-close
+  pin added. BOARD 05 CLOSED pending final suite run: compra module
+  219 tests. Commits: 64bf370, e3d8307, a45c634, + this fix. Riders:
+  componerValor → shared/ui (gga advisory), keyboard "05" composition
+  pre-existing venta behavior (informational).

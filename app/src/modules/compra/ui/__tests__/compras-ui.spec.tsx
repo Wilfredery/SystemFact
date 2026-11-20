@@ -143,11 +143,20 @@ describe("ComprasScreen — rows and columns (S4)", () => {
 });
 
 describe("ComprasScreen — role gate (S4)", () => {
-  it("gives a view-only caller (Operador/Despachador) no manage markup", () => {
+  it("gives a view-only caller (Operador/Despachador) the read actions but no manage markup", () => {
     montar({ puedeGestionar: false });
 
-    expect(screen.queryByRole("columnheader", { name: "Acciones" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Ver detalle/ })).toBeNull();
+    // JD-A-002: the list stays interactive for view-only roles — Ver detalle
+    // (a read the server grants ROLES_VER_COMPRAS) is shown; the write
+    // actions stay management-gated.
+    expect(
+      screen.getByRole("button", { name: "Ver detalle C-000007" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Editar / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Confirmar / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Recibir / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Cancelar / })).toBeNull();
+    expect(screen.queryByRole("button", { name: "+ Nueva compra" })).toBeNull();
 
     // The read side still works: they receive purchases.
     expect(screen.getByLabelText("Buscar proveedor")).toBeInTheDocument();

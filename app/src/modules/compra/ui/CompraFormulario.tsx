@@ -32,6 +32,7 @@ import {
 import { consultarProductosAction } from "@/modules/producto/http/actions";
 import { listarProveedoresAction } from "@/modules/proveedor/http/actions";
 import type { ProveedorDto } from "@/modules/proveedor/http/shared";
+import { componerValor } from "@/modules/venta/ui/carro";
 import { formatearMonto } from "@/shared/ui/format/money";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,11 +45,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumericKeypad, type TeclaNumerica } from "@/components/ui/numeric-keypad";
 import { DEBOUNCE_BUSQUEDA_MS, etiquetaEstadoCompra } from "./compras-filtros";
 import { CLASE_ALERTA_COMPRA } from "./compra-form-utils";
 import {
   TIPOS_COMPRA_FORMULARIO,
   etiquetaComprobanteCompra,
+  tipoNcfParaCompra,
   lineaCompraVacia,
   lineasParaAccion,
   validarFormularioCompra,
@@ -62,9 +65,10 @@ const MENSAJE_FALLO_ACCION = "No se pudo guardar la compra. Intente de nuevo.";
 const MENSAJE_FALLO_PROVEEDORES = "No se pudo cargar la lista de proveedores.";
 const MENSAJE_FALLO_PRODUCTOS = "No se pudo buscar productos. Intente de nuevo.";
 const CLASE_CONTROL =
-  "min-h-11 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
-const CLASE_AVISO =
-  "rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200";
+  "min-h-11 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink";
+const CLASE_AVISO = "rounded-md bg-success-bg px-4 py-2 text-sm text-success-fg";
+const CLASE_SUCURSAL =
+  "min-h-11 rounded-md border border-line bg-surface-muted px-3 py-2 text-sm text-ink";
 
 const ZONA_SD = "America/Santo_Domingo";
 const PROVEEDORES_POR_CONSULTA = 100;
@@ -137,6 +141,17 @@ export function CompraFormulario({
       : lineasDesdeCompra(compra),
   );
   const [recibirMercancia, setRecibirMercancia] = useState(false);
+  // Touch-first entry (board-05 S28): the shared F0 keypad opens when the
+  // quantity or unit-cost field takes focus; only one is open at a time. The
+  // base snapshot is the value the field showed at focus. `pristinoRef` marks
+  // it UNTOUCHED and is consumed SYNCHRONOUSLY by the first tap (or any
+  // keyboard change) — never by value equality (JD-B-106: a tap equal to the
+  // base must extend). Batched taps still chain correctly because the flag is
+  // read from the ref, not the render closure.
+  const [tecladoActivo, setTecladoActivo] = useState<
+    { readonly clave: string; readonly campo: "cantidad" | "costo" } | null
+  >(null);
+  const pristinoRef = useRef(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmada, setConfirmada] = useState<string | null>(null);
@@ -188,6 +203,47 @@ export function CompraFormulario({
     setLineas((previas) =>
       previas.map((l) => (l.clave === clave ? { ...l, ...cambios } : l)),
     );
+  }
+
+  /** Keypad digit rules (S28, JD-A-001/JD-B-101/JD-B-106): while the field is
+   *  untouched (`pristino`), the first tap REPLACES the value it showed at
+   *  focus (the "1" quantity default, an empty cost, or an edited draft's
+   *  stored value) — never "010.5" and never a silently extended draft; a
+   *  lone "." is the legal decimal state "0."; BSP/CLR delete. After the
+   *  first tap (or any keyboard change) every tap APPENDS — the base is
+   *  consumed once, never re-created by value equality. Quantity keeps 3
+   *  decimals, cost 2. */
+  function aplicarTecla(tecla: TeclaNumerica): void {
+    if (tecladoActivo === null) return;
+    const { clave, campo } = tecladoActivo;
+    const decimales = campo === "cantidad" ? 3 : 2;
+    const pristino = pristinoRef.current;
+    pristinoRef.current = false;
+    setLineas((previas) =>
+      previas.map((previa) => {
+        if (previa.clave !== clave) return previa;
+        const prev = campo === "cantidad" ? previa.cantidad : previa.costoUnitario;
+        let siguiente: string;
+        if (pristino) {
+          if (tecla === ".") siguiente = "0.";
+          else if (tecla === "BSP" || tecla === "CLR") siguiente = "";
+          else siguiente = tecla;
+        } else if (prev === "" && tecla === ".") {
+          siguiente = "0.";
+        } else {
+          siguiente = componerValor(prev, tecla, decimales);
+        }
+        return campo === "cantidad"
+          ? { ...previa, cantidad: siguiente }
+          : { ...previa, costoUnitario: siguiente };
+      }),
+    );
+  }
+
+  /** Non-keypad controls close the keypad on focus (board-04 precedent). */
+  function cerrarTeclado() {
+    setTecladoActivo(null);
+    pristinoRef.current = false;
   }
 
   /** Creates the draft or replaces the edited draft's lines; never confirms. */
@@ -290,7 +346,7 @@ export function CompraFormulario({
           </DialogHeader>
 
           {editando && (
-            <p className="text-sm text-zinc-500" data-testid="compra-estado">
+            <p className="text-sm text-ink-muted" data-testid="compra-estado">
               {compra.correlativoInterno} · {etiquetaEstadoCompra(compra.estado)}
             </p>
           )}
@@ -305,6 +361,7 @@ export function CompraFormulario({
                 onChange={(e) =>
                   setProveedorId(e.target.value === "" ? null : Number(e.target.value))
                 }
+                onFocus={cerrarTeclado}
                 disabled={editando}
                 className={CLASE_CONTROL}
               >
@@ -321,7 +378,7 @@ export function CompraFormulario({
                 )}
               </select>
               {errorProveedores !== null && (
-                <p role="alert" className="text-sm text-red-700 dark:text-red-300">
+                <p role="alert" className="text-sm text-danger">
                   {errorProveedores}
                 </p>
               )}
@@ -334,6 +391,7 @@ export function CompraFormulario({
                 required
                 value={fecha}
                 onChange={(e) => setFecha(e.target.value)}
+                onFocus={cerrarTeclado}
               />
             </div>
           </div>
@@ -345,6 +403,7 @@ export function CompraFormulario({
                 id="compra-tipo"
                 value={tipoCompra}
                 onChange={(e) => setTipoCompra(e.target.value)}
+                onFocus={cerrarTeclado}
                 className={CLASE_CONTROL}
               >
                 {TIPOS_COMPRA_FORMULARIO.map((t) => (
@@ -356,20 +415,36 @@ export function CompraFormulario({
             </div>
             <div className="flex flex-col gap-2">
               <span className="text-sm font-medium">Sucursal</span>
-              <p
-                data-testid="compra-sucursal"
-                className="min-h-11 rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-800 dark:text-zinc-300"
-              >
+              <p data-testid="compra-sucursal" className={CLASE_SUCURSAL}>
                 {sucursalNombre}
               </p>
             </div>
           </div>
 
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-ink-muted">
             Comprobante:{" "}
             <span data-testid="compra-comprobante" className="font-mono">
               {etiquetaComprobanteCompra(tipoCompra)}
             </span>
+          </p>
+
+          {/* Board 05 S26 (wireframe 05b): the nota-fiscal banner is
+              informational copy — a draft has no NCF yet; the server assigns
+              it on confirmation. Owner decision (L21): the NCF kind follows
+              the SAME source as the Comprobante line above
+              (`tipoNcfParaCompra`), so the fiscal copy can never contradict
+              the screen; the retention law figures are fixed informational
+              copy and the applied rates come from configuration on confirm. */}
+          <p
+            role="note"
+            data-testid="compra-nota-fiscal"
+            aria-label="Nota fiscal"
+            className="rounded-md bg-warn-bg ring-1 ring-warn px-4 py-2 text-sm text-ink"
+          >
+            Nota fiscal: NCF tipo {tipoNcfParaCompra(tipoCompra)} (Compra{" "}
+            {tipoNcfParaCompra(tipoCompra) === "B01" ? "Formal" : "Informal"}).
+            Retención ISR 2% (Art. 106 CT). En compras informales (B11) se
+            retiene el 100% del ITBIS (Art. 339 CT).
           </p>
 
           <div className="flex flex-col gap-3">
@@ -380,7 +455,7 @@ export function CompraFormulario({
                 <div
                   key={linea.clave}
                   data-testid={`compra-linea-form-${numero}`}
-                  className="grid grid-cols-2 gap-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-800"
+                  className="grid grid-cols-2 gap-2 rounded-md border border-line p-3"
                 >
                   <div className="col-span-2 flex flex-col gap-2">
                     <BuscadorProducto
@@ -393,6 +468,7 @@ export function CompraFormulario({
                           costoUnitario: linea.costoUnitario,
                         })
                       }
+                      onEnfoqueBuscador={cerrarTeclado}
                     />
                   </div>
 
@@ -404,11 +480,29 @@ export function CompraFormulario({
                       id={`compra-cantidad-${linea.clave}`}
                       inputMode="decimal"
                       value={linea.cantidad}
-                      onChange={(e) =>
-                        actualizarLinea(linea.clave, { cantidad: e.target.value })
-                      }
+                      onFocus={(e) => {
+                        e.currentTarget.select();
+                        pristinoRef.current = true;
+                        setTecladoActivo({
+                          clave: linea.clave,
+                          campo: "cantidad",
+                        });
+                      }}
+                      onChange={(e) => {
+                        actualizarLinea(linea.clave, { cantidad: e.target.value });
+                        // A keyboard change consumes the untouched base too.
+                        pristinoRef.current = false;
+                      }}
                       autoComplete="off"
                     />
+                    {tecladoActivo?.clave === linea.clave &&
+                      tecladoActivo.campo === "cantidad" && (
+                        <NumericKeypad
+                          onTecla={aplicarTecla}
+                          ariaLabel={`Teclado numérico cantidad línea ${numero}`}
+                          className="max-w-64"
+                        />
+                      )}
                   </div>
 
                   <div className="flex flex-col gap-2">
@@ -419,14 +513,33 @@ export function CompraFormulario({
                       id={`compra-costo-${linea.clave}`}
                       inputMode="decimal"
                       value={linea.costoUnitario}
-                      onChange={(e) =>
-                        actualizarLinea(linea.clave, { costoUnitario: e.target.value })
-                      }
+                      onFocus={(e) => {
+                        e.currentTarget.select();
+                        pristinoRef.current = true;
+                        setTecladoActivo({
+                          clave: linea.clave,
+                          campo: "costo",
+                        });
+                      }}
+                      onChange={(e) => {
+                        actualizarLinea(linea.clave, {
+                          costoUnitario: e.target.value,
+                        });
+                        pristinoRef.current = false;
+                      }}
                       autoComplete="off"
                     />
+                    {tecladoActivo?.clave === linea.clave &&
+                      tecladoActivo.campo === "costo" && (
+                        <NumericKeypad
+                          onTecla={aplicarTecla}
+                          ariaLabel={`Teclado numérico costo unitario línea ${numero}`}
+                          className="max-w-64"
+                        />
+                      )}
                   </div>
 
-                  <dl className="col-span-2 grid grid-cols-4 gap-2 text-xs text-zinc-500">
+                  <dl className="col-span-2 grid grid-cols-4 gap-2 text-xs text-ink-muted">
                     <div>
                       <dt>Unidad</dt>
                       <dd data-testid={`compra-linea-${numero}-unidad`}>
@@ -453,7 +566,8 @@ export function CompraFormulario({
                         type="button"
                         aria-label={`Quitar línea ${numero}`}
                         onClick={() => quitarLinea(linea.clave)}
-                        className="min-h-8 rounded-md border border-zinc-300 px-2 text-sm dark:border-zinc-700"
+                        onFocus={cerrarTeclado}
+                        className="min-h-8 rounded-md border border-line px-2 text-sm"
                       >
                         ✕
                       </button>
@@ -464,38 +578,43 @@ export function CompraFormulario({
             })}
           </div>
 
-          <Button type="button" variant="outline" onClick={agregarLinea}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={agregarLinea}
+            onFocus={cerrarTeclado}
+          >
             + Agregar producto
           </Button>
 
           <dl
             aria-label="Desglose fiscal"
-            className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-md bg-zinc-50 p-3 text-sm dark:bg-zinc-900"
+            className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-md bg-surface-muted p-3 text-sm"
           >
-            <dt className="text-zinc-500">Subtotal</dt>
+            <dt className="text-ink-muted">Subtotal</dt>
             <dd data-testid="compra-subtotal" className="text-right tabular-nums">
               {formatearMonto(vistaPrevia.totales.subtotal)}
             </dd>
-            <dt className="text-zinc-500">ITBIS por línea</dt>
+            <dt className="text-ink-muted">ITBIS por línea</dt>
             <dd data-testid="compra-itbis" className="text-right tabular-nums">
               {formatearMonto(vistaPrevia.totales.itbis)}
             </dd>
-            <dt className="text-zinc-500">Ret. ISR</dt>
+            <dt className="text-ink-muted">Ret. ISR</dt>
             <dd data-testid="compra-ret-isr" className="text-right tabular-nums">
               {retenciones === null ? "—" : formatearMonto(retenciones.isr)}
             </dd>
             {esInformal && (
               <>
-                <dt className="text-zinc-500">Ret. ITBIS (B11)</dt>
+                <dt className="text-ink-muted">Ret. ITBIS (B11)</dt>
                 <dd data-testid="compra-ret-itbis" className="text-right tabular-nums">
                   {retenciones === null ? "—" : formatearMonto(retenciones.itbis)}
                 </dd>
               </>
             )}
-            <dt className="font-medium text-zinc-900 dark:text-zinc-50">Total</dt>
+            <dt className="font-medium text-ink">Total</dt>
             <dd
               data-testid="compra-total"
-              className="text-right font-medium tabular-nums text-zinc-900 dark:text-zinc-50"
+              className="text-right font-medium tabular-nums text-ink"
             >
               {formatearMonto(vistaPrevia.totales.total)}
             </dd>
@@ -507,6 +626,7 @@ export function CompraFormulario({
               id="compra-recibir"
               checked={recibirMercancia}
               onChange={(e) => setRecibirMercancia(e.target.checked)}
+              onFocus={cerrarTeclado}
             />
             Recibir mercancía al confirmar compra
           </label>
@@ -552,11 +672,14 @@ function BuscadorProducto({
   numero,
   producto,
   onSeleccionar,
+  onEnfoqueBuscador,
 }: {
   readonly clave: string;
   readonly numero: number;
   readonly producto: ProductoCompraOpcion | null;
   readonly onSeleccionar: (producto: ProductoCompraOpcion) => void;
+  /** Closes the keypad when the search field takes focus (JD-A-008). */
+  readonly onEnfoqueBuscador: () => void;
 }) {
   const [texto, setTexto] = useState("");
   const [resultados, setResultados] = useState<readonly ProductoCompraOpcion[]>([]);
@@ -614,6 +737,7 @@ function BuscadorProducto({
         }}
         placeholder="Buscar producto por código o nombre..."
         autoComplete="off"
+        onFocus={onEnfoqueBuscador}
       />
       {producto !== null && (
         <p data-testid={`compra-linea-${numero}-producto`} className="text-sm">
@@ -621,7 +745,7 @@ function BuscadorProducto({
         </p>
       )}
       {error !== null && (
-        <p role="alert" className="text-sm text-red-700 dark:text-red-300">
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
@@ -636,7 +760,7 @@ function BuscadorProducto({
                   setTexto("");
                   setResultados([]);
                 }}
-                className="w-full rounded-md border border-zinc-300 px-3 py-1 text-left text-sm dark:border-zinc-700"
+                className="w-full rounded-md border border-line px-3 py-1 text-left text-sm"
               >
                 {nombreProducto(p)}
               </button>

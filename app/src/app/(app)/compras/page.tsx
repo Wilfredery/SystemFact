@@ -108,7 +108,7 @@ export default async function ComprasPage({
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Compras</h1>
+        <h1 className="text-2xl font-semibold text-ink">Compras</h1>
       </div>
       <ComprasScreen
         inicial={inicial}

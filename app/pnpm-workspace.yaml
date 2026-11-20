@@ -39,6 +39,13 @@ overrides:
   # (ajv > fast-uri) and through postcss (source-map-js). Patch-level floors.
   fast-uri: '>=3.1.9'
   source-map-js: '>=1.2.2'
+  # 0.39.0 — prod-scope advisory reached through the prisma CLI chain
+  # (prisma > @prisma/config > effect): ReDoS in Schema.TemplateLiteral
+  # compiled regex (GHSA-7589-6fvf-x4pw, audit id 1248071), patched >=3.22.1.
+  # effect@3.20.0 is pinned by @prisma/config's own range; patch-level floor
+  # WITH major selector — a bare floor dragged effect@4 and broke
+  # @prisma/config's loader (postinstall "reading 'right'").
+  'effect@3': '>=3.22.1 <4'
 
   # 0.34.3 - DEV-scope advisories (eslint/jest/ts-jest/shadcn chains; none reaches the prod
   # build, `pnpm audit --prod` was already clean). Selector per MAJOR with an upper bound:

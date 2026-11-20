@@ -56,7 +56,7 @@ export function ConfirmarCancelacionCompra({
           <DialogDescription>{correlativoInterno}</DialogDescription>
         </DialogHeader>
 
-        <p className="text-sm text-zinc-700 dark:text-zinc-300">
+        <p className="text-sm text-ink">
           La compra queda cancelada y no se puede confirmar. No se elimina: su
           correlativo y su historial se conservan.
         </p>

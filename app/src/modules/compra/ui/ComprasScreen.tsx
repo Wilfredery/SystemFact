@@ -7,10 +7,11 @@
  * load (already read through `listarComprasAction`), and every filter or page
  * change re-queries that same action. Pagination is 25 rows per page.
  *
- * Role gate (S3/S4): the page decides whether this island renders the Acciones
- * column at all, from the named role groups behind `obtenerPermisosCompraAction`.
- * Operador and Despachador (who receive purchases) get a read-only list; every
- * write action re-checks the role on the server regardless.
+ * Role gate (S3/S4/S27): the page derives `puedeGestionar` from the named role
+ * groups behind `obtenerPermisosCompraAction`. Operador and Despachador get a
+ * view-only list — the Acciones column keeps only "Ver detalle" (a read the
+ * server grants ROLES_VER_COMPRAS); every write action re-checks the role on
+ * the server regardless.
  *
  * S6: money and quantities arrive as fixed-point STRINGS and are only formatted
  * for display (`formatearMonto`) — no float arithmetic on the client.
@@ -53,16 +54,16 @@ const MENSAJE_FALLO_DETALLE = "No se pudo abrir la compra. Intente de nuevo.";
 const MENSAJE_FALLO_ACCION = "No se pudo completar la acción. Intente de nuevo.";
 
 const CLASE_CONTROL =
-  "min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
+  "min-h-11 rounded-md border border-line bg-surface px-3 text-sm text-ink";
 const CLASE_BOTON =
-  "min-h-11 rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300";
+  "min-h-11 rounded-md border border-line px-4 text-sm font-medium text-ink disabled:opacity-40";
 
-/** Badge tone per frozen purchase state. */
+/** Badge tone per frozen purchase state (F0 tokens). */
 const CLASE_ESTADO: Record<string, string> = {
-  BORRADOR: "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
-  PENDIENTE: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-  RECIBIDA: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-  CANCELADA: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+  BORRADOR: "bg-surface-muted text-ink",
+  PENDIENTE: "bg-warn-bg text-warn",
+  RECIBIDA: "bg-success-bg text-success-fg",
+  CANCELADA: "bg-danger/10 text-danger",
 };
 
 export type ComprasInicial =
@@ -294,7 +295,7 @@ export function ComprasScreen({
       {mensaje !== null && (
         <p
           role="status"
-          className="rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+          className="rounded-md bg-success-bg px-4 py-2 text-sm text-success-fg"
         >
           {mensaje}
         </p>
@@ -348,7 +349,7 @@ export function ComprasScreen({
               setMensaje(null);
               setFormulario({ modo: "crear" });
             }}
-            className="min-h-11 rounded-md bg-zinc-900 px-5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900"
+            className="min-h-11 rounded-md bg-accent px-5 text-sm font-medium text-accent-fg"
           >
             + Nueva compra
           </button>
@@ -356,16 +357,16 @@ export function ComprasScreen({
       </div>
 
       {data.items.length === 0 ? (
-        <p className="rounded-md border border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+        <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
           No hay compras que coincidan con los filtros.
         </p>
       ) : (
         <div
-          className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800"
+          className="overflow-x-auto rounded-lg border border-line"
           aria-busy={cargando}
         >
           <table className="w-full text-left text-sm">
-            <thead className="bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+            <thead className="bg-surface-muted text-xs uppercase text-ink-muted">
               <tr>
                 <th scope="col" className="px-4 py-2">Correlativo</th>
                 <th scope="col" className="px-4 py-2">Proveedor</th>
@@ -374,14 +375,14 @@ export function ComprasScreen({
                 <th scope="col" className="px-4 py-2">Estado</th>
                 <th scope="col" className="px-4 py-2">Fecha</th>
                 <th scope="col" className="px-4 py-2">Total</th>
-                {puedeGestionar && <th scope="col" className="px-4 py-2">Acciones</th>}
+                <th scope="col" className="px-4 py-2">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <tbody className="divide-y divide-line">
               {data.items.map((c) => (
                 <tr key={c.id} data-testid={`compra-fila-${c.id}`}>
                   <td className="px-4 py-2 font-mono text-xs">{c.correlativoInterno}</td>
-                  <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">
+                  <td className="px-4 py-2 font-medium text-ink">
                     {c.proveedorNombre}
                   </td>
                   <td className="px-4 py-2">{etiquetaTipoCompra(c.tipoCompra)}</td>
@@ -397,18 +398,20 @@ export function ComprasScreen({
                   </td>
                   <td className="px-4 py-2">{formatearFechaCompra(c.fecha)}</td>
                   <td className="px-4 py-2 tabular-nums">{formatearMonto(c.total)}</td>
-                  {puedeGestionar && (
-                    <td className="px-4 py-2">
-                      <div className="flex flex-wrap gap-1">
-                        <button
-                          type="button"
-                          aria-label={`Ver detalle ${c.correlativoInterno}`}
-                          onClick={() => void abrirDetalle(c)}
-                          className={CLASE_BOTON}
-                        >
-                          Ver detalle
-                        </button>
-                        {c.estado === "BORRADOR" && (
+                  <td className="px-4 py-2">
+                    <div className="flex flex-wrap gap-1">
+                      {/* Ver detalle is available to every read role (JD-A-002:
+                          ROLES_VER_COMPRAS covers Operador/Despachador); only
+                          the write actions stay management-gated. */}
+                      <button
+                        type="button"
+                        aria-label={`Ver detalle ${c.correlativoInterno}`}
+                        onClick={() => void abrirDetalle(c)}
+                        className={CLASE_BOTON}
+                      >
+                        Ver detalle
+                      </button>
+                      {puedeGestionar && c.estado === "BORRADOR" && (
                           <>
                             <button
                               type="button"
@@ -429,18 +432,19 @@ export function ComprasScreen({
                             </button>
                           </>
                         )}
-                        {c.estado === "PENDIENTE" && (
-                          <button
-                            type="button"
-                            aria-label={`Recibir ${c.correlativoInterno}`}
-                            onClick={() => void recibirFila(c)}
-                            disabled={procesando !== null}
-                            className={CLASE_BOTON}
-                          >
-                            Recibir
-                          </button>
-                        )}
-                        {(c.estado === "BORRADOR" || c.estado === "PENDIENTE") && (
+                      {puedeGestionar && c.estado === "PENDIENTE" && (
+                        <button
+                          type="button"
+                          aria-label={`Recibir ${c.correlativoInterno}`}
+                          onClick={() => void recibirFila(c)}
+                          disabled={procesando !== null}
+                          className={CLASE_BOTON}
+                        >
+                          Recibir
+                        </button>
+                      )}
+                      {puedeGestionar &&
+                        (c.estado === "BORRADOR" || c.estado === "PENDIENTE") && (
                           <button
                             type="button"
                             aria-label={`Cancelar ${c.correlativoInterno}`}
@@ -450,9 +454,8 @@ export function ComprasScreen({
                             Cancelar
                           </button>
                         )}
-                      </div>
-                    </td>
-                  )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -470,7 +473,7 @@ export function ComprasScreen({
         >
           Anterior
         </button>
-        <span className="text-sm text-zinc-500">
+        <span className="text-sm text-ink-muted">
           Página {data.page} de {totalPaginas}
         </span>
         <button
@@ -527,10 +530,10 @@ function DetalleCompra({
   return (
     <section
       aria-label={`Detalle de compra ${detalle.correlativo}`}
-      className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
+      className="rounded-lg border border-line p-4"
     >
       <div className="mb-3 flex items-center justify-between gap-4">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+        <h2 className="text-lg font-semibold text-ink">
           {detalle.correlativo}
         </h2>
         <button type="button" onClick={onCerrar} aria-label="Cerrar detalle" className={CLASE_BOTON}>
@@ -538,7 +541,7 @@ function DetalleCompra({
         </button>
       </div>
 
-      {detalle.estado === "cargando" && <p className="text-sm text-zinc-500">Cargando…</p>}
+      {detalle.estado === "cargando" && <p className="text-sm text-ink-muted">Cargando…</p>}
 
       {detalle.estado === "error" && (
         <p role="alert" className={CLASE_ALERTA_COMPRA}>
@@ -548,27 +551,27 @@ function DetalleCompra({
 
       {detalle.estado === "listo" && (
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-          <dt className="text-zinc-500">Proveedor</dt>
-          <dd className="text-zinc-900 dark:text-zinc-50">{detalle.data.proveedor.nombre}</dd>
-          <dt className="text-zinc-500">Estado</dt>
+          <dt className="text-ink-muted">Proveedor</dt>
+          <dd className="text-ink">{detalle.data.proveedor.nombre}</dd>
+          <dt className="text-ink-muted">Estado</dt>
           <dd>{etiquetaEstadoCompra(detalle.data.estado)}</dd>
-          <dt className="text-zinc-500">Tipo</dt>
+          <dt className="text-ink-muted">Tipo</dt>
           <dd>{etiquetaTipoCompra(detalle.data.tipoCompra)}</dd>
-          <dt className="text-zinc-500">NCF</dt>
+          <dt className="text-ink-muted">NCF</dt>
           <dd className="font-mono text-xs">{detalle.data.ncf ?? "—"}</dd>
-          <dt className="text-zinc-500">Fecha</dt>
+          <dt className="text-ink-muted">Fecha</dt>
           <dd>{formatearFechaCompra(detalle.data.fecha)}</dd>
-          <dt className="text-zinc-500">Subtotal</dt>
+          <dt className="text-ink-muted">Subtotal</dt>
           <dd className="tabular-nums">{formatearMonto(detalle.data.subtotal)}</dd>
-          <dt className="text-zinc-500">ITBIS</dt>
+          <dt className="text-ink-muted">ITBIS</dt>
           <dd className="tabular-nums">{formatearMonto(detalle.data.itbis)}</dd>
-          <dt className="text-zinc-500">Retención ISR</dt>
+          <dt className="text-ink-muted">Retención ISR</dt>
           <dd className="tabular-nums">{formatearMonto(detalle.data.retencionIsr)}</dd>
-          <dt className="text-zinc-500">Retención ITBIS</dt>
+          <dt className="text-ink-muted">Retención ITBIS</dt>
           <dd className="tabular-nums">{formatearMonto(detalle.data.retencionItbis)}</dd>
-          <dt className="text-zinc-500">Total</dt>
+          <dt className="text-ink-muted">Total</dt>
           <dd className="tabular-nums font-medium">{formatearMonto(detalle.data.total)}</dd>
-          <dt className="text-zinc-500">Líneas</dt>
+          <dt className="text-ink-muted">Líneas</dt>
           <dd className="tabular-nums">{detalle.data.lineas.length}</dd>
         </dl>
       )}
