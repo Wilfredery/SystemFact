@@ -1,3 +1,15 @@
+## [0.39.0](https://github.com/Wilfredery/SystemFact/compare/v0.38.2...v0.39.0) (2026-11-20)
+
+### Added
+
+* **compra (UI/UX board 05):** the purchase screens align to the factura.penpot wireframes 05a/05b — a nota-fiscal banner whose NCF kind shares the Comprobante line source (B01 for MERCANCIA, B11 otherwise; retention law figures as owner-approved fixed copy), the shared F0 NumericKeypad on Cantidad and Costo unitario (first tap replaces the focused value, later taps append, keypad closes on non-keypad focus), and "Ver detalle" granted to every read role while write actions stay Administrador-gated.
+* **compra + inventario (F0 retrofit, boards 04–05):** every raw Tailwind palette class in the compra UI (list, form, CxP panel, cancellation dialog, route shell) and the inventario screens maps to system.md tokens, guarded by a source-level no-raw-palette test.
+* **inventario (UI/UX board 04):** consulta and ajuste aligned to wireframe 04 — row menu with ajustar-prefill and exact product history filter, frozen MOTIVOS_AJUSTE enum, NumericKeypad quantities, top-right +Ajustar CTA, Disponible copy, --success foreground token.
+
+### Fixed
+
+* compra draft-edit keypad no longer silently corrupts stored quantities/costs (first-tap-replace rule pinned by tests); two stale lint warnings removed.
+
 ## [0.38.1](https://github.com/Wilfredery/SystemFact/compare/v0.38.0...v0.38.1) (2026-11-19)
 
 ### Fixed
