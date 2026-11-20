@@ -159,8 +159,9 @@ export interface RentabilidadFila {
 /**
  * Compute one product's full rentabilidad row from its raw aggregated inputs (REN-1). Pure Decimal
  * throughout; quantities are re-emitted at the `Decimal(12,3)` scale and money at `Decimal(12,2)`
- * so the screen and the CSV print byte-identical figures (EXP-2 display parity) FOR THE COLUMNS
- * THE CSV CARRIES — the Costo column is screen-only (board 07a S36 [wireframe] drift, JD-B-006).
+ * so the screen and the CSV print byte-identical figures (EXP-2 display parity). The Costo
+ * column rides BOTH surfaces since JD round 1 (board 07a S36); the CSV additionally carries
+ * Inversión/Capital columns the screen shows as KPI tiles.
  */
 export function calcularFilaRentabilidad(insumo: RentabilidadInsumo): RentabilidadFila {
   const precioSalida = calcularPrecioSalida({
