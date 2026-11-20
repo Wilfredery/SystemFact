@@ -396,3 +396,18 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   hint, outlined Exportar PDF token classes, no date input); caja-screen
   spec migrated text-red → text-danger. Caja suites 162/162, tsc + eslint
   clean. JD dual review (T23) pending.
+- L24: JD round 1 (board 06, commit 15da26d): judge A 1 HIGH + 1 MEDIUM +
+  LOWs; judge B 1 WARNING + SUGGESTIONs. Consolidated remediation: the
+  negative-Diferencia class appended text-danger to a string containing
+  text-ink — same-specificity conflict, text-ink wins in the compiled CSS
+  (verified by the judge compiling the project's Tailwind), so the value
+  rendered ink; fixed with a dedicated constant without text-ink, pinned
+  token-exactly (must NOT include text-ink). Dead arbitrary-hex guard fixed
+  ([^\]] inside a regex literal requires ]]); palette class stops at
+  whitespace; substring assertions → token-exact matching; typed fixtures
+  without double casts; scope=col + aria-describedby on the disabled
+  button; disabled contrast adopts the compras recipe; S32 [wireframe]
+  drift tag recorded (both-actions-dark, Exportar-PDF-first kept per
+  owner D2). Verified: caja 162/162, tsc + eslint clean; regex negative
+  check: hex and palette guards both fire. JD round 2 re-judgment
+  dispatched on the remediation commit.
