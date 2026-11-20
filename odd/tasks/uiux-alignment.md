@@ -159,7 +159,10 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   guarded by a source-level no-raw-palette test.
 - S32: D2 restyle — "Cerrar caja" stays disabled with the Próximamente hint
   (the close is a DERIVED report, never stored; ERD eliminated CIERRE_CAJA);
-  "Exportar PDF" stays the outlined token action.
+  "Exportar PDF" stays the outlined token action. [wireframe] DRIFT TAG
+  (JD-B-004): the wireframe draws BOTH actions dark bottom-right with
+  Exportar-PDF-first; kept outlined/disabled and Cerrar-first per the owner
+  D2 decision (L23).
 - S33: D1 kept beyond-wireframe — NO date control on either board; the day
   is server-derived in America/Santo_Domingo (A manual picker would expose
   derived fiscal balances outside their validity). Wireframe-wins does not

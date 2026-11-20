@@ -41,6 +41,11 @@ const CLASE_TITULO = "text-lg font-semibold text-ink";
 const CLASE_SUBTITULO = "text-sm text-ink-muted";
 const CLASE_KPI_TITULO = "text-sm font-medium text-ink-muted";
 const CLASE_KPI_VALOR = "mt-1 text-2xl font-semibold text-ink";
+/** Negative Diferencia (JD-A round 1 HIGH): a dedicated constant WITHOUT
+ *  text-ink — both are single-class colour utilities on the same element and
+ *  text-ink wins in the compiled CSS, so appending text-danger to a string
+ *  containing text-ink rendered the value in ink, not danger. */
+const CLASE_KPI_VALOR_NEGATIVO = "mt-1 text-2xl font-semibold text-danger";
 const CLASE_CELDA = "py-1 pr-4";
 const CLASE_CELDA_NUM = "py-1 pr-4 text-right tabular-nums";
 
@@ -101,7 +106,7 @@ export function CajaScreen({
 }) {
   const diferencia = formatearMontoConSigno(cierre.diferencia);
   const claseDiferencia = esMontoNegativo(cierre.diferencia)
-    ? `${CLASE_KPI_VALOR} text-danger`
+    ? CLASE_KPI_VALOR_NEGATIVO
     : CLASE_KPI_VALOR;
   // The money COUNTED this day: the use case's `totalCobrado`, never a figure re-derived here.
   const cobrosTotal = formatearMonto(cierre.totalCobrado);
@@ -165,10 +170,10 @@ export function CajaScreen({
         >
           <thead className="text-ink-muted">
             <tr>
-              <th className={CLASE_CELDA}>Método</th>
-              <th className={`${CLASE_CELDA} text-right`}>Ventas</th>
-              <th className={`${CLASE_CELDA} text-right`}>Cobros</th>
-              <th className={`${CLASE_CELDA} text-right`}>Total</th>
+              <th scope="col" className={CLASE_CELDA}>Método</th>
+              <th scope="col" className={`${CLASE_CELDA} text-right`}>Ventas</th>
+              <th scope="col" className={`${CLASE_CELDA} text-right`}>Cobros</th>
+              <th scope="col" className={`${CLASE_CELDA} text-right`}>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -227,11 +232,13 @@ export function CajaScreen({
           <button
             type="button"
             disabled
-            className="rounded-md bg-surface-muted px-4 py-2 text-sm font-medium text-ink-muted disabled:opacity-60"
+            aria-describedby="caja-cerrar-hint"
+            className="rounded-md bg-surface-muted px-4 py-2 text-sm font-medium text-ink disabled:opacity-40"
           >
             Cerrar caja
           </button>
           <span
+            id="caja-cerrar-hint"
             data-testid={CAJA_TESTID.cerrarHint}
             className="text-xs text-ink-muted"
           >

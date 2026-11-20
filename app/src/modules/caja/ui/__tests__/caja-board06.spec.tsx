@@ -20,8 +20,7 @@ import path from "node:path";
 import "@testing-library/jest-dom";
 import { render, screen } from "@testing-library/react";
 import { CajaScreen } from "../CajaScreen";
-import type { CierreDiarioDto } from "@/modules/caja/http/shared";
-import type { ResumenDiaDto } from "@/modules/caja/http/shared";
+import type { CierreDiarioDto, ResumenDiaDto } from "@/modules/caja/http/shared";
 
 jest.mock("@/shared/ui/format", () => ({
   formatearFechaSD: (v: string) => v,
@@ -34,16 +33,23 @@ const CIERRE_VACIO: CierreDiarioDto = {
   totalCobrado: "0.00",
   efectivoEsperado: "0.00",
   diferencia: "0.00",
-  metodos: [],
+  metodos: [{ metodo: "EFECTIVO", cobros: "0.00", cantidad: 0 }],
   corte: { cobros: "0.00", devoluciones: "0.00" },
-} as unknown as CierreDiarioDto;
+};
 
-const RESUMEN_VACIO = {
+const RESUMEN_VACIO: ResumenDiaDto = {
+  fechaSD: "2026-11-20",
   ventas: "0.00",
   costoVendido: "0.00",
   margenBruto: "0.00",
   margenPorcentaje: "0.0",
-} as unknown as ResumenDiaDto;
+};
+
+/** Token-exact class assertion (JD round 1: substring `toContain("text-ink")`
+ *  also matches `text-ink-muted`). */
+function tieneClaseExacta(clases: string, token: string): boolean {
+  return clases.split(/\s+/).includes(token);
+}
 
 describe("Board 06 — F0 token retrofit (S31)", () => {
   const RAIZ = path.join(__dirname, "..");
@@ -51,9 +57,9 @@ describe("Board 06 — F0 token retrofit (S31)", () => {
   const FILES = ["CajaScreen.tsx", "caja-formato.ts", path.join(RAIZ, "../../../app/(app)/caja/page.tsx")];
 
   const RAW_PALETTE =
-    /(?:text|bg|border|ring|divide|from|to|placeholder|fill|stroke|shadow|outline|accent|caret|decoration)-(?:zinc|red|emerald|amber|indigo|gray|slate|neutral|stone|white|black|blue|green|sky|orange|violet|purple|yellow|rose|teal|cyan|lime|pink|fuchsia)-?[^\\s"'`]*/g;
+    /(?:text|bg|border|ring|divide|from|to|placeholder|fill|stroke|shadow|outline|accent|caret|decoration)-(?:zinc|red|emerald|amber|indigo|gray|slate|neutral|stone|white|black|blue|green|sky|orange|violet|purple|yellow|rose|teal|cyan|lime|pink|fuchsia)-?[^\s"'`]*/g;
 
-  const ARBITRARY_HEX = /(?:text|bg|border|ring)-\[#[^\\]]+\]/g;
+  const ARBITRARY_HEX = /(?:text|bg|border|ring)-\[#[^\]]+\]/g;
 
   it("keeps zero raw-palette classes in the caja UI files", () => {
     const ofensas = FILES.flatMap((archivo) => {
@@ -76,7 +82,12 @@ describe("Board 06 — F0 token retrofit (S31)", () => {
       />,
     );
     const valor = screen.getByTestId("caja-kpi-diferencia");
-    expect(valor.className).toContain("text-danger");
+    expect(tieneClaseExacta(valor.className, "text-danger")).toBe(true);
+    // JD-A HIGH: the negative variant must NOT carry text-ink — both are
+    // single-class colour utilities and text-ink would win in the compiled CSS.
+    expect(tieneClaseExacta(valor.className, "text-ink")).toBe(false);
+    // Formatting coverage (grouping/padding) lives in caja-screen.spec; this
+    // spec's mock is a pass-through (JD-B-003).
     expect(valor.textContent).toContain("-RD$ 150.00");
   });
 });
@@ -97,8 +108,8 @@ describe("Board 06 — actions row (S32)", () => {
     );
     const enlace = screen.getByRole("link", { name: "Exportar PDF" });
     expect(enlace).toHaveAttribute("href", expect.stringContaining("cierre-pdf"));
-    expect(enlace.className).toContain("border-line");
-    expect(enlace.className).toContain("text-ink");
+    expect(tieneClaseExacta(enlace.className, "border-line")).toBe(true);
+    expect(tieneClaseExacta(enlace.className, "text-ink")).toBe(true);
   });
 });
 
