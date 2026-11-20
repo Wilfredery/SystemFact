@@ -122,7 +122,7 @@ describe("06a KPIs (S1)", () => {
 
     const diferencia = screen.getByTestId("caja-kpi-diferencia");
     expect(diferencia).toHaveTextContent("-RD$ 499.50");
-    expect(diferencia.className).toMatch(/text-red/);
+    expect(diferencia.className).toMatch(/text-danger/);
   });
 
   it("keeps the sign on a negative Efectivo esperado (JD-A-001)", () => {

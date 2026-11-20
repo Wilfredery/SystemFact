@@ -61,7 +61,7 @@ export default async function CajaPage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Caja</h1>
+        <h1 className="text-2xl font-semibold text-ink">Caja</h1>
       </div>
       {datos !== null ? (
         <CajaScreen
@@ -72,7 +72,7 @@ export default async function CajaPage() {
       ) : (
         <p
           role="alert"
-          className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+          className="rounded-md bg-danger/10 px-4 py-2 text-sm text-danger"
         >
           {puedeVer && cierre !== null && !cierre.ok
             ? cierre.error.message

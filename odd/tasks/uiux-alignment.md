@@ -152,6 +152,28 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
 - S30: Per protocol, after implementation the board 05 diff gets JD dual
   review (jd-judge-a/b) before board 06 starts.
 
+## Specs — Board 06 Caja (owner: "go with recommendations", 2026-11-20)
+
+- S31: F1 — full caja UI retrofit to F0 tokens (23 raw-palette sites across
+  CajaScreen.tsx and the route page); negative Diferencia uses text-danger;
+  guarded by a source-level no-raw-palette test.
+- S32: D2 restyle — "Cerrar caja" stays disabled with the Próximamente hint
+  (the close is a DERIVED report, never stored; ERD eliminated CIERRE_CAJA);
+  "Exportar PDF" stays the outlined token action.
+- S33: D1 kept beyond-wireframe — NO date control on either board; the day
+  is server-derived in America/Santo_Domingo (A manual picker would expose
+  derived fiscal balances outside their validity). Wireframe-wins does not
+  apply here: the wireframe draws no behavior for a date control.
+- S34: Roles — Administrador-only per the Etiqueta cards, unchanged (server
+  gate already deny-by-default); audit found zero security/tenancy gaps.
+- S35: Per protocol, the board 06 diff gets JD dual review (jd-judge-a/b).
+
+## Tasks — Board 06
+
+- T21 (S31,S32) code+test — F0 retrofit + token pins in caja-board06.spec.
+- T22 (S33,S34) verify — no-date-control pin + role audit (no code change).
+- T23 (S35) verify — JD dual review of the board 06 diff.
+
 ## Tasks — Board 05
 
 - T16 (S27) code+test — view-only list for Operador/Despachador + admin
@@ -358,3 +380,16 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   Riders for later: componerValor → shared/ui, draft fecha not persisted,
   chip-clear URL sync, banner rates static (config could drift), local
   integration stack restart.
+- L23: BOARD REPORT 06 (Caja) delivered with the check/recheck/evaluate/audit
+  pass; owner "go with recommendations" pre-approved. Module already matches
+  the wireframes closely — all labels/copy verbatim matches pinned by
+  existing tests. Recommendations: D1 kept today-only (no date control, S33);
+  D2 behavior kept (Cerrar caja disabled/derived, Exportar PDF outlined);
+  F1 retrofit of 23 raw-palette sites → tokens (CajaScreen + route page);
+  no keypad (no amount entry); role audit clean (server-side
+  Administrador-only gate, deny-by-default). Implemented: S31–S34, new
+  caja-board06.spec.tsx (5 tests: no-raw-palette guard incl. page.tsx +
+  arbitrary hex, text-danger negative Diferencia pin, disabled Cerrar caja +
+  hint, outlined Exportar PDF token classes, no date input); caja-screen
+  spec migrated text-red → text-danger. Caja suites 162/162, tsc + eslint
+  clean. JD dual review (T23) pending.
