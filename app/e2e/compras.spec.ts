@@ -389,9 +389,15 @@ test.describe("/compras (compras T5)", () => {
       // Playwright's role query pierces. Same rule as the Proveedores screen.
       await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
 
-      // Manage side is absent markup, not a disabled control (S3).
+      // Manage side is absent markup, not a disabled control (S3). The read
+      // action stays (board 05 S27 / JD-A-002: "Ver detalle" is granted to
+      // every ROLES_VER_COMPRAS role), so the Acciones column is visible with
+      // ONLY the read button inside.
       await expect(page.getByRole("button", { name: "+ Nueva compra" })).toHaveCount(0);
-      await expect(page.getByRole("columnheader", { name: "Acciones" })).toHaveCount(0);
+      await expect(page.getByRole("columnheader", { name: "Acciones" })).toHaveCount(1);
+      await expect(
+        page.getByRole("button", { name: /^Ver detalle / }).first(),
+      ).toBeVisible();
       await expect(
         page.getByRole("button", { name: /^(Editar|Confirmar|Recibir|Cancelar) / }),
       ).toHaveCount(0);
