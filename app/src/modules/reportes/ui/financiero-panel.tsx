@@ -249,6 +249,11 @@ export function PanelFinanciero(props: PanelFinancieroProps) {
         </Link>
       </div>
 
+      {pagina.filas.length === 0 &&
+       pagina.resumen.montoActual === "0.00" &&
+       pagina.resumen.montoAnterior === "0.00" ? (
+        <p className="text-sm text-ink-muted">Sin resultados para el filtro seleccionado.</p>
+      ) : (
       <table className="w-full text-left text-sm">
         <thead className={TH}>
           <tr>
@@ -281,6 +286,7 @@ export function PanelFinanciero(props: PanelFinancieroProps) {
           </tr>
         </tbody>
       </table>
+      )}
 
       <p className="mt-4 text-xs text-ink-muted">Filtrado por empresa y sucursal activa</p>
     </section>

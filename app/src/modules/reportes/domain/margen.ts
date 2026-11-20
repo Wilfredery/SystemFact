@@ -159,21 +159,23 @@ export interface RentabilidadFila {
 /**
  * Compute one product's full rentabilidad row from its raw aggregated inputs (REN-1). Pure Decimal
  * throughout; quantities are re-emitted at the `Decimal(12,3)` scale and money at `Decimal(12,2)`
- * so the screen and the CSV print byte-identical figures (EXP-2 display parity).
+ * so the screen and the CSV print byte-identical figures (EXP-2 display parity) FOR THE COLUMNS
+ * THE CSV CARRIES — the Costo column is screen-only (board 07a S36 [wireframe] drift, JD-B-006).
  */
 export function calcularFilaRentabilidad(insumo: RentabilidadInsumo): RentabilidadFila {
   const precioSalida = calcularPrecioSalida({
     ventasBrutas: insumo.ventasBrutas,
     unidadesVendidas: insumo.unidadesVendidas,
   });
-  const margen = calcularMargen({
-    ventasBrutas: insumo.ventasBrutas,
-    unidadesVendidas: insumo.unidadesVendidas,
-    costoPromedio: insumo.costoPromedio,
-  });
-  // Board 07a (S36): the cost of goods sold is the SAME term the margin subtracts —
-  // one definition of "costo" for the screen, never a re-derivation.
-  const costo = dinero(new Decimal(precioSalida).times(new Decimal(insumo.unidadesVendidas)));
+  // Board 07a (S36, JD round 1 CRITICAL JD-B-001/JD-A-001): the Costo column is the
+  // COGS — Salida × costoPromedio, the EXACT term the REN-1 margin formula subtracts
+  // (NOT the weighted selling price: that is ~Ventas and made Ventas − Costo ≈ 0).
+  // JD-B-004: costo is rounded FIRST and the margen derives from the ROUNDED costo, so
+  // the displayed identity Ventas − Costo = Margen holds to the cent for every row.
+  const costo = dinero(
+    new Decimal(insumo.unidadesVendidas).times(new Decimal(insumo.costoPromedio)),
+  );
+  const margen = dinero(new Decimal(insumo.ventasBrutas).minus(new Decimal(costo)));
   const margenPorciento = calcularMargenPorciento({
     margen,
     ventasBrutas: insumo.ventasBrutas,

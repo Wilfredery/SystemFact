@@ -33,6 +33,7 @@ import { PanelRentabilidad } from "../rentabilidad-panel";
 import { PanelFinanciero } from "../financiero-panel";
 import type { Pagina } from "../../domain/reporte-resultado";
 import type { RentabilidadFila } from "../../domain/margen";
+import { calcularFilaRentabilidad, resumirRentabilidad } from "../../domain/margen";
 import type { ComparativaFila } from "../../domain/financiero";
 import type { SeleccionReporte } from "../url";
 import { REPORTE_ID } from "../../domain/catalogo";
@@ -47,20 +48,19 @@ const seleccionComparativa: SeleccionReporte = {
   filtro: { desde: "2026-07-01", hasta: "2026-07-31" },
 };
 
-const FILA: RentabilidadFila = {
+// JD round 1 (JD-A-002): the row is DERIVED from the domain (never hand-typed), so the
+// suite discriminates the real formulas — the costo bug this round caught is what a
+// hand-written fixture hides.
+const FILA: RentabilidadFila = calcularFilaRentabilidad({
   productoId: 1,
   nombre: "Arroz",
-  precioCosto: "60.00",
-  precioSalida: "92.00",
+  costoPromedio: "60.00",
   unidadesVendidas: "50.000",
+  ventasBrutas: "4600.00",
   unidadesCompradas: "50.000",
-  ventas: "4600.00",
-  costo: "3000.00",
   inversion: "2600.00",
-  capital: "300.00",
-  margen: "1600.00",
-  margenPorciento: "34.78",
-};
+  stockActual: "5.000",
+});
 
 function paginaRentabilidad(): Pagina<RentabilidadFila> {
   return {
@@ -69,17 +69,8 @@ function paginaRentabilidad(): Pagina<RentabilidadFila> {
     page: 1,
     pageSize: 25,
     totalPages: 1,
-    resumen: {
-      productos: "1",
-      unidadesVendidas: "50.000",
-      unidadesCompradas: "50.000",
-      ventas: "4600.00",
-      costo: "3000.00",
-      inversion: "2600.00",
-      capital: "300.00",
-      margen: "1600.00",
-      margenPorciento: "34.78",
-    },
+    // The summary map the screen consumes is the label→string projection (EXP-2).
+    resumen: { ...resumirRentabilidad([FILA]) },
   };
 }
 

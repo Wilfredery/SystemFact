@@ -465,3 +465,24 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
 - T27 (S41) verify — JD dual review of the board 07 diff.
 
 ## Tasks — Board 06
+- L27: JD round 1 (board 07, commit b436656): judges converged on a CRITICAL
+  (JD-B-001) / HIGH (JD-A-001) — my costo derivation used precioSalida ×
+  unidadesVendidas (≈ Ventas by construction) instead of the COGS the
+  margin identity subtracts (Salida × costoPromedio); the hand-written
+  fixture hid it (suites 235/235 + 2767/2767 green while wrong).
+  Consolidated remediation: costo = dinero(unidadesVendidas ×
+  costoPromedio); margen derives from the ROUNDED costo so Ventas − Costo =
+  Margen holds to the cent (JD-B-004); discriminating domain tests (row
+  costo, resumen costo, identity test with a 5-dp intermediate term);
+  board07 fixture now DERIVED from calcularFilaRentabilidad/resumirRentabilidad
+  (JD-A-002); Costo column added to the CSV + resumen map (EXP-2 parity,
+  JD-A-003 — CSV contract change is part of S36, noted); 07a TOTAL row from
+  the summary (JD-A-004/JD-B-003); comparativa empty state restored
+  (JD-B-005); comment scoped to CSV-carried columns (JD-B-006). Riders
+  recorded: JD-A-005 (comparativa still runs per-day reads for the CSV —
+  screen-only dead work, keep or skip in a later slice); JD-A-006 copy
+  drifts tagged [wireframe] (row labels "Período actual/anterior" vs month
+  names; KPI sign placement "+RD$"; header suffixes "Ventas/Costo/Margen"
+  without "(RD$)"); JD-A-007 guard covers board-07 files only —
+  dashboard/operacional/fiscal panels are later-board scope (follow-up).
+  Verified: reportes suites + gates GATES_OK; full sweep running.

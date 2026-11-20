@@ -122,6 +122,21 @@ export function PanelRentabilidad({
                 </tr>
               ))}
             </tbody>
+            {/* Board 07a (S36, JD round 1): the wireframe's TOTAL row from the SAME
+                page-independent summary the CSV footer carries (EXP-2). */}
+            <tfoot>
+              <tr className="border-t border-line font-semibold">
+                <td className={TD}>TOTAL</td>
+                <td className={`${TD_R} text-ink-muted`}>—</td>
+                <td className={`${TD_R} text-ink-muted`}>—</td>
+                <td className={TD_R}>{formatearCantidad(r.unidadesVendidas)}</td>
+                <td className={TD_R}>{formatearCantidad(r.unidadesCompradas)}</td>
+                <td className={TD_R}>{formatearMonto(r.ventas)}</td>
+                <td className={TD_R}>{formatearMonto(r.costo)}</td>
+                <td className={TD_R}>{formatearMonto(r.margen)}</td>
+                <td className={TD_R}>{r.margenPorciento}%</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}

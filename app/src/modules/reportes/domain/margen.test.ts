@@ -117,10 +117,25 @@ describe("reportes rentabilidad domain — full row composition (REN-1)", () => 
     expect(fila.unidadesVendidas).toBe("50.000"); // Salida
     expect(fila.unidadesCompradas).toBe("80.000"); // Entrada
     expect(fila.ventas).toBe("4600.00");
+    // Board 07a (S36): COGS = Salida × costoPromedio — the EXACT term the margen
+    // subtracts (JD round 1 CRITICAL JD-B-001: NOT the weighted selling price).
+    expect(fila.costo).toBe("3000.00"); // 50 × 60
     expect(fila.inversion).toBe("4800.00");
     expect(fila.capital).toBe("1800.00"); // 30 × 60
     expect(fila.margen).toBe("1600.00"); // 4600 − 50×60
     expect(fila.margenPorciento).toBe("34.78");
+  });
+
+  it("the displayed identity Ventas − Costo = Margen holds to the cent (JD-B-004)", () => {
+    // A 5-dp intermediate term: 100.00 − 30.005 would round apart if margen and costo
+    // rounded independently; the margen derives from the ROUNDED costo instead.
+    const fila = calcularFilaRentabilidad({
+      ...baseInsumo,
+      ventasBrutas: "100.00",
+      unidadesVendidas: "3.000",
+      costoPromedio: "10.001666666",
+    });
+    expect(new Decimal(fila.ventas).minus(new Decimal(fila.costo)).toFixed(2)).toBe(fila.margen);
   });
 
   it("a purchase-only product (no sales): salida 0, margin 0, % 0, capital still reported", () => {
@@ -165,6 +180,7 @@ describe("reportes rentabilidad domain — report summary (EXP-2 page-independen
     expect(r.unidadesVendidas).toBe("60.000");
     expect(r.unidadesCompradas).toBe("90.000");
     expect(r.ventas).toBe("5600.00");
+    expect(r.costo).toBe("3100.00"); // A 3000 + B 100 (board 07a TOTAL row, S36)
     expect(r.inversion).toBe("4900.00");
     expect(r.capital).toBe("1800.00"); // A 1800 + B 0
     expect(r.margen).toBe("2500.00"); // A 1600 + B (1000 − 10×10 = 900)
