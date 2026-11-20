@@ -1,3 +1,13 @@
+## [0.40.0](https://github.com/Wilfredery/SystemFact/compare/v0.39.0...v0.40.0) (2026-11-20)
+
+### Added
+
+* **caja (UI/UX board 06):** the Cierre diario de caja and Resumen del día screens align to the factura.penpot wireframes 06a/06b — the whole module retrofits to the F0 design-system tokens (23 raw-palette sites, source-level no-raw-palette guard), the negative Diferencia KPI renders with the danger token, the disabled Cerrar caja control adopts the shared disabled recipe, and the method table gains proper column semantics. Behavior decisions kept: the day is server-derived (America/Santo_Domingo, no date control) and Cerrar caja stays disabled — the close is a derived report, never stored.
+
+### Fixed
+
+* CajaScreen converted to a server component (zero interactivity): no client JS shipped for the view (AGENTS.md server-by-default, gga adjudication).
+* Two integration-test dead bindings removed (lint hygiene).
 ## [0.39.0](https://github.com/Wilfredery/SystemFact/compare/v0.38.2...v0.39.0) (2026-11-20)
 
 ### Added

@@ -152,6 +152,31 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
 - S30: Per protocol, after implementation the board 05 diff gets JD dual
   review (jd-judge-a/b) before board 06 starts.
 
+## Specs — Board 06 Caja (owner: "go with recommendations", 2026-11-20)
+
+- S31: F1 — full caja UI retrofit to F0 tokens (23 raw-palette sites across
+  CajaScreen.tsx and the route page); negative Diferencia uses text-danger;
+  guarded by a source-level no-raw-palette test.
+- S32: D2 restyle — "Cerrar caja" stays disabled with the Próximamente hint
+  (the close is a DERIVED report, never stored; ERD eliminated CIERRE_CAJA);
+  "Exportar PDF" stays the outlined token action. [wireframe] DRIFT TAG
+  (JD-B-004): the wireframe draws BOTH actions dark bottom-right with
+  Exportar-PDF-first; kept outlined/disabled and Cerrar-first per the owner
+  D2 decision (L23).
+- S33: D1 kept beyond-wireframe — NO date control on either board; the day
+  is server-derived in America/Santo_Domingo (A manual picker would expose
+  derived fiscal balances outside their validity). Wireframe-wins does not
+  apply here: the wireframe draws no behavior for a date control.
+- S34: Roles — Administrador-only per the Etiqueta cards, unchanged (server
+  gate already deny-by-default); audit found zero security/tenancy gaps.
+- S35: Per protocol, the board 06 diff gets JD dual review (jd-judge-a/b).
+
+## Tasks — Board 06
+
+- T21 (S31,S32) code+test — F0 retrofit + token pins in caja-board06.spec.
+- T22 (S33,S34) verify — no-date-control pin + role audit (no code change).
+- T23 (S35) verify — JD dual review of the board 06 diff.
+
 ## Tasks — Board 05
 
 - T16 (S27) code+test — view-only list for Operador/Despachador + admin
@@ -342,3 +367,57 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   219 tests. Commits: 64bf370, e3d8307, a45c634, + this fix. Riders:
   componerValor → shared/ui (gga advisory), keyboard "05" composition
   pre-existing venta behavior (informational).
+- L22: v0.39.0 shipped end-to-end 2026-11-20 (PR #260 squash-merged as
+  b7c19e9; tag + GitHub Release; Vercel prod deploy — new Vercel CLI
+  promotes directly, "already the current production deployment" 409
+  confirmed it; no migration needed, UI-only). CI gate 9/9 after two real
+  fixes: e2e/compras view-only expectation updated to the shipped S27
+  markup (Acciones column with only Ver detalle), and effect ReDoS
+  GHSA-7589-6fvf-x4pw lifted via 'effect@3': '>=3.22.1 <4' override
+  (patch-level floor with major selector — a bare floor dragged effect@4
+  and broke @prisma/config; audit + prisma validate re-verified, upstream
+  note in PR comment). Prod smoke 10/0/0 (51s). Demo lane 5/0/0 (1.9m).
+  NCF counters by SELECT: B01 36/100, B02 142/200, B04 229/300 — every
+  delta +1 accounted. Local integration lane remains down (sf-postgres
+  stack not running) — pre-existing env rider, CI lane is authoritative.
+  Riders for later: componerValor → shared/ui, draft fecha not persisted,
+  chip-clear URL sync, banner rates static (config could drift), local
+  integration stack restart.
+- L23: BOARD REPORT 06 (Caja) delivered with the check/recheck/evaluate/audit
+  pass; owner "go with recommendations" pre-approved. Module already matches
+  the wireframes closely — all labels/copy verbatim matches pinned by
+  existing tests. Recommendations: D1 kept today-only (no date control, S33);
+  D2 behavior kept (Cerrar caja disabled/derived, Exportar PDF outlined);
+  F1 retrofit of 23 raw-palette sites → tokens (CajaScreen + route page);
+  no keypad (no amount entry); role audit clean (server-side
+  Administrador-only gate, deny-by-default). Implemented: S31–S34, new
+  caja-board06.spec.tsx (5 tests: no-raw-palette guard incl. page.tsx +
+  arbitrary hex, text-danger negative Diferencia pin, disabled Cerrar caja +
+  hint, outlined Exportar PDF token classes, no date input); caja-screen
+  spec migrated text-red → text-danger. Caja suites 162/162, tsc + eslint
+  clean. JD dual review (T23) pending.
+- L24: JD round 1 (board 06, commit 15da26d): judge A 1 HIGH + 1 MEDIUM +
+  LOWs; judge B 1 WARNING + SUGGESTIONs. Consolidated remediation: the
+  negative-Diferencia class appended text-danger to a string containing
+  text-ink — same-specificity conflict, text-ink wins in the compiled CSS
+  (verified by the judge compiling the project's Tailwind), so the value
+  rendered ink; fixed with a dedicated constant without text-ink, pinned
+  token-exactly (must NOT include text-ink). Dead arbitrary-hex guard fixed
+  ([^\]] inside a regex literal requires ]]); palette class stops at
+  whitespace; substring assertions → token-exact matching; typed fixtures
+  without double casts; scope=col + aria-describedby on the disabled
+  button; disabled contrast adopts the compras recipe; S32 [wireframe]
+  drift tag recorded (both-actions-dark, Exportar-PDF-first kept per
+  owner D2). Verified: caja 162/162, tsc + eslint clean; regex negative
+  check: hex and palette guards both fire. JD round 2 re-judgment
+  dispatched on the remediation commit.
+- L25: JD round 2: judge B PASS (all 4 verified with direct evidence); judge
+  A PASS (all 6 round-1 findings verified, compile check confirms
+  text-danger now the only colour rule on the negative Diferencia).
+  Deterministic round-2 residuals fixed inline: N1 hex guard widened to
+  rgb/hsl/oklch; N2 disabled button adopts the full compras recipe
+  (min-h-11 + border-line + text-ink + opacity-40); N3 redundant cast
+  removed; N4 CLASE_KPI_VALOR_NEGATIVO derived from the base constant so it
+  cannot drift. Verified: caja 162/162, tsc + eslint clean.
+  BOARD 06 CLOSED: commits 15da26d, 921c75b, 983d6cd, + this fix. Next:
+  board 07 Reportes.

@@ -1,7 +1,5 @@
-"use client";
-
 /**
- * `/caja` client island (S7): wireframe 06a "Cierre diario de caja" + 06b "Resumen del día".
+ * `/caja` screen (S7): wireframe 06a "Cierre diario de caja" + 06b "Resumen del día".
  *
  * A THIN projection of the two DTOs the server page hands it. It computes NOTHING: the use cases
  * own the SD day, the aggregates and the decimal math, the actions own the role gate, and the
@@ -9,7 +7,10 @@
  * close is always TODAY in America/Santo_Domingo (S1), the date arrives already resolved.
  *
  * The two boards are rendered as SEPARATE sections (S2: never mixed), with "Ver cierre de caja →"
- * anchoring the summary back to the close.
+ * anchoring the summary back to the close. SERVER component by default (AGENTS.md): this projection
+ * has no hooks, no handlers and no browser APIs — no "use client", zero JS shipped for this view
+ * (gga adjudication 2026-11-20; the board-06 spec's original "client island" wording was an
+ * implementation choice, not an owner exception).
  *
  * Deliberate non-affordances from the owner's decisions:
  *  - "Cerrar caja" is DISABLED with a visible "Próximamente" hint (S3). The ERD eliminated
@@ -36,11 +37,17 @@ import {
 } from "./caja-formato";
 import { formatearFechaSD, formatearMonto } from "@/shared/ui/format";
 
-const CLASE_SECCION = "rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900";
-const CLASE_TITULO = "text-lg font-semibold text-zinc-900 dark:text-zinc-50";
-const CLASE_SUBTITULO = "text-sm text-zinc-500 dark:text-zinc-400";
-const CLASE_KPI_TITULO = "text-sm font-medium text-zinc-500 dark:text-zinc-400";
-const CLASE_KPI_VALOR = "mt-1 text-2xl font-semibold text-zinc-900 dark:text-zinc-50";
+const CLASE_SECCION = "rounded-lg border border-line bg-surface p-5";
+const CLASE_TITULO = "text-lg font-semibold text-ink";
+const CLASE_SUBTITULO = "text-sm text-ink-muted";
+const CLASE_KPI_TITULO = "text-sm font-medium text-ink-muted";
+const CLASE_KPI_VALOR = "mt-1 text-2xl font-semibold text-ink";
+/** Negative Diferencia (JD-A round 1 HIGH): a dedicated constant WITHOUT
+ *  text-ink — both are single-class colour utilities on the same element and
+ *  text-ink wins in the compiled CSS, so appending text-danger to a string
+ *  containing text-ink rendered the value in ink, not danger. Derived from
+ *  the base so future edits cannot drift (JD-A round 2 N4). */
+const CLASE_KPI_VALOR_NEGATIVO = CLASE_KPI_VALOR.replace("text-ink", "text-danger");
 const CLASE_CELDA = "py-1 pr-4";
 const CLASE_CELDA_NUM = "py-1 pr-4 text-right tabular-nums";
 
@@ -57,7 +64,7 @@ function Kpi({
   readonly claseValor?: string;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+    <div className="rounded-lg border border-line p-4">
       <p className={CLASE_KPI_TITULO}>{titulo}</p>
       <p data-testid={testid} className={claseValor ?? CLASE_KPI_VALOR}>
         {valor}
@@ -77,11 +84,11 @@ function TerminoCorte({
   readonly testid: string;
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-zinc-100 py-1 last:border-b-0 dark:border-zinc-800">
-      <span className="text-sm text-zinc-600 dark:text-zinc-400">{etiqueta}</span>
+    <div className="flex items-baseline justify-between gap-4 border-b border-line py-1 last:border-b-0">
+      <span className="text-sm text-ink-muted">{etiqueta}</span>
       <span
         data-testid={testid}
-        className="text-sm font-medium tabular-nums text-zinc-900 dark:text-zinc-50"
+        className="text-sm font-medium tabular-nums text-ink"
       >
         {valor}
       </span>
@@ -101,7 +108,7 @@ export function CajaScreen({
 }) {
   const diferencia = formatearMontoConSigno(cierre.diferencia);
   const claseDiferencia = esMontoNegativo(cierre.diferencia)
-    ? `${CLASE_KPI_VALOR} text-red-600 dark:text-red-400`
+    ? CLASE_KPI_VALOR_NEGATIVO
     : CLASE_KPI_VALOR;
   // The money COUNTED this day: the use case's `totalCobrado`, never a figure re-derived here.
   const cobrosTotal = formatearMonto(cierre.totalCobrado);
@@ -157,18 +164,18 @@ export function CajaScreen({
           />
         </div>
 
-        <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">{TEXTO_NOTA_CIERRE}</p>
+        <p className="mt-4 text-xs text-ink-muted">{TEXTO_NOTA_CIERRE}</p>
 
         <table
           data-testid={CAJA_TESTID.tablaMetodos}
           className="mt-6 w-full text-left text-sm"
         >
-          <thead className="text-zinc-500 dark:text-zinc-400">
+          <thead className="text-ink-muted">
             <tr>
-              <th className={CLASE_CELDA}>Método</th>
-              <th className={`${CLASE_CELDA} text-right`}>Ventas</th>
-              <th className={`${CLASE_CELDA} text-right`}>Cobros</th>
-              <th className={`${CLASE_CELDA} text-right`}>Total</th>
+              <th scope="col" className={CLASE_CELDA}>Método</th>
+              <th scope="col" className={`${CLASE_CELDA} text-right`}>Ventas</th>
+              <th scope="col" className={`${CLASE_CELDA} text-right`}>Cobros</th>
+              <th scope="col" className={`${CLASE_CELDA} text-right`}>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -176,7 +183,7 @@ export function CajaScreen({
               <tr
                 key={fila.metodo}
                 data-testid={testIdMetodo(fila.metodo)}
-                className="border-t border-zinc-100 dark:border-zinc-800"
+                className="border-t border-line"
               >
                 <td className={CLASE_CELDA}>{etiquetaMetodo(fila.metodo)}</td>
                 {/* No per-method sales source in the schema (S6): the column stays honest. */}
@@ -187,7 +194,7 @@ export function CajaScreen({
             ))}
             <tr
               data-testid={CAJA_TESTID.totalFila}
-              className="border-t border-zinc-200 font-medium dark:border-zinc-700"
+              className="border-t border-line font-medium"
             >
               <td className={CLASE_CELDA}>Total</td>
               <td className={CLASE_CELDA_NUM}>{formatearMonto(cierre.totalFacturado)}</td>
@@ -199,12 +206,12 @@ export function CajaScreen({
 
         <div
           data-testid={CAJA_TESTID.corte}
-          className="mt-6 rounded-lg bg-zinc-50 p-4 dark:bg-zinc-950"
+          className="mt-6 rounded-lg bg-surface-muted p-4"
         >
-          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          <h3 className="text-sm font-semibold text-ink">
             Corte de caja
           </h3>
-          <p className="mb-3 mt-1 text-xs text-zinc-500 dark:text-zinc-400">{FORMULA_CORTE}</p>
+          <p className="mb-3 mt-1 text-xs text-ink-muted">{FORMULA_CORTE}</p>
           <TerminoCorte
             etiqueta="Cobros"
             valor={formatearMonto(cierre.corte.cobros)}
@@ -227,19 +234,21 @@ export function CajaScreen({
           <button
             type="button"
             disabled
-            className="rounded-md bg-zinc-200 px-4 py-2 text-sm font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+            aria-describedby="caja-cerrar-hint"
+            className="min-h-11 rounded-md border border-line bg-surface-muted px-4 py-2 text-sm font-medium text-ink disabled:opacity-40"
           >
             Cerrar caja
           </button>
           <span
+            id="caja-cerrar-hint"
             data-testid={CAJA_TESTID.cerrarHint}
-            className="text-xs text-zinc-500 dark:text-zinc-400"
+            className="text-xs text-ink-muted"
           >
             {HINT_PROXIMAMENTE}
           </span>
           <Link
             href={RUTA_CIERRE_PDF}
-            className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-900 dark:border-zinc-700 dark:text-zinc-50"
+            className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink"
           >
             Exportar PDF
           </Link>
@@ -278,7 +287,7 @@ export function CajaScreen({
           />
         </div>
         <p className="mt-4">
-          <Link href={`#${ANCLA_CIERRE}`} className="text-sm font-medium text-sky-700 dark:text-sky-400">
+          <Link href={`#${ANCLA_CIERRE}`} className="text-sm font-medium text-link">
             Ver cierre de caja →
           </Link>
         </p>
