@@ -492,3 +492,16 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   (calcularMargen unrounded vs fila-level rounded costo) documented as
   deliberate for the on-screen identity — rider: fold calcularMargen into
   the rounded-cost path or pin the ≤1¢ tolerance in a later slice.
+- L28: JD round 2: judge B PASS (all six verified, dynamic repro of the COGS
+  fix and the cent identity); judge A FAIL (narrow) on DoD test-rule items
+  only — all fixed as a normal commit: discriminating identity test (JD-A
+  N1: the old input didn't discriminate; new input ventas 10.00 / u 1.015 /
+  costo 1.00 → costo 1.02, margen 8.98), integration CSV Costo pins (N3),
+  07a TOTAL row assertion (N4), doc structure dedup + Log section (N5).
+  Stale formula doc (N2) already fixed in 34aa14c. Verified: reportes
+  236/236, tsc + eslint clean. BOARD 07 CLOSED (round budget spent; the
+  residual commit ships under normal review). Riders: comparativa per-day
+  reads feed the CSV (later slice); copy drifts tagged [wireframe];
+  guard scope = board-07 files; CSV contract test pin added. Next: ship
+  v0.41.0 (PR + tag + deploy + smoke), then BOARD REPORT 08 pending owner
+  approval.
