@@ -132,12 +132,14 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   header; sucursal stays read-only (D1) — it is assigned by context, never
   edited in the form.
 - S26: Nota-fiscal banner (D3) added to the compra form per wireframe 05b:
-  static informational copy (from the wireframe), before confirmation there
-  is no NCF yet — the banner explains the fiscal-document behavior. OWNER-
-  APPROVED EXCEPTION (JD-A-004): the retention figures in the banner ("ISR
-  2%", "100% del ITBIS") are fixed wireframe copy, NOT config-derived; the
-  applied rates remain DB parameters on confirm. Banner kind follows the
-  supplier class (JD-A-003), aligned with the Desglose.
+  informational copy before confirmation — a draft has no NCF yet.
+  OWNER DECISION (L21, resolves JD-B-107/JD-A N-2): the banner NCF kind
+  follows the SAME source as the Comprobante line (`tipoNcfParaCompra`:
+  MERCANCIA→B01, else B11) — single NCF source, the copy can never
+  contradict the screen. The retention law figures ("ISR 2%", "100% del
+  ITBIS") are fixed informational copy, NOT config-derived (owner-approved,
+  JD-A-004); applied rates remain DB parameters on confirm; the Desglose
+  carries the dynamic figures.
 - S27: Roles per wireframe (D2): the purchases list is view-only for
   Operador/Despachador; write actions remain admin-gated server-side.
   UI hides what the server denies; no new grants.
@@ -324,3 +326,19 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   JD-B-108/N-5 pins: role="note", ring-1 ring-warn asserted. Verified:
   compra module 218/218, tsc + eslint clean. JD round 3 (scoped, final)
   dispatched on the round-2 fix commit.
+  Full unit sweep after the round-2 fix: 2754/2754 green (245 suites).
+- L21: JD round 3 (scoped, final): N-1 (HIGH keypad) VERIFIED FIXED via
+  dynamic simulation (9 scenarios, batched+unbatched); N-4 code fixed (pin
+  added); N-5 verified; N-2 corroborated (static banner vs dynamic
+  Comprobante line) and N-3 corroborated (stale S26/README). JD budget
+  exhausted → deterministic fixes verified by suite. Owner decided the N-2
+  wording ("professional, recent, practical, safe and security option"):
+  banner NCF kind DYNAMIC from tipoNcfParaCompra (same source as the
+  Comprobante line — B01 for MERCANCIA, B11 otherwise); retention law
+  figures stay fixed informational copy (owner-approved). S26 + README
+  rewritten to match; contradiction test replaced by same-source test
+  (type change flips banner AND comprobante in lockstep); checkbox-close
+  pin added. BOARD 05 CLOSED pending final suite run: compra module
+  219 tests. Commits: 64bf370, e3d8307, a45c634, + this fix. Riders:
+  componerValor → shared/ui (gga advisory), keyboard "05" composition
+  pre-existing venta behavior (informational).

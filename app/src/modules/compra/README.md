@@ -82,12 +82,13 @@ system (`design/factura/system.md`, F0 tokens — no raw Tailwind palette):
   (`obtenerPermisosCompraAction` → `puedeGestionar`) keeps only "Ver detalle"
   in the Acciones column (the server grants that read to ROLES_VER_COMPRAS);
   every write action re-checks the role on the server.
-- **Nota-fiscal banner** (`compra-nota-fiscal`): static informational copy in
-  the create/edit dialog. The kind follows the SUPPLIER class (informal → B11,
-  aligned with the Desglose's Ret. ITBIS (B11) row); the retention figures
-  (ISR 2%, ITBIS 100%) are FIXED wireframe copy — the applied rates come from
-  `ConfiguracionEmpresa` on confirm, and a config change does not rewrite this
-  banner (owner-approved static copy, S26).
+- **Nota-fiscal banner** (`compra-nota-fiscal`): informational copy in the
+  create/edit dialog (a draft has no NCF yet). The NCF kind follows the SAME
+  source as the Comprobante line (`tipoNcfParaCompra`: MERCANCIA→B01, else
+  B11) — owner decision, single NCF source, the copy can never contradict
+  the screen. The retention law figures (ISR 2%, ITBIS 100%) are fixed
+  informational copy; the applied rates come from `ConfiguracionEmpresa` on
+  confirm, and the Desglose carries the dynamic figures.
 - **NumericKeypad** on Cantidad and Costo unitario (touch-first, focus-activated,
   same F0 primitive as venta/cobros/inventario); quantity keeps 3 decimals,
   cost 2.

@@ -51,6 +51,7 @@ import { CLASE_ALERTA_COMPRA } from "./compra-form-utils";
 import {
   TIPOS_COMPRA_FORMULARIO,
   etiquetaComprobanteCompra,
+  tipoNcfParaCompra,
   lineaCompraVacia,
   lineasParaAccion,
   validarFormularioCompra,
@@ -427,21 +428,23 @@ export function CompraFormulario({
             </span>
           </p>
 
-          {/* Board 05 S26 (wireframe 05b): the nota-fiscal banner is the
-              wireframe's STATIC informational copy, verbatim (owner-approved
-              as static copy, L17 D3; JD round 2 JD-B-107/109 — single NCF
-              source: the Comprobante line above; per-line amounts and the
-              Desglose carry the dynamic figures; rates come from
-              configuration on confirm). */}
+          {/* Board 05 S26 (wireframe 05b): the nota-fiscal banner is
+              informational copy — a draft has no NCF yet; the server assigns
+              it on confirmation. Owner decision (L21): the NCF kind follows
+              the SAME source as the Comprobante line above
+              (`tipoNcfParaCompra`), so the fiscal copy can never contradict
+              the screen; the retention law figures are fixed informational
+              copy and the applied rates come from configuration on confirm. */}
           <p
             role="note"
             data-testid="compra-nota-fiscal"
             aria-label="Nota fiscal"
             className="rounded-md bg-warn-bg ring-1 ring-warn px-4 py-2 text-sm text-ink"
           >
-            Nota fiscal: NCF tipo B01 (Compra Formal). Retención ISR 2% (Art.
-            106 CT). En compras informales (B11) se retiene el 100% del ITBIS
-            (Art. 339 CT).
+            Nota fiscal: NCF tipo {tipoNcfParaCompra(tipoCompra)} (Compra{" "}
+            {tipoNcfParaCompra(tipoCompra) === "B01" ? "Formal" : "Informal"}).
+            Retención ISR 2% (Art. 106 CT). En compras informales (B11) se
+            retiene el 100% del ITBIS (Art. 339 CT).
           </p>
 
           <div className="flex flex-col gap-3">

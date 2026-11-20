@@ -159,19 +159,28 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Board 05 — nota-fiscal banner (S26)", () => {
-  it("shows the wireframe 05b static copy verbatim (JD round 2: single NCF source)", async () => {
+  it("names the B01 kind for the default MERCANCIA purchase (owner L21: dynamic kind)", async () => {
     montar();
+    await elegirProveedor("3");
     const banner = await screen.findByTestId("compra-nota-fiscal");
-    expect(banner).toHaveTextContent(
-      "Nota fiscal: NCF tipo B01 (Compra Formal). Retención ISR 2% (Art. 106 CT). En compras informales (B11) se retiene el 100% del ITBIS (Art. 339 CT).",
-    );
+    expect(banner).toHaveTextContent("NCF tipo B01 (Compra Formal)");
+    expect(banner).toHaveTextContent("Retención ISR 2% (Art. 106 CT)");
+    expect(banner).toHaveTextContent("100% del ITBIS (Art. 339 CT)");
   });
 
-  it("keeps the static copy for an informal supplier (JD-B-107: no dual source)", async () => {
+  it("follows the SAME source as the Comprobante line when the type changes (owner L21)", async () => {
     montar();
     await elegirProveedor("4");
     const banner = await screen.findByTestId("compra-nota-fiscal");
     expect(banner).toHaveTextContent("NCF tipo B01 (Compra Formal)");
+
+    const tipo = screen.getByLabelText("Tipo de compra");
+    fireEvent.change(tipo, { target: { value: "SERVICIO_TECNICO" } });
+    expect(screen.getByTestId("compra-nota-fiscal")).toHaveTextContent(
+      "NCF tipo B11 (Compra Informal)",
+    );
+    // Same source as the Comprobante line: never contradictory.
+    expect(screen.getByTestId("compra-comprobante")).toHaveTextContent("B11 — Informal");
   });
 
   it("is a labelled note with the warn ring (JD-A-006/007, JD-B-108 pins)", async () => {
@@ -264,6 +273,22 @@ describe("Board 05 — NumericKeypad entry (S28)", () => {
     ).toBeInTheDocument();
 
     fireEvent.focus(screen.getByLabelText("Fecha"));
+    expect(
+      screen.queryByRole("group", { name: "Teclado numérico cantidad línea 1" }),
+    ).toBeNull();
+  });
+
+  it("closes the keypad when the receive checkbox takes focus (JD round 3 N-4 pin)", async () => {
+    montar();
+    await elegirProveedor("3");
+    await elegirProducto();
+
+    fireEvent.focus(screen.getByLabelText("Cantidad línea 1"));
+    expect(
+      screen.getByRole("group", { name: "Teclado numérico cantidad línea 1" }),
+    ).toBeInTheDocument();
+
+    fireEvent.focus(screen.getByLabelText(/Recibir mercancía/));
     expect(
       screen.queryByRole("group", { name: "Teclado numérico cantidad línea 1" }),
     ).toBeNull();
