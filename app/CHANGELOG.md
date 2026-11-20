@@ -1,3 +1,13 @@
+## [0.41.0](https://github.com/Wilfredery/SystemFact/compare/v0.40.0...v0.41.0) (2026-11-20)
+
+### Added
+
+* **reportes (UI/UX board 07):** Rentabilidad por producto and Analítico comparativo align to the factura.penpot wireframes 07a/07b — the 07a table adopts the wireframe columns (Ventas and Costo in; Inversión/Capital as KPI tiles), with a TOTAL row sourced from the same page-independent summary as the CSV footer; the 07b comparativa renders per-period rows (actual/anterior) with Variación RD$/% columns; KPI tiles on both boards; the whole board scope retrofits to the F0 design-system tokens (31 raw-palette sites, source-level no-raw-palette guard).
+
+### Fixed
+
+* Rentabilidad Costo is the true COGS (Salida × costoPromedio — the term the margin subtracts), and the margen derives from the rounded costo so Ventas − Costo = Margen holds to the cent; the CSV export gains the Costo column for EXP-2 parity (JD dual review round 1, CRITICAL).
+* Reportes route shell error/empty states and the report selector use semantic tokens; two integration dead bindings removed.
 ## [0.40.0](https://github.com/Wilfredery/SystemFact/compare/v0.39.0...v0.40.0) (2026-11-20)
 
 ### Added
