@@ -383,6 +383,8 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   Riders for later: componerValor → shared/ui, draft fecha not persisted,
   chip-clear URL sync, banner rates static (config could drift), local
   integration stack restart.
+## Log — boards 06–07
+
 - L23: BOARD REPORT 06 (Caja) delivered with the check/recheck/evaluate/audit
   pass; owner "go with recommendations" pre-approved. Module already matches
   the wireframes closely — all labels/copy verbatim matches pinned by
@@ -464,7 +466,6 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
 - T26 (S40) code+test — F0 retrofit + guard.
 - T27 (S41) verify — JD dual review of the board 07 diff.
 
-## Tasks — Board 06
 - L27: JD round 1 (board 07, commit b436656): judges converged on a CRITICAL
   (JD-B-001) / HIGH (JD-A-001) — my costo derivation used precioSalida ×
   unidadesVendidas (≈ Ventas by construction) instead of the COGS the
@@ -485,7 +486,7 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   names; KPI sign placement "+RD$"; header suffixes "Ventas/Costo/Margen"
   without "(RD$)"); JD-A-007 guard covers board-07 files only —
   dashboard/operacional/fiscal panels are later-board scope (follow-up).
-  Verified: reportes suites + gates GATES_OK; full sweep running.
+  Verified: reportes suites + gates GATES_OK; full sweep 2768/2768 (later re-verified).
   gga advisories on the remediation (non-blocking): decimal.js confirmed a
   DIRECT runtime dependency (owner rule satisfied); dual margin paths
   (calcularMargen unrounded vs fila-level rounded costo) documented as

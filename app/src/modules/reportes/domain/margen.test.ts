@@ -127,14 +127,18 @@ describe("reportes rentabilidad domain — full row composition (REN-1)", () => 
   });
 
   it("the displayed identity Ventas − Costo = Margen holds to the cent (JD-B-004)", () => {
-    // A 5-dp intermediate term: 100.00 − 30.005 would round apart if margen and costo
-    // rounded independently; the margen derives from the ROUNDED costo instead.
+    // JD-A round 2 N1: this input DISCRIMINATES the two roundings — raw costo is
+    // 1.015×1.00 = 1.015 → dinero() 1.02; margen from the ROUNDED costo = 10.00 − 1.02
+    // = 8.98. Independent rounding (unrounded margen 10 − 1.015 = 8.985 → 8.99)
+    // would give 8.99, so a revert to the old formula FAILS here.
     const fila = calcularFilaRentabilidad({
       ...baseInsumo,
-      ventasBrutas: "100.00",
-      unidadesVendidas: "3.000",
-      costoPromedio: "10.001666666",
+      ventasBrutas: "10.00",
+      unidadesVendidas: "1.015",
+      costoPromedio: "1.00",
     });
+    expect(fila.costo).toBe("1.02");
+    expect(fila.margen).toBe("8.98");
     expect(new Decimal(fila.ventas).minus(new Decimal(fila.costo)).toFixed(2)).toBe(fila.margen);
   });
 

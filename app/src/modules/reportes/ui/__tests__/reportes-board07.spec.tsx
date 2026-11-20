@@ -111,6 +111,11 @@ describe("Board 07 — 07a wireframe columns (S36)", () => {
     const fila = screen.getByText("Arroz").closest("tr");
     expect(fila?.textContent).toContain("4,600.00"); // ventas
     expect(fila?.textContent).toContain("3,000.00"); // costo de lo vendido (the term the margen subtracts)
+    // JD-A round 2 N4: the wireframe's TOTAL row from the page-independent summary.
+    const total = screen.getByText("TOTAL").closest("tr");
+    expect(total?.textContent).toContain("4,600.00"); // Σ ventas (single row here)
+    expect(total?.textContent).toContain("3,000.00"); // Σ costo
+    expect(total?.textContent).toContain("34.78%");
   });
 
   it("keeps Inversión and Capital OUT of the table (they live in the tiles)", () => {

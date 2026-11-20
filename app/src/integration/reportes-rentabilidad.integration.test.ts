@@ -353,6 +353,8 @@ describe("reportes slice D — rentabilidad por producto (real DB, RLS on)", () 
     expect(fila?.unidadesVendidas).toBe("50.000"); // Salida
     expect(fila?.unidadesCompradas).toBe("50.000"); // Entrada
     expect(fila?.ventas).toBe("4600.00");
+    // Board 07a (S36): COGS = Salida × costoPromedio — the term the margen subtracts.
+    expect(fila?.costo).toBe("3000.00"); // 50 × 60
     expect(fila?.inversion).toBe("2600.00"); // 1100 + 1500
     expect(fila?.capital).toBe("300.00"); // 5 × 60
     expect(fila?.margen).toBe("1600.00"); // 4600 − 50×60
@@ -587,6 +589,8 @@ describe("reportes slice D — rentabilidad por producto (real DB, RLS on)", () 
     // The TOTAL footer row equals the screen summary (ΣVentas 4900.00).
     expect(csv.data.csv).toContain("4900.00");
     expect(csv.data.csv).toContain("TOTAL");
+    // Board 07a (JD-A round 2 N3): the CSV carries the Costo column (header + figures).
+    expect(csv.data.csv).toContain("Costo");
   });
 
   // --- EXP-4 / DB-2: a Cobrador is denied the read AND its export; no audit writes -------------
