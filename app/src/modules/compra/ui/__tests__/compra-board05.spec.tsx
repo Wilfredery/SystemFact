@@ -159,31 +159,27 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Board 05 — nota-fiscal banner (S26)", () => {
-  it("shows the 05b banner naming the B01 receipt for a formal purchase", async () => {
+  it("shows the wireframe 05b static copy verbatim (JD round 2: single NCF source)", async () => {
     montar();
-    await elegirProveedor("3");
+    const banner = await screen.findByTestId("compra-nota-fiscal");
+    expect(banner).toHaveTextContent(
+      "Nota fiscal: NCF tipo B01 (Compra Formal). Retención ISR 2% (Art. 106 CT). En compras informales (B11) se retiene el 100% del ITBIS (Art. 339 CT).",
+    );
+  });
+
+  it("keeps the static copy for an informal supplier (JD-B-107: no dual source)", async () => {
+    montar();
+    await elegirProveedor("4");
     const banner = await screen.findByTestId("compra-nota-fiscal");
     expect(banner).toHaveTextContent("NCF tipo B01 (Compra Formal)");
-    expect(banner).toHaveTextContent("Retención ISR 2% (Art. 106 CT)");
-    expect(banner).toHaveTextContent("100% del ITBIS (Art. 339 CT)");
   });
 
-  it("names the B11 receipt in the banner for an informal supplier (JD-A-003)", async () => {
+  it("is a labelled note with the warn ring (JD-A-006/007, JD-B-108 pins)", async () => {
     montar();
-    await elegirProveedor("4");
     const banner = await screen.findByTestId("compra-nota-fiscal");
-    expect(banner).toHaveTextContent("NCF tipo B11 (Compra Informal)");
-    expect(banner).toHaveTextContent("100% del ITBIS (Art. 339 CT)");
-  });
-
-  it("switches the banner kind back to B01 when a formal supplier is chosen", async () => {
-    montar();
-    await elegirProveedor("4");
-    expect(await screen.findByTestId("compra-nota-fiscal")).toHaveTextContent(
-      "NCF tipo B11",
-    );
-    fireEvent.change(screen.getByLabelText("Proveedor"), { target: { value: "3" } });
-    expect(screen.getByTestId("compra-nota-fiscal")).toHaveTextContent("NCF tipo B01");
+    expect(banner).toHaveAttribute("role", "note");
+    expect(banner.className).toContain("ring-1");
+    expect(banner.className).toContain("ring-warn");
   });
 });
 
@@ -271,6 +267,70 @@ describe("Board 05 — NumericKeypad entry (S28)", () => {
     expect(
       screen.queryByRole("group", { name: "Teclado numérico cantidad línea 1" }),
     ).toBeNull();
+  });
+
+  it("tapping a digit equal to the base EXTENDS after the first tap (JD-B-106)", async () => {
+    montar();
+    await elegirProveedor("3");
+    await elegirProducto();
+
+    const input = screen.getByLabelText("Cantidad línea 1");
+    fireEvent.focus(input);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "1" }));
+      fireEvent.click(screen.getByRole("button", { name: "0" }));
+    });
+    expect(input).toHaveValue("10");
+
+    const costo = screen.getByLabelText("Costo unitario línea 1");
+    fireEvent.focus(costo);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "1" }));
+      fireEvent.click(screen.getByRole("button", { name: "." }));
+      fireEvent.click(screen.getByRole("button", { name: "5" }));
+    });
+    expect(costo).toHaveValue("1.5");
+  });
+
+  it("a draft whose value starts with the tapped digit still replaces once (JD-B-106)", async () => {
+    const borrador: CompraDetalleEditable = {
+      ...COMPRA_BORRADOR,
+      lineas: [
+        {
+          productoId: 11,
+          productoNombre: "Arroz Selecto",
+          cantidad: "5",
+          costoUnitario: "5",
+          tasaItbis: "18",
+          itbisLinea: "9.00",
+          subtotalLinea: "25.00",
+        },
+      ],
+    };
+    montar(borrador);
+    await elegirProveedor("3");
+
+    const input = screen.getByLabelText("Cantidad línea 1");
+    fireEvent.focus(input);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "5" }));
+      fireEvent.click(screen.getByRole("button", { name: "0" }));
+    });
+    expect(input).toHaveValue("50");
+  });
+
+  it("keyboard typing consumes the untouched base too (JD-B-101 parity)", async () => {
+    montar();
+    await elegirProveedor("3");
+    await elegirProducto();
+
+    const input = screen.getByLabelText("Cantidad línea 1");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "7" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "5" }));
+    });
+    expect(input).toHaveValue("75");
   });
 
   it("opens the keypad for the unit-cost field and types into it", async () => {

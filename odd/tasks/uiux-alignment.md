@@ -306,3 +306,21 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   broadened (extra palette families, arbitrary hex, page.tsx included);
   JD-A-011 log keypad note corrected here. Verified: compra module
   215/215, tsc + eslint clean. JD round 2 re-judgment pending.
+- L20: JD round 2 re-judgment: both judges verified all 4 JD-B + 7 JD-A
+  fixes but found the remediation itself defective — JD-B-106/A-010-N1
+  (HIGH): value-equality base re-created itself (fresh "1" + taps 1,2 →
+  "2"; draft "5" + taps 5,0 → "0"). Root cause: the untouched flag was
+  compared by value instead of consumed once. Fix: pristinoRef consumed
+  SYNCHRONOUSLY by the first tap (or any keyboard change) — ref, not render
+  closure, so batched taps chain correctly. New pins: 1,0→10; 1,.→1.5 (cost);
+  draft 5,0→50; keyboard-then-tap appends. JD-B-107/109/N-6 (dual NCF
+  source + page-1 supplier dependency): banner reverted to the wireframe
+  05b STATIC copy verbatim (the option JD-A-003 originally offered); one
+  NCF source = the Comprobante line; dynamic figures stay in the per-line
+  amounts and Desglose. The static copy is exactly what L17 D3 approved
+  ("static copy from wireframe 05b") — N-3 owner-evidence resolved by that
+  approval; S26 exception note updated. JD-A-008/N-4: keypad also closes on
+  focus of the receive checkbox, Agregar producto and Quitar buttons.
+  JD-B-108/N-5 pins: role="note", ring-1 ring-warn asserted. Verified:
+  compra module 218/218, tsc + eslint clean. JD round 3 (scoped, final)
+  dispatched on the round-2 fix commit.

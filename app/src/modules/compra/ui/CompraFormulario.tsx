@@ -142,12 +142,15 @@ export function CompraFormulario({
   const [recibirMercancia, setRecibirMercancia] = useState(false);
   // Touch-first entry (board-05 S28): the shared F0 keypad opens when the
   // quantity or unit-cost field takes focus; only one is open at a time. The
-  // base snapshot is the value the field showed at focus: the first keypad
-  // tap REPLACES it (keyboard select-on-focus parity, JD-B-101), so an edited
-  // draft can never be silently extended by one tap.
+  // base snapshot is the value the field showed at focus. `pristinoRef` marks
+  // it UNTOUCHED and is consumed SYNCHRONOUSLY by the first tap (or any
+  // keyboard change) — never by value equality (JD-B-106: a tap equal to the
+  // base must extend). Batched taps still chain correctly because the flag is
+  // read from the ref, not the render closure.
   const [tecladoActivo, setTecladoActivo] = useState<
-    { readonly clave: string; readonly campo: "cantidad" | "costo"; readonly base: string } | null
+    { readonly clave: string; readonly campo: "cantidad" | "costo" } | null
   >(null);
+  const pristinoRef = useRef(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmada, setConfirmada] = useState<string | null>(null);
@@ -201,21 +204,26 @@ export function CompraFormulario({
     );
   }
 
-  /** Keypad digit rules (S28, JD-A-001/JD-B-101): the first tap replaces the
-   *  value the field showed at focus (the untouched "1" quantity default, an
-   *  empty cost, or an edited draft's stored value) — never "010.5" and never
-   *  a silently extended draft. A lone "." is the legal decimal state "0.";
-   *  BSP/CLR delete. Later taps append. Quantity keeps 3 decimals, cost 2. */
+  /** Keypad digit rules (S28, JD-A-001/JD-B-101/JD-B-106): while the field is
+   *  untouched (`pristino`), the first tap REPLACES the value it showed at
+   *  focus (the "1" quantity default, an empty cost, or an edited draft's
+   *  stored value) — never "010.5" and never a silently extended draft; a
+   *  lone "." is the legal decimal state "0."; BSP/CLR delete. After the
+   *  first tap (or any keyboard change) every tap APPENDS — the base is
+   *  consumed once, never re-created by value equality. Quantity keeps 3
+   *  decimals, cost 2. */
   function aplicarTecla(tecla: TeclaNumerica): void {
     if (tecladoActivo === null) return;
-    const { clave, campo, base } = tecladoActivo;
+    const { clave, campo } = tecladoActivo;
     const decimales = campo === "cantidad" ? 3 : 2;
+    const pristino = pristinoRef.current;
+    pristinoRef.current = false;
     setLineas((previas) =>
       previas.map((previa) => {
         if (previa.clave !== clave) return previa;
         const prev = campo === "cantidad" ? previa.cantidad : previa.costoUnitario;
         let siguiente: string;
-        if (prev === base) {
+        if (pristino) {
           if (tecla === ".") siguiente = "0.";
           else if (tecla === "BSP" || tecla === "CLR") siguiente = "";
           else siguiente = tecla;
@@ -234,6 +242,7 @@ export function CompraFormulario({
   /** Non-keypad controls close the keypad on focus (board-04 precedent). */
   function cerrarTeclado() {
     setTecladoActivo(null);
+    pristinoRef.current = false;
   }
 
   /** Creates the draft or replaces the edited draft's lines; never confirms. */
@@ -418,21 +427,20 @@ export function CompraFormulario({
             </span>
           </p>
 
-          {/* Board 05 S26 (wireframe 05b): the nota-fiscal banner is static
-              informational copy — a draft has no NCF yet; the server assigns
-              it on confirmation. The kind follows the SUPPLIER class (JD-A-003:
-              aligned with the Desglose's Ret. ITBIS (B11) row). The retention
-              figures are fixed wireframe copy (owner-approved static banner,
-              S26); the applied rates come from configuration on confirm. */}
+          {/* Board 05 S26 (wireframe 05b): the nota-fiscal banner is the
+              wireframe's STATIC informational copy, verbatim (owner-approved
+              as static copy, L17 D3; JD round 2 JD-B-107/109 — single NCF
+              source: the Comprobante line above; per-line amounts and the
+              Desglose carry the dynamic figures; rates come from
+              configuration on confirm). */}
           <p
             role="note"
             data-testid="compra-nota-fiscal"
             aria-label="Nota fiscal"
             className="rounded-md bg-warn-bg ring-1 ring-warn px-4 py-2 text-sm text-ink"
           >
-            Nota fiscal: NCF tipo {esInformal ? "B11" : "B01"} (Compra{" "}
-            {esInformal ? "Informal" : "Formal"}). Retención ISR 2% (Art. 106
-            CT). En compras informales (B11) se retiene el 100% del ITBIS
+            Nota fiscal: NCF tipo B01 (Compra Formal). Retención ISR 2% (Art.
+            106 CT). En compras informales (B11) se retiene el 100% del ITBIS
             (Art. 339 CT).
           </p>
 
@@ -469,16 +477,18 @@ export function CompraFormulario({
                       id={`compra-cantidad-${linea.clave}`}
                       inputMode="decimal"
                       value={linea.cantidad}
-                      onChange={(e) =>
-                        actualizarLinea(linea.clave, { cantidad: e.target.value })
-                      }
                       onFocus={(e) => {
                         e.currentTarget.select();
+                        pristinoRef.current = true;
                         setTecladoActivo({
                           clave: linea.clave,
                           campo: "cantidad",
-                          base: linea.cantidad,
                         });
+                      }}
+                      onChange={(e) => {
+                        actualizarLinea(linea.clave, { cantidad: e.target.value });
+                        // A keyboard change consumes the untouched base too.
+                        pristinoRef.current = false;
                       }}
                       autoComplete="off"
                     />
@@ -500,16 +510,19 @@ export function CompraFormulario({
                       id={`compra-costo-${linea.clave}`}
                       inputMode="decimal"
                       value={linea.costoUnitario}
-                      onChange={(e) =>
-                        actualizarLinea(linea.clave, { costoUnitario: e.target.value })
-                      }
                       onFocus={(e) => {
                         e.currentTarget.select();
+                        pristinoRef.current = true;
                         setTecladoActivo({
                           clave: linea.clave,
                           campo: "costo",
-                          base: linea.costoUnitario,
                         });
+                      }}
+                      onChange={(e) => {
+                        actualizarLinea(linea.clave, {
+                          costoUnitario: e.target.value,
+                        });
+                        pristinoRef.current = false;
                       }}
                       autoComplete="off"
                     />
@@ -550,6 +563,7 @@ export function CompraFormulario({
                         type="button"
                         aria-label={`Quitar línea ${numero}`}
                         onClick={() => quitarLinea(linea.clave)}
+                        onFocus={cerrarTeclado}
                         className="min-h-8 rounded-md border border-line px-2 text-sm"
                       >
                         ✕
@@ -561,7 +575,12 @@ export function CompraFormulario({
             })}
           </div>
 
-          <Button type="button" variant="outline" onClick={agregarLinea}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={agregarLinea}
+            onFocus={cerrarTeclado}
+          >
             + Agregar producto
           </Button>
 
@@ -604,6 +623,7 @@ export function CompraFormulario({
               id="compra-recibir"
               checked={recibirMercancia}
               onChange={(e) => setRecibirMercancia(e.target.checked)}
+              onFocus={cerrarTeclado}
             />
             Recibir mercancía al confirmar compra
           </label>
