@@ -51,7 +51,6 @@ import { CLASE_ALERTA_COMPRA } from "./compra-form-utils";
 import {
   TIPOS_COMPRA_FORMULARIO,
   etiquetaComprobanteCompra,
-  tipoNcfParaCompra,
   lineaCompraVacia,
   lineasParaAccion,
   validarFormularioCompra,
@@ -142,9 +141,12 @@ export function CompraFormulario({
   );
   const [recibirMercancia, setRecibirMercancia] = useState(false);
   // Touch-first entry (board-05 S28): the shared F0 keypad opens when the
-  // quantity or unit-cost field takes focus; only one is open at a time.
+  // quantity or unit-cost field takes focus; only one is open at a time. The
+  // base snapshot is the value the field showed at focus: the first keypad
+  // tap REPLACES it (keyboard select-on-focus parity, JD-B-101), so an edited
+  // draft can never be silently extended by one tap.
   const [tecladoActivo, setTecladoActivo] = useState<
-    { readonly clave: string; readonly campo: "cantidad" | "costo" } | null
+    { readonly clave: string; readonly campo: "cantidad" | "costo"; readonly base: string } | null
   >(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -199,22 +201,22 @@ export function CompraFormulario({
     );
   }
 
-  /** Keypad digit rules (S28): the line's untouched default ("1" quantity /
-   *  empty cost) behaves like the ajuste base — the first digit replaces it
-   *  (never "010.5"), a lone "." is a legal decimal state, BSP/CLR delete.
-   *  Quantity keeps 3 decimals, cost 2. */
+  /** Keypad digit rules (S28, JD-A-001/JD-B-101): the first tap replaces the
+   *  value the field showed at focus (the untouched "1" quantity default, an
+   *  empty cost, or an edited draft's stored value) — never "010.5" and never
+   *  a silently extended draft. A lone "." is the legal decimal state "0.";
+   *  BSP/CLR delete. Later taps append. Quantity keeps 3 decimals, cost 2. */
   function aplicarTecla(tecla: TeclaNumerica): void {
     if (tecladoActivo === null) return;
-    const { clave, campo } = tecladoActivo;
+    const { clave, campo, base } = tecladoActivo;
     const decimales = campo === "cantidad" ? 3 : 2;
     setLineas((previas) =>
       previas.map((previa) => {
         if (previa.clave !== clave) return previa;
         const prev = campo === "cantidad" ? previa.cantidad : previa.costoUnitario;
-        const base = campo === "cantidad" ? "1" : "";
         let siguiente: string;
         if (prev === base) {
-          if (tecla === ".") siguiente = `${base || "0"}.`;
+          if (tecla === ".") siguiente = "0.";
           else if (tecla === "BSP" || tecla === "CLR") siguiente = "";
           else siguiente = tecla;
         } else if (prev === "" && tecla === ".") {
@@ -227,6 +229,11 @@ export function CompraFormulario({
           : { ...previa, costoUnitario: siguiente };
       }),
     );
+  }
+
+  /** Non-keypad controls close the keypad on focus (board-04 precedent). */
+  function cerrarTeclado() {
+    setTecladoActivo(null);
   }
 
   /** Creates the draft or replaces the edited draft's lines; never confirms. */
@@ -344,6 +351,7 @@ export function CompraFormulario({
                 onChange={(e) =>
                   setProveedorId(e.target.value === "" ? null : Number(e.target.value))
                 }
+                onFocus={cerrarTeclado}
                 disabled={editando}
                 className={CLASE_CONTROL}
               >
@@ -373,6 +381,7 @@ export function CompraFormulario({
                 required
                 value={fecha}
                 onChange={(e) => setFecha(e.target.value)}
+                onFocus={cerrarTeclado}
               />
             </div>
           </div>
@@ -384,6 +393,7 @@ export function CompraFormulario({
                 id="compra-tipo"
                 value={tipoCompra}
                 onChange={(e) => setTipoCompra(e.target.value)}
+                onFocus={cerrarTeclado}
                 className={CLASE_CONTROL}
               >
                 {TIPOS_COMPRA_FORMULARIO.map((t) => (
@@ -410,16 +420,20 @@ export function CompraFormulario({
 
           {/* Board 05 S26 (wireframe 05b): the nota-fiscal banner is static
               informational copy — a draft has no NCF yet; the server assigns
-              it on confirmation. */}
+              it on confirmation. The kind follows the SUPPLIER class (JD-A-003:
+              aligned with the Desglose's Ret. ITBIS (B11) row). The retention
+              figures are fixed wireframe copy (owner-approved static banner,
+              S26); the applied rates come from configuration on confirm. */}
           <p
+            role="note"
             data-testid="compra-nota-fiscal"
             aria-label="Nota fiscal"
-            className="rounded-md bg-warn-bg ring-warn px-4 py-2 text-sm text-ink"
+            className="rounded-md bg-warn-bg ring-1 ring-warn px-4 py-2 text-sm text-ink"
           >
-            Nota fiscal: NCF tipo {tipoNcfParaCompra(tipoCompra)} (Compra{" "}
-            {tipoNcfParaCompra(tipoCompra) === "B01" ? "Formal" : "Informal"}).
-            Retención ISR 2% (Art. 106 CT). En compras informales (B11) se
-            retiene el 100% del ITBIS (Art. 339 CT).
+            Nota fiscal: NCF tipo {esInformal ? "B11" : "B01"} (Compra{" "}
+            {esInformal ? "Informal" : "Formal"}). Retención ISR 2% (Art. 106
+            CT). En compras informales (B11) se retiene el 100% del ITBIS
+            (Art. 339 CT).
           </p>
 
           <div className="flex flex-col gap-3">
@@ -443,6 +457,7 @@ export function CompraFormulario({
                           costoUnitario: linea.costoUnitario,
                         })
                       }
+                      onEnfoqueBuscador={cerrarTeclado}
                     />
                   </div>
 
@@ -459,7 +474,11 @@ export function CompraFormulario({
                       }
                       onFocus={(e) => {
                         e.currentTarget.select();
-                        setTecladoActivo({ clave: linea.clave, campo: "cantidad" });
+                        setTecladoActivo({
+                          clave: linea.clave,
+                          campo: "cantidad",
+                          base: linea.cantidad,
+                        });
                       }}
                       autoComplete="off"
                     />
@@ -486,7 +505,11 @@ export function CompraFormulario({
                       }
                       onFocus={(e) => {
                         e.currentTarget.select();
-                        setTecladoActivo({ clave: linea.clave, campo: "costo" });
+                        setTecladoActivo({
+                          clave: linea.clave,
+                          campo: "costo",
+                          base: linea.costoUnitario,
+                        });
                       }}
                       autoComplete="off"
                     />
@@ -626,11 +649,14 @@ function BuscadorProducto({
   numero,
   producto,
   onSeleccionar,
+  onEnfoqueBuscador,
 }: {
   readonly clave: string;
   readonly numero: number;
   readonly producto: ProductoCompraOpcion | null;
   readonly onSeleccionar: (producto: ProductoCompraOpcion) => void;
+  /** Closes the keypad when the search field takes focus (JD-A-008). */
+  readonly onEnfoqueBuscador: () => void;
 }) {
   const [texto, setTexto] = useState("");
   const [resultados, setResultados] = useState<readonly ProductoCompraOpcion[]>([]);
@@ -688,6 +714,7 @@ function BuscadorProducto({
         }}
         placeholder="Buscar producto por código o nombre..."
         autoComplete="off"
+        onFocus={onEnfoqueBuscador}
       />
       {producto !== null && (
         <p data-testid={`compra-linea-${numero}-producto`} className="text-sm">

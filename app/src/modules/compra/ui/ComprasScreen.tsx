@@ -7,10 +7,11 @@
  * load (already read through `listarComprasAction`), and every filter or page
  * change re-queries that same action. Pagination is 25 rows per page.
  *
- * Role gate (S3/S4): the page decides whether this island renders the Acciones
- * column at all, from the named role groups behind `obtenerPermisosCompraAction`.
- * Operador and Despachador (who receive purchases) get a read-only list; every
- * write action re-checks the role on the server regardless.
+ * Role gate (S3/S4/S27): the page derives `puedeGestionar` from the named role
+ * groups behind `obtenerPermisosCompraAction`. Operador and Despachador get a
+ * view-only list — the Acciones column keeps only "Ver detalle" (a read the
+ * server grants ROLES_VER_COMPRAS); every write action re-checks the role on
+ * the server regardless.
  *
  * S6: money and quantities arrive as fixed-point STRINGS and are only formatted
  * for display (`formatearMonto`) — no float arithmetic on the client.
@@ -374,7 +375,7 @@ export function ComprasScreen({
                 <th scope="col" className="px-4 py-2">Estado</th>
                 <th scope="col" className="px-4 py-2">Fecha</th>
                 <th scope="col" className="px-4 py-2">Total</th>
-                {puedeGestionar && <th scope="col" className="px-4 py-2">Acciones</th>}
+                <th scope="col" className="px-4 py-2">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -397,18 +398,20 @@ export function ComprasScreen({
                   </td>
                   <td className="px-4 py-2">{formatearFechaCompra(c.fecha)}</td>
                   <td className="px-4 py-2 tabular-nums">{formatearMonto(c.total)}</td>
-                  {puedeGestionar && (
-                    <td className="px-4 py-2">
-                      <div className="flex flex-wrap gap-1">
-                        <button
-                          type="button"
-                          aria-label={`Ver detalle ${c.correlativoInterno}`}
-                          onClick={() => void abrirDetalle(c)}
-                          className={CLASE_BOTON}
-                        >
-                          Ver detalle
-                        </button>
-                        {c.estado === "BORRADOR" && (
+                  <td className="px-4 py-2">
+                    <div className="flex flex-wrap gap-1">
+                      {/* Ver detalle is available to every read role (JD-A-002:
+                          ROLES_VER_COMPRAS covers Operador/Despachador); only
+                          the write actions stay management-gated. */}
+                      <button
+                        type="button"
+                        aria-label={`Ver detalle ${c.correlativoInterno}`}
+                        onClick={() => void abrirDetalle(c)}
+                        className={CLASE_BOTON}
+                      >
+                        Ver detalle
+                      </button>
+                      {puedeGestionar && c.estado === "BORRADOR" && (
                           <>
                             <button
                               type="button"
@@ -429,18 +432,19 @@ export function ComprasScreen({
                             </button>
                           </>
                         )}
-                        {c.estado === "PENDIENTE" && (
-                          <button
-                            type="button"
-                            aria-label={`Recibir ${c.correlativoInterno}`}
-                            onClick={() => void recibirFila(c)}
-                            disabled={procesando !== null}
-                            className={CLASE_BOTON}
-                          >
-                            Recibir
-                          </button>
-                        )}
-                        {(c.estado === "BORRADOR" || c.estado === "PENDIENTE") && (
+                      {puedeGestionar && c.estado === "PENDIENTE" && (
+                        <button
+                          type="button"
+                          aria-label={`Recibir ${c.correlativoInterno}`}
+                          onClick={() => void recibirFila(c)}
+                          disabled={procesando !== null}
+                          className={CLASE_BOTON}
+                        >
+                          Recibir
+                        </button>
+                      )}
+                      {puedeGestionar &&
+                        (c.estado === "BORRADOR" || c.estado === "PENDIENTE") && (
                           <button
                             type="button"
                             aria-label={`Cancelar ${c.correlativoInterno}`}
@@ -450,9 +454,8 @@ export function ComprasScreen({
                             Cancelar
                           </button>
                         )}
-                      </div>
-                    </td>
-                  )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

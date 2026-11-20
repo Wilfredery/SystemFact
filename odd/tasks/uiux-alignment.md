@@ -133,7 +133,11 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   edited in the form.
 - S26: Nota-fiscal banner (D3) added to the compra form per wireframe 05b:
   static informational copy (from the wireframe), before confirmation there
-  is no NCF yet — the banner explains the fiscal-document behavior.
+  is no NCF yet — the banner explains the fiscal-document behavior. OWNER-
+  APPROVED EXCEPTION (JD-A-004): the retention figures in the banner ("ISR
+  2%", "100% del ITBIS") are fixed wireframe copy, NOT config-derived; the
+  applied rates remain DB parameters on confirm. Banner kind follows the
+  supplier class (JD-A-003), aligned with the Desglose.
 - S27: Roles per wireframe (D2): the purchases list is view-only for
   Operador/Despachador; write actions remain admin-gated server-side.
   UI hides what the server denies; no new grants.
@@ -285,3 +289,20 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   quantity default "1" / empty cost behave as the keypad base (first digit
   replaces), lone "." → "0.", BSP/CLR delete; componerValor reused from
   venta/ui/carro. JD dual review (T20) pending.
+- L19: JD round 1 (board 05, commit 64bf370): judge A 5 MEDIUM + 6 LOW, judge
+  B 1 HIGH + 4 LOW. Consolidated remediation: JD-B-101/A-010 keypad base
+  snapshot at focus (first tap REPLACES the focused-at value — stored draft
+  can never be silently extended; later taps append); JD-A-001 "." on the
+  untouched quantity now yields "0." (both fields); JD-A-002 "Ver detalle"
+  rendered for every read role (Acciones column always present; Editar/
+  Confirmar/Recibir/Cancelar stay puedeGestionar-gated; view-only tests
+  updated in compras-ui/compras-page); JD-A-003 banner kind from the
+  SUPPLIER class (esInformal → B11, aligned with Desglose); JD-A-004
+  retention figures recorded as owner-approved static copy (S26 exception
+  + README); JD-A-005/B-102 tautology fixed (real B11 assertions via
+  informal supplier + back-to-B01 switch test); JD-A-006/B-104 banner
+  ring-1 ring-warn; JD-A-007 role="note"; JD-A-008/B-105 keypad closes on
+  focus of supplier/fecha/tipo/product-search; JD-A-009/B-103 guard
+  broadened (extra palette families, arbitrary hex, page.tsx included);
+  JD-A-011 log keypad note corrected here. Verified: compra module
+  215/215, tsc + eslint clean. JD round 2 re-judgment pending.

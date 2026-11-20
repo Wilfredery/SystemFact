@@ -58,6 +58,17 @@ const PROVEEDOR_FORMAL = {
   activo: true,
 };
 
+const PROVEEDOR_INFORMAL = {
+  id: 4,
+  nombre: "Suplidor Sur",
+  contacto: "Luis",
+  telefono: "8091111111",
+  rnc: null,
+  tipoProveedor: "INFORMAL",
+  tipoPersona: "FISICA",
+  activo: true,
+};
+
 const PRODUCTO = {
   id: 11,
   codigo: "A001",
@@ -83,7 +94,17 @@ const COMPRA_BORRADOR: CompraDetalleEditable = {
   tipoCompra: "MERCANCIA",
   fecha: "2026-11-10T14:00:00.000Z",
   proveedor: { id: 3, nombre: "Distribuidora Norte" },
-  lineas: [],
+  lineas: [
+    {
+      productoId: 11,
+      productoNombre: "Arroz Selecto",
+      cantidad: "2",
+      costoUnitario: "10",
+      tasaItbis: "18",
+      itbisLinea: "3.60",
+      subtotalLinea: "20.00",
+    },
+  ],
 };
 
 function montar(compra: CompraDetalleEditable | null = null) {
@@ -120,7 +141,7 @@ async function elegirProducto() {
 beforeEach(() => {
   mockProveedores.mockResolvedValue({
     ok: true,
-    data: { items: [PROVEEDOR_FORMAL], total: 1, page: 1 },
+    data: { items: [PROVEEDOR_FORMAL, PROVEEDOR_INFORMAL], total: 2, page: 1 },
   });
   jest.mocked(consultarProductosAction).mockResolvedValue({
     ok: true,
@@ -147,15 +168,22 @@ describe("Board 05 — nota-fiscal banner (S26)", () => {
     expect(banner).toHaveTextContent("100% del ITBIS (Art. 339 CT)");
   });
 
-  it("names the B11 receipt in the banner for an informal supplier", async () => {
+  it("names the B11 receipt in the banner for an informal supplier (JD-A-003)", async () => {
     montar();
-    // Informal supplier arrives via the same select (second fixture omitted
-    // here; the B11 copy comes from the receipt kind, not the supplier list).
+    await elegirProveedor("4");
     const banner = await screen.findByTestId("compra-nota-fiscal");
-    // Draft edit of an informal receipt path is covered by the B11 fixture in
-    // compra-formulario.spec.tsx; here the banner must name the chosen kind.
-    expect(banner).toBeInTheDocument();
-    void COMPRA_BORRADOR;
+    expect(banner).toHaveTextContent("NCF tipo B11 (Compra Informal)");
+    expect(banner).toHaveTextContent("100% del ITBIS (Art. 339 CT)");
+  });
+
+  it("switches the banner kind back to B01 when a formal supplier is chosen", async () => {
+    montar();
+    await elegirProveedor("4");
+    expect(await screen.findByTestId("compra-nota-fiscal")).toHaveTextContent(
+      "NCF tipo B11",
+    );
+    fireEvent.change(screen.getByLabelText("Proveedor"), { target: { value: "3" } });
+    expect(screen.getByTestId("compra-nota-fiscal")).toHaveTextContent("NCF tipo B01");
   });
 });
 
@@ -177,6 +205,72 @@ describe("Board 05 — NumericKeypad entry (S28)", () => {
       fireEvent.click(screen.getByRole("button", { name: "5" }));
     });
     expect(screen.getByLabelText("Cantidad línea 1")).toHaveValue("2.5");
+  });
+
+  it('the first tap of "." on the untouched quantity yields "0." (JD-A-001)', async () => {
+    montar();
+    await elegirProveedor("3");
+    await elegirProducto();
+
+    fireEvent.focus(screen.getByLabelText("Cantidad línea 1"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "." }));
+    });
+    expect(screen.getByLabelText("Cantidad línea 1")).toHaveValue("0.");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "5" }));
+    });
+    expect(screen.getByLabelText("Cantidad línea 1")).toHaveValue("0.5");
+  });
+
+  it("an edited draft's stored value is REPLACED by the first tap, never extended (JD-B-101)", async () => {
+    montar(COMPRA_BORRADOR);
+    await elegirProveedor("3");
+
+    const input = screen.getByLabelText("Cantidad línea 1");
+    fireEvent.focus(input);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "5" }));
+    });
+    expect(input).toHaveValue("5");
+
+    const costo = screen.getByLabelText("Costo unitario línea 1");
+    fireEvent.focus(costo);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "9" }));
+    });
+    expect(costo).toHaveValue("9");
+  });
+
+  it("later taps append after the replacement (JD-B-101)", async () => {
+    montar(COMPRA_BORRADOR);
+    await elegirProveedor("3");
+
+    const input = screen.getByLabelText("Cantidad línea 1");
+    fireEvent.focus(input);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "3" }));
+      fireEvent.click(screen.getByRole("button", { name: "." }));
+      fireEvent.click(screen.getByRole("button", { name: "5" }));
+    });
+    expect(input).toHaveValue("3.5");
+  });
+
+  it("closes the keypad when a non-keypad control takes focus (JD-A-008)", async () => {
+    montar();
+    await elegirProveedor("3");
+    await elegirProducto();
+
+    fireEvent.focus(screen.getByLabelText("Cantidad línea 1"));
+    expect(
+      screen.getByRole("group", { name: "Teclado numérico cantidad línea 1" }),
+    ).toBeInTheDocument();
+
+    fireEvent.focus(screen.getByLabelText("Fecha"));
+    expect(
+      screen.queryByRole("group", { name: "Teclado numérico cantidad línea 1" }),
+    ).toBeNull();
   });
 
   it("opens the keypad for the unit-cost field and types into it", async () => {
@@ -206,15 +300,19 @@ describe("Board 05 — F0 token retrofit (S29)", () => {
     "CxpPanel.tsx",
     "ConfirmarCancelacionCompra.tsx",
     "compra-form-utils.ts",
+    // The route shell is part of the retrofit (JD-B-103).
+    path.join(RAIZ, "../../../app/(app)/compras/page.tsx"),
   ];
 
   const RAW_PALETTE =
-    /(?:text|bg|border|ring|divide|from|to|placeholder)-(?:zinc|red|emerald|amber|indigo|gray|slate|neutral|stone|white|black|blue|green)-?[^\s"'`]*/g;
+    /(?:text|bg|border|ring|divide|from|to|placeholder|fill|stroke|shadow|outline|accent|caret|decoration)-(?:zinc|red|emerald|amber|indigo|gray|slate|neutral|stone|white|black|blue|green|orange|violet|purple|yellow|sky|rose|teal|cyan|lime|pink|fuchsia)-?[^\s"'`]*/g;
+
+  const ARBITRARY_HEX = /(?:text|bg|border|ring)-\[#[^\]]+\]/g;
 
   it("keeps zero raw-palette classes in the compra UI files", () => {
     const ofensas = FILES.flatMap((archivo) => {
-      const fuente = readFileSync(path.join(RAIZ, archivo), "utf8");
-      const coincidencias = fuente.match(RAW_PALETTE) ?? [];
+      const fuente = readFileSync(path.isAbsolute(archivo) ? archivo : path.join(RAIZ, archivo), "utf8");
+      const coincidencias = [...(fuente.match(RAW_PALETTE) ?? []), ...(fuente.match(ARBITRARY_HEX) ?? [])];
       return coincidencias.map((coincidencia) => `${archivo}: ${coincidencia}`);
     });
     expect(ofensas).toEqual([]);

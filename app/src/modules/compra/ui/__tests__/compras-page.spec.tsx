@@ -140,13 +140,17 @@ describe("ComprasPage — manage gate (S4)", () => {
     expect(mockListar).toHaveBeenCalledWith({ page: 1, limit: 25 });
   });
 
-  it("renders a view-only list with no Acciones column", async () => {
+  it("renders a view-only list: Ver detalle present, manage controls absent", async () => {
     mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeGestionar: false } });
 
     await renderizarPagina();
 
     expect(screen.getByTestId("compra-fila-7")).toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: "Acciones" })).toBeNull();
+    // The read action (Ver detalle) is granted to view-only roles; the write
+    // actions are not rendered.
+    expect(screen.getByRole("columnheader", { name: "Acciones" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Editar / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Recibir / })).toBeNull();
   });
 
   it("denies by default when the permission call rejects, and still shows the list", async () => {
@@ -155,7 +159,7 @@ describe("ComprasPage — manage gate (S4)", () => {
     await renderizarPagina();
 
     expect(screen.getByTestId("compra-fila-7")).toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: "Acciones" })).toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Acciones" })).toBeInTheDocument();
   });
 });
 
