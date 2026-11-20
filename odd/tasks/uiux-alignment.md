@@ -342,3 +342,19 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   219 tests. Commits: 64bf370, e3d8307, a45c634, + this fix. Riders:
   componerValor → shared/ui (gga advisory), keyboard "05" composition
   pre-existing venta behavior (informational).
+- L22: v0.39.0 shipped end-to-end 2026-11-20 (PR #260 squash-merged as
+  b7c19e9; tag + GitHub Release; Vercel prod deploy — new Vercel CLI
+  promotes directly, "already the current production deployment" 409
+  confirmed it; no migration needed, UI-only). CI gate 9/9 after two real
+  fixes: e2e/compras view-only expectation updated to the shipped S27
+  markup (Acciones column with only Ver detalle), and effect ReDoS
+  GHSA-7589-6fvf-x4pw lifted via 'effect@3': '>=3.22.1 <4' override
+  (patch-level floor with major selector — a bare floor dragged effect@4
+  and broke @prisma/config; audit + prisma validate re-verified, upstream
+  note in PR comment). Prod smoke 10/0/0 (51s). Demo lane 5/0/0 (1.9m).
+  NCF counters by SELECT: B01 36/100, B02 142/200, B04 229/300 — every
+  delta +1 accounted. Local integration lane remains down (sf-postgres
+  stack not running) — pre-existing env rider, CI lane is authoritative.
+  Riders for later: componerValor → shared/ui, draft fecha not persisted,
+  chip-clear URL sync, banner rates static (config could drift), local
+  integration stack restart.
