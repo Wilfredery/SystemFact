@@ -486,3 +486,8 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   without "(RD$)"); JD-A-007 guard covers board-07 files only —
   dashboard/operacional/fiscal panels are later-board scope (follow-up).
   Verified: reportes suites + gates GATES_OK; full sweep running.
+  gga advisories on the remediation (non-blocking): decimal.js confirmed a
+  DIRECT runtime dependency (owner rule satisfied); dual margin paths
+  (calcularMargen unrounded vs fila-level rounded costo) documented as
+  deliberate for the on-screen identity — rider: fold calcularMargen into
+  the rounded-cost path or pin the ≤1¢ tolerance in a later slice.
