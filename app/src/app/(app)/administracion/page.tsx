@@ -30,9 +30,10 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import { getCurrentTenantHeader } from "@/modules/tenant/infrastructure/tenant-runtime";
 import {
   consultarConfiguracionAction,
+  listarRolesAdministracionAction,
   listarSucursalesAdministracionAction,
   listarUsuariosAction,
   obtenerPermisosAdministracionAction,
@@ -40,6 +41,7 @@ import {
 import {
   AdministracionScreen,
   type ConfiguracionInicial,
+  type RolesInicial,
   type SucursalesInicial,
   type UsuariosInicial,
 } from "@/modules/tenant/ui/AdministracionScreen";
@@ -67,7 +69,7 @@ export default async function AdministracionPage({
   readonly searchParams: Promise<Record<string, Param>>;
 }) {
   const supabase = await createClient();
-  const ctx = await getCurrentTenantContext(supabase);
+  const ctx = await getCurrentTenantHeader(supabase);
   if (ctx === null) {
     redirect("/login");
   }
@@ -84,9 +86,11 @@ export default async function AdministracionPage({
     obtenerPermisosAdministracionAction().catch(() => null),
     tab === "usuarios"
       ? listarUsuariosAction(construirQueryUsuarios(filtros, page))
-      : tab === "sucursales"
+      : tab === "empresas" || tab === "sucursales"
         ? listarSucursalesAdministracionAction()
-        : consultarConfiguracionAction(),
+        : tab === "roles"
+          ? listarRolesAdministracionAction()
+          : consultarConfiguracionAction(),
   ]);
 
   const puedeVer = permisos !== null && permisos.ok && permisos.data.puedeVer;
@@ -96,13 +100,17 @@ export default async function AdministracionPage({
   let usuarios: UsuariosInicial | null = null;
   let sucursales: SucursalesInicial | null = null;
   let configuracion: ConfiguracionInicial | null = null;
+  let roles: RolesInicial | null = null;
 
   if (tab === "usuarios") {
     const r = lectura as Awaited<ReturnType<typeof listarUsuariosAction>>;
     usuarios = r.ok ? { ok: true, data: r.data } : { ok: false, message: r.error.message };
-  } else if (tab === "sucursales") {
+  } else if (tab === "empresas" || tab === "sucursales") {
     const r = lectura as Awaited<ReturnType<typeof listarSucursalesAdministracionAction>>;
     sucursales = r.ok ? { ok: true, data: r.data } : { ok: false, message: r.error.message };
+  } else if (tab === "roles") {
+    const r = lectura as Awaited<ReturnType<typeof listarRolesAdministracionAction>>;
+    roles = r.ok ? { ok: true, data: r.data } : { ok: false, message: r.error.message };
   } else {
     const r = lectura as Awaited<ReturnType<typeof consultarConfiguracionAction>>;
     configuracion = r.ok ? { ok: true, data: r.data } : { ok: false, message: r.error.message };
@@ -111,15 +119,21 @@ export default async function AdministracionPage({
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Administración</h1>
+        <h1 className="text-2xl font-semibold text-ink">Administración</h1>
       </div>
       {puedeVer ? (
         <AdministracionScreen
+          // Remount per tab: the island seeds its list state from props once, and a tab
+          // switch is a navigation to the SAME route, so without a key the Usuarios
+          // rows of a fresh server read would be ignored (caught by the e2e suite).
+          key={tab}
           tab={tab}
           filtrosIniciales={filtros}
           usuarios={usuarios}
           sucursales={sucursales}
           configuracion={configuracion}
+          roles={roles}
+          empresaNombre={ctx.empresaNombre}
           puedeGestionar={puedeVer}
           sesionUsuarioId={ctx.usuarioId}
           sesionSucursalId={ctx.sucursalId}
@@ -127,7 +141,7 @@ export default async function AdministracionPage({
       ) : (
         <p
           role="alert"
-          className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+          className="rounded-md bg-danger/10 px-4 py-2 text-sm text-danger"
         >
           No tiene permisos para ver la Administración.
         </p>

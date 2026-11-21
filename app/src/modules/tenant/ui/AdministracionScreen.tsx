@@ -45,6 +45,7 @@ import {
 import type {
   ConfiguracionAdministracionDto,
   ListarUsuariosAdministracion,
+  RolCatalogoDto,
   SucursalGestionDto,
   UsuarioAdministracionDto,
 } from "@/modules/tenant/http/shared";
@@ -105,19 +106,32 @@ export type ConfiguracionInicial =
   | { readonly ok: true; readonly data: ConfiguracionAdministracionDto }
   | { readonly ok: false; readonly message: string };
 
+export type RolesInicial =
+  | { readonly ok: true; readonly data: readonly RolCatalogoDto[] }
+  | { readonly ok: false; readonly message: string };
+
+/** Case- and accent-insensitive text for the client-side branch search. */
+function normalizarBusqueda(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 const MENSAJE_FALLO_CARGA = "No se pudo cargar la lista de usuarios. Intente de nuevo.";
 const MENSAJE_FALLO_SUCURSALES = "No se pudieron cargar las sucursales. Intente de nuevo.";
 
 const CLASE_CONTROL =
-  "min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
+  "min-h-11 rounded-md border border-line bg-surface px-3 text-sm text-ink";
 const CLASE_BOTON =
-  "min-h-11 rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300";
+  "min-h-11 rounded-md border border-line px-4 text-sm font-medium text-ink disabled:opacity-40";
 const CLASE_TABLA =
-  "overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800";
+  "overflow-x-auto rounded-lg border border-line";
 const CLASE_CABECERA =
-  "bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400";
+  "bg-surface-muted text-xs uppercase text-ink-muted";
 const CLASE_ALERTA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+  "rounded-md bg-danger/10 px-4 py-2 text-sm text-danger";
 
 /** Retention parameters of the Configuración tab, labelled per wireframe 08c. */
 const RETENCIONES: readonly { clave: "isr15" | "isr2" | "itbis100" | "itbis30"; etiqueta: string }[] =
@@ -134,6 +148,8 @@ export function AdministracionScreen({
   usuarios: usuariosInicial,
   sucursales: sucursalesInicial,
   configuracion: configuracionInicial,
+  roles,
+  empresaNombre,
   puedeGestionar,
   sesionUsuarioId,
   sesionSucursalId,
@@ -143,6 +159,10 @@ export function AdministracionScreen({
   readonly usuarios: UsuariosInicial | null;
   readonly sucursales: SucursalesInicial | null;
   readonly configuracion: ConfiguracionInicial | null;
+  /** Read-only role catalog of the Roles tab (board 08 S3); null on any other tab. */
+  readonly roles: RolesInicial | null;
+  /** Session company display name, for the read-only Empresas tab (board 08 S2). */
+  readonly empresaNombre: string;
   /** The server said the caller is an Administrador (UX only; actions re-check). */
   readonly puedeGestionar: boolean;
   /** Session user id, to disable the actions on one's own row (UX only). */
@@ -398,13 +418,15 @@ export function AdministracionScreen({
             key={t.valor}
             type="button"
             role="tab"
+            id={`tab-${t.valor}`}
+            aria-controls={t.valor === tab ? `panel-${t.valor}` : undefined}
             aria-selected={t.valor === tab}
             disabled={navegando}
             onClick={() => cambiarTab(t.valor)}
             className={
               t.valor === tab
-                ? "min-h-11 rounded-md bg-zinc-900 px-4 text-sm font-medium text-white disabled:opacity-40 dark:bg-zinc-50 dark:text-zinc-900"
-                : "min-h-11 rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300"
+                ? "min-h-11 rounded-md bg-accent px-4 text-sm font-medium text-accent-fg disabled:opacity-40"
+                : "min-h-11 rounded-md border border-line px-4 text-sm font-medium text-ink disabled:opacity-40"
             }
           >
             {t.etiqueta}
@@ -412,94 +434,106 @@ export function AdministracionScreen({
         ))}
       </div>
 
-      {tab === "usuarios" && (
-        <TablaUsuarios
-          data={data}
-          error={error}
-          cargando={cargando}
-          texto={texto}
-          filtros={filtros}
-          onTexto={setTexto}
-          onFiltrar={(next) => void consultar(next, 1)}
-          onPagina={(page) => void consultar(filtros, page)}
-          puedeGestionar={puedeGestionar}
-          sesionUsuarioId={sesionUsuarioId}
-          enviando={enviando}
-          mensaje={mensaje}
-          onAccion={abrirAccion}
-        />
-      )}
-      {puedeGestionar && accion !== null && data !== null && (
-        <DialogoAccion
-          accion={accion}
-          data={data}
-          enviando={enviando}
-          error={errorAccion}
-          destinos={destinos}
-          onCerrar={cerrarAccion}
-          onMover={(usuario, sucursalDestinoId, nombreDestino) =>
-            void ejecutarEscritura(
-              () =>
-                moverUsuarioDeSucursalAction({
-                  usuarioId: usuario.id,
-                  sucursalDestinoId,
-                  versionEsperada: usuario.version,
-                }),
-              `Usuario movido a ${nombreDestino}.`,
-              mensajeErrorMover,
-            )
-          }
-          onGuardarRoles={(usuario, rolIds) =>
-            void ejecutarEscritura(
-              () =>
-                cambiarRolesUsuarioAction({
-                  usuarioId: usuario.id,
-                  rolIds,
-                  versionEsperada: usuario.version,
-                }),
-              "Roles actualizados.",
-            )
-          }
-          onConfirmarEstado={(usuario, activar) =>
-            void ejecutarEscritura(
-              () =>
-                cambiarEstadoUsuarioAction({
-                  usuarioId: usuario.id,
-                  activo: activar,
-                  versionEsperada: usuario.version,
-                }),
-              activar ? "Usuario activado." : "Usuario desactivado.",
-            )
-          }
-        />
-      )}
-      {tab === "sucursales" && (
-        <TablaSucursales
-          inicial={sucursales}
-          puedeGestionar={puedeGestionar}
-          sesionSucursalId={sesionSucursalId}
-          enviando={enviando}
-          mensaje={mensajeSucursal}
-          errorRecarga={errorRecarga}
-          onAccion={abrirAccionSucursal}
-        />
-      )}
-      {tab === "sucursales" &&
-        puedeGestionar &&
-        accionSucursal !== null &&
-        sucursales !== null &&
-        sucursales.ok && (
-          <DialogoSucursal
-            accion={accionSucursal}
-            sucursales={sucursales.data}
+      <div
+        role="tabpanel"
+        id={`panel-${tab}`}
+        aria-labelledby={`tab-${tab}`}
+        tabIndex={0}
+        className="flex flex-col gap-6"
+      >
+        {tab === "usuarios" && (
+          <TablaUsuarios
+            data={data}
+            error={error}
+            cargando={cargando}
+            texto={texto}
+            filtros={filtros}
+            onTexto={setTexto}
+            onFiltrar={(next) => void consultar(next, 1)}
+            onPagina={(page) => void consultar(filtros, page)}
+            puedeGestionar={puedeGestionar}
+            sesionUsuarioId={sesionUsuarioId}
             enviando={enviando}
-            error={errorAccion}
-            onCerrar={cerrarAccionSucursal}
-            onGuardar={guardarSucursal}
-            onConfirmarEstado={confirmarEstadoSucursal}
+            mensaje={mensaje}
+            onAccion={abrirAccion}
           />
         )}
-      {tab === "configuracion" && <PanelConfiguracion inicial={configuracionInicial} />}
+        {puedeGestionar && accion !== null && data !== null && (
+          <DialogoAccion
+            accion={accion}
+            data={data}
+            enviando={enviando}
+            error={errorAccion}
+            destinos={destinos}
+            onCerrar={cerrarAccion}
+            onMover={(usuario, sucursalDestinoId, nombreDestino) =>
+              void ejecutarEscritura(
+                () =>
+                  moverUsuarioDeSucursalAction({
+                    usuarioId: usuario.id,
+                    sucursalDestinoId,
+                    versionEsperada: usuario.version,
+                  }),
+                `Usuario movido a ${nombreDestino}.`,
+                mensajeErrorMover,
+              )
+            }
+            onGuardarRoles={(usuario, rolIds) =>
+              void ejecutarEscritura(
+                () =>
+                  cambiarRolesUsuarioAction({
+                    usuarioId: usuario.id,
+                    rolIds,
+                    versionEsperada: usuario.version,
+                  }),
+                "Roles actualizados.",
+              )
+            }
+            onConfirmarEstado={(usuario, activar) =>
+              void ejecutarEscritura(
+                () =>
+                  cambiarEstadoUsuarioAction({
+                    usuarioId: usuario.id,
+                    activo: activar,
+                    versionEsperada: usuario.version,
+                  }),
+                activar ? "Usuario activado." : "Usuario desactivado.",
+              )
+            }
+          />
+        )}
+        {tab === "empresas" && (
+          <TablaEmpresas empresaNombre={empresaNombre} inicial={sucursales} />
+        )}
+        {tab === "roles" && <TablaRoles inicial={roles} />}
+        {tab === "sucursales" && (
+          <TablaSucursales
+            inicial={sucursales}
+            puedeGestionar={puedeGestionar}
+            sesionSucursalId={sesionSucursalId}
+            enviando={enviando}
+            mensaje={mensajeSucursal}
+            errorRecarga={errorRecarga}
+            onAccion={abrirAccionSucursal}
+          />
+        )}
+        {tab === "sucursales" &&
+          puedeGestionar &&
+          accionSucursal !== null &&
+          sucursales !== null &&
+          sucursales.ok && (
+            <DialogoSucursal
+              accion={accionSucursal}
+              sucursales={sucursales.data}
+              enviando={enviando}
+              error={errorAccion}
+              onCerrar={cerrarAccionSucursal}
+              onGuardar={guardarSucursal}
+              onConfirmarEstado={confirmarEstadoSucursal}
+            />
+          )}
+        {tab === "configuracion" && <PanelConfiguracion inicial={configuracionInicial} />}
+      </div>
     </div>
   );
 }
@@ -623,7 +657,7 @@ function TablaUsuarios({
       {mensaje !== null && (
         <p
           role="status"
-          className="rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+          className="rounded-md bg-success-bg px-4 py-2 text-sm text-success-fg"
         >
           {mensaje}
         </p>
@@ -655,7 +689,7 @@ function TablaUsuarios({
       </div>
 
       {data.items.length === 0 ? (
-        <p className="rounded-md border border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+        <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
           No hay usuarios que coincidan con los filtros.
         </p>
       ) : (
@@ -665,25 +699,25 @@ function TablaUsuarios({
               <tr>
                 <th scope="col" className="px-4 py-2">Usuario</th>
                 <th scope="col" className="px-4 py-2">Nombre</th>
-                <th scope="col" className="px-4 py-2">Rol</th>
+                <th scope="col" className="px-4 py-2">Roles</th>
                 <th scope="col" className="px-4 py-2">Empresa/Sucursal</th>
                 <th scope="col" className="px-4 py-2">Estado</th>
                 {puedeGestionar && <th scope="col" className="px-4 py-2">Acciones</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <tbody className="divide-y divide-line">
               {data.items.map((u) => (
                 <tr key={u.id} data-testid={`usuario-fila-${u.id}`}>
                   <td className="px-4 py-2 font-mono text-xs">{u.nombreUsuario}</td>
-                  <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">{u.nombre}</td>
-                  <td className="px-4 py-2">{u.roles.join(", ")}</td>
+                  <td className="px-4 py-2 font-medium text-ink">{u.nombre}</td>
+                  <td className="px-4 py-2">{u.roles.join(" · ")}</td>
                   <td className="px-4 py-2">{`${u.empresaNombre} / ${u.sucursalNombre}`}</td>
                   <td className="px-4 py-2">
                     <span
                       className={`rounded px-2 py-1 text-xs font-medium ${
                         u.activo
-                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                          : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                          ? "bg-success-bg text-success-fg"
+                          : "bg-surface-raised text-ink-muted"
                       }`}
                     >
                       {u.activo ? "Activo" : "Inactivo"}
@@ -717,7 +751,7 @@ function TablaUsuarios({
         >
           Anterior
         </button>
-        <span className="text-sm text-zinc-500">
+        <span className="text-sm text-ink-muted">
           Página {data.page} de {totalPaginas}
         </span>
         <button
@@ -856,12 +890,20 @@ function TablaSucursales({
   readonly errorRecarga: string | null;
   readonly onAccion: (accion: AccionSucursal) => void;
 }) {
+  const [busqueda, setBusqueda] = useState("");
   if (inicial === null) {
     return <p className={CLASE_ALERTA} role="alert">No hay datos de sucursales.</p>;
   }
   if (!inicial.ok) {
     return <p className={CLASE_ALERTA} role="alert">{inicial.message}</p>;
   }
+  const consulta = normalizarBusqueda(busqueda);
+  const visibles =
+    consulta === ""
+      ? inicial.data
+      : inicial.data.filter((s) =>
+          normalizarBusqueda(`${s.nombre} ${s.direccion}`).includes(consulta),
+        );
 
   return (
     <div className="flex flex-col gap-4">
@@ -873,7 +915,7 @@ function TablaSucursales({
       {mensaje !== null && (
         <p
           role="status"
-          className="rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+          className="rounded-md bg-success-bg px-4 py-2 text-sm text-success-fg"
         >
           {mensaje}
         </p>
@@ -890,6 +932,21 @@ function TablaSucursales({
           </button>
         </div>
       )}
+      <input
+        type="search"
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+        placeholder="Buscar sucursal..."
+        aria-label="Buscar sucursal"
+        className={CLASE_CONTROL}
+      />
+      {visibles.length === 0 ? (
+        <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
+          {consulta === ""
+            ? "No hay sucursales."
+            : "No hay sucursales que coincidan con la búsqueda."}
+        </p>
+      ) : (
       <div className={CLASE_TABLA}>
         <table className="w-full text-left text-sm">
           <thead className={CLASE_CABECERA}>
@@ -901,18 +958,18 @@ function TablaSucursales({
               {puedeGestionar && <th scope="col" className="px-4 py-2">Acciones</th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {inicial.data.map((s) => (
+          <tbody className="divide-y divide-line">
+            {visibles.map((s) => (
               <tr key={s.id} data-testid={`sucursal-fila-${s.id}`}>
-                <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">{s.nombre}</td>
+                <td className="px-4 py-2 font-medium text-ink">{s.nombre}</td>
                 <td className="px-4 py-2">{s.direccion}</td>
                 <td className="px-4 py-2">{s.telefono}</td>
                 <td className="px-4 py-2">
                   <span
                     className={`rounded px-2 py-1 text-xs font-medium ${
                       s.activa
-                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                        : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                        ? "bg-success-bg text-success-fg"
+                        : "bg-surface-raised text-ink-muted"
                     }`}
                   >
                     {s.activa ? "Activa" : "Inactiva"}
@@ -947,6 +1004,89 @@ function TablaSucursales({
           </tbody>
         </table>
       </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Empresas tab (08a, board 08 S2): READ-ONLY. The session company and its
+ * branches. There is no company write use case and master entities are never
+ * deleted (AGENTS.md), so no create/edit/delete control exists here.
+ */
+function TablaEmpresas({
+  empresaNombre,
+  inicial,
+}: {
+  readonly empresaNombre: string;
+  readonly inicial: SucursalesInicial | null;
+}) {
+  if (inicial === null) {
+    return <p className={CLASE_ALERTA} role="alert">No hay datos de empresas.</p>;
+  }
+  if (!inicial.ok) {
+    return <p className={CLASE_ALERTA} role="alert">{inicial.message}</p>;
+  }
+  const total = inicial.data.length;
+  const activas = inicial.data.filter((s) => s.activa).length;
+  const resumenEstado = `${activas} de ${total} ${total === 1 ? "sucursal activa" : "sucursales activas"}`;
+  return (
+    <div className={CLASE_TABLA}>
+      <table className="w-full text-left text-sm">
+        <thead className={CLASE_CABECERA}>
+          <tr>
+            <th scope="col" className="px-4 py-2">Empresa</th>
+            <th scope="col" className="px-4 py-2">Sucursales</th>
+            <th scope="col" className="px-4 py-2">Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-testid="empresa-fila">
+            <td className="px-4 py-2 font-medium text-ink">{empresaNombre}</td>
+            <td className="px-4 py-2">
+              {total === 0
+                ? "Sin sucursales"
+                : inicial.data.map((s) => (s.activa ? s.nombre : `${s.nombre} (inactiva)`)).join(", ")}
+            </td>
+            <td className="px-4 py-2">{resumenEstado}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Roles tab (08b, board 08 S3): READ-ONLY catalog of the active roles. */
+function TablaRoles({ inicial }: { readonly inicial: RolesInicial | null }) {
+  if (inicial === null) {
+    return <p className={CLASE_ALERTA} role="alert">No hay datos de roles.</p>;
+  }
+  if (!inicial.ok) {
+    return <p className={CLASE_ALERTA} role="alert">{inicial.message}</p>;
+  }
+  if (inicial.data.length === 0) {
+    return (
+      <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
+        No hay roles activos.
+      </p>
+    );
+  }
+  return (
+    <div className={CLASE_TABLA}>
+      <table className="w-full text-left text-sm">
+        <thead className={CLASE_CABECERA}>
+          <tr>
+            <th scope="col" className="px-4 py-2">Rol</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line">
+          {inicial.data.map((r) => (
+            <tr key={r.id} data-testid={`rol-fila-${r.id}`}>
+              <td className="px-4 py-2">{r.nombre}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -964,9 +1104,9 @@ function PanelConfiguracion({ inicial }: { readonly inicial: ConfiguracionInicia
   return (
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Retenciones</h2>
+        <h2 className="text-lg font-semibold text-ink">Retenciones</h2>
         {retenciones === null ? (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-ink-muted">
             Retenciones no configuradas para esta empresa.
           </p>
         ) : (
@@ -978,7 +1118,7 @@ function PanelConfiguracion({ inicial }: { readonly inicial: ConfiguracionInicia
                   <th scope="col" className="px-4 py-2">Tasa</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              <tbody className="divide-y divide-line">
                 {RETENCIONES.map((r) => (
                   <tr key={r.clave} data-testid={`retencion-${r.clave}`}>
                     <td className="px-4 py-2">{r.etiqueta}</td>
@@ -992,9 +1132,9 @@ function PanelConfiguracion({ inicial }: { readonly inicial: ConfiguracionInicia
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">ITBIS</h2>
+        <h2 className="text-lg font-semibold text-ink">ITBIS</h2>
         {itbisEnUso.length === 0 ? (
-          <p className="rounded-md border border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+          <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
             Sin productos activos: no hay tasas de ITBIS en uso.
           </p>
         ) : (
@@ -1009,7 +1149,7 @@ function PanelConfiguracion({ inicial }: { readonly inicial: ConfiguracionInicia
                   <th scope="col" className="px-4 py-2">Estado</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              <tbody className="divide-y divide-line">
                 {itbisEnUso.map((t) => (
                   <tr
                     key={`${t.tasaItbis}|${t.vigenteDesde}|${t.vigenteHasta ?? ""}`}
@@ -1032,9 +1172,9 @@ function PanelConfiguracion({ inicial }: { readonly inicial: ConfiguracionInicia
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Secuencias NCF</h2>
+        <h2 className="text-lg font-semibold text-ink">Secuencias NCF</h2>
         {ncf.length === 0 ? (
-          <p className="rounded-md border border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+          <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
             No hay secuencias NCF activas.
           </p>
         ) : (
@@ -1049,7 +1189,7 @@ function PanelConfiguracion({ inicial }: { readonly inicial: ConfiguracionInicia
                   <th scope="col" className="px-4 py-2">% usado</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              <tbody className="divide-y divide-line">
                 {ncf.map((n) => (
                   <tr key={n.tipo} data-testid={`ncf-fila-${n.tipo}`}>
                     <td className="px-4 py-2 font-mono text-xs">{n.tipo}</td>

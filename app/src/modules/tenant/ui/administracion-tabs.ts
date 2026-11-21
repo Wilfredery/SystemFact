@@ -27,17 +27,25 @@ export const TAMANO_PAGINA = 25;
 /** Debounce of the user search box, shared with the other list screens. */
 export const DEBOUNCE_BUSQUEDA_MS = 300;
 
-export type TabAdministracion = "usuarios" | "sucursales" | "configuracion";
+export type TabAdministracion =
+  | "empresas"
+  | "sucursales"
+  | "usuarios"
+  | "roles"
+  | "configuracion";
 
-export const TAB_ADMINISTRACION_DEFAULT: TabAdministracion = "usuarios";
+/** Board 08 opens on Empresas (`odd/tasks/uiux-board-08-admin.md` S1). */
+export const TAB_ADMINISTRACION_DEFAULT: TabAdministracion = "empresas";
 
-/** Wireframe 08 labels, in board order (S2). */
+/** Wireframe 08 labels, in board order (S1). */
 export const TABS_ADMINISTRACION: readonly {
   valor: TabAdministracion;
   etiqueta: string;
 }[] = [
-  { valor: "usuarios", etiqueta: "Usuarios" },
+  { valor: "empresas", etiqueta: "Empresas" },
   { valor: "sucursales", etiqueta: "Sucursales" },
+  { valor: "usuarios", etiqueta: "Usuarios" },
+  { valor: "roles", etiqueta: "Roles" },
   { valor: "configuracion", etiqueta: "Configuración" },
 ];
 

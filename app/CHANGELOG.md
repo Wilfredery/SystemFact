@@ -1,3 +1,9 @@
+## [0.42.0](https://github.com/Wilfredery/SystemFact/compare/v0.41.0...v0.42.0) (2026-11-21)
+
+### Added
+
+* **administracion (UI/UX board 08):** the Administración screen aligns to the factura.penpot wireframes 08a/08b/08c — five tabs in wireframe order (Empresas, Sucursales, Usuarios, Roles, Configuración) opening on Empresas; a read-only Empresas tab (company and all its branches with how many are active, no create/edit/delete: no company write use case exists and master entities are never deleted); a read-only Roles tab fed by the new server-gated `listarRolesAdministracionAction`; a "Buscar sucursal..." search on Sucursales; the Usuarios Roles column lists every role joined with " · "; tablist/tabpanel accessibility semantics; the whole admin scope retrofits to the F0 design-system tokens, pinned by a source-level no-raw-palette guard. NCF sequences stay read-only and there is no global "Guardar cambios" (per-card edits keep their own confirm).
+
 ## [0.41.0](https://github.com/Wilfredery/SystemFact/compare/v0.40.0...v0.41.0) (2026-11-20)
 
 ### Added

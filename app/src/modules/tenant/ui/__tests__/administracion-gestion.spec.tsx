@@ -117,6 +117,10 @@ function montar({
       puedeGestionar={puedeGestionar}
       sesionUsuarioId={sesionUsuarioId}
       sesionSucursalId={1}
+
+      roles={null}
+
+      empresaNombre="Empresa Demo"
     />,
   );
 }
@@ -280,7 +284,7 @@ describe("Cambiar roles dialog (S11)", () => {
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(mockListar).toHaveBeenCalledWith({ page: 1, pageSize: 25 });
-    expect(within(fila(11)).getByText("Operador, Despachador")).toBeInTheDocument();
+    expect(within(fila(11)).getByText("Operador · Despachador")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Roles actualizados.");
 
     // The next save uses the re-read version, not the stale one.

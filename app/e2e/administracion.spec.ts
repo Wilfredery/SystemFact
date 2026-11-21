@@ -241,6 +241,12 @@ async function restaurarObjetivo(): Promise<void> {
   }
 }
 
+/** Board 08: the screen opens on Empresas, so user flows switch to Usuarios first. */
+async function abrirTabUsuarios(page: Page): Promise<void> {
+  await page.getByRole("tab", { name: "Usuarios" }).click();
+  await expect(page).toHaveURL(/tab=usuarios/);
+}
+
 /** No tab, no rows and no columns: the denial happens on the server. */
 async function expectSinDatos(page: Page): Promise<void> {
   await expect(page.locator("main").getByRole("alert")).toHaveText(MENSAJE_SIN_PERMISO);
@@ -262,7 +268,7 @@ async function expectSinControlesDeEscritura(page: Page): Promise<void> {
 }
 
 test.describe("/administracion (administracion T3)", () => {
-  test("Administrador reads the three tabs: usuarios, sucursales and configuración", async ({
+  test("Administrador reads the five tabs: empresas, sucursales, usuarios, roles and configuración", async ({
     page,
   }) => {
     const nombreUsuario = requireEnv("E2E_USER");
@@ -282,10 +288,18 @@ test.describe("/administracion (administracion T3)", () => {
     const tabs = page.getByRole("tablist", { name: "Secciones de Administración" });
     await expect(tabs).toBeVisible();
     await expect(page.getByRole("tab")).toHaveText([
-      "Usuarios",
+      "Empresas",
       "Sucursales",
+      "Usuarios",
+      "Roles",
       "Configuración",
     ]);
+    await expect(page.getByRole("tab", { name: "Empresas" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(page.getByRole("columnheader", { name: "Empresa", exact: true })).toBeVisible();
+    await abrirTabUsuarios(page);
     await expect(page.getByRole("tab", { name: "Usuarios" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -306,7 +320,7 @@ test.describe("/administracion (administracion T3)", () => {
     }
 
     // The wireframe columns plus the Administrador-only Acciones column (S11).
-    for (const columna of ["Usuario", "Nombre", "Rol", "Empresa/Sucursal", "Estado", "Acciones"]) {
+    for (const columna of ["Usuario", "Nombre", "Roles", "Empresa/Sucursal", "Estado", "Acciones"]) {
       await expect(page.getByRole("columnheader", { name: columna, exact: true })).toBeVisible();
     }
     await expect(page.getByTestId(`usuario-fila-${esperados[0].id}`)).toContainText(
@@ -400,6 +414,7 @@ test.describe("/administracion (administracion T3)", () => {
 
     await login(page, { user: nombreUsuario, password });
     await irAAdministracion(page);
+    await abrirTabUsuarios(page);
 
     await page.getByLabel("Buscar usuario").fill(OBJETIVO);
     const fila = page.locator(FILAS_USUARIO).filter({ hasText: OBJETIVO });
@@ -482,6 +497,7 @@ test.describe("/administracion (administracion T3)", () => {
 
     await login(page, { user: nombreUsuario, password });
     await irAAdministracion(page);
+    await abrirTabUsuarios(page);
 
     await page.getByLabel("Buscar usuario").fill(OBJETIVO);
     const fila = page.locator(FILAS_USUARIO).filter({ hasText: OBJETIVO });
