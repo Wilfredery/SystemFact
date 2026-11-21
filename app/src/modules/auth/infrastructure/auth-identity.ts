@@ -64,6 +64,41 @@ export async function resolverAuthSubDeSesion(
 }
 
 /**
+ * THE ONE implementation of the tenant kill-switch read (`EMPRESA.activa`).
+ *
+ * A single primary-key lookup with a fixed select: it never trusts a caller-supplied
+ * select. EMPRESA is RLS-protected (`empresa_select` admits only the pinned
+ * `app.current_empresa_id`), so the caller MUST have pinned that GUC to `empresaId`
+ * in `tx` first. FAILS CLOSED: a row that cannot be read (absent, or hidden by RLS
+ * because the pin is missing/different) is reported as NOT active.
+ */
+async function leerEmpresaActiva(
+  tx: Prisma.TransactionClient,
+  empresaId: number,
+): Promise<boolean> {
+  const empresa = await tx.empresa.findUnique({
+    where: { id: empresaId },
+    select: { activa: true },
+  });
+  return empresa !== null && empresa.activa === true;
+}
+
+/**
+ * Login-flow check of the kill switch: opens its own transaction, pins
+ * `app.current_empresa_id` to the user's company (never widened), then reads
+ * `activa` through the shared `leerEmpresaActiva`. Fails closed (false) when the
+ * EMPRESA row cannot be read.
+ */
+export async function empresaEstaActiva(empresaId: number): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${String(
+      empresaId,
+    )}, true)`;
+    return leerEmpresaActiva(tx, empresaId);
+  });
+}
+
+/**
  * THE per-request identity lookup: `USUARIO` by the immutable Auth `sub`.
  *
  * `findFirst` (not `findUnique`) on purpose: the uniqueness guard is a PARTIAL
@@ -77,6 +112,13 @@ export async function resolverAuthSubDeSesion(
  *
  * Returns null when the row is not linked yet (`authUserId IS NULL`) or when the
  * link does not exist at all.
+ *
+ * TENANT KILL SWITCH (`EMPRESA.activa`): also returns null — no session, fail closed —
+ * when the user's empresa is inactive OR its EMPRESA row cannot be read. The check runs
+ * in this SAME transaction right after the empresa GUC is pinned and BEFORE the caller's
+ * select is served, so no data of a switched-off tenant is ever returned. Every
+ * per-request path (`getCurrentTenantContext`, `getCurrentTenantHeader`, logout
+ * attribution) funnels through here and inherits it.
  */
 export async function buscarUsuarioPorAuthSub<TSelect extends Prisma.UsuarioSelect>(
   authSub: string,
@@ -102,6 +144,7 @@ export async function buscarUsuarioPorAuthSub<TSelect extends Prisma.UsuarioSele
       base.empresaId,
     )}, true)`;
     await tx.$executeRaw`SELECT set_config('app.current_sucursal_id', '', true)`;
+    if (!(await leerEmpresaActiva(tx, base.empresaId))) return null;
     // Defense-in-depth: the tenant GUC is now pinned; mirror `enlazarAuthSub`'s
     // own convention and ALSO filter `empresaId` explicitly (AGENTS.md
     // multi-tenancy rule — the day RLS is disabled, the app layer still holds).

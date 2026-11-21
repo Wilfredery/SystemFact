@@ -29,6 +29,7 @@ import {
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_ENLACE_CONFLICTO,
   AUTH_ENLACE_DUPLICADO,
+  AUTH_EMPRESA_INACTIVA,
   AUTH_ENLACE_NO_RESUELTO,
   AUTH_PASSWORD_POLICY,
   AUTH_USUARIO_INACTIVO,
@@ -67,21 +68,31 @@ jest.mock("@/lib/prisma", () => {
   const movimientoAuditoria = { create: jest.fn() };
   // Design D2: the same audit transaction piggybacks the active-branch count.
   const sucursal = { count: jest.fn() };
-  const tx = { usuario, movimientoAuditoria, sucursal, $executeRaw: jest.fn() };
+  // Tenant kill switch: the shared `EMPRESA.activa` primary-key lookup.
+  const empresa = { findUnique: jest.fn() };
+  const tx = { usuario, empresa, movimientoAuditoria, sucursal, $executeRaw: jest.fn() };
   const prisma = { $transaction: jest.fn() };
-  return { prisma, __usuario: usuario, __tx: tx, __sucursal: sucursal };
+  return { prisma, __usuario: usuario, __empresa: empresa, __tx: tx, __sucursal: sucursal };
 });
 
 interface TxStub {
   usuario: UsuarioStub;
+  empresa: { findUnique: jest.Mock };
   movimientoAuditoria: { create: jest.Mock };
   sucursal: { count: jest.Mock };
   $executeRaw: jest.Mock;
 }
 
-const { prisma, __usuario: usuario, __tx: tx, __sucursal: sucursalModel } = jest.requireMock("@/lib/prisma") as {
+const {
+  prisma,
+  __usuario: usuario,
+  __empresa: empresaModel,
+  __tx: tx,
+  __sucursal: sucursalModel,
+} = jest.requireMock("@/lib/prisma") as {
   prisma: { $transaction: jest.Mock };
   __usuario: UsuarioStub;
+  __empresa: TxStub["empresa"];
   __tx: TxStub;
   __sucursal: TxStub["sucursal"];
 };
@@ -218,6 +229,8 @@ beforeEach(() => {
   usuario.findFirst.mockResolvedValue(null);
   usuario.findUnique.mockResolvedValue(null);
   usuario.updateMany.mockResolvedValue({ count: 1 });
+  // Base state: the empresa is active, so every pre-existing flow is unchanged (S5).
+  empresaModel.findUnique.mockResolvedValue({ activa: true });
   tx.$executeRaw.mockResolvedValue(0);
   tx.movimientoAuditoria.create.mockResolvedValue({ id: 1 });
   sucursalModel.count.mockResolvedValue(1);
@@ -279,6 +292,41 @@ describe("getCurrentUser — resolution by sub, NOT by email", () => {
     // `setLoginFlow` is what makes this pre-tenant SELECT legal under RLS
     // (ADR-019). Deleting it from `buscarUsuarioPorAuthSub` leaves [] here.
     expect(loginFlowPins(tx.$executeRaw)).toEqual(["'true'"]);
+    // Tenant kill switch (S1): ONE primary-key lookup of EMPRESA.activa for the anchor's
+    // empresa, never the caller's select, and no extra empresa pin (it rides the existing one).
+    expect(empresaModel.findUnique).toHaveBeenCalledTimes(1);
+    expect(empresaModel.findUnique.mock.calls[0]?.[0]).toStrictEqual({
+      where: { id: 7 },
+      select: { activa: true },
+    });
+    expect(empresaGucPins(tx.$executeRaw)).toEqual(["7"]);
+  });
+
+  it("returns null when the empresa is inactive, without serving the caller's select", async () => {
+    const supabase = supabaseWithUser({ id: SUB_A, email: null });
+    usuario.findFirst.mockResolvedValue({ id: 42, empresaId: 7, authUserId: SUB_A });
+    empresaModel.findUnique.mockResolvedValue({ activa: false });
+
+    await expect(getCurrentUser(asSupabase(supabase))).resolves.toBeNull();
+    // Fail closed BEFORE the caller's select runs: only the anchor read happened.
+    expect(usuario.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null when the EMPRESA row cannot be read (fail closed)", async () => {
+    const supabase = supabaseWithUser({ id: SUB_A, email: null });
+    usuario.findFirst.mockResolvedValue({ id: 42, empresaId: 7, authUserId: SUB_A });
+    empresaModel.findUnique.mockResolvedValue(null);
+
+    await expect(getCurrentUser(asSupabase(supabase))).resolves.toBeNull();
+    expect(usuario.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not query EMPRESA when the sub resolves to no USUARIO row", async () => {
+    const supabase = supabaseWithUser({ id: SUB_A, email: null });
+    usuario.findFirst.mockResolvedValue(null);
+
+    await expect(getCurrentUser(asSupabase(supabase))).resolves.toBeNull();
+    expect(empresaModel.findUnique).not.toHaveBeenCalled();
   });
 
   it("returns null when the row is not linked yet (authUserId IS NULL)", async () => {
@@ -387,7 +435,9 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     // here, once per standalone transaction (`enlazarAuthSub`, then
     // `registrarAuditoriaSesion`). Both pins must carry the SAME empresa: a
     // second, different value would mean the GUC was widened.
-    expect(empresaGucPins(tx.$executeRaw)).toEqual(["7", "7"]);
+    // Plus the empresa-activa check's own pin (enlazar, audit, and the kill-switch lookup
+    // in `empresaEstaActiva`): always the SAME single company, never widened.
+    expect(empresaGucPins(tx.$executeRaw)).toEqual(["7", "7", "7"]);
     // The login-flow exception is raised on ALL THREE pre-tenant transactions of
     // this path, in order: `buscarUsuarioPorNombreUsuario`, `enlazarAuthSub`,
     // `registrarAuditoriaSesion`. The count is what makes this load-bearing —
@@ -508,6 +558,61 @@ describe("loginWithCredenciales — lazy binding of authUserId", () => {
     // signal stays confined to the response (see auth-service's docblock on why
     // that is not an enumeration oracle).
     expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses login for an inactive empresa: AUTH_EMPRESA_INACTIVA, signed out, not a throttle attempt", async () => {
+    const supabase = supabaseWithUser({ id: SUB_A, email: "ana@users.systemfact.internal" });
+    usuario.findUnique.mockResolvedValue(fila);
+    empresaModel.findUnique.mockResolvedValue({ activa: false });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "pw");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_EMPRESA_INACTIVA,
+      message: messageFor(AUTH_EMPRESA_INACTIVA),
+      cuentaComoIntento: false,
+    });
+    expect(supabase.auth.signOut).toHaveBeenCalled();
+    // Shared helper: pins the user's empresa, then ONE primary-key read of activa.
+    expect(empresaGucPins(tx.$executeRaw)).toEqual(["7"]);
+    expect(empresaModel.findUnique).toHaveBeenCalledTimes(1);
+    expect(empresaModel.findUnique).toHaveBeenCalledWith({
+      where: { id: 7 },
+      select: { activa: true },
+    });
+    // Nothing bound, nothing audited, no landing count.
+    expect(usuario.updateMany).not.toHaveBeenCalled();
+    expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
+    expect(sucursalModel.count).not.toHaveBeenCalled();
+  });
+
+  it("refuses login when the EMPRESA row cannot be read (fail closed)", async () => {
+    const supabase = supabaseWithUser({ id: SUB_A, email: "ana@users.systemfact.internal" });
+    usuario.findUnique.mockResolvedValue(fila);
+    empresaModel.findUnique.mockResolvedValue(null);
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "pw");
+
+    expect(res).toStrictEqual({
+      ok: false,
+      code: AUTH_EMPRESA_INACTIVA,
+      message: messageFor(AUTH_EMPRESA_INACTIVA),
+      cuentaComoIntento: false,
+    });
+    expect(supabase.auth.signOut).toHaveBeenCalled();
+    expect(usuario.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("an inactive USUARIO is refused as AUTH_USUARIO_INACTIVO without touching EMPRESA", async () => {
+    const supabase = supabaseWithUser({ id: SUB_A, email: "ana@users.systemfact.internal" });
+    usuario.findUnique.mockResolvedValue({ ...fila, activo: false });
+    empresaModel.findUnique.mockResolvedValue({ activa: false });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "ana", "pw");
+
+    expect(res.ok ? null : res.code).toBe(AUTH_USUARIO_INACTIVO);
+    expect(empresaModel.findUnique).not.toHaveBeenCalled();
   });
 
   it("rejects a missing or inactive USUARIO row without binding", async () => {
@@ -753,9 +858,9 @@ describe("loginWithCredenciales — landing payload (design D2)", () => {
       where: { empresaId: 7, activa: true },
     });
     // Piggyback invariant: ONE count cheque, ride inside the audit transaction —
-    // no new tx, no extra empresa pin vs the pre-D2 shape.
+    // no new tx for the count itself. The third pin is the empresa-activa check (S2).
     expect(sucursalModel.count).toHaveBeenCalledTimes(1);
-    expect(empresaGucPins(tx.$executeRaw)).toEqual(["7", "7"]);
+    expect(empresaGucPins(tx.$executeRaw)).toEqual(["7", "7", "7"]);
   });
 
   it("a non-admin success carries esAdmin=false (fast path preserved)", async () => {
@@ -834,6 +939,17 @@ describe("logout — attribution by sub", () => {
     // leaves the user's OWN empresa (walkthrough 2026-10-14: the relation
     // select needs the pin INSIDE the resolving tx).
     expect(empresaGucPins(tx.$executeRaw)).toEqual(["7", "7"]);
+  });
+
+  it("writes no audit row for a session of an inactive empresa, but still signs out", async () => {
+    const supabase = supabaseWithUser({ id: SUB_A, email: "ana@users.systemfact.internal" });
+    usuario.findFirst.mockResolvedValue({ id: 42, empresaId: 7, activo: true });
+    empresaModel.findUnique.mockResolvedValue({ activa: false });
+
+    await logout(asSupabase(supabase));
+
+    expect(supabase.auth.signOut).toHaveBeenCalled();
+    expect(tx.movimientoAuditoria.create).not.toHaveBeenCalled();
   });
 
   it("ignores an inactive user and still signs out", async () => {

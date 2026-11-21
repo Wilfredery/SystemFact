@@ -22,14 +22,16 @@ jest.mock("@/lib/prisma", () => {
     updateMany: jest.fn(),
   };
   const movimientoAuditoria = { create: jest.fn() };
-  const tx = { usuario, movimientoAuditoria, $executeRaw: jest.fn() };
+  const empresa = { findUnique: jest.fn() };
+  const tx = { usuario, empresa, movimientoAuditoria, $executeRaw: jest.fn() };
   const prisma = { $transaction: jest.fn() };
-  return { prisma, __usuario: usuario, __tx: tx };
+  return { prisma, __usuario: usuario, __empresa: empresa, __tx: tx };
 });
 
-const { prisma, __usuario: usuario, __tx: tx } = jest.requireMock("@/lib/prisma") as {
+const { prisma, __usuario: usuario, __empresa: empresa, __tx: tx } = jest.requireMock("@/lib/prisma") as {
   prisma: { $transaction: jest.Mock };
   __usuario: { findFirst: jest.Mock; findUnique: jest.Mock; updateMany: jest.Mock };
+  __empresa: { findUnique: jest.Mock };
   __tx: { $executeRaw: jest.Mock };
 };
 
@@ -46,12 +48,44 @@ function supabaseWithUser(user: { id: string; email?: string | null } | null) {
 beforeEach(() => {
   jest.clearAllMocks();
   prisma.$transaction.mockImplementation((fn: (t: unknown) => Promise<unknown>) =>
-    fn({ usuario, $executeRaw: tx.$executeRaw }),
+    fn({ usuario, empresa, $executeRaw: tx.$executeRaw }),
   );
+  // Tenant kill switch (EMPRESA.activa): active unless a test says otherwise.
+  empresa.findUnique.mockResolvedValue({ activa: true });
   usuario.findFirst.mockResolvedValue(null);
   usuario.findUnique.mockResolvedValue(null);
   usuario.updateMany.mockResolvedValue({ count: 1 });
   tx.$executeRaw.mockResolvedValue(0);
+});
+
+describe("getCurrentTenantContext — tenant kill switch (EMPRESA.activa)", () => {
+  const usuarioActivo = {
+    id: 42,
+    empresaId: 7,
+    sucursalId: 3,
+    activo: true,
+    roles: [{ rol: { nombre: "Administrador" } }],
+  };
+
+  it("resolves no context when the empresa is inactive, even for an active user", async () => {
+    usuario.findFirst.mockResolvedValue(usuarioActivo);
+    empresa.findUnique.mockResolvedValue({ activa: false });
+
+    const ctx = await getCurrentTenantContext(supabaseWithUser({ id: SUB_A }) as never);
+
+    expect(ctx).toBeNull();
+    expect(empresa.findUnique).toHaveBeenCalledWith({
+      where: { id: 7 },
+      select: { activa: true },
+    });
+  });
+
+  it("resolves no context when the empresa row cannot be read (fail closed)", async () => {
+    usuario.findFirst.mockResolvedValue(usuarioActivo);
+    empresa.findUnique.mockResolvedValue(null);
+
+    expect(await getCurrentTenantContext(supabaseWithUser({ id: SUB_A }) as never)).toBeNull();
+  });
 });
 
 describe("getCurrentTenantContext — resolution by sub, NOT by email", () => {

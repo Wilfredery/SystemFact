@@ -41,6 +41,7 @@ import { almacenIntentosPrisma } from "@/modules/auth/infrastructure/login-attem
 import {
   AUTH_AUTENTICACION_NO_DISPONIBLE,
   AUTH_CREDENCIALES_INVALIDAS,
+  AUTH_EMPRESA_INACTIVA,
   AUTH_INTENTOS_EXCEDIDOS,
   messageFor,
 } from "@/modules/auth/domain/errors";
@@ -279,6 +280,24 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
     await login({ error: null }, formData("admin", "correcta"));
 
     expect(descartarIntentoMock).toHaveBeenCalledWith(11, almacenIntentosPrisma);
+  });
+
+  it("shows the catalog message for an inactive empresa and does not count it as a guess", async () => {
+    // The password was right; the tenant is switched off. Counting it would let anyone
+    // throttle a named user by replaying their valid password against a disabled empresa.
+    loginWithCredencialesMock.mockResolvedValue({
+      ok: false,
+      code: AUTH_EMPRESA_INACTIVA,
+      message: messageFor(AUTH_EMPRESA_INACTIVA),
+      cuentaComoIntento: false,
+    });
+
+    const result = await login({ error: null }, formData("admin", "correcta"));
+
+    expect(result).toEqual({ error: "La empresa está inactiva. Contacte al administrador del servicio." });
+    expect(descartarIntentoMock).toHaveBeenCalledWith(11, almacenIntentosPrisma);
+    expect(registrarExitoMock).not.toHaveBeenCalled();
+    expect(redirectMock).not.toHaveBeenCalled();
   });
 
   it("undoes the recorded attempt during a provider outage too — nobody guessed anything", async () => {

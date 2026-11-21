@@ -14,6 +14,11 @@
 export const AUTH_CAMPOS_REQUERIDOS = "AUTH_CAMPOS_REQUERIDOS";
 export const AUTH_CREDENCIALES_INVALIDAS = "AUTH_CREDENCIALES_INVALIDAS";
 export const AUTH_USUARIO_INACTIVO = "AUTH_USUARIO_INACTIVO";
+// Tenant kill switch (`EMPRESA.activa = false`). Reached only with verified credentials and an
+// existing USUARIO row, so, like AUTH_USUARIO_INACTIVO, it is not an enumeration oracle. Own
+// code because the cause is not the user's account but the whole company, and the next step
+// (the service administrator, not the company's own admin) differs.
+export const AUTH_EMPRESA_INACTIVA = "AUTH_EMPRESA_INACTIVA";
 // The stored password no longer satisfies the CURRENT password policy (docs/22 T7:
 // minimum length raised to 12). GoTrue refuses that sign-in with error code
 // `weak_password`. It gets its own code because the two conditions are not the same
@@ -57,6 +62,7 @@ export const AUTH_ERROR_CODES = [
   AUTH_CAMPOS_REQUERIDOS,
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_USUARIO_INACTIVO,
+  AUTH_EMPRESA_INACTIVA,
   AUTH_PASSWORD_POLICY,
   AUTH_ENLACE_CONFLICTO,
   AUTH_ENLACE_DUPLICADO,
@@ -76,6 +82,8 @@ const AUTH_ERROR_MESSAGES: Readonly<Record<AuthErrorCode, string>> = {
   // enlace distinction (LOG-02-B).
   [AUTH_CREDENCIALES_INVALIDAS]: "Credenciales inválidas",
   [AUTH_USUARIO_INACTIVO]: "Tu usuario está inactivo. Contacta al administrador.",
+  [AUTH_EMPRESA_INACTIVA]:
+    "La empresa está inactiva. Contacte al administrador del servicio.",
   // No policy number in the copy on purpose: the minimum length is Supabase project
   // configuration, not an app constant, so quoting it here would drift the day the
   // dashboard changes and would document the policy to an unauthenticated caller.
