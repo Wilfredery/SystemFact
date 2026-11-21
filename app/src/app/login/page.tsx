@@ -14,7 +14,7 @@
  * the error box (gap-4 rhythm), `nombreUsuario` autofocus kept, Enter submits.
  */
 
-import { useActionState } from "react";
+import { useActionState, useId } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,9 @@ const initialState: LoginResult = { error: null };
 
 export default function LoginPage() {
   const [state, formAction, isPending] = useActionState(login, initialState);
+  const hintId = useId();
+  const errorId = useId();
+  const hayError = state.error !== null;
 
   return (
     <div className="w-full max-w-md">
@@ -36,7 +39,7 @@ export default function LoginPage() {
             SystemFact
           </h1>
           <p className="mt-2 text-sm text-ink-muted">
-            Inicia sesión con tu usuario para continuar.
+            Inicia sesión para continuar.
           </p>
         </div>
 
@@ -48,11 +51,19 @@ export default function LoginPage() {
               name="nombreUsuario"
               type="text"
               autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               required
               autoFocus
               placeholder="CODIGO-usuario"
+              aria-invalid={hayError ? true : undefined}
+              aria-describedby={hayError ? `${hintId} ${errorId}` : hintId}
               className="h-11 bg-surface px-3"
             />
+            <p id={hintId} className="text-xs text-ink-muted">
+              Formato: CÓDIGO-usuario (ej. DEMO-admin)
+            </p>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -64,12 +75,15 @@ export default function LoginPage() {
               autoComplete="current-password"
               required
               placeholder="••••••••"
+              aria-invalid={hayError ? true : undefined}
+              aria-describedby={hayError ? errorId : undefined}
               className="h-11 bg-surface px-3"
             />
           </div>
 
-          {state.error !== null && (
+          {hayError && (
             <div
+              id={errorId}
               role="alert"
               className="mt-2 rounded-lg bg-danger/10 px-4 py-3 text-sm text-danger"
             >
@@ -82,20 +96,15 @@ export default function LoginPage() {
             disabled={isPending}
             className="mt-4 h-12 w-full"
           >
-            {isPending ? "Ingresando…" : "Ingresar"}
+            {isPending ? "Ingresando…" : "Iniciar sesión"}
           </Button>
         </form>
 
-        {/* F1 has no recovery flow (LOG-03-A): visible, keyboard-reachable,
-            inert by design. */}
-        <span
-          tabIndex={0}
-          aria-disabled="true"
-          title="Disponible próximamente"
-          className="mt-8 flex h-11 cursor-default items-center justify-center text-sm text-link underline-offset-4"
-        >
-          Recuperar contraseña
-        </span>
+        {/* No self-service recovery: the internal sign-in email is not a real mailbox
+            (ADR-014), so a reset-by-email flow cannot exist. Plain text, not a control. */}
+        <p className="mt-8 text-center text-sm text-ink-muted">
+          ¿Olvidaste tu contraseña? Contacta al administrador.
+        </p>
       </div>
 
       <p className="mt-6 text-center text-xs text-ink-muted">

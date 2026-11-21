@@ -15,7 +15,7 @@ export async function login(page: Page, creds: LoginUser): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Usuario").fill(creds.user);
   await page.getByLabel("Contraseña").fill(creds.password);
-  await page.getByRole("button", { name: "Ingresar" }).click();
+  await page.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
   // LANDING AUDIT (auth-tenant-selector, design D2): a multi-branch admin now
   // lands on /selector-empresa-sucursal; a single-branch admin (current E2E seed,
   // single branch) keeps /dashboard. Accept EITHER so the helper pins no wrong landing.

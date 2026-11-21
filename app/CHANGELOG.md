@@ -1,3 +1,9 @@
+## [0.43.1](https://github.com/Wilfredery/SystemFact/compare/v0.43.0...v0.43.1) (2026-11-21)
+
+### Changed
+
+* **login (UI/UX board 01):** the card follows the wireframe copy ("Inicia sesión para continuar.", button "Iniciar sesión") and shows the `CÓDIGO-usuario` format hint under the username field. The inert "Recuperar contraseña" control (a focusable fake link; self-service reset cannot exist because the sign-in email is not a real mailbox, ADR-014) is replaced by plain text pointing to the administrator. The username field disables phone auto-capitalisation, autocorrect and spell-check, and the error alert is linked to both fields (`aria-invalid`, `aria-describedby`). No auth logic, error message or format check changed, so login stays a non-enumeration surface. The shared E2E login helper follows the new button name.
+
 ## [0.43.0](https://github.com/Wilfredery/SystemFact/compare/v0.42.2...v0.43.0) (2026-11-21)
 
 ### Added
