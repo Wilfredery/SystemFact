@@ -27,12 +27,20 @@ import { ETIQUETA_ACCION, detalleFila, tonoAccion } from "./format";
 import { construirHref } from "./url";
 
 const CABECERA = [
-  "Fecha y hora",
+  "Fecha-Hora",
   "Usuario",
-  "Sucursal",
   "Acción",
+  "Entidad",
+  "Sucursal",
   "Detalle",
 ] as const;
+
+const NOTA_PIE = "Registro de auditoría — Solo lectura · Inmutable (append-only)";
+
+const CLASE_PAGINA_ACTIVA =
+  "inline-flex min-h-11 items-center rounded-md border border-line px-3 text-ink";
+const CLASE_PAGINA_INACTIVA =
+  "inline-flex min-h-11 items-center rounded-md border border-line px-3 text-ink-muted opacity-40";
 
 export function AuditTable({
   pagina,
@@ -46,22 +54,22 @@ export function AuditTable({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-ink-muted">
         <span data-testid="auditoria-total">{total}</span>{" "}
         {total === 1 ? "movimiento coincide" : "movimientos coinciden"}
       </p>
 
       {filas.length === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-ink-muted">
           Sin movimientos que coincidan con los filtros.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
           <table className="w-full border-collapse text-left text-sm">
             <thead>
-              <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
+              <tr className="border-b border-line bg-surface-muted text-xs uppercase tracking-wide text-ink-muted">
                 {CABECERA.map((c) => (
-                  <th key={c} className="px-3 py-2 font-medium">
+                  <th key={c} scope="col" className="px-3 py-2 font-medium">
                     {c}
                   </th>
                 ))}
@@ -74,22 +82,13 @@ export function AuditTable({
                   <tr
                     key={f.id}
                     data-testid={`auditoria-fila-${f.id}`}
-                    className="border-b border-zinc-100 last:border-0 align-top dark:border-zinc-800"
+                    className="border-b border-line last:border-0 align-top"
                   >
-                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-zinc-700 dark:text-zinc-300">
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-ink">
                       {formatearFechaHoraSD(f.fechaHora)}
                     </td>
-                    <td className="px-3 py-2 text-zinc-700 dark:text-zinc-300">
+                    <td className="px-3 py-2 text-ink">
                       #{f.usuarioId}
-                    </td>
-                    <td className="px-3 py-2 text-zinc-700 dark:text-zinc-300">
-                      {f.sucursalId === null ? (
-                        <span className="text-zinc-400" title="Sin sucursal (evento a nivel empresa)">
-                          Empresa
-                        </span>
-                      ) : (
-                        <>#{f.sucursalId}</>
-                      )}
                     </td>
                     <td className="px-3 py-2">
                       <span
@@ -98,8 +97,18 @@ export function AuditTable({
                         {ETIQUETA_ACCION[f.accion]}
                       </span>
                     </td>
+                    <td className="px-3 py-2 text-ink">{f.entidad}</td>
+                    <td className="px-3 py-2 text-ink">
+                      {f.sucursalId === null ? (
+                        <span className="text-ink-muted" title="Sin sucursal (evento a nivel empresa)">
+                          Empresa
+                        </span>
+                      ) : (
+                        <>#{f.sucursalId}</>
+                      )}
+                    </td>
                     <td
-                      className="max-w-xs truncate px-3 py-2 text-zinc-600 dark:text-zinc-400"
+                      className="max-w-xs truncate px-3 py-2 text-ink-muted"
                       title={detalle}
                     >
                       {detalle}
@@ -121,39 +130,41 @@ export function AuditTable({
             <Link
               href={construirHref(filtro, page - 1)}
               aria-label="Página anterior"
-              className="rounded border border-zinc-300 px-2 py-1 text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              className={CLASE_PAGINA_ACTIVA}
             >
               Anterior
             </Link>
           ) : (
             <span
               aria-disabled="true"
-              className="rounded border border-zinc-200 px-2 py-1 text-zinc-400 opacity-40 dark:border-zinc-800"
+              className={CLASE_PAGINA_INACTIVA}
             >
               Anterior
             </span>
           )}
-          <span className="text-zinc-500">
+          <span className="text-ink-muted">
             Página {page} de {totalPages}
           </span>
           {page < totalPages ? (
             <Link
               href={construirHref(filtro, page + 1)}
               aria-label="Página siguiente"
-              className="rounded border border-zinc-300 px-2 py-1 text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              className={CLASE_PAGINA_ACTIVA}
             >
               Siguiente
             </Link>
           ) : (
             <span
               aria-disabled="true"
-              className="rounded border border-zinc-200 px-2 py-1 text-zinc-400 opacity-40 dark:border-zinc-800"
+              className={CLASE_PAGINA_INACTIVA}
             >
               Siguiente
             </span>
           )}
         </nav>
       )}
+
+      <p className="text-xs text-ink-muted">{NOTA_PIE}</p>
     </div>
   );
 }

@@ -48,6 +48,20 @@ describe("AuthShell selector trigger (SEL-SLOT-05)", () => {
     expect(screen.getByText("Caja")).toBeInTheDocument();
     expect(screen.getByText("Reportes")).toBeInTheDocument();
     expect(screen.getByText("Administración")).toBeInTheDocument();
-    expect(screen.getByText("Auditoría")).toBeInTheDocument();
+  });
+
+  it("S7: only the administrator sees the Auditoría link; other items are unchanged", () => {
+    const etiquetas = (): string[] =>
+      screen.getAllByRole("link").map((a) => a.textContent ?? "");
+    const { unmount } = renderShell(true);
+    expect(screen.getByRole("link", { name: "Auditoría" })).toHaveAttribute("href", "/auditoria");
+    const admin = etiquetas().filter((e) => e !== "Auditoría" && e !== "Cambiar sucursal");
+    unmount();
+
+    renderShell(false);
+    expect(screen.queryByRole("link", { name: "Auditoría" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Auditoría")).not.toBeInTheDocument();
+    expect(etiquetas()).toEqual(admin);
+    expect(admin).toHaveLength(11);
   });
 });
