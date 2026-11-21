@@ -182,6 +182,8 @@ model Empresa {
   id                Int      @id @default(autoincrement())
   nombreComercial   String   @db.VarChar(255)
   rnc               String   @unique @db.VarChar(255)
+  // Company code (odd/tasks/multi-company-codigo.md C1): 3-6 chars A-Z0-9, immutable, prefix of every nombreUsuario.
+  codigo            String   @unique @db.VarChar(6)
   razonSocial       String   @db.VarChar(255)
   direccionFiscal   String   @db.VarChar(255)
   telefono          String   @db.VarChar(255)
