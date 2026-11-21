@@ -33,6 +33,7 @@ import {
   AUTH_AUTENTICACION_NO_DISPONIBLE,
   AUTH_CREDENCIAL_NO_CONFIRMADA,
   AUTH_CREDENCIALES_INVALIDAS,
+  AUTH_EMPRESA_INACTIVA,
   AUTH_PASSWORD_POLICY,
   AUTH_USUARIO_INACTIVO,
   messageFor,
@@ -43,6 +44,7 @@ import { normalizarAuthSub } from "@/modules/auth/domain/auth-sub";
 import {
   buscarUsuarioPorAuthSub,
   buscarUsuarioPorNombreUsuario,
+  empresaEstaActiva,
   enlazarAuthSub,
   resolverAuthSubDeSesion,
 } from "@/modules/auth/infrastructure/auth-identity";
@@ -298,6 +300,21 @@ export async function loginWithCredenciales(
       code: AUTH_USUARIO_INACTIVO,
       message: messageFor(AUTH_USUARIO_INACTIVO),
       // Auth accepted the credentials; the account is refused for a different reason.
+      cuentaComoIntento: false,
+    };
+  }
+
+  // 2b. Tenant kill switch (`EMPRESA.activa`): a verified, active user of an INACTIVE
+  //    empresa is refused exactly like an inactive user (signed out, not a throttle
+  //    attempt). The same reachability argument holds: only a holder of valid
+  //    credentials with an existing USUARIO row gets here, so the distinct code is not
+  //    an enumeration oracle. A company whose row cannot be read is refused too.
+  if (!(await empresaEstaActiva(usuario.empresaId))) {
+    await supabase.auth.signOut();
+    return {
+      ok: false,
+      code: AUTH_EMPRESA_INACTIVA,
+      message: messageFor(AUTH_EMPRESA_INACTIVA),
       cuentaComoIntento: false,
     };
   }

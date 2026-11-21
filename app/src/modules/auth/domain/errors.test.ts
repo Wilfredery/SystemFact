@@ -20,6 +20,7 @@ import {
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_ENLACE_CONFLICTO,
   AUTH_ENLACE_DUPLICADO,
+  AUTH_EMPRESA_INACTIVA,
   AUTH_ENLACE_NO_RESUELTO,
   AUTH_ERROR_CODES,
   AUTH_USUARIO_INACTIVO,
@@ -98,6 +99,17 @@ describe("auth error catalog", () => {
     expect(messageFor(AUTH_USUARIO_INACTIVO)).not.toBe(
       messageFor(AUTH_CREDENCIALES_INVALIDAS),
     );
+  });
+
+  it("owns AUTH_EMPRESA_INACTIVA (empresa kill switch) with its exact Spanish copy", () => {
+    expect(AUTH_EMPRESA_INACTIVA).toBe("AUTH_EMPRESA_INACTIVA");
+    expect(AUTH_ERROR_CODES).toContain(AUTH_EMPRESA_INACTIVA);
+    expect(messageFor(AUTH_EMPRESA_INACTIVA)).toBe(
+      "La empresa está inactiva. Contacte al administrador del servicio.",
+    );
+    // Its own fact: neither the inactive-user copy nor the credential failure.
+    expect(messageFor(AUTH_EMPRESA_INACTIVA)).not.toBe(messageFor(AUTH_USUARIO_INACTIVO));
+    expect(messageFor(AUTH_EMPRESA_INACTIVA)).not.toBe(messageFor(AUTH_CREDENCIALES_INVALIDAS));
   });
 
   it("never leaks internal detail through a user-facing message", () => {
