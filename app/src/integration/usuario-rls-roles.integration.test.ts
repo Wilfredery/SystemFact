@@ -229,7 +229,11 @@ describe("USUARIO / USUARIO_ROL role-aware RLS (real DB)", () => {
             data: { empresaId: fx.empresaB.id, sucursalId: fx.sucursalB1.id },
           }),
         ),
-      ).rejects.toThrow(RLS_VIOLATION);
+      ).rejects.toThrow(
+        // Two walls, either one refuses: the prefix trigger (BEFORE UPDATE, fires first since
+        // multi-company C3: the session cannot read the other empresa's code) or the RLS WITH CHECK.
+        new RegExp(`${RLS_VIOLATION.source}|empresa code not readable`, RLS_VIOLATION.flags),
+      );
       const stored = await getHarnessDb().usuario.findUniqueOrThrow({ where: { id: objetivoId } });
       expect(stored.empresaId).toBe(fx.empresaA.id);
       expect(stored.sucursalId).toBe(fx.sucursalA1.id);

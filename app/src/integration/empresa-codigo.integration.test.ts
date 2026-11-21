@@ -375,7 +375,7 @@ describe("USUARIO.nombreUsuario prefix guard (real DB)", () => {
     it("the guard is enabled again after the setup (a new bad INSERT is still refused)", async () => {
       await crearUsuarioLegacy(`legacy-${randomUUID()}`);
       const rows = await getHarnessDb().$queryRaw<{ tgenabled: string }[]>`
-        SELECT tgenabled FROM pg_trigger WHERE tgname = 'usuario_nombre_prefijo_guard'`;
+        SELECT tgenabled::text AS tgenabled FROM pg_trigger WHERE tgname = 'usuario_nombre_prefijo_guard'`;
       expect(rows).toEqual([{ tgenabled: "O" }]);
       await expect(
         getHarnessDb().usuario.create({ data: datosUsuario(`legacy-${randomUUID()}`) }),
