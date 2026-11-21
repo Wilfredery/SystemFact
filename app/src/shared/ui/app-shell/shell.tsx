@@ -15,7 +15,10 @@
 import Link from "next/link";
 import { SidebarNav, type SidebarItemDef } from "./sidebar";
 
-const NAV_ITEMS: readonly SidebarItemDef[] = [
+/** A nav row; `soloAdmin` rows are dropped on the server for non-administrators (S7). */
+type NavItem = SidebarItemDef & { readonly soloAdmin?: boolean };
+
+const NAV_ITEMS: readonly NavItem[] = [
   { label: "Dashboard", href: "/dashboard" },
   // The ten ratified modules in order (app-shell spec).
   { label: "Venta", href: "/venta" },
@@ -28,7 +31,7 @@ const NAV_ITEMS: readonly SidebarItemDef[] = [
   { label: "Caja", href: "/caja" },
   { label: "Reportes", href: "/reportes" },
   { label: "Administración", href: "/administracion" },
-  { label: "Auditoría", href: "/auditoria" },
+  { label: "Auditoría", href: "/auditoria", soloAdmin: true },
 ];
 
 export function AuthShell({
@@ -63,7 +66,7 @@ export function AuthShell({
         )}
       </header>
       <div className="flex flex-1 flex-col md:flex-row">
-        <SidebarNav items={NAV_ITEMS} />
+        <SidebarNav items={NAV_ITEMS.filter((item) => esAdmin || item.soloAdmin !== true)} />
         {children}
       </div>
     </div>

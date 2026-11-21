@@ -33,30 +33,30 @@ export function tonoAccion(accion: AccionAuditoria): string {
   switch (accion) {
     case "CANCELAR":
     case "ANULAR":
-      return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
+      return "bg-danger/10 text-danger";
     case "CREAR":
     case "PAGAR":
-      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
+      return "bg-success-bg text-success-fg";
     case "ACTUALIZAR":
     case "AJUSTAR":
-      return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
+      return "bg-warn-bg text-warn";
     default:
-      return "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+      return "bg-surface-muted text-ink-muted";
   }
 }
 
 /**
- * The truncated "detalle" cell: `entidad #idEntidad` plus the reason when present.
+ * The truncated "detalle" cell: `#idEntidad` plus the reason when present (the entity
+ * has its own column since Board 09).
  * The full text is exposed via the `title` attribute; the visible string is clamped
  * by CSS in the table (`truncate`). NEVER the JSON payloads (`valorAnterior`/
  * `valorNuevo`) — those are out of the read contract's free-text scope (AC-3) and
  * deliberately not surfaced in the summary column either.
  */
 export function detalleFila(fila: {
-  readonly entidad: string;
   readonly idEntidad: string;
   readonly motivo: string | null;
 }): string {
-  const base = `${fila.entidad} #${fila.idEntidad}`;
+  const base = `#${fila.idEntidad}`;
   return fila.motivo !== null && fila.motivo !== "" ? `${base} — ${fila.motivo}` : base;
 }

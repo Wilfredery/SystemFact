@@ -29,8 +29,8 @@ import {
 import { ETIQUETA_ACCION } from "./format";
 
 const CLASE_CAMPO =
-  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
-const CLASE_ETIQUETA = "font-medium text-zinc-700 dark:text-zinc-300";
+  "min-h-11 rounded-md border border-line bg-surface px-3 text-sm text-ink placeholder:text-ink-muted";
+const CLASE_ETIQUETA = "font-medium text-ink";
 
 /** Every audit action value, as options for the `accion` select (AC-3: `LEER` is an
  *  ordinary option with no special handling). */
@@ -119,7 +119,7 @@ export function AuditFilters({
           await router.push(aQuery(val));
         });
       }}
-      className="flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+      className="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-surface p-4"
     >
       <div className="flex flex-col gap-1">
         <label htmlFor="aud-accion" className={CLASE_ETIQUETA}>
@@ -127,7 +127,6 @@ export function AuditFilters({
         </label>
         <select
           id="aud-accion"
-          aria-label="Acción"
           value={val.accion}
           onChange={(e) => onCambio("accion", e.target.value)}
           className={CLASE_CAMPO}
@@ -147,7 +146,6 @@ export function AuditFilters({
         </label>
         <input
           id="aud-usuario"
-          aria-label="Usuario"
           inputMode="numeric"
           value={val.usuarioId}
           onChange={(e) => onCambio("usuarioId", e.target.value)}
@@ -162,7 +160,6 @@ export function AuditFilters({
         </label>
         <input
           id="aud-sucursal"
-          aria-label="Sucursal"
           inputMode="numeric"
           value={val.sucursalId}
           onChange={(e) => onCambio("sucursalId", e.target.value)}
@@ -177,7 +174,6 @@ export function AuditFilters({
         </label>
         <input
           id="aud-desde"
-          aria-label="Fecha desde"
           type="date"
           value={val.desde}
           onChange={(e) => onCambio("desde", e.target.value)}
@@ -191,7 +187,6 @@ export function AuditFilters({
         </label>
         <input
           id="aud-hasta"
-          aria-label="Fecha hasta"
           type="date"
           value={val.hasta}
           onChange={(e) => onCambio("hasta", e.target.value)}
@@ -205,11 +200,10 @@ export function AuditFilters({
         </label>
         <input
           id="aud-texto"
-          aria-label="Texto libre"
           value={val.texto}
           onChange={(e) => onCambio("texto", e.target.value)}
           className={`min-w-40 ${CLASE_CAMPO}`}
-          placeholder="entidad, id o motivo"
+          placeholder="Buscar en auditoría (texto libre)..."
         />
       </div>
 
@@ -218,7 +212,7 @@ export function AuditFilters({
           type="submit"
           aria-label="Aplicar filtros"
           disabled={pendiente}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          className="min-h-11 rounded-md bg-accent px-4 text-sm font-medium text-accent-fg disabled:opacity-40"
         >
           {pendiente ? "Aplicando…" : "Aplicar"}
         </button>
@@ -232,7 +226,7 @@ export function AuditFilters({
               await router.push("/auditoria");
             });
           }}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          className="min-h-11 rounded-md border border-line px-4 text-sm font-medium text-ink disabled:opacity-40"
         >
           Limpiar
         </button>

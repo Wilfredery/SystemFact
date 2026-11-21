@@ -47,11 +47,14 @@ export default async function AuditoriaPage({ searchParams }: PageProps) {
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
-      <h1 className="mb-1 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Auditoría
-      </h1>
-      <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
-        Registro de auditoría — solo lectura, ordenado del más reciente al más antiguo.
+      <div className="mb-1 flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-semibold text-ink">Auditoría</h1>
+        <span className="rounded-md bg-warn-bg px-2 py-0.5 text-xs font-medium text-warn">
+          Solo Administrador
+        </span>
+      </div>
+      <p className="mb-6 text-sm text-ink-muted">
+        Consulta el registro de movimientos del sistema
       </p>
 
       {resultado.ok ? (
@@ -64,7 +67,7 @@ export default async function AuditoriaPage({ searchParams }: PageProps) {
       ) : (
         <p
           role="alert"
-          className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+          className="rounded-md bg-danger/10 px-4 py-2 text-sm text-danger"
         >
           {resultado.error.code === AUDITORIA_NO_AUTORIZADO
             ? "Solo el administrador puede consultar el registro de auditoría."

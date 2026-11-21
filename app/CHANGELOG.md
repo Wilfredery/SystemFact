@@ -1,3 +1,9 @@
+## [0.44.0](https://github.com/Wilfredery/SystemFact/compare/v0.43.1...v0.44.0) (2026-11-21)
+
+### Added
+
+* **auditoria (UI/UX board 09, slice A):** the audit screen aligns to the factura.penpot wireframe 09 — a `Solo Administrador` badge, the wireframe subtitle, the footer note "Registro de auditoría — Solo lectura · Inmutable (append-only)", the six columns in wireframe order with the new `Entidad` column (`scope="col"` headers), the whole screen on the F0 design-system tokens pinned by a no-raw-palette guard, 44px touch targets and accessible names equal to the visible labels. The `Auditoría` sidebar link is now shown to administrators only; the server-side gate of `/auditoria` is unchanged and stays the real security. Not in this slice (separate decisions): user and branch names with selects, and the old → new values, which stay hidden.
+
 ## [0.43.1](https://github.com/Wilfredery/SystemFact/compare/v0.43.0...v0.43.1) (2026-11-21)
 
 ### Changed
