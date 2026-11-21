@@ -37,9 +37,11 @@
 #   ENV_FILE          where to write DATABASE_URL/DIRECT_URL/NEXT_PUBLIC_*/E2E_*
 #                     (default: app/.env.e2e.stack — gitignored, never app/.env,
 #                     so a local run cannot clobber a developer's cloud .env)
-#   E2E_USER          nombreUsuario of the E2E identity, rol Administrador (default: e2e-automation)
-#   E2E_OPERADOR_USER nombreUsuario of the rol Operador identity (default: e2e-operador)
-#   E2E_DESPACHADOR_USER nombreUsuario of the rol Despachador identity (default: e2e-despachador)
+#   E2E_USER          nombreUsuario of the E2E identity, rol Administrador (default: E2E-automation)
+#   E2E_OPERADOR_USER nombreUsuario of the rol Operador identity (default: E2E-operador)
+#   E2E_DESPACHADOR_USER nombreUsuario of the rol Despachador identity (default: E2E-despachador)
+#                     All three MUST start with `E2E-`: the fixture company has code E2E and
+#                     the database rejects any other prefix (odd/tasks/multi-company-codigo.md C1/C6).
 #   E2E_PRODUCT       product the POS smoke adds to the cart (default: Arroz)
 #   E2E_PASSWORD      reuse a known password instead of generating one; the Operador and
 #                     Despachador identities share it (ephemeral local stack, one
@@ -59,9 +61,9 @@ PSQL="${PSQL:-psql}"
 # shellcheck disable=SC2086 # intentional word splitting: the default is a command with flags
 SUPABASE_CLI="${SUPABASE_CLI:-npx --yes supabase@3.0.0}"
 
-E2E_USER="${E2E_USER:-e2e-automation}"
-E2E_OPERADOR_USER="${E2E_OPERADOR_USER:-e2e-operador}"
-E2E_DESPACHADOR_USER="${E2E_DESPACHADOR_USER:-e2e-despachador}"
+E2E_USER="${E2E_USER:-E2E-automation}"
+E2E_OPERADOR_USER="${E2E_OPERADOR_USER:-E2E-operador}"
+E2E_DESPACHADOR_USER="${E2E_DESPACHADOR_USER:-E2E-despachador}"
 E2E_PRODUCT="${E2E_PRODUCT:-Arroz}"
 ENV_FILE="${ENV_FILE:-$APP_DIR/.env.e2e.stack}"
 
@@ -87,6 +89,11 @@ for var in E2E_USER E2E_OPERADOR_USER E2E_DESPACHADOR_USER; do
   case "${!var}" in
     *[!a-zA-Z0-9._-]*) fail "$var must match [a-zA-Z0-9._-]+ (got: ${!var})" ;;
   esac
+  # Canonical `<CODIGO>-<resto>` for the fixture company (code E2E): upper-case prefix,
+  # lower-case rest, total <= 64 (multi-company-codigo C2). The DB trigger enforces it too;
+  # failing here names the variable instead of a trigger error from psql.
+  [[ "${!var}" =~ ^E2E-[a-z0-9][a-z0-9._-]{0,56}$ ]] ||
+    fail "$var must look like E2E-<usuario> (prefix E2E upper-case, rest lower-case a-z0-9._-); got: ${!var}"
 done
 [[ "$E2E_USER" != "$E2E_OPERADOR_USER" && "$E2E_USER" != "$E2E_DESPACHADOR_USER" &&
    "$E2E_OPERADOR_USER" != "$E2E_DESPACHADOR_USER" ]] ||

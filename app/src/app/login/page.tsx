@@ -50,7 +50,7 @@ export default function LoginPage() {
               autoComplete="username"
               required
               autoFocus
-              placeholder="tu.usuario"
+              placeholder="CODIGO-usuario"
               className="h-11 bg-surface px-3"
             />
           </div>

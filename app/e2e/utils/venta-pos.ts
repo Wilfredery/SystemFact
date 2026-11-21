@@ -19,7 +19,7 @@ import { expect, type Page } from "@playwright/test";
 import type { Pool } from "pg";
 
 export const E2E_PRODUCT = process.env.E2E_PRODUCT ?? "Arroz";
-export const E2E_USER = process.env.E2E_USER ?? "e2e";
+export const E2E_USER = process.env.E2E_USER ?? "E2E-automation";
 export const E2E_PASSWORD = process.env.E2E_PASSWORD ?? "";
 
 /** The demo CREDITO client seeded by seed:bootstrap (name is a contract). */

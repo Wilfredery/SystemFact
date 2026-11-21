@@ -11,7 +11,7 @@ import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenan
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { crearCompra } from "@/modules/compra/application/crear-compra";
 import { confirmarCompra } from "@/modules/compra/application/confirmar-compra";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import { getHarnessDb, nombreUsuarioConCodigo, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 describe("compra correlativo across branches (real DB)", () => {
   let fixture: TenantFixture;
@@ -31,7 +31,7 @@ describe("compra correlativo across branches (real DB)", () => {
         empresaId: fixture.empresaA.id,
         sucursalId: fixture.sucursalA2.id,
         nombre: "Admin A2",
-        nombreUsuario: `intadmin-a2-corr-${fixture.usuarios.adminA.nombreUsuario}`,
+        nombreUsuario: nombreUsuarioConCodigo(fixture.empresaA.codigo, "intadmin-a2-corr"),
         passwordHash: "test-hash",
         roles: { create: { rolId: rolAdmin.id } },
       },

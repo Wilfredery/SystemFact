@@ -14,7 +14,7 @@ import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { tieneRolPermitidoEnTx } from "@/modules/compra/infrastructure/compra-repository";
 import { crearCompra } from "@/modules/compra/application/crear-compra";
 import { NO_AUTORIZADO, messageFor } from "@/modules/compra/domain/errors";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import { getHarnessDb, nombreUsuarioConCodigo, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 // Same allow-list as compra/http/actions.ts (compra-core is admin-only).
 const ROLES_ADMIN_ONLY = ["Administrador"];
@@ -39,7 +39,7 @@ describe("compra action guard rejects non-admin (real DB)", () => {
         empresaId: fixture.empresaA.id,
         sucursalId: fixture.sucursalA1.id,
         nombre: "Operador A",
-        nombreUsuario: `intoper-a-${fixture.usuarios.adminA.nombreUsuario}`,
+        nombreUsuario: nombreUsuarioConCodigo(fixture.empresaA.codigo, "intoper-a"),
         passwordHash: "test-hash",
         roles: { create: { rolId: rolOperador.id } },
       },

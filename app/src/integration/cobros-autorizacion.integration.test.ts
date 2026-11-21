@@ -23,7 +23,7 @@ import {
 import { registrarCobro } from "@/modules/cobros/application/registrar-cobro";
 import { registrarReembolso } from "@/modules/cobros/application/registrar-reembolso";
 import { consultarSaldoCxC } from "@/modules/cobros/application/consultar-saldo-cxc";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import { getHarnessDb, nombreUsuarioFixture, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 // Board 03 remediation (JD-A/B-001): import the REAL allow-lists from the
 // module instead of re-declaring a drift-prone local copy — this file now pins
@@ -62,7 +62,7 @@ async function crearUsuarioConRol(rolNombre: string, etiqueta: string): Promise<
       empresaId: ctxAdminA.empresaId,
       sucursalId: ctxAdminA.sucursalId,
       nombre: etiqueta,
-      nombreUsuario: `cob-${etiqueta}-${fixture!.usuarios.adminA.nombreUsuario}`,
+      nombreUsuario: await nombreUsuarioFixture(ctxAdminA.empresaId, `cob-${etiqueta}`),
       passwordHash: "test-hash",
       roles: { create: { rolId: rol.id } },
     },

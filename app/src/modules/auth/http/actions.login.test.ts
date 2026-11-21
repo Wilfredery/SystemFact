@@ -30,6 +30,7 @@ jest.mock("@/modules/auth/infrastructure/login-attempt-repository", () => ({
 }));
 
 import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { headers } from "next/headers";
 import { loginWithCredenciales } from "@/modules/auth/infrastructure/auth-service";
 import {
@@ -324,5 +325,102 @@ describe("login — brute-force throttle wiring (docs/22 T3)", () => {
 
     expect(registrarExitoMock).toHaveBeenCalledWith("admin", "203.0.113.7", almacenIntentosPrisma);
     expect(descartarIntentoMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("login — C4 lenient username normalization (multi-company)", () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+    (createClient as unknown as jest.Mock).mockResolvedValue({ auth: {} });
+    redirectMock.mockImplementation(() => undefined);
+    headersMock.mockResolvedValue(new Headers({ "x-forwarded-for": "203.0.113.7" }));
+    intentarAccesoMock.mockResolvedValue({ permitido: true, intentoId: 11 });
+    loginWithCredencialesMock.mockResolvedValue({
+      ok: true,
+      esAdmin: false,
+      activeBranchCount: 1,
+    });
+  });
+
+  it.each([["SOL-jperez"], ["sol-Jperez"], [" SOL-jperez "], ["Sol-JPEREZ"]])(
+    "%j reaches the throttle, the success reset and the service as SOL-jperez",
+    async (entrada) => {
+      await login({ error: null }, formData(entrada, "buena"));
+
+      expect(intentarAccesoMock).toHaveBeenCalledWith(
+        "SOL-jperez",
+        "203.0.113.7",
+        expect.any(Number),
+        almacenIntentosPrisma,
+      );
+      expect(loginWithCredencialesMock).toHaveBeenCalledWith(
+        expect.anything(),
+        "SOL-jperez",
+        "buena",
+      );
+      expect(registrarExitoMock).toHaveBeenCalledWith(
+        "SOL-jperez",
+        "203.0.113.7",
+        almacenIntentosPrisma,
+      );
+    },
+  );
+
+  it("normalizes BEFORE the throttle: the throttle runs first, with the normalized name", async () => {
+    await login({ error: null }, formData("sol-Jperez", "buena"));
+
+    expect(intentarAccesoMock.mock.calls[0]?.[0]).toBe("SOL-jperez");
+    expect(intentarAccesoMock.mock.invocationCallOrder[0]).toBeLessThan(
+      loginWithCredencialesMock.mock.invocationCallOrder[0] as number,
+    );
+  });
+
+  it("a legacy unprefixed name behaves exactly as before (only trimmed, case kept)", async () => {
+    await login({ error: null }, formData("  Admin ", "buena"));
+
+    expect(intentarAccesoMock.mock.calls[0]?.[0]).toBe("Admin");
+    expect(loginWithCredencialesMock).toHaveBeenCalledWith(expect.anything(), "Admin", "buena");
+  });
+
+  it("unknown prefix / unknown user / wrong password return the SAME uniform failure and are all counted", async () => {
+    loginWithCredencialesMock.mockResolvedValue({
+      ok: false,
+      code: AUTH_CREDENCIALES_INVALIDAS,
+      message: messageFor(AUTH_CREDENCIALES_INVALIDAS),
+      cuentaComoIntento: true,
+    });
+
+    const resultados = [];
+    for (const nombre of ["zzz-nadie", "SOL-nadie", "sol-jperez", "nadie", "ab-x"]) {
+      resultados.push(await login({ error: null }, formData(nombre, "mala")));
+    }
+
+    for (const r of resultados) {
+      expect(r).toStrictEqual({ error: "Credenciales inválidas" });
+    }
+    expect(descartarIntentoMock).not.toHaveBeenCalled();
+  });
+
+  it("never returns a format error: malformed shapes still go to the provider", async () => {
+    loginWithCredencialesMock.mockResolvedValue({
+      ok: false,
+      code: AUTH_CREDENCIALES_INVALIDAS,
+      message: messageFor(AUTH_CREDENCIALES_INVALIDAS),
+      cuentaComoIntento: true,
+    });
+
+    for (const nombre of ["sol-", "-x", "SOL--x", "SOL-j perez", "a".repeat(255)]) {
+      const r = await login({ error: null }, formData(nombre, "mala"));
+      expect(r).toStrictEqual({ error: "Credenciales inválidas" });
+    }
+    expect(loginWithCredencialesMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("keeps the 255 max (and the required-fields code) as before", async () => {
+    const r = await login({ error: null }, formData("a".repeat(256), "buena"));
+
+    expect(r.error).toBe("Debes indicar tu usuario y contraseña.");
+    expect(intentarAccesoMock).not.toHaveBeenCalled();
+    expect(loginWithCredencialesMock).not.toHaveBeenCalled();
   });
 });

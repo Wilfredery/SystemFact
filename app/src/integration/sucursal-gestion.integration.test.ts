@@ -8,7 +8,6 @@
  * proves that stored rows, versions and audit are unchanged.
  */
 
-import { randomUUID } from "node:crypto";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { tieneRolPermitidoEnTx } from "@/modules/tenant/infrastructure/usuario-repository";
 import {
@@ -26,7 +25,7 @@ import {
 } from "@/modules/tenant/domain/errors";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { ROLES_GESTION_SUCURSALES } from "@/modules/tenant/http/shared";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import { getHarnessDb, nombreUsuarioConCodigo, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 describe("crearSucursal / editarSucursal (real DB)", () => {
   let fx: TenantFixture;
@@ -84,7 +83,7 @@ describe("crearSucursal / editarSucursal (real DB)", () => {
         empresaId: fx.empresaA.id,
         sucursalId: fx.sucursalA1.id,
         nombre: "oper",
-        nombreUsuario: `oper-${randomUUID()}`,
+        nombreUsuario: nombreUsuarioConCodigo(fx.empresaA.codigo, "oper"),
         passwordHash: "test-hash",
         roles: { create: { rolId: rolOperador.id } },
       },

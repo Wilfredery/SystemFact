@@ -17,7 +17,7 @@ import {
   seedVentaConfigParaEmpresa,
   DESC_MAX_SEED_VALOR,
 } from "../../tools/scripts/seed-venta-config";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import { getHarnessDb, nombreUsuarioConCodigo, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 import { crearProductoVenta, categoriaA } from "./setup/venta-helpers";
 
 const CERO = { descuentoTipo: "PORCENTAJE", descuentoValor: "0.00" } as const;
@@ -40,7 +40,7 @@ async function crearOperador(): Promise<number> {
       empresaId: fixture!.empresaA.id,
       sucursalId: fixture!.sucursalA1.id,
       nombre: "Op A",
-      nombreUsuario: `op-${Date.now()}`,
+      nombreUsuario: nombreUsuarioConCodigo(fixture!.empresaA.codigo, "op"),
       passwordHash: "x",
       roles: { create: { rolId: rol.id } },
     },

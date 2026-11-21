@@ -17,7 +17,7 @@
  * leaves nothing collectable; if no pending receivable exists the spec skips with an
  * explicit "seed a credit sale" note.
  *
- * ENV: E2E_BASE_URL (default http://localhost:3000), E2E_USER (default "e2e"),
+ * ENV: E2E_BASE_URL (default http://localhost:3000), E2E_USER (default "E2E-automation"),
  * E2E_PASSWORD, and DIRECT_URL/DATABASE_URL (superuser read for ASSERTIONS ONLY).
  */
 

@@ -13,7 +13,7 @@ import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { listarMovimientosInventario } from "@/modules/inventario/application/listar-movimientos-inventario";
 import { tieneRolPermitidoEnTx } from "@/modules/inventario/infrastructure/inventario-repository";
 import { ROLES_GESTION_INVENTARIO } from "@/modules/inventario/http/shared";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import { getHarnessDb, nombreUsuarioConCodigo, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 const AHORA = new Date("2026-11-14T16:00:00.000Z");
 
@@ -318,7 +318,7 @@ describe("listarMovimientosInventario (real DB, app role + RLS)", () => {
         empresaId: fixture.empresaA.id,
         sucursalId: fixture.sucursalA2.id,
         nombre: "Usuario de A2",
-        nombreUsuario: `int-a2-${Date.now()}`,
+        nombreUsuario: nombreUsuarioConCodigo(fixture.empresaA.codigo, "int-a2"),
         passwordHash: "test-hash",
       },
     });
@@ -345,7 +345,7 @@ describe("history access guard (real DB)", () => {
         empresaId: fixture.empresaA.id,
         sucursalId: fixture.sucursalA1.id,
         nombre: nombreRol,
-        nombreUsuario: `int-${nombreRol}-${Date.now()}`,
+        nombreUsuario: nombreUsuarioConCodigo(fixture.empresaA.codigo, `int-${nombreRol}`),
         passwordHash: "test-hash",
         roles: { create: { rolId: rol.id } },
       },

@@ -17,12 +17,16 @@
 
 import {
   AUTH_CAMPOS_REQUERIDOS,
+  AUTH_CODIGO_EMPRESA_INVALIDO,
   AUTH_CREDENCIALES_INVALIDAS,
   AUTH_ENLACE_CONFLICTO,
   AUTH_ENLACE_DUPLICADO,
   AUTH_EMPRESA_INACTIVA,
   AUTH_ENLACE_NO_RESUELTO,
   AUTH_ERROR_CODES,
+  AUTH_NOMBRE_USUARIO_FORMATO_INVALIDO,
+  AUTH_NOMBRE_USUARIO_LARGO,
+  AUTH_NOMBRE_USUARIO_PREFIJO_INVALIDO,
   AUTH_USUARIO_INACTIVO,
   messageFor,
   type AuthErrorCode,
@@ -110,6 +114,27 @@ describe("auth error catalog", () => {
     // Its own fact: neither the inactive-user copy nor the credential failure.
     expect(messageFor(AUTH_EMPRESA_INACTIVA)).not.toBe(messageFor(AUTH_USUARIO_INACTIVO));
     expect(messageFor(AUTH_EMPRESA_INACTIVA)).not.toBe(messageFor(AUTH_CREDENCIALES_INVALIDAS));
+  });
+
+  it("owns the creation-time username codes (multi-company C2/C4) with Spanish copy", () => {
+    const codigos: AuthErrorCode[] = [
+      AUTH_CODIGO_EMPRESA_INVALIDO,
+      AUTH_NOMBRE_USUARIO_PREFIJO_INVALIDO,
+      AUTH_NOMBRE_USUARIO_FORMATO_INVALIDO,
+      AUTH_NOMBRE_USUARIO_LARGO,
+    ];
+    expect(codigos).toStrictEqual([
+      "AUTH_CODIGO_EMPRESA_INVALIDO",
+      "AUTH_NOMBRE_USUARIO_PREFIJO_INVALIDO",
+      "AUTH_NOMBRE_USUARIO_FORMATO_INVALIDO",
+      "AUTH_NOMBRE_USUARIO_LARGO",
+    ]);
+    for (const c of codigos) {
+      expect(AUTH_ERROR_CODES).toContain(c);
+      expect(messageFor(c).length).toBeGreaterThan(0);
+      // Creation-path errors, never the login failure copy.
+      expect(messageFor(c)).not.toBe(messageFor(AUTH_CREDENCIALES_INVALIDAS));
+    }
   });
 
   it("never leaks internal detail through a user-facing message", () => {

@@ -39,6 +39,7 @@ async function diagnose() {
       await tx.empresa.create({
         data: {
           id: 99001,
+          codigo: "RLS001",
           nombreComercial: "RLS Probe",
           rnc: "RLS-PROBE-99001",
           razonSocial: "Probe SA",

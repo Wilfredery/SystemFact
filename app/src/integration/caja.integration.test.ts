@@ -33,7 +33,7 @@ import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenantTransaction";
 import { consultarCierreDiario } from "@/modules/caja/application/consultar-cierre-diario";
 import { consultarResumenDia } from "@/modules/caja/application/consultar-resumen-dia";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import { getHarnessDb, nombreUsuarioFixture, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 let fixture: TenantFixture | null = null;
 
@@ -251,7 +251,10 @@ async function crearUsuarioNoAdmin(
       empresaId,
       sucursalId,
       nombre: `${rolNombre} ${empresaId}-${sucursalId}`,
-      nombreUsuario: `caja-${rolNombre.toLowerCase()}-${empresaId}-${sucursalId}-${seq()}`,
+      nombreUsuario: await nombreUsuarioFixture(
+        empresaId,
+        `caja-${rolNombre}-${empresaId}-${sucursalId}-${seq()}`,
+      ),
       passwordHash: "test-hash",
       roles: { create: { rolId: rid } },
     },

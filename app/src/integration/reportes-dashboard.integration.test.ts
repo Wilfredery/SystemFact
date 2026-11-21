@@ -29,7 +29,7 @@ import { normalizarFiltro } from "@/modules/reportes/domain/reporte-filtro";
 import { ventanaDiaSD } from "@/modules/reportes/domain/periodo";
 import { REPORTE_NO_AUTORIZADO } from "@/modules/reportes/domain/errors";
 import type { DashboardVista } from "@/modules/reportes/domain/dashboard";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import { getHarnessDb, nombreUsuarioFixture, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 let fixture: TenantFixture | null = null;
 
@@ -71,7 +71,7 @@ async function crearUsuarioConRol(
       empresaId,
       sucursalId,
       nombre: `${rolNombre} ${sucursalId}-${empresaId}`,
-      nombreUsuario: `rep-${rolNombre.toLowerCase()}-${empresaId}-${sucursalId}-${Date.now()}`,
+      nombreUsuario: await nombreUsuarioFixture(empresaId, `rep-${rolNombre}-${empresaId}-${sucursalId}`),
       passwordHash: "test-hash",
       roles: { create: { rolId: rid } },
     },

@@ -38,7 +38,7 @@ import {
 } from "@/modules/tenant/domain/errors";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { ROLES_GESTION_USUARIOS } from "@/modules/tenant/http/shared";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import { getHarnessDb, nombreUsuarioFixture, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 describe("cambiarRolesUsuario / cambiarEstadoUsuario (real DB)", () => {
   let fx: TenantFixture;
@@ -74,7 +74,7 @@ describe("cambiarRolesUsuario / cambiarEstadoUsuario (real DB)", () => {
         empresaId,
         sucursalId,
         nombre: tag,
-        nombreUsuario: `${tag}-${randomUUID()}`,
+        nombreUsuario: await nombreUsuarioFixture(empresaId, tag),
         passwordHash: "test-hash",
         roles: { create: { rolId } },
       },

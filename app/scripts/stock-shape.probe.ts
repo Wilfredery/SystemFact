@@ -90,8 +90,11 @@ interface MovementRow {
 
 async function sembrar(): Promise<Seeds> {
   const suffix = randomUUID();
+  // Unique company code (C1): 6 hex chars of the UUID, upper-case => matches ^[A-Z0-9]{3,6}$.
+  const codigo = suffix.replace(/-/g, "").slice(0, 6).toUpperCase();
   const empresa = await sdb.empresa.create({
     data: {
+      codigo,
       nombreComercial: `OBS-${suffix}`,
       rnc: `RNC-OBS-${suffix}`,
       razonSocial: `OBS-${suffix}`,
@@ -111,7 +114,7 @@ async function sembrar(): Promise<Seeds> {
       empresaId: empresa.id,
       sucursalId: sucursal.id,
       nombre: "Obs Admin",
-      nombreUsuario: `obs-admin-${suffix}`,
+      nombreUsuario: `${codigo}-obs-admin-${suffix}`,
       passwordHash: "probe",
     },
   });

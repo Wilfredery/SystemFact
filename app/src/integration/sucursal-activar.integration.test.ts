@@ -46,7 +46,7 @@ import {
   ROLES_GESTION_USUARIOS,
 } from "@/modules/tenant/http/shared";
 import { fijarStock } from "./setup/venta-helpers";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import { getHarnessDb, nombreUsuarioFixture, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 const LIBRE = { usuarios: 0, stock: 0, documentosAbiertos: 0, saldos: 0 };
 
@@ -97,7 +97,7 @@ describe("cambiarEstadoSucursal (real DB)", () => {
           empresaId: opts.empresaId ?? fx.empresaA.id,
           sucursalId,
           nombre: tag,
-          nombreUsuario: `${tag}-${randomUUID()}`,
+          nombreUsuario: await nombreUsuarioFixture(opts.empresaId ?? fx.empresaA.id, tag),
           passwordHash: "test-hash",
           activo: opts.activo ?? true,
           roles: { create: { rolId } },

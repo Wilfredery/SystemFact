@@ -1,7 +1,7 @@
 /**
  * seed-e2e-automation — dedicated automation E2E principal (owner-ratified 2026-10-13).
  *
- * PURPOSE: create a needle-isolated automation admin account (`e2e-automation`),
+ * PURPOSE: create a needle-isolated automation admin account (`DEMO-e2e-automation`),
  * separate from the operator's personal account, so Playwright E2E runs with a
  * dedicated identity (clean audit attribution, trivially revocable).
  *
@@ -11,13 +11,13 @@
  *      the GoTrue `auth.users` table (Supabase-shaped) vs the plain app DB.
  *   2. Structurally guarantees the demo tenant (RNC-keyed EMPRESA + SUCURSAL
  *      from `seed-cloud-bootstrap.ts` exports — no drift with that seed).
- *   3. Creates the `e2e-automation` USUARIO (rol Administrador binding via
+ *   3. Creates the `DEMO-e2e-automation` USUARIO (rol Administrador binding via
  *      USUARIO_ROL) with a DEAD random bcrypt placeholder in `passwordHash`
  *      (never a replayable credential — same hygiene as the bootstrap seed).
  *   4. Creates the matching Supabase Auth row via `auth.users` + `auth
  *      .identities` + empty GoTrue token columns (the observed prod-shaped
  *      semantics from seed-cloud-bootstrap — NULL tokens 500 the password
- *      grant on scan), using `buildSyntheticEmail("e2e-automation")` (ADR-014:
+ *      grant on scan), using the lower-cased `buildSyntheticEmail("DEMO-e2e-automation")` (ADR-014:
  *      email is NEVER an identifier in the app).
  *   5. Generates a random password (crypto-random base64url, 40 chars) and
  *      writes ONLY `app/.env.e2e.local` (gitignored): E2E_USER=/E2E_PASSWORD=
@@ -47,13 +47,16 @@ import path from "node:path";
 import { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import {
+  correoAuthDeNombreUsuario,
   EMPRESA_DEMO,
   ROLES_CATALOGO,
   SUCURSAL_DEMO,
 } from "./seed-cloud-bootstrap";
-import { buildSyntheticEmail } from "@/modules/auth/domain/synthetic-email";
 
-const E2E_USUARIO = "e2e-automation";
+// Canonical `<CODIGO>-<resto>` (multi-company-codigo C1/C2). This robot lives in the
+// demo tenant (the only one with the demo product, NCF ranges and credit client),
+// so its prefix is the demo company code `DEMO`; the DB trigger rejects any other prefix.
+const E2E_USUARIO = `${EMPRESA_DEMO.codigo}-e2e-automation`;
 const E2E_NOMBRE = "E2E Automation Operator (robot account)";
 const ENV_FILE = path.resolve(process.cwd(), ".env.e2e.local");
 // Rotation policy (revised 2026-10-14): the script ALWAYS re-rotates the Auth
@@ -114,7 +117,7 @@ async function asegurarAuthE2E(
   sencilla: string,
   pgcryptoSchema: string,
 ): Promise<{ creado: boolean; correo: string }> {
-  const correo = buildSyntheticEmail(E2E_USUARIO);
+  const correo = correoAuthDeNombreUsuario(E2E_USUARIO);
   const existentes = await db.$queryRaw<Array<{ id: string }>>`
     select id from auth.users
      where lower(email) = ${correo}

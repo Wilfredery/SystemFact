@@ -194,3 +194,22 @@ helper opened the file with `open(..., "wb")` before computing the new content, 
 the following assertion left an empty file, and `git add -A` committed it. Restored byte-identical
 from `22f6573` in this PR. The working rule is now: compute the new bytes first, verify the result
 is non-empty and longer than the original, write, and read it back.
+
+## Multi-company rename (2026-11-21, `odd/tasks/multi-company-codigo.md` S6/C5)
+
+Usernames are now `<CODIGO>-<usuario>`; company 5 has code `DEMO`. The smoke identity `prod-smoke` becomes **`DEMO-prod-smoke`** and its Auth email becomes `demo-prod-smoke@users.systemfact.internal` (lower-case form of the full canonical name). The rename is part of the ordered rollout (C5), run by the parent after showing the SQL to the owner, in ONE transaction together with the other test users; no secret value appears here.
+
+```sql
+begin;
+select set_config('app.is_bootstrap', 'true', true);
+update "USUARIO" set "nombreUsuario" = 'DEMO-prod-smoke', "updatedAt" = now()
+ where "nombreUsuario" = 'prod-smoke' and "empresaId" = 5;            -- exactly 1 row
+update auth.users set email = lower('DEMO-prod-smoke') || '@users.systemfact.internal', updated_at = now()
+ where lower(email) = 'prod-smoke@users.systemfact.internal';       -- exactly 1 row
+update auth.identities
+   set identity_data = jsonb_set(identity_data, '{email}', to_jsonb(lower('DEMO-prod-smoke') || '@users.systemfact.internal')), updated_at = now()
+ where user_id = (select id from auth.users where lower(email) = lower('DEMO-prod-smoke') || '@users.systemfact.internal');
+commit;
+```
+
+**Secret change at the rollout:** the `prod-smoke` environment secret **`PROD_USER`** must change from `prod-smoke` to `DEMO-prod-smoke` (the parent updates it; `PROD_PASSWORD` stays, the password does not change). Renaming the user without updating the Auth email in the same transaction, or without updating `PROD_USER`, makes the smoke fail at login. Rollback: the same statements with old and new swapped.

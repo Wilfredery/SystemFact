@@ -1,3 +1,13 @@
+## [0.43.0](https://github.com/Wilfredery/SystemFact/compare/v0.42.2...v0.43.0) (2026-11-21)
+
+### Added
+
+* **multi-company (company code):** every company now has a mandatory, immutable `EMPRESA.codigo` (3-6 characters `A-Z0-9`, unique, never reused) and every username is `<CODIGO>-<usuario>` (for example `DEMO-admin`), both enforced in the database by triggers (`empresa_codigo_immutable`, `usuario_nombre_prefijo_guard`) and validated in the app. Login stays lenient and canonicalises what is typed (`demo-Admin` -> `DEMO-admin`) without adding any new error, so it is not an enumeration oracle. New operator script `provision-empresa.ts` creates a company (code, first branch, roles, settings, its OWN NCF ranges, first administrator) in one transaction, dry-run by default. Seeds, CI fixtures and docs follow the new rule. Decision record: `odd/tasks/multi-company-codigo.md` (ADR-021).
+
+### Changed
+
+* The production test users are renamed with the `DEMO-` prefix at rollout, together with their Supabase Auth emails and the `PROD_USER`/`DEMO_USER` secrets.
+
 ## [0.42.2](https://github.com/Wilfredery/SystemFact/compare/v0.42.1...v0.42.2) (2026-11-21)
 
 ### Fixed
