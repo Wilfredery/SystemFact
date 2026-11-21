@@ -42,6 +42,15 @@ describe("constants", () => {
 });
 
 describe("normalizarNombreUsuarioLogin", () => {
+  // Documented behavior (verifier A1): a LEGACY hyphenated name is canonicalised like any other
+  // prefixed name, so it no longer matches its old row. Safe only because the rollout renames
+  // the legacy users BEFORE the app deploy (odd/tasks/multi-company-codigo.md C5).
+  it("canonicalises a legacy hyphenated name (so legacy rows must be renamed first)", () => {
+    expect(normalizarNombreUsuarioLogin("prod-smoke")).toBe("PROD-smoke");
+    expect(normalizarNombreUsuarioLogin("demo-operador")).toBe("DEMO-operador");
+    expect(normalizarNombreUsuarioLogin("admin")).toBe("admin");
+  });
+
   it.each([
     ["SOL-jperez", "SOL-jperez"],
     ["sol-Jperez", "SOL-jperez"],

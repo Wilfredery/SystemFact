@@ -8,7 +8,9 @@
 --   live in the database, not only in the app:
 --
 --   C1 "EMPRESA"."codigo" varchar(6) NOT NULL, UNIQUE, CHECK ^[A-Z0-9]{3,6}$.
---      Backfill: id 5 => 'DEMO'; any other existing row => 'E' || id.
+--      Backfill: id 5 => 'DEMO'; any other existing row => 'E' || lpad(id, 2, '0') (E01..E99,
+--      3-4 chars, always valid for the CHECK; ids above 99 only exist outside production
+--      and would need a manual code before this migration).
 --      Trigger empresa_codigo_immutable (BEFORE UPDATE) raises SQLSTATE 42501
 --      when the code changes. There is NO app.is_bootstrap bypass: a wrong code
 --      is fixed only by a reviewed migration (which drops/recreates the trigger).
@@ -74,7 +76,7 @@ ALTER TABLE "EMPRESA" ADD COLUMN IF NOT EXISTS "codigo" VARCHAR(6);
 SELECT set_config('app.is_bootstrap', 'true', true);
 
 UPDATE "EMPRESA"
-   SET "codigo" = CASE WHEN "id" = 5 THEN 'DEMO' ELSE 'E' || "id"::text END
+   SET "codigo" = CASE WHEN "id" = 5 THEN 'DEMO' ELSE 'E' || lpad("id"::text, 2, '0') END
  WHERE "codigo" IS NULL;
 
 SELECT set_config('app.is_bootstrap', '', true);
