@@ -383,6 +383,8 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   Riders for later: componerValor → shared/ui, draft fecha not persisted,
   chip-clear URL sync, banner rates static (config could drift), local
   integration stack restart.
+## Log — boards 06–07
+
 - L23: BOARD REPORT 06 (Caja) delivered with the check/recheck/evaluate/audit
   pass; owner "go with recommendations" pre-approved. Module already matches
   the wireframes closely — all labels/copy verbatim matches pinned by
@@ -421,3 +423,85 @@ ratified per-board loop). Setup deliverable: `design/factura/system.md`.
   cannot drift. Verified: caja 162/162, tsc + eslint clean.
   BOARD 06 CLOSED: commits 15da26d, 921c75b, 983d6cd, + this fix. Next:
   board 07 Reportes.
+- L26: v0.40.0 shipped end-to-end 2026-11-20 (PR #261 squash-merged as
+  c05f0f3; tag + GitHub Release; Vercel prod deploy; no migration,
+  UI-only). CI: one infra flake — the workflow_dispatch run I raced against
+  the auto-trigger collided on the local Supabase port 54322; rerun of the
+  failed E2E job went green (rider: add a concurrency group to ci.yml).
+  One merge conflict in the three version files + the feature doc
+  (master's squash rewrote them); resolved with the branch's versions.
+  Prod smoke 10/0/0 (36.2s). NO demo lane: board 06 touches only the
+  read-only Caja view (no sales/payments/returns/login surface). BOARD 06
+  shipped. Next: BOARD REPORT 07 pending owner approval (explorer map
+  already gathered in session context).
+## Specs — Board 07 Reportes (owner: "Go", 2026-11-20, recommendations pre-approved)
+
+- S36: D1 — the 07a table adopts the wireframe's nine columns (Producto |
+  P. costo | P. salida | Cant. vendida | Cant. comprada | Ventas | Costo |
+  Margen | Margen %); Inversión/Capital move to the KPI tiles. New domain
+  field `costo` (the same term the margen subtracts — one definition, no
+  re-derivation) on RentabilidadFila + resumirRentabilidad; CSV contract
+  unchanged.
+- S37: D2 — 07a KPIs render as the wireframe's five tiles (Inversión,
+  Entrada (unid.), Salida (unid.), Capital en mercancía, Margen de ganancia
+  + %) from the page-independent summary (EXP-2).
+- S38: D3 — 07b renders PER-PERIOD rows (Período actual / Período anterior)
+  with Variación (RD$) and Variación (%) columns + TOTAL row (current +
+  variación, the FIN-5 convention); the per-day detail stays in the CSV.
+- S39: D4/D5 — 07b gets the four wireframe KPI tiles; per-board footer
+  strips ("Filtrado por período y sucursal" / "Filtrado por empresa y
+  sucursal activa"). D5 kept: single Exportar CSV link (the DGII split
+  menu belongs to the fiscal family) — [wireframe] drift tag. D6 kept:
+  no Empresa filter (one empresa per tenant) — [beyond-wireframe].
+- S40: F1 — F0 retrofit of 31 raw-palette lines across rentabilidad-panel,
+  financiero-panel, report-selector and the route page; guarded by a
+  source-level no-raw-palette test (rgb/hsl/oklch included). Panels stay
+  pure server components; the selector keeps its client island.
+- S41: Per protocol, the board 07 diff gets JD dual review.
+
+## Tasks — Board 07
+
+- T24 (S36,S37) code+test — domain costo field + 07a columns/tiles.
+- T25 (S38,S39) code+test — 07b per-period table + tiles + strips.
+- T26 (S40) code+test — F0 retrofit + guard.
+- T27 (S41) verify — JD dual review of the board 07 diff.
+
+- L27: JD round 1 (board 07, commit b436656): judges converged on a CRITICAL
+  (JD-B-001) / HIGH (JD-A-001) — my costo derivation used precioSalida ×
+  unidadesVendidas (≈ Ventas by construction) instead of the COGS the
+  margin identity subtracts (Salida × costoPromedio); the hand-written
+  fixture hid it (suites 235/235 + 2767/2767 green while wrong).
+  Consolidated remediation: costo = dinero(unidadesVendidas ×
+  costoPromedio); margen derives from the ROUNDED costo so Ventas − Costo =
+  Margen holds to the cent (JD-B-004); discriminating domain tests (row
+  costo, resumen costo, identity test with a 5-dp intermediate term);
+  board07 fixture now DERIVED from calcularFilaRentabilidad/resumirRentabilidad
+  (JD-A-002); Costo column added to the CSV + resumen map (EXP-2 parity,
+  JD-A-003 — CSV contract change is part of S36, noted); 07a TOTAL row from
+  the summary (JD-A-004/JD-B-003); comparativa empty state restored
+  (JD-B-005); comment scoped to CSV-carried columns (JD-B-006). Riders
+  recorded: JD-A-005 (comparativa still runs per-day reads for the CSV —
+  screen-only dead work, keep or skip in a later slice); JD-A-006 copy
+  drifts tagged [wireframe] (row labels "Período actual/anterior" vs month
+  names; KPI sign placement "+RD$"; header suffixes "Ventas/Costo/Margen"
+  without "(RD$)"); JD-A-007 guard covers board-07 files only —
+  dashboard/operacional/fiscal panels are later-board scope (follow-up).
+  Verified: reportes suites + gates GATES_OK; full sweep 2768/2768 (later re-verified).
+  gga advisories on the remediation (non-blocking): decimal.js confirmed a
+  DIRECT runtime dependency (owner rule satisfied); dual margin paths
+  (calcularMargen unrounded vs fila-level rounded costo) documented as
+  deliberate for the on-screen identity — rider: fold calcularMargen into
+  the rounded-cost path or pin the ≤1¢ tolerance in a later slice.
+- L28: JD round 2: judge B PASS (all six verified, dynamic repro of the COGS
+  fix and the cent identity); judge A FAIL (narrow) on DoD test-rule items
+  only — all fixed as a normal commit: discriminating identity test (JD-A
+  N1: the old input didn't discriminate; new input ventas 10.00 / u 1.015 /
+  costo 1.00 → costo 1.02, margen 8.98), integration CSV Costo pins (N3),
+  07a TOTAL row assertion (N4), doc structure dedup + Log section (N5).
+  Stale formula doc (N2) already fixed in 34aa14c. Verified: reportes
+  236/236, tsc + eslint clean. BOARD 07 CLOSED (round budget spent; the
+  residual commit ships under normal review). Riders: comparativa per-day
+  reads feed the CSV (later slice); copy drifts tagged [wireframe];
+  guard scope = board-07 files; CSV contract test pin added. Next: ship
+  v0.41.0 (PR + tag + deploy + smoke), then BOARD REPORT 08 pending owner
+  approval.

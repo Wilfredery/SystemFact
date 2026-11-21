@@ -143,6 +143,9 @@ export interface RentabilidadFila {
   readonly unidadesCompradas: string;
   /** Ventas basis (Σ qty × price sold), `Decimal(12,2)` string. */
   readonly ventas: string;
+  /** Costo de lo vendido (COGS) = unidadesVendidas × costoPromedio — the exact term the
+   *  margen subtracts (REN-1). `Decimal(12,2)` string. Board 07a wireframe column (S36). */
+  readonly costo: string;
   /** Inversión = Σ(purchase qty × costoUnitario), `Decimal(12,2)` string. */
   readonly inversion: string;
   /** Capital = current stock × costoPromedio, `Decimal(12,2)` string. */
@@ -156,18 +159,24 @@ export interface RentabilidadFila {
 /**
  * Compute one product's full rentabilidad row from its raw aggregated inputs (REN-1). Pure Decimal
  * throughout; quantities are re-emitted at the `Decimal(12,3)` scale and money at `Decimal(12,2)`
- * so the screen and the CSV print byte-identical figures (EXP-2 display parity).
+ * so the screen and the CSV print byte-identical figures (EXP-2 display parity). The Costo
+ * column rides BOTH surfaces since JD round 1 (board 07a S36); the CSV additionally carries
+ * Inversión/Capital columns the screen shows as KPI tiles.
  */
 export function calcularFilaRentabilidad(insumo: RentabilidadInsumo): RentabilidadFila {
   const precioSalida = calcularPrecioSalida({
     ventasBrutas: insumo.ventasBrutas,
     unidadesVendidas: insumo.unidadesVendidas,
   });
-  const margen = calcularMargen({
-    ventasBrutas: insumo.ventasBrutas,
-    unidadesVendidas: insumo.unidadesVendidas,
-    costoPromedio: insumo.costoPromedio,
-  });
+  // Board 07a (S36, JD round 1 CRITICAL JD-B-001/JD-A-001): the Costo column is the
+  // COGS — Salida × costoPromedio, the EXACT term the REN-1 margin formula subtracts
+  // (NOT the weighted selling price: that is ~Ventas and made Ventas − Costo ≈ 0).
+  // JD-B-004: costo is rounded FIRST and the margen derives from the ROUNDED costo, so
+  // the displayed identity Ventas − Costo = Margen holds to the cent for every row.
+  const costo = dinero(
+    new Decimal(insumo.unidadesVendidas).times(new Decimal(insumo.costoPromedio)),
+  );
+  const margen = dinero(new Decimal(insumo.ventasBrutas).minus(new Decimal(costo)));
   const margenPorciento = calcularMargenPorciento({
     margen,
     ventasBrutas: insumo.ventasBrutas,
@@ -184,6 +193,7 @@ export function calcularFilaRentabilidad(insumo: RentabilidadInsumo): Rentabilid
     unidadesVendidas: cantidad(new Decimal(insumo.unidadesVendidas)),
     unidadesCompradas: cantidad(new Decimal(insumo.unidadesCompradas)),
     ventas: dinero(new Decimal(insumo.ventasBrutas)),
+    costo,
     inversion: dinero(new Decimal(insumo.inversion)),
     capital,
     margen,
@@ -196,6 +206,8 @@ export interface RentabilidadResumen {
   readonly unidadesVendidas: string;
   readonly unidadesCompradas: string;
   readonly ventas: string;
+  /** Σ row costo (cost of goods sold), `Decimal(12,2)` string. Board 07a TOTAL row (S36). */
+  readonly costo: string;
   readonly inversion: string;
   readonly capital: string;
   readonly margen: string;
@@ -217,6 +229,7 @@ export function resumirRentabilidad(
   let unidadesVendidas = new Decimal(0);
   let unidadesCompradas = new Decimal(0);
   let ventas = new Decimal(0);
+  let costo = new Decimal(0);
   let inversion = new Decimal(0);
   let capital = new Decimal(0);
   let margen = new Decimal(0);
@@ -224,6 +237,7 @@ export function resumirRentabilidad(
     unidadesVendidas = unidadesVendidas.plus(new Decimal(f.unidadesVendidas));
     unidadesCompradas = unidadesCompradas.plus(new Decimal(f.unidadesCompradas));
     ventas = ventas.plus(new Decimal(f.ventas));
+    costo = costo.plus(new Decimal(f.costo));
     inversion = inversion.plus(new Decimal(f.inversion));
     capital = capital.plus(new Decimal(f.capital));
     margen = margen.plus(new Decimal(f.margen));
@@ -232,6 +246,7 @@ export function resumirRentabilidad(
     unidadesVendidas: cantidad(unidadesVendidas),
     unidadesCompradas: cantidad(unidadesCompradas),
     ventas: dinero(ventas),
+    costo: dinero(costo),
     inversion: dinero(inversion),
     capital: dinero(capital),
     margen: dinero(margen),

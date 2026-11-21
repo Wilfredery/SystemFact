@@ -73,6 +73,7 @@ function resumenComoMap(r: RentabilidadResumen): Record<string, string> {
     unidadesVendidas: r.unidadesVendidas,
     unidadesCompradas: r.unidadesCompradas,
     ventas: r.ventas,
+    costo: r.costo,
     inversion: r.inversion,
     capital: r.capital,
     margen: r.margen,
