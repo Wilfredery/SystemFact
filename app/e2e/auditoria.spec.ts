@@ -74,7 +74,8 @@ test.describe("/auditoria", () => {
     ).toHaveCount(0);
 
     await page.goto("/auditoria");
-    await expect(page.getByRole("alert")).toHaveText(
+    // Scoped to <main>: Next.js adds its own route-announcer alert outside it.
+    await expect(page.locator("main").getByRole("alert")).toHaveText(
       "Solo el administrador puede consultar el registro de auditoría.",
     );
     await expect(page.getByRole("table")).toHaveCount(0);
