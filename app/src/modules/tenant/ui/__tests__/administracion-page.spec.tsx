@@ -314,6 +314,18 @@ describe("AdministracionPage — URL contract (S6)", () => {
     expect(screen.getByTestId("empresa-fila")).toBeInTheDocument();
   });
 
+  it("shows the new tab's rows when the tab changes on the same route (remount per tab)", async () => {
+    const { rerender } = render(
+      await AdministracionPage({ searchParams: Promise.resolve({ tab: "empresas" }) }),
+    );
+    expect(screen.getByTestId("empresa-fila")).toBeInTheDocument();
+
+    rerender(await AdministracionPage({ searchParams: Promise.resolve({ tab: "usuarios" }) }));
+
+    expect(screen.getByTestId("usuario-fila-10")).toBeInTheDocument();
+    expect(screen.queryByTestId("empresa-fila")).not.toBeInTheDocument();
+  });
+
   it("reads the Roles tab through its own action (S3)", async () => {
     await renderizarPagina({ tab: "roles" });
 

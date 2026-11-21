@@ -123,6 +123,10 @@ export default async function AdministracionPage({
       </div>
       {puedeVer ? (
         <AdministracionScreen
+          // Remount per tab: the island seeds its list state from props once, and a tab
+          // switch is a navigation to the SAME route, so without a key the Usuarios
+          // rows of a fresh server read would be ignored (caught by the e2e suite).
+          key={tab}
           tab={tab}
           filtrosIniciales={filtros}
           usuarios={usuarios}
