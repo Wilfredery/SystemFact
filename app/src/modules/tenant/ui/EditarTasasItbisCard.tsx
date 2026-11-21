@@ -29,11 +29,11 @@ import { mensajeErrorGestion } from "./administracion-tabs";
 // AdministracionScreen.tsx; duplicating three class strings beats exporting
 // them and widening the screen module's surface).
 const CLASE_ALERTA =
-  "rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300";
+  "rounded-md border border-danger bg-danger/10 px-4 py-3 text-sm text-danger";
 const CLASE_BOTON =
-  "min-h-11 rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300";
+  "min-h-11 rounded-md border border-line px-4 text-sm font-medium text-ink disabled:opacity-40";
 const CLASE_CONTROL =
-  "min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
+  "min-h-11 rounded-md border border-line bg-surface px-3 text-sm text-ink";
 
 export interface FilaTasaItbisVista {
   readonly valor: string;
@@ -105,7 +105,7 @@ export function EditarTasasItbisCard({
 
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+      <h2 className="text-lg font-semibold text-ink">
         Tasas de ITBIS permitidas
       </h2>
       {fila === null ? (
@@ -113,12 +113,12 @@ export function EditarTasasItbisCard({
           {MENSAJE_TASA_ITBIS_CONFIG_FALTANTE}
         </p>
       ) : (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-ink-muted">
           {`Lista vigente: ${fila.valor} (desde ${formatearFechaSD(fila.vigenciaInicio)} hasta ${formatearFechaSD(fila.vigenciaFin)}).`}
         </p>
       )}
       <div className="flex max-w-xl flex-col gap-2">
-        <label htmlFor="tasas-itbis-valor" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <label htmlFor="tasas-itbis-valor" className="text-sm font-medium text-ink">
           Nueva lista (separada por comas)
         </label>
         <input
@@ -128,7 +128,7 @@ export function EditarTasasItbisCard({
           onChange={(e) => setValor(e.target.value)}
           disabled={enviando}
         />
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="text-xs text-ink-muted">
           Confirmar con su contador la legalidad de cualquier tasa nueva antes de
           guardarla. El cambio rige desde el momento del guardado; los documentos
           previos conservan su tasa.
@@ -147,7 +147,7 @@ export function EditarTasasItbisCard({
           </p>
         )}
         {mensaje !== null && (
-          <p className="text-sm text-emerald-700 dark:text-emerald-400" role="status" data-testid="tasas-itbis-mensaje">
+          <p className="text-sm text-success-fg" role="status" data-testid="tasas-itbis-mensaje">
             {mensaje}
           </p>
         )}

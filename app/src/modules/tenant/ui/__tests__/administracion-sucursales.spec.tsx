@@ -108,6 +108,10 @@ function montar({
       puedeGestionar={puedeGestionar}
       sesionUsuarioId={99}
       sesionSucursalId={1}
+
+      roles={null}
+
+      empresaNombre="Empresa Demo"
     />,
   );
 }
@@ -338,6 +342,10 @@ describe("Nueva sucursal dialog (S9)", () => {
         puedeGestionar
         sesionUsuarioId={99}
         sesionSucursalId={1}
+
+        roles={null}
+
+        empresaNombre="Empresa Demo"
       />,
     );
     const abrirMover = async () => {
@@ -580,6 +588,10 @@ describe("tab navigation keeps the server branch list in sync (review R3)", () =
       puedeGestionar: true,
       sesionUsuarioId: 99,
       sesionSucursalId: 1,
+
+      roles: null,
+
+      empresaNombre: "Empresa Demo",
     };
     const { rerender } = render(<AdministracionScreen tab="usuarios" sucursales={null} {...props} />);
 
@@ -604,6 +616,10 @@ describe("tab navigation keeps the server branch list in sync (review R3)", () =
       puedeGestionar: true,
       sesionUsuarioId: 99,
       sesionSucursalId: 1,
+
+      roles: null,
+
+      empresaNombre: "Empresa Demo",
     };
     const { rerender } = render(
       <AdministracionScreen tab="sucursales" sucursales={{ ok: true, data: [CENTRAL] }} {...props} />,

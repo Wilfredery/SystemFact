@@ -115,6 +115,10 @@ function montar({
       puedeGestionar={puedeGestionar}
       sesionUsuarioId={99}
       sesionSucursalId={SESION_SUCURSAL_ID}
+
+      roles={null}
+
+      empresaNombre="Empresa Demo"
     />,
   );
 }
@@ -410,6 +414,10 @@ describe("the all-branches list feeds the tab; the move dialog stays active-only
         puedeGestionar
         sesionUsuarioId={99}
         sesionSucursalId={SESION_SUCURSAL_ID}
+
+        roles={null}
+
+        empresaNombre="Empresa Demo"
       />,
     );
 
@@ -435,6 +443,10 @@ describe("the all-branches list feeds the tab; the move dialog stays active-only
       puedeGestionar: true,
       sesionUsuarioId: 99,
       sesionSucursalId: SESION_SUCURSAL_ID,
+
+      roles: null,
+
+      empresaNombre: "Empresa Demo",
     };
     const { rerender } = render(<AdministracionScreen tab="usuarios" sucursales={null} {...props} />);
 

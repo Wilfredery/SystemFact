@@ -27,9 +27,9 @@ import type { SucursalAdministracionDto, SucursalGestionDto } from "@/modules/te
 import { validarTextoSucursal } from "./administracion-tabs";
 
 const CLASE_ALERTA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+  "rounded-md bg-danger/10 px-4 py-2 text-sm text-danger";
 const CLASE_CONTROL =
-  "min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
+  "min-h-11 rounded-md border border-line bg-surface px-3 text-sm font-normal text-ink";
 
 export interface DatosSucursalFormulario {
   readonly nombre: string;
@@ -116,7 +116,7 @@ export function SucursalDialog({
             const idError = `sucursal-${c.clave}-error`;
             return (
               <div key={c.clave} className="flex flex-col gap-1">
-                <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                <label className="flex flex-col gap-1 text-sm font-medium text-ink">
                   {c.etiqueta}
                   <input
                     type="text"
@@ -134,7 +134,7 @@ export function SucursalDialog({
                   />
                 </label>
                 {mensaje !== null && (
-                  <span id={idError} className="text-xs text-red-700 dark:text-red-300">
+                  <span id={idError} className="text-xs text-danger">
                     {mensaje}
                   </span>
                 )}
@@ -144,7 +144,7 @@ export function SucursalDialog({
         </div>
 
         {valido && cambio && (
-          <p className="text-sm text-zinc-700 dark:text-zinc-300">
+          <p className="text-sm text-ink">
             {editando
               ? `Se guardarán los cambios de la sucursal ${recortados.nombre}.`
               : `Se creará la sucursal ${recortados.nombre} y quedará activa. Las sucursales no se eliminan.`}
@@ -210,13 +210,13 @@ export function ConfirmarEstadoSucursalDialog({
           <DialogDescription>{`Sucursal: ${sucursal.nombre}`}</DialogDescription>
         </DialogHeader>
 
-        <p className="text-sm text-zinc-700 dark:text-zinc-300">
+        <p className="text-sm text-ink">
           {activar
             ? `Se activará la sucursal ${sucursal.nombre}: volverá a estar disponible para elegirla y mover usuarios a ella.`
             : `Se desactivará la sucursal ${sucursal.nombre}: dejará de estar disponible para elegirla y para mover usuarios a ella.`}
         </p>
         {!activar && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-ink-muted">
             No se elimina: la sucursal queda inactiva, su historial se conserva y puede activarse de nuevo. Solo
             se puede desactivar sin usuarios activos, existencias, documentos abiertos ni facturas con saldo
             pendiente.

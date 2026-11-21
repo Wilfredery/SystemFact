@@ -114,6 +114,10 @@ function montar({
       puedeGestionar={false}
       sesionUsuarioId={1}
       sesionSucursalId={1}
+
+      roles={null}
+
+      empresaNombre="Empresa Demo"
     />,
   );
 }
@@ -133,7 +137,7 @@ describe("AdministracionScreen — Usuarios tab (S2a)", () => {
   it("renders the wireframe columns, one row per user, state badges and NO Acciones column", () => {
     montar();
 
-    for (const columna of ["Usuario", "Nombre", "Rol", "Empresa/Sucursal", "Estado"]) {
+    for (const columna of ["Usuario", "Nombre", "Roles", "Empresa/Sucursal", "Estado"]) {
       expect(screen.getByRole("columnheader", { name: columna })).toBeInTheDocument();
     }
     expect(screen.queryByRole("columnheader", { name: "Acciones" })).not.toBeInTheDocument();

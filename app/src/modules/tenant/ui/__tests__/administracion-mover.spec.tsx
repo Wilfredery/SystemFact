@@ -127,6 +127,10 @@ function montar({
       puedeGestionar={puedeGestionar}
       sesionUsuarioId={sesionUsuarioId}
       sesionSucursalId={1}
+
+      roles={null}
+
+      empresaNombre="Empresa Demo"
     />,
   );
 }

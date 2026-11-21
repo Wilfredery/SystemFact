@@ -16,18 +16,19 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import AdministracionPage from "@/app/(app)/administracion/page";
 import {
   consultarConfiguracionAction,
+  listarRolesAdministracionAction,
   listarSucursalesAdministracionAction,
   listarUsuariosAction,
   obtenerPermisosAdministracionAction,
 } from "@/modules/tenant/http/actions.administracion";
-import { getCurrentTenantContext } from "@/modules/tenant/infrastructure/tenant-runtime";
+import { getCurrentTenantHeader } from "@/modules/tenant/infrastructure/tenant-runtime";
 
 jest.mock("@/lib/supabase/client", () => ({
   createClient: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock("@/modules/tenant/infrastructure/tenant-runtime", () => ({
-  getCurrentTenantContext: jest.fn(),
+  getCurrentTenantHeader: jest.fn(),
 }));
 
 jest.mock("@/modules/tenant/http/actions.usuarios", () => ({
@@ -44,6 +45,7 @@ jest.mock("@/modules/tenant/http/actions.administracion", () => ({
   listarUsuariosAction: jest.fn(),
   listarSucursalesDeEmpresaAction: jest.fn(),
   listarSucursalesAdministracionAction: jest.fn(),
+  listarRolesAdministracionAction: jest.fn(),
   consultarConfiguracionAction: jest.fn(),
   obtenerPermisosAdministracionAction: jest.fn(),
 }));
@@ -66,9 +68,10 @@ jest.mock("@/modules/tenant/http/actions.configuracion", () => ({
 
 const mockListar = jest.mocked(listarUsuariosAction);
 const mockSucursales = jest.mocked(listarSucursalesAdministracionAction);
+const mockRoles = jest.mocked(listarRolesAdministracionAction);
 const mockConfiguracion = jest.mocked(consultarConfiguracionAction);
 const mockPermisos = jest.mocked(obtenerPermisosAdministracionAction);
-const mockContexto = jest.mocked(getCurrentTenantContext);
+const mockContexto = jest.mocked(getCurrentTenantHeader);
 
 function usuario(parcial: Record<string, unknown> = {}) {
   return {
@@ -108,6 +111,7 @@ beforeEach(() => {
   mockListar.mockReset();
   mockSucursales.mockReset();
   mockConfiguracion.mockReset();
+  mockRoles.mockReset();
   mockPermisos.mockReset();
   mockContexto.mockReset();
   redirect.mockClear();
@@ -116,8 +120,17 @@ beforeEach(() => {
     sucursalId: 1,
     usuarioId: 1,
     esAdmin: false,
-  } as Awaited<ReturnType<typeof getCurrentTenantContext>>);
+    empresaNombre: "Empresa Demo",
+    sucursalNombre: "Sucursal Central",
+  } as Awaited<ReturnType<typeof getCurrentTenantHeader>>);
   mockPermisos.mockResolvedValue({ ok: true, data: { puedeVer: true } });
+  mockRoles.mockResolvedValue({
+    ok: true,
+    data: [
+      { id: 1, nombre: "Administrador" },
+      { id: 2, nombre: "Operador" },
+    ],
+  });
   mockListar.mockResolvedValue({ ok: true, data: salidaUsuarios() });
   mockSucursales.mockResolvedValue({
     ok: true,
@@ -145,7 +158,7 @@ describe("AdministracionPage — access gate (S6)", () => {
   });
 
   it("renders the directory for a permitted caller", async () => {
-    await renderizarPagina();
+    await renderizarPagina({ tab: "usuarios" });
 
     expect(screen.getByRole("heading", { name: "Administración" })).toBeInTheDocument();
     expect(screen.getByTestId("usuario-fila-10")).toBeInTheDocument();
@@ -154,7 +167,7 @@ describe("AdministracionPage — access gate (S6)", () => {
   it("renders the access message and no data for an Operador/Despachador (puedeVer false)", async () => {
     mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeVer: false } });
 
-    await renderizarPagina();
+    await renderizarPagina({ tab: "usuarios" });
 
     expect(
       screen.getByRole("alert"),
@@ -183,13 +196,15 @@ describe("AdministracionPage — write affordances (administracion-writes S11)",
       sucursalId: 1,
       usuarioId: 10,
       esAdmin: true,
-    } as Awaited<ReturnType<typeof getCurrentTenantContext>>);
+      empresaNombre: "Empresa Demo",
+      sucursalNombre: "Sucursal Central",
+    } as Awaited<ReturnType<typeof getCurrentTenantHeader>>);
     mockListar.mockResolvedValue({
       ok: true,
       data: salidaUsuarios({ items: [usuario(), usuario({ id: 11, nombreUsuario: "jperez" })], total: 2 }),
     });
 
-    await renderizarPagina();
+    await renderizarPagina({ tab: "usuarios" });
 
     expect(screen.getByRole("columnheader", { name: "Acciones" })).toBeInTheDocument();
     expect(
@@ -211,8 +226,18 @@ describe("AdministracionPage — write affordances (administracion-writes S11)",
 });
 
 describe("AdministracionPage — URL contract (S6)", () => {
-  it("defaults to the Usuarios tab with page 1 and no filters", async () => {
+  it("defaults to the Empresas tab (S1): branches read, no user/config/role read", async () => {
     await renderizarPagina();
+
+    expect(mockSucursales).toHaveBeenCalled();
+    expect(mockListar).not.toHaveBeenCalled();
+    expect(mockConfiguracion).not.toHaveBeenCalled();
+    expect(mockRoles).not.toHaveBeenCalled();
+    expect(screen.getByTestId("empresa-fila")).toHaveTextContent("Empresa Demo");
+  });
+
+  it("reads Usuarios with page 1 and no filters when tab=usuarios", async () => {
+    await renderizarPagina({ tab: "usuarios" });
 
     expect(mockListar).toHaveBeenCalledWith({ page: 1, pageSize: 25 });
     expect(mockSucursales).not.toHaveBeenCalled();
@@ -220,7 +245,7 @@ describe("AdministracionPage — URL contract (S6)", () => {
   });
 
   it("passes busqueda, page and the tri-state activo to the Usuarios action", async () => {
-    await renderizarPagina({ busqueda: "ana", page: "2", activo: "false" });
+    await renderizarPagina({ tab: "usuarios", busqueda: "ana", page: "2", activo: "false" });
 
     expect(mockListar).toHaveBeenCalledWith({
       page: 2,
@@ -231,15 +256,15 @@ describe("AdministracionPage — URL contract (S6)", () => {
   });
 
   it("sends activo=true for the active filter and drops an unknown value", async () => {
-    await renderizarPagina({ activo: "true" });
+    await renderizarPagina({ tab: "usuarios", activo: "true" });
     expect(mockListar).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, activo: true });
 
-    await renderizarPagina({ activo: "verdadero" });
+    await renderizarPagina({ tab: "usuarios", activo: "verdadero" });
     expect(mockListar).toHaveBeenLastCalledWith({ page: 1, pageSize: 25 });
   });
 
   it("slices the search term to 100 characters", async () => {
-    await renderizarPagina({ busqueda: "a".repeat(150) });
+    await renderizarPagina({ tab: "usuarios", busqueda: "a".repeat(150) });
 
     expect(mockListar).toHaveBeenCalledWith({
       page: 1,
@@ -281,10 +306,54 @@ describe("AdministracionPage — URL contract (S6)", () => {
     expect(screen.queryByText(/No disponible aún/)).not.toBeInTheDocument();
   });
 
-  it("falls back to Usuarios for an unknown tab", async () => {
+  it("falls back to Empresas for an unknown tab (S1)", async () => {
     await renderizarPagina({ tab: "bogus" });
 
-    expect(mockListar).toHaveBeenCalledWith({ page: 1, pageSize: 25 });
-    expect(mockSucursales).not.toHaveBeenCalled();
+    expect(mockListar).not.toHaveBeenCalled();
+    expect(mockSucursales).toHaveBeenCalled();
+    expect(screen.getByTestId("empresa-fila")).toBeInTheDocument();
   });
+
+  it("reads the Roles tab through its own action (S3)", async () => {
+    await renderizarPagina({ tab: "roles" });
+
+    expect(mockRoles).toHaveBeenCalled();
+    expect(mockListar).not.toHaveBeenCalled();
+    expect(mockSucursales).not.toHaveBeenCalled();
+    expect(screen.getByTestId("rol-fila-1")).toHaveTextContent("Administrador");
+  });
+});
+
+describe("AdministracionPage — Empresas and Roles are Administrador-only (S9)", () => {
+  it.each(["empresas", "roles"])(
+    "renders only the access alert and no data on tab=%s when the server denies",
+    async (tab) => {
+      mockPermisos.mockResolvedValueOnce({ ok: true, data: { puedeVer: false } });
+
+      await renderizarPagina({ tab });
+
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "No tiene permisos para ver la Administración.",
+      );
+      expect(screen.queryByTestId("empresa-fila")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("rol-fila-1")).not.toBeInTheDocument();
+      expect(screen.queryByText("Empresa Demo")).not.toBeInTheDocument();
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(["empresas", "roles"])(
+    "denies by default on tab=%s when the permission probe fails",
+    async (tab) => {
+      mockPermisos.mockRejectedValueOnce(new Error("boom"));
+
+      await renderizarPagina({ tab });
+
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "No tiene permisos para ver la Administración.",
+      );
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    },
+  );
 });

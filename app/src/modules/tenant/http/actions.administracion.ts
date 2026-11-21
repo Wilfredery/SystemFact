@@ -39,6 +39,7 @@ import {
   type ActionResult,
   type ConfiguracionAdministracionDto,
   type ListarUsuariosAdministracion,
+  type RolCatalogoDto,
   type SucursalAdministracionDto,
   type SucursalGestionDto,
 } from "./shared";
@@ -156,6 +157,33 @@ export async function listarSucursalesAdministracionAction(): Promise<
         version: sucursal.version,
       })),
     );
+  });
+}
+
+/**
+ * The active role catalog for the read-only Roles tab (board 08, S3). Same gate
+ * as every other Administración read: the named group is checked on the SERVER
+ * inside the one tenant transaction and nothing is read on denial.
+ */
+export async function listarRolesAdministracionAction(): Promise<
+  ActionResult<readonly RolCatalogoDto[]>
+> {
+  const ctx = await resolverCtx();
+  if (ctx === null) {
+    return error(SESION_INVALIDA, mensajeTransporte(SESION_INVALIDA));
+  }
+
+  return withTenantTransaction(ctx, async (tx) => {
+    const permitido = await tieneRolPermitidoEnTx(
+      tx,
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_VER_ADMINISTRACION,
+    );
+    if (!permitido) return error(TEN_OPS_NO_AUTORIZADO, NO_AUTORIZADO_MESSAGE);
+
+    const catalogo = await consultarRolesCatalogo(tx);
+    return ok(catalogo.data.map((rol) => ({ id: rol.id, nombre: rol.nombre })));
   });
 }
 

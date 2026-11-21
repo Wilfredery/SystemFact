@@ -10,6 +10,7 @@
 
 import {
   consultarConfiguracionAction,
+  listarRolesAdministracionAction,
   listarSucursalesAdministracionAction,
   listarSucursalesDeEmpresaAction,
   listarUsuariosAction,
@@ -340,5 +341,52 @@ describe("consultarConfiguracionAction", () => {
     const result = await consultarConfiguracionAction();
 
     expect(result.ok === false && result.error.code).toBe("SESION_INVALIDA");
+  });
+});
+
+describe("listarRolesAdministracionAction (board 08 S3)", () => {
+  it("denies a NON-admin server-side and never reads the role catalog", async () => {
+    const result = await listarRolesAdministracionAction();
+
+    expect(result.ok === false && result.error.code).toBe("TEN_OPS_NO_AUTORIZADO");
+    expect(tieneRolPermitidoEnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      ctx.usuarioId,
+      ctx.empresaId,
+      ROLES_VER_ADMINISTRACION,
+    );
+    expect(consultarRolesCatalogo).not.toHaveBeenCalled();
+  });
+
+  it("returns the active role catalog mapped to {id, nombre} for an admin", async () => {
+    (tieneRolPermitidoEnTx as jest.Mock).mockResolvedValue(true);
+    (consultarRolesCatalogo as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: [
+        { id: 1, nombre: "Administrador", extra: "no" },
+        { id: 2, nombre: "Operador", extra: "no" },
+      ],
+    });
+
+    const result = await listarRolesAdministracionAction();
+
+    expect(result).toEqual({
+      ok: true,
+      data: [
+        { id: 1, nombre: "Administrador" },
+        { id: 2, nombre: "Operador" },
+      ],
+    });
+    expect(consultarRolesCatalogo).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed with SESION_INVALIDA when there is no session", async () => {
+    (getCurrentTenantContext as jest.Mock).mockResolvedValue(null);
+
+    const result = await listarRolesAdministracionAction();
+
+    expect(result.ok === false && result.error.code).toBe("SESION_INVALIDA");
+    expect(tieneRolPermitidoEnTx).not.toHaveBeenCalled();
+    expect(consultarRolesCatalogo).not.toHaveBeenCalled();
   });
 });

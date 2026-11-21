@@ -30,7 +30,7 @@ import type {
 } from "@/modules/tenant/http/shared";
 
 const CLASE_ALERTA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+  "rounded-md bg-danger/10 px-4 py-2 text-sm text-danger";
 
 function descripcionUsuario(usuario: UsuarioAdministracionDto): string {
   return `${usuario.nombre} (${usuario.nombreUsuario})`;
@@ -90,7 +90,7 @@ export function CambiarRolesDialog({
         </DialogHeader>
 
         <fieldset className="flex flex-col gap-2" disabled={enviando}>
-          <legend className="mb-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">Roles</legend>
+          <legend className="mb-1 text-sm font-medium text-ink">Roles</legend>
           {catalogo.map((rol) => (
             <label key={rol.id} className="flex min-h-11 items-center gap-3 text-sm">
               <input
@@ -105,7 +105,7 @@ export function CambiarRolesDialog({
         </fieldset>
 
         {seleccion.size === 0 && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">Seleccione al menos un rol.</p>
+          <p className="text-sm text-ink-muted">Seleccione al menos un rol.</p>
         )}
 
         {error !== null && (
@@ -164,13 +164,13 @@ export function ConfirmarEstadoUsuarioDialog({
           <DialogDescription>{descripcionUsuario(usuario)}</DialogDescription>
         </DialogHeader>
 
-        <p className="text-sm text-zinc-700 dark:text-zinc-300">
+        <p className="text-sm text-ink">
           {activar
             ? "Podrá iniciar sesión y operar de nuevo con sus roles actuales."
             : "No podrá iniciar sesión ni operar desde su próxima solicitud."}
         </p>
         {!activar && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-ink-muted">
             No se elimina: el usuario queda inactivo y su historial se conserva.
           </p>
         )}
@@ -254,7 +254,7 @@ export function MoverUsuarioDialog({
         </DialogHeader>
 
         {destinos.estado === "cargando" && (
-          <p role="status" className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p role="status" className="text-sm text-ink-muted">
             Cargando sucursales...
           </p>
         )}
@@ -264,19 +264,19 @@ export function MoverUsuarioDialog({
           </p>
         )}
         {destinos.estado === "listo" && candidatas.length === 0 && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-ink-muted">
             No hay otra sucursal activa a la que mover a este usuario.
           </p>
         )}
         {candidatas.length > 0 && (
           <>
-            <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <label className="flex flex-col gap-1 text-sm font-medium text-ink">
               Sucursal destino
               <select
                 value={elegida}
                 onChange={(e) => setElegida(e.target.value)}
                 disabled={enviando}
-                className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+                className="min-h-11 rounded-md border border-line bg-surface px-3 text-sm font-normal text-ink"
               >
                 <option value="">Seleccione una sucursal</option>
                 {candidatas.map((s) => (
@@ -287,7 +287,7 @@ export function MoverUsuarioDialog({
               </select>
             </label>
             {destino !== undefined && (
-              <p className="text-sm text-zinc-700 dark:text-zinc-300">
+              <p className="text-sm text-ink">
                 {`Se moverá a ${descripcionUsuario(usuario)} de ${usuario.sucursalNombre} a ${destino.nombre}. Operará en la nueva sucursal desde su próxima solicitud; su historial se conserva en la sucursal donde se generó.`}
               </p>
             )}
