@@ -27,11 +27,14 @@ let harnessClient: PrismaClient | null = null;
 
 /**
  * Unique, valid company code (`^[A-Z0-9]{3,6}$`, odd/tasks/multi-company-codigo.md C1)
- * for fixture companies. 6 hex chars of a UUID, upper-cased; EMPRESA.codigo is
- * UNIQUE and the harness truncates between tests, so collisions are negligible.
+ * for fixture companies: a fixed letter `T` plus 5 hex chars of a UUID, upper-cased.
+ * The letter guarantees the code is never all digits, so its lower-cased form always
+ * differs (tests that assert a lower-case prefix is refused would otherwise be flaky
+ * about 6% of the time). EMPRESA.codigo is UNIQUE and the harness truncates between
+ * tests, so collisions are negligible.
  */
 export function codigoEmpresaUnico(): string {
-  return randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
+  return `T${randomUUID().replace(/-/g, "").slice(0, 5).toUpperCase()}`;
 }
 
 /**
