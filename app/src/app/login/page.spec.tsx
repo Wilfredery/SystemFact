@@ -10,7 +10,14 @@ import "@testing-library/jest-dom";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { render, screen } from "@testing-library/react";
+import { useActionState } from "react";
 import LoginPage from "./page";
+
+// Wraps the real hook so one test can feed an error state without submitting a form.
+jest.mock("react", () => {
+  const actual = jest.requireActual("react");
+  return { ...actual, useActionState: jest.fn(actual.useActionState) };
+});
 
 jest.mock("@/modules/auth/http/actions", () => ({
   login: jest.fn(),
@@ -61,6 +68,75 @@ describe("login board 01 (auth-login-restyle)", () => {
     expect(alertBlock![0]).toContain("{state.error}");
     const alertCount = (source.match(/role="alert"/g) ?? []).length;
     expect(alertCount).toBe(1);
+  });
+
+  it("board 01 copy (wireframe): subtitle and submit read 'Iniciar sesión'", () => {
+    render(<LoginPage />);
+
+    expect(screen.getByText("Inicia sesión para continuar.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Iniciar sesión" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ingresar" })).toBeNull();
+  });
+
+  it("shows the CODIGO-usuario format hint and ties it to the field (aria-describedby)", () => {
+    render(<LoginPage />);
+
+    const hint = screen.getByText("Formato: CÓDIGO-usuario (ej. DEMO-admin)");
+    const campo = screen.getByLabelText("Usuario");
+    expect(hint.id).not.toBe("");
+    expect(campo.getAttribute("aria-describedby")).toContain(hint.id);
+  });
+
+  it("phone keyboards do not capitalise, correct or spell-check the username", () => {
+    render(<LoginPage />);
+
+    const campo = screen.getByLabelText("Usuario");
+    expect(campo).toHaveAttribute("autocapitalize", "none");
+    expect(campo).toHaveAttribute("autocorrect", "off");
+    expect(campo).toHaveAttribute("spellcheck", "false");
+  });
+
+  it("password recovery is plain text pointing to the administrator, with no fake focusable control", () => {
+    render(<LoginPage />);
+
+    expect(
+      screen.getByText("¿Olvidaste tu contraseña? Contacta al administrador."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Recuperar contraseña")).toBeNull();
+    // Only real controls may be focusable: no span/p/div carrying a tabindex or aria-disabled.
+    expect(document.querySelector("span[tabindex], p[tabindex], div[tabindex]")).toBeNull();
+    expect(document.querySelector("span[aria-disabled], p[aria-disabled], div[aria-disabled]")).toBeNull();
+  });
+
+  it("without an error the fields are not marked invalid", () => {
+    render(<LoginPage />);
+
+    for (const campo of [screen.getByLabelText("Usuario"), screen.getByLabelText("Contraseña")]) {
+      expect(campo).not.toHaveAttribute("aria-invalid");
+    }
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("with an error the alert is linked to both fields (aria-invalid + aria-describedby)", () => {
+    const real = jest.requireActual("react").useActionState;
+    (useActionState as jest.Mock).mockReturnValueOnce([
+      { error: "Credenciales inválidas" },
+      jest.fn(),
+      false,
+    ]);
+    render(<LoginPage />);
+
+    const alerta = screen.getByRole("alert");
+    expect(alerta).toHaveTextContent("Credenciales inválidas");
+    for (const campo of [screen.getByLabelText("Usuario"), screen.getByLabelText("Contraseña")]) {
+      expect(campo).toHaveAttribute("aria-invalid", "true");
+      expect(campo.getAttribute("aria-describedby")).toContain(alerta.id);
+    }
+    // The username keeps its format hint next to the alert reference.
+    expect(screen.getByLabelText("Usuario").getAttribute("aria-describedby")).toContain(
+      screen.getByText("Formato: CÓDIGO-usuario (ej. DEMO-admin)").id,
+    );
+    (useActionState as jest.Mock).mockImplementation(real);
   });
 
   it("LOG-04-A: no raw palette classes, no hex, no dark variants in page+layout", () => {
