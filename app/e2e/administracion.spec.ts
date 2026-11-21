@@ -268,7 +268,7 @@ async function expectSinControlesDeEscritura(page: Page): Promise<void> {
 }
 
 test.describe("/administracion (administracion T3)", () => {
-  test("Administrador reads the three tabs: usuarios, sucursales and configuración", async ({
+  test("Administrador reads the five tabs: empresas, sucursales, usuarios, roles and configuración", async ({
     page,
   }) => {
     const nombreUsuario = requireEnv("E2E_USER");
@@ -298,6 +298,7 @@ test.describe("/administracion (administracion T3)", () => {
       "aria-selected",
       "true",
     );
+    await expect(page.getByRole("columnheader", { name: "Empresa", exact: true })).toBeVisible();
     await abrirTabUsuarios(page);
     await expect(page.getByRole("tab", { name: "Usuarios" })).toHaveAttribute(
       "aria-selected",

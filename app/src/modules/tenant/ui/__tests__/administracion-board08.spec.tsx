@@ -129,17 +129,24 @@ describe("Board 08 — tabs (S1, S8)", () => {
     expect(tabs.map((t) => t.getAttribute("aria-selected"))).toEqual(["true", "false", "false", "false", "false"]);
   });
 
-  it("links each tab to its panel: id + aria-controls, panel labelled by the selected tab (S8)", () => {
-    montar({ tab: "roles", roles: ROLES });
+  it("links the selected tab to its existing, focusable panel; unselected tabs have no dangling aria-controls (S8)", () => {
+    const { container } = montar({ tab: "roles", roles: ROLES });
 
     const tabs = screen.getAllByRole("tab");
     for (const t of tabs) {
       expect(t.id).toMatch(/^tab-/);
-      expect(t.getAttribute("aria-controls")).toBe(t.id.replace("tab-", "panel-"));
+      if (t.getAttribute("aria-selected") === "true") {
+        const destino = t.getAttribute("aria-controls");
+        expect(destino).toBe("panel-roles");
+        expect(container.querySelector(`#${destino}`)).not.toBeNull();
+      } else {
+        expect(t).not.toHaveAttribute("aria-controls");
+      }
     }
     const panel = screen.getByRole("tabpanel");
     expect(panel).toHaveAttribute("id", "panel-roles");
     expect(panel).toHaveAttribute("aria-labelledby", "tab-roles");
+    expect(panel).toHaveAttribute("tabindex", "0");
     expect(screen.getByRole("tab", { name: "Roles" })).toHaveAttribute("aria-controls", panel.id);
   });
 
@@ -156,14 +163,36 @@ describe("Board 08 — tabs (S1, S8)", () => {
 });
 
 describe("Board 08 — Empresas tab (S2)", () => {
-  it("shows the company name, its ACTIVE branches and Activo", () => {
+  it("shows the company name, ALL its branches (inactive marked) and a data-derived Estado, no invented company status", () => {
     montar();
 
     const fila = screen.getByTestId("empresa-fila");
     expect(within(fila).getByText("Empresa Demo")).toBeInTheDocument();
-    expect(fila).toHaveTextContent("Sucursal Central, Sucursal Norte");
-    expect(fila).not.toHaveTextContent("Sucursal Cerrada");
-    expect(within(fila).getByText("Activo")).toBeInTheDocument();
+    expect(fila).toHaveTextContent("Sucursal Central, Sucursal Norte, Sucursal Cerrada (inactiva)");
+    expect(within(fila).getByText("2 de 3 sucursales activas")).toBeInTheDocument();
+    expect(within(fila).queryByText("Activo")).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Estado" })).toBeInTheDocument();
+  });
+
+  it("uses the singular for one branch and says Sin sucursales for none", () => {
+    const una = SUCURSALES.ok ? SUCURSALES.data.slice(0, 1) : [];
+    const { unmount } = montar({ sucursales: { ok: true, data: una } });
+    expect(screen.getByText("1 de 1 sucursal activa")).toBeInTheDocument();
+    unmount();
+    montar({ sucursales: { ok: true, data: [] } });
+    const fila = screen.getByTestId("empresa-fila");
+    expect(fila).toHaveTextContent("Sin sucursales");
+    expect(within(fila).getByText("0 de 0 sucursales activas")).toBeInTheDocument();
+  });
+
+  it("shows the company table header", () => {
+    montar();
+    expect(screen.getByRole("columnheader", { name: "Empresa" })).toBeInTheDocument();
+  });
+
+  it("shows an alert when there is no branch data at all (null)", () => {
+    montar({ sucursales: null });
+    expect(screen.getByRole("alert")).toHaveTextContent("No hay datos de empresas.");
   });
 
   it("is read-only: no Editar, Eliminar, Desactivar, Nueva empresa controls (even for the Administrador)", () => {
@@ -192,6 +221,18 @@ describe("Board 08 — Roles tab (S3)", () => {
     expect(screen.getByTestId("rol-fila-2")).toHaveTextContent("Operador");
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("shows the Rol header, an alert for null data and an empty-catalog state", () => {
+    const { unmount } = montar({ tab: "roles", roles: ROLES });
+    expect(screen.getByRole("columnheader", { name: "Rol" })).toBeInTheDocument();
+    unmount();
+    const nulo = montar({ tab: "roles", roles: null });
+    expect(screen.getByRole("alert")).toHaveTextContent("No hay datos de roles.");
+    nulo.unmount();
+    montar({ tab: "roles", roles: { ok: true, data: [] } });
+    expect(screen.getByText("No hay roles activos.")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
   it("shows an alert when the catalog failed to load", () => {
@@ -269,6 +310,13 @@ describe("Board 08 — Sucursales search (S5)", () => {
     expect(screen.getByText("No hay sucursales que coincidan con la búsqueda.")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Buscar sucursal"), { target: { value: "" } });
     expect(filas()).toHaveLength(3);
+  });
+
+  it("says 'No hay sucursales.' for a truly empty list with no query", () => {
+    montar({ tab: "sucursales", sucursales: { ok: true, data: [] } });
+    expect(filas()).toEqual([]);
+    expect(screen.getByText("No hay sucursales.")).toBeInTheDocument();
+    expect(screen.queryByText("No hay sucursales que coincidan con la búsqueda.")).not.toBeInTheDocument();
   });
 
   it("keeps the writer controls (Nueva sucursal, Editar, Desactivar) with the search box", () => {

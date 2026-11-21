@@ -419,7 +419,7 @@ export function AdministracionScreen({
             type="button"
             role="tab"
             id={`tab-${t.valor}`}
-            aria-controls={`panel-${t.valor}`}
+            aria-controls={t.valor === tab ? `panel-${t.valor}` : undefined}
             aria-selected={t.valor === tab}
             disabled={navegando}
             onClick={() => cambiarTab(t.valor)}
@@ -434,7 +434,13 @@ export function AdministracionScreen({
         ))}
       </div>
 
-      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="flex flex-col gap-6">
+      <div
+        role="tabpanel"
+        id={`panel-${tab}`}
+        aria-labelledby={`tab-${tab}`}
+        tabIndex={0}
+        className="flex flex-col gap-6"
+      >
         {tab === "usuarios" && (
           <TablaUsuarios
             data={data}
@@ -936,7 +942,9 @@ function TablaSucursales({
       />
       {visibles.length === 0 ? (
         <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
-          No hay sucursales que coincidan con la búsqueda.
+          {consulta === ""
+            ? "No hay sucursales."
+            : "No hay sucursales que coincidan con la búsqueda."}
         </p>
       ) : (
       <div className={CLASE_TABLA}>
@@ -1019,7 +1027,9 @@ function TablaEmpresas({
   if (!inicial.ok) {
     return <p className={CLASE_ALERTA} role="alert">{inicial.message}</p>;
   }
-  const sucursalesActivas = inicial.data.filter((s) => s.activa);
+  const total = inicial.data.length;
+  const activas = inicial.data.filter((s) => s.activa).length;
+  const resumenEstado = `${activas} de ${total} ${total === 1 ? "sucursal activa" : "sucursales activas"}`;
   return (
     <div className={CLASE_TABLA}>
       <table className="w-full text-left text-sm">
@@ -1034,15 +1044,11 @@ function TablaEmpresas({
           <tr data-testid="empresa-fila">
             <td className="px-4 py-2 font-medium text-ink">{empresaNombre}</td>
             <td className="px-4 py-2">
-              {sucursalesActivas.length === 0
-                ? "Sin sucursales activas"
-                : sucursalesActivas.map((s) => s.nombre).join(", ")}
+              {total === 0
+                ? "Sin sucursales"
+                : inicial.data.map((s) => (s.activa ? s.nombre : `${s.nombre} (inactiva)`)).join(", ")}
             </td>
-            <td className="px-4 py-2">
-              <span className="rounded px-2 py-1 text-xs font-medium bg-success-bg text-success-fg">
-                Activo
-              </span>
-            </td>
+            <td className="px-4 py-2">{resumenEstado}</td>
           </tr>
         </tbody>
       </table>
@@ -1057,6 +1063,13 @@ function TablaRoles({ inicial }: { readonly inicial: RolesInicial | null }) {
   }
   if (!inicial.ok) {
     return <p className={CLASE_ALERTA} role="alert">{inicial.message}</p>;
+  }
+  if (inicial.data.length === 0) {
+    return (
+      <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
+        No hay roles activos.
+      </p>
+    );
   }
   return (
     <div className={CLASE_TABLA}>
