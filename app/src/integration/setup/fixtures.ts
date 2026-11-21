@@ -25,6 +25,43 @@ const HORIZONTE_LARGO_FIXTURE = "999";
 
 let harnessClient: PrismaClient | null = null;
 
+/**
+ * Unique, valid company code (`^[A-Z0-9]{3,6}$`, odd/tasks/multi-company-codigo.md C1)
+ * for fixture companies: a fixed letter `T` plus 5 hex chars of a UUID, upper-cased.
+ * The letter guarantees the code is never all digits, so its lower-cased form always
+ * differs (tests that assert a lower-case prefix is refused would otherwise be flaky
+ * about 6% of the time). EMPRESA.codigo is UNIQUE and the harness truncates between
+ * tests, so collisions are negligible.
+ */
+export function codigoEmpresaUnico(): string {
+  return `T${randomUUID().replace(/-/g, "").slice(0, 5).toUpperCase()}`;
+}
+
+/**
+ * Canonical fixture username `<CODIGO>-<resto>` (C2): `resto` is the lower-cased,
+ * charset-sanitised label (max 40 chars) plus an 8-char random tail so it is
+ * globally unique; total length is always <= 56 (limit 64).
+ */
+export function nombreUsuarioConCodigo(codigo: string, etiqueta: string): string {
+  const limpia = etiqueta
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "-")
+    .replace(/^[^a-z0-9]+/, "")
+    .slice(0, 40);
+  const cola = randomUUID().slice(0, 8);
+  const resto = limpia === "" ? cola : `${limpia}-${cola}`;
+  return `${codigo}-${resto}`;
+}
+
+/** Same as {@link nombreUsuarioConCodigo}, looking the code up from the empresa row. */
+export async function nombreUsuarioFixture(empresaId: number, etiqueta: string): Promise<string> {
+  const empresa = await getHarnessDb().empresa.findUniqueOrThrow({
+    where: { id: empresaId },
+    select: { codigo: true },
+  });
+  return nombreUsuarioConCodigo(empresa.codigo, etiqueta);
+}
+
 /** Lazily-created superuser client pointed at DIRECT_URL (systemfact_test). */
 export function getHarnessDb(): PrismaClient {
   if (harnessClient === null) {
@@ -126,8 +163,8 @@ export interface TenantFixtureRetroactivoFechaVenta {
 }
 
 export interface TenantFixture {
-  readonly empresaA: { readonly id: number };
-  readonly empresaB: { readonly id: number };
+  readonly empresaA: { readonly id: number; readonly codigo: string };
+  readonly empresaB: { readonly id: number; readonly codigo: string };
   readonly sucursalA1: { readonly id: number };
   readonly sucursalA2: { readonly id: number };
   readonly sucursalB1: { readonly id: number };
@@ -165,6 +202,7 @@ export async function seedTenantFixture(): Promise<TenantFixture> {
     data: {
       nombreComercial: `IntA-${suffix}`,
       rnc: `RNC-A-${suffix}`,
+      codigo: codigoEmpresaUnico(),
       razonSocial: `IntA-${suffix}`,
       direccionFiscal: "x",
       telefono: "0",
@@ -177,6 +215,7 @@ export async function seedTenantFixture(): Promise<TenantFixture> {
     data: {
       nombreComercial: `IntB-${suffix}`,
       rnc: `RNC-B-${suffix}`,
+      codigo: codigoEmpresaUnico(),
       razonSocial: `IntB-${suffix}`,
       direccionFiscal: "x",
       telefono: "0",
@@ -201,7 +240,7 @@ export async function seedTenantFixture(): Promise<TenantFixture> {
       empresaId: empresaA.id,
       sucursalId: sucursalA1.id,
       nombre: "Admin A",
-      nombreUsuario: `intadmin-a-${suffix}`,
+      nombreUsuario: `${empresaA.codigo}-intadmin-a-${suffix}`,
       passwordHash: "test-hash",
       roles: { create: { rolId: rolAdmin.id } },
     },
@@ -211,7 +250,7 @@ export async function seedTenantFixture(): Promise<TenantFixture> {
       empresaId: empresaB.id,
       sucursalId: sucursalB1.id,
       nombre: "Admin B",
-      nombreUsuario: `intadmin-b-${suffix}`,
+      nombreUsuario: `${empresaB.codigo}-intadmin-b-${suffix}`,
       passwordHash: "test-hash",
     },
   });
@@ -371,8 +410,8 @@ export async function seedTenantFixture(): Promise<TenantFixture> {
   await crearConfig(empresaB.id, "TASA_ITBIS", "18,16,0");
 
   return {
-    empresaA: { id: empresaA.id },
-    empresaB: { id: empresaB.id },
+    empresaA: { id: empresaA.id, codigo: empresaA.codigo },
+    empresaB: { id: empresaB.id, codigo: empresaB.codigo },
     sucursalA1: { id: sucursalA1.id },
     sucursalA2: { id: sucursalA2.id },
     sucursalB1: { id: sucursalB1.id },

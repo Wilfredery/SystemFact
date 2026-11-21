@@ -15,7 +15,7 @@ import {
   contarInventarioEnTx,
   listarInventarioEnTx,
 } from "@/modules/inventario/infrastructure/inventario-repository";
-import { getHarnessDb } from "./setup/fixtures";
+import { codigoEmpresaUnico, getHarnessDb, nombreUsuarioConCodigo } from "./setup/fixtures";
 
 const TOTAL_A1 = 30;
 
@@ -34,11 +34,14 @@ interface PaginadoFixture {
 async function seedPaginadoFixture(): Promise<PaginadoFixture> {
   const db = getHarnessDb();
   const suffix = randomUUID();
+  const codigoA = codigoEmpresaUnico();
+  const codigoB = codigoEmpresaUnico();
 
   const empresaA = await db.empresa.create({
     data: {
       nombreComercial: `PagA-${suffix}`,
       rnc: `RNC-PAGA-${suffix}`,
+      codigo: codigoA,
       razonSocial: `PagA-${suffix}`,
       direccionFiscal: "x",
       telefono: "0",
@@ -55,7 +58,7 @@ async function seedPaginadoFixture(): Promise<PaginadoFixture> {
       empresaId: empresaA.id,
       sucursalId: sucursalA1.id,
       nombre: "User A",
-      nombreUsuario: `paguser-a-${suffix}`,
+      nombreUsuario: nombreUsuarioConCodigo(codigoA, "paguser-a"),
       passwordHash: "test-hash",
     },
   });
@@ -64,6 +67,7 @@ async function seedPaginadoFixture(): Promise<PaginadoFixture> {
     data: {
       nombreComercial: `PagB-${suffix}`,
       rnc: `RNC-PAGB-${suffix}`,
+      codigo: codigoB,
       razonSocial: `PagB-${suffix}`,
       direccionFiscal: "x",
       telefono: "0",
@@ -80,7 +84,7 @@ async function seedPaginadoFixture(): Promise<PaginadoFixture> {
       empresaId: empresaB.id,
       sucursalId: sucursalB1.id,
       nombre: "User B",
-      nombreUsuario: `paguser-b-${suffix}`,
+      nombreUsuario: nombreUsuarioConCodigo(codigoB, "paguser-b"),
       passwordHash: "test-hash",
     },
   });

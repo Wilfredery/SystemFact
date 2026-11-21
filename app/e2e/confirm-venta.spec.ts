@@ -21,7 +21,7 @@
  *      a credential, ADR-014). Set `E2E_USER` / `E2E_PASSWORD`.
  *   4. Browsers: `npx playwright install chromium`.
  *
- * ENV: E2E_BASE_URL (default http://localhost:3000), E2E_USER (default "e2e"),
+ * ENV: E2E_BASE_URL (default http://localhost:3000), E2E_USER (default "E2E-automation"),
  * E2E_PASSWORD, E2E_PRODUCT (default "Arroz").
  */
 

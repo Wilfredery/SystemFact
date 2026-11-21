@@ -21,7 +21,7 @@
  *   SUPABASE_URL        local stack API URL (http://127.0.0.1:54321)
  *   SERVICE_ROLE_KEY    local stack service role key (admin API)
  *   ANON_KEY            local stack anon key (password grant)
- *   E2E_USER            nombreUsuario of the identity (e.g. e2e-automation)
+ *   E2E_USER            nombreUsuario of the identity (e.g. E2E-automation)
  *   E2E_AUTH_PASSWORD   password to set (passed via env so it never reaches argv)
  *
  * The synthetic email format mirrors `buildSyntheticEmail` in
@@ -54,7 +54,9 @@ for (const [key, value] of Object.entries({
 }
 
 const baseUrl = SUPABASE_URL.replace(/\/+$/, "");
-const email = `${E2E_USER}${SYNTHETIC_EMAIL_SUFFIX}`;
+// Supabase Auth stores emails lower-case (`E2E-automation` => `e2e-automation@...`): the
+// lookup below compares against the lower-cased value, the password grant is case-insensitive.
+const email = `${E2E_USER}${SYNTHETIC_EMAIL_SUFFIX}`.toLowerCase();
 const adminHeaders = {
   apikey: SERVICE_ROLE_KEY,
   Authorization: `Bearer ${SERVICE_ROLE_KEY}`,

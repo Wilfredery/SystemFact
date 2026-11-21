@@ -10,7 +10,7 @@ import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenan
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import { listarUsuarios } from "@/modules/tenant/application/listar-usuarios";
 import { listarMovimientosInventario } from "@/modules/inventario/application/listar-movimientos-inventario";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import { getHarnessDb, nombreUsuarioConCodigo, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 const AHORA = new Date("2026-11-14T16:00:00.000Z");
 
@@ -35,7 +35,7 @@ describe("company-wide user listing (real DB, app role + RLS)", () => {
         empresaId: fixture.empresaA.id,
         sucursalId: fixture.sucursalA2.id,
         nombre: "Usuario de A2",
-        nombreUsuario: `int-a2-${Date.now()}`,
+        nombreUsuario: nombreUsuarioConCodigo(fixture.empresaA.codigo, "int-a2"),
         passwordHash: "test-hash",
       },
     });
@@ -90,7 +90,7 @@ describe("movement history author across branches (real DB, app role + RLS)", ()
         empresaId: fixture.empresaA.id,
         sucursalId: fixture.sucursalA2.id,
         nombre: "Autora de A2",
-        nombreUsuario: `int-autor-a2-${Date.now()}`,
+        nombreUsuario: nombreUsuarioConCodigo(fixture.empresaA.codigo, "int-autor-a2"),
         passwordHash: "test-hash",
       },
     });

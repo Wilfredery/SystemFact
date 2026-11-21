@@ -17,6 +17,11 @@
 --
 -- Parámetros (psql -v):
 --   e2e_user     → nombreUsuario del usuario E2E (coincide con el Auth de Supabase)
+--
+-- Regla multi-empresa (odd/tasks/multi-company-codigo.md C1/C2/C6): la empresa fixture
+-- tiene codigo 'E2E' y TODO nombreUsuario es `E2E-<resto>` (un trigger de la base
+-- rechaza otro prefijo). Defaults: E2E-automation, E2E-operador, E2E-despachador.
+--
 --   e2e_operador_user      → nombreUsuario del usuario con rol Operador
 --   e2e_despachador_user   → nombreUsuario del usuario con rol Despachador
 --   e2e_product  → nombre del producto que el smoke agrega al carrito
@@ -29,7 +34,7 @@
 -- ============================================================
 
 \set ON_ERROR_STOP on
-\set e2e_gestion_objetivo 'e2e-gestion-objetivo'
+\set e2e_gestion_objetivo 'E2E-gestion-objetivo'
 
 DO $$
 BEGIN
@@ -43,10 +48,10 @@ BEGIN;
 -- Empresa con emisión automática de NCF al confirmar (R-F1): sin esto el
 -- confirm de la venta falla y el smoke no llega nunca al NCF.
 INSERT INTO "EMPRESA" (
-  "nombreComercial", "rnc", "razonSocial", "direccionFiscal",
+  "codigo", "nombreComercial", "rnc", "razonSocial", "direccionFiscal",
   "telefono", "correo", "logo", "regimenFiscal", "facturaAutomatica", "updatedAt"
 ) VALUES (
-  'E2E CI SRL', '131000001', 'E2E CI SRL', 'Av. CI 1',
+  'E2E', 'E2E CI SRL', '131000001', 'E2E CI SRL', 'Av. CI 1',
   '8090000000', 'e2e-ci@systemfact.test', '', 'NORMAL', true, now()
 );
 

@@ -42,6 +42,7 @@ import {
 import { seedConsumidorFinalParaEmpresa } from "../../tools/scripts/seed-consumidor-final";
 import {
   getHarnessDb,
+  nombreUsuarioConCodigo,
   seedTenantFixture,
   type TenantFixture,
 } from "./setup/fixtures";
@@ -251,7 +252,7 @@ describe("cliente tenant integration (real DB)", () => {
         empresaId: fixture.empresaA.id,
         sucursalId: fixture.sucursalA1.id,
         nombre: "Operador A",
-        nombreUsuario: `intoper-a-${fixture.usuarios.adminA.nombreUsuario}`,
+        nombreUsuario: nombreUsuarioConCodigo(fixture.empresaA.codigo, "intoper-a"),
         passwordHash: "test-hash",
         roles: { create: { rolId: rolOperador.id } },
       },

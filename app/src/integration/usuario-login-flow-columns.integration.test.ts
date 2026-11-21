@@ -14,7 +14,12 @@ import { setLoginFlow } from "@/modules/tenant/infrastructure/login-flow";
 import { enlazarAuthSub } from "@/modules/auth/infrastructure/auth-identity";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
 import type { Prisma } from "@/generated/prisma/client";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import {
+  getHarnessDb,
+  nombreUsuarioConCodigo,
+  seedTenantFixture,
+  type TenantFixture,
+} from "./setup/fixtures";
 
 const GUARD_REFUSAL = /login flow|login-flow/i;
 
@@ -53,7 +58,7 @@ describe("USUARIO login-flow column guard (real DB)", () => {
         empresaId: fx.empresaA.id,
         sucursalId: fx.sucursalA1.id,
         nombre: "objetivo",
-        nombreUsuario: `objetivo-${randomUUID()}`,
+        nombreUsuario: nombreUsuarioConCodigo(fx.empresaA.codigo, "objetivo"),
         passwordHash: "test-hash",
         email: "obj@example.test",
         roles: { create: { rolId: rolOperador.id } },
@@ -110,7 +115,7 @@ describe("USUARIO login-flow column guard (real DB)", () => {
           passwordHash: "new-hash",
           activo: false,
           nombre: "nuevo",
-          nombreUsuario: `nuevo-${randomUUID()}`,
+          nombreUsuario: nombreUsuarioConCodigo(fx.empresaA.codigo, "nuevo"),
           email: "nuevo@example.test",
         },
       }),

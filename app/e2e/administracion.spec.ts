@@ -13,7 +13,7 @@
  * WRITES AND SHARED STATE: Playwright runs serially (workers:1) against ONE seeded
  * database and other specs log in as the e2e operador/despachador relying on their
  * roles. So the write test touches ONLY the dedicated throwaway user
- * `e2e-gestion-objetivo` (.github/ci/e2e-fixture.sql), never the admin, operador or
+ * `E2E-gestion-objetivo` (.github/ci/e2e-fixture.sql), never the admin, operador or
  * despachador, and puts it back (UI at the end, SQL in afterAll if a step failed).
  *
  * S5 (RLS): the Usuarios tab shows the session branch's users, because the
@@ -66,7 +66,7 @@ import { requireEnv } from "./utils/env";
 const pool = openDb();
 
 /** The fixture's throwaway target of the write test (e2e-fixture.sql). */
-const OBJETIVO = "e2e-gestion-objetivo";
+const OBJETIVO = "E2E-gestion-objetivo";
 
 /** Second active branch the move test creates for the fixture empresa. */
 const SUCURSAL_DESTINO = "E2E Sucursal Destino";

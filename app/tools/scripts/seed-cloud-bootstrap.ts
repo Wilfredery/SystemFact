@@ -89,7 +89,18 @@ import { buildSyntheticEmail } from "@/modules/auth/domain/synthetic-email";
 // ============================================================================
 
 /** Login identifier (ADR-014): same value as public.USUARIO.nombreUsuario. */
-export const ADMIN_USUARIO = "admin";
+export const ADMIN_USUARIO = "DEMO-admin";
+/**
+ * Auth email stored in auth.users for a canonical nombreUsuario. Supabase Auth
+ * treats emails case-insensitively and stores them lower-case, so the stored
+ * value is lower-cased here (`DEMO-admin` => `demo-admin@users.systemfact.internal`);
+ * every probe in these seeds compares `lower(email)` against this value. The app
+ * builds the email from the canonical (mixed-case) name and GoTrue folds the case.
+ */
+export function correoAuthDeNombreUsuario(nombreUsuario: string): string {
+  return buildSyntheticEmail(nombreUsuario).toLowerCase();
+}
+
 /** Display name for the bootstrap admin USUARIO row. */
 export const ADMIN_NOMBRE = "Administrador demo";
 /** Minimum length mirrored from GoTrue's default password policy. */
@@ -97,6 +108,8 @@ export const ADMIN_PASSWORD_MIN_LONGITUD = 8;
 
 /** Demo tenant â€” R-F1 emit-on-confirm ON so the POS/E2E gate passes. */
 export const EMPRESA_DEMO = {
+  /** Company code (multi-company-codigo C1): prefix of every demo nombreUsuario. */
+  codigo: "DEMO",
   nombreComercial: "SistemaFact Demo",
   rnc: "131000002", // mod-11 VALID 9-digit demo RNC (shared/domain/fiscal-id.ts)
   razonSocial: "SistemaFact Demo SRL",
@@ -212,7 +225,7 @@ const PATRON_IDENT = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
  * pgcrypto is not installed. The returned identifier is whitelisted before it
  * can ever reach a raw SQL template (Prisma.raw needs a literal identifier).
  */
-async function obtenerEsquemaPgcryptoEnTx(db: PrismaTx): Promise<string> {
+export async function obtenerEsquemaPgcryptoEnTx(db: PrismaTx): Promise<string> {
   const filas = await db.$queryRaw<Array<{ esquema: string }>>`
     select n.nspname as esquema
       from pg_proc p
@@ -261,7 +274,7 @@ async function generarHashBcryptAdminEnTx(
  * prefix of a value that exists nowhere else. Reuses the same pgcrypto schema
  * resolved by resolverEsquemaPgcrypto.
  */
-async function hashMuertoAleatorioEnTx(db: PrismaTx, esquema: string): Promise<string> {
+export async function hashMuertoAleatorioEnTx(db: PrismaTx, esquema: string): Promise<string> {
   const filas = await db.$queryRaw<Array<{ hash: string }>>`
     select ${Prisma.raw(`"${esquema}".`)}crypt(
              encode(${Prisma.raw(`"${esquema}".`)}gen_random_bytes(24), 'hex'),
@@ -278,7 +291,7 @@ async function hashMuertoAleatorioEnTx(db: PrismaTx, esquema: string): Promise<s
 // ============================================================================
 
 /** Seed the ROL catalog. ROL.nombre is NOT unique â€” find-or-create (fixtures precedent). */
-async function asegurarRolesBase(db: PrismaTx): Promise<Map<string, number>> {
+export async function asegurarRolesBase(db: PrismaTx): Promise<Map<string, number>> {
   const map = new Map<string, number>();
   for (const rol of ROLES_CATALOGO) {
     const existente = await db.rol.findFirst({ where: { nombre: rol.nombre } });
@@ -368,7 +381,7 @@ async function asegurarUsuarioAdmin(
 }
 
 /** Resolves (find-or-create) the Administrador role used to bind the admin. */
-async function rolAdministradorId(db: PrismaTx): Promise<{ id: number }> {
+export async function rolAdministradorId(db: PrismaTx): Promise<{ id: number }> {
   const existente = await db.rol.findFirst({ where: { nombre: "Administrador" } });
   if (existente !== null) return { id: existente.id };
   const objetivo = ROLES_CATALOGO.find((r) => r.nombre === "Administrador");
@@ -436,12 +449,13 @@ async function asegurarRolAdmin(db: PrismaTx, usuarioId: number): Promise<void> 
  * @param sencillaPlano plaintext password (bound parameter, never echoed)
  * @returns whether the row was INSERTED by this run
  */
-async function asegurarAuthUserAdmin(
+export async function asegurarAuthUserAdmin(
   db: PrismaTx,
   sencillaPlano: string,
   esquemaPgcrypto: string,
+  nombreUsuario: string = ADMIN_USUARIO,
 ): Promise<boolean> {
-  const correo = buildSyntheticEmail(ADMIN_USUARIO);
+  const correo = correoAuthDeNombreUsuario(nombreUsuario);
   const existentes = await db.$queryRaw<Array<{ id: string }>>`
     select id
       from auth.users
@@ -720,7 +734,7 @@ async function main(): Promise<void> {
         `  EMPRESA       id=${String(conteo.empresaId)} (facturaAutomatica=${String(conteo.facturaAutomatica)}, demo "SistemaFact Demo")`,
         `  SUCURSAL      id=${String(conteo.sucursalId)} ("${SUCURSAL_DEMO.nombre}")`,
         `  USUARIO       id=${String(conteo.usuarioId)} ("${ADMIN_USUARIO}", ${conteo.usuarioCreado ? "created" : "already existed"})`,
-        `  auth.users    ${conteo.authUserCreado ? "created" : "already existed â€” untouched"} (${buildSyntheticEmail(ADMIN_USUARIO)})`,
+        `  auth.users    ${conteo.authUserCreado ? "created" : "already existed â€” untouched"} (${correoAuthDeNombreUsuario(ADMIN_USUARIO)})`,
         `  CATEGORIA     ("${CATEGORIA_DEMO.nombre}")`,
         `  PRODUCTO      id=${String(conteo.productoId)} ("${PRODUCTO_ARROZ.nombre}" ${PRODUCTO_ARROZ.codigo}, ITBIS ${PRODUCTO_ARROZ.tasaItbis})`,
         `  INVENTARIO    ${conteo.inventarioCreado ? "created" : "already existed â€” quantity untouched"} (${STOCK_INICIAL_LIBRAS_ARROZ} Libra @ "${SUCURSAL_DEMO.nombre}")`,

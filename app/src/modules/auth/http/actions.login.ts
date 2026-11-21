@@ -11,6 +11,7 @@ import {
   messageFor,
 } from "@/modules/auth/domain/errors";
 import { normalizarIp } from "@/modules/auth/domain/login-throttle";
+import { normalizarNombreUsuarioLogin } from "@/modules/auth/domain/nombre-usuario";
 import {
   descartarIntentoDeLogin,
   intentarAccesoDeLogin,
@@ -59,7 +60,13 @@ export async function login(
   if (!parsed.success) {
     return { error: messageFor(AUTH_CAMPOS_REQUERIDOS) };
   }
-  const { nombreUsuario, password } = parsed.data;
+  // Multi-company C4: the typed name is canonicalised (`sol-Jperez` -> `SOL-jperez`) ONCE,
+  // before anything else uses it, so the throttle key, the synthetic email and the USUARIO
+  // lookup all derive from the same value. Lenient on purpose: it never rejects a shape
+  // (no new error at login = no enumeration oracle); a name that does not look prefixed
+  // (legacy `admin`) passes through trimmed, exactly as before.
+  const nombreUsuario = normalizarNombreUsuarioLogin(parsed.data.nombreUsuario);
+  const { password } = parsed.data;
 
   // Brute-force throttle (docs/22 T3, ADR-020), checked BEFORE the provider call so a
   // delayed pair costs no Auth request at all. The counter is keyed by

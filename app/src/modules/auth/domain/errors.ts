@@ -57,6 +57,13 @@ export const AUTH_AUTENTICACION_NO_DISPONIBLE = "AUTH_AUTENTICACION_NO_DISPONIBL
 // unconfirmed. Its own code because the login action must not count it as a guess: the user
 // typed nothing wrong, so throttling them would punish honesty (review finding R3-catchall).
 export const AUTH_CREDENCIAL_NO_CONFIRMADA = "AUTH_CREDENCIAL_NO_CONFIRMADA";
+// Creation-time username rules (multi-company contract C2/C4). They are NEVER returned by
+// the login path: login stays lenient (an enumeration oracle otherwise). Only creation
+// paths (operator provisioning script, any future user-creation use case) surface them.
+export const AUTH_CODIGO_EMPRESA_INVALIDO = "AUTH_CODIGO_EMPRESA_INVALIDO";
+export const AUTH_NOMBRE_USUARIO_PREFIJO_INVALIDO = "AUTH_NOMBRE_USUARIO_PREFIJO_INVALIDO";
+export const AUTH_NOMBRE_USUARIO_FORMATO_INVALIDO = "AUTH_NOMBRE_USUARIO_FORMATO_INVALIDO";
+export const AUTH_NOMBRE_USUARIO_LARGO = "AUTH_NOMBRE_USUARIO_LARGO";
 
 export const AUTH_ERROR_CODES = [
   AUTH_CAMPOS_REQUERIDOS,
@@ -70,6 +77,10 @@ export const AUTH_ERROR_CODES = [
   AUTH_INTENTOS_EXCEDIDOS,
   AUTH_AUTENTICACION_NO_DISPONIBLE,
   AUTH_CREDENCIAL_NO_CONFIRMADA,
+  AUTH_CODIGO_EMPRESA_INVALIDO,
+  AUTH_NOMBRE_USUARIO_PREFIJO_INVALIDO,
+  AUTH_NOMBRE_USUARIO_FORMATO_INVALIDO,
+  AUTH_NOMBRE_USUARIO_LARGO,
 ] as const;
 
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
@@ -124,6 +135,13 @@ const AUTH_ERROR_MESSAGES: Readonly<Record<AuthErrorCode, string>> = {
   // administrator is the path (there is no self-service confirmation in this app).
   [AUTH_CREDENCIAL_NO_CONFIRMADA]:
     "Tu cuenta de acceso aún no está confirmada. Contacta al administrador.",
+  [AUTH_CODIGO_EMPRESA_INVALIDO]:
+    "El código de empresa no es válido: usa de 3 a 6 caracteres entre A-Z y 0-9.",
+  [AUTH_NOMBRE_USUARIO_PREFIJO_INVALIDO]:
+    "El nombre de usuario debe empezar con el código de su empresa seguido de un guion (CODIGO-usuario).",
+  [AUTH_NOMBRE_USUARIO_FORMATO_INVALIDO]:
+    "La parte del usuario después del guion debe usar minúsculas, números, punto, guion o guion bajo, y empezar con letra o número.",
+  [AUTH_NOMBRE_USUARIO_LARGO]: "El nombre de usuario no puede superar los 64 caracteres.",
 };
 
 export function messageFor(code: AuthErrorCode): string {

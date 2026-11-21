@@ -37,6 +37,7 @@ import { REPORTE_NO_AUTORIZADO } from "@/modules/reportes/domain/errors";
 import { REPORTE_ID } from "@/modules/reportes/domain/catalogo";
 import {
   getHarnessDb,
+  nombreUsuarioFixture,
   seedTenantFixture,
   type TenantFixture,
 } from "./setup/fixtures";
@@ -88,7 +89,7 @@ async function crearUsuarioConRol(
       empresaId,
       sucursalId,
       nombre: `${rolNombre} ${empresaId}-${sucursalId}`,
-      nombreUsuario: `repB-${rolNombre.toLowerCase()}-${empresaId}-${sucursalId}-${Date.now()}-${seq()}`,
+      nombreUsuario: await nombreUsuarioFixture(empresaId, `repb-${rolNombre}-${empresaId}-${sucursalId}-${seq()}`),
       passwordHash: "test-hash",
       roles: { create: { rolId: rid } },
     },

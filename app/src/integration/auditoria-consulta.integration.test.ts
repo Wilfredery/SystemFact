@@ -36,7 +36,7 @@ import type {
   AuditoriaFiltroEntrada,
   AuditoriaPagina,
 } from "@/modules/auditoria/domain/auditoria";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import { getHarnessDb, nombreUsuarioConCodigo, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
 
 let fixture: TenantFixture | null = null;
 
@@ -207,7 +207,7 @@ describe("auditoria consultation read path (real DB, RLS on, fase-7a slice B)", 
           empresaId: f.empresaA.id,
           sucursalId: f.sucursalA1.id,
           nombre: "Segundo A",
-          nombreUsuario: `int2-a-${Date.now()}`,
+          nombreUsuario: nombreUsuarioConCodigo(f.empresaA.codigo, "int2-a"),
           passwordHash: "test-hash",
         },
         select: { id: true },

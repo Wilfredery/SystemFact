@@ -21,7 +21,7 @@
  * local Postgres, seeded B01/B02 **and B04** ranges via `pnpm seed:ncf`,
  * stocked `E2E_PRODUCT`, Supabase Auth user for E2E_USER, chromium installed).
  *
- * ENV: E2E_BASE_URL (default http://localhost:3000), E2E_USER (default "e2e"),
+ * ENV: E2E_BASE_URL (default http://localhost:3000), E2E_USER (default "E2E-automation"),
  * E2E_PASSWORD, E2E_PRODUCT (default "Arroz").
  */
 

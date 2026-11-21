@@ -13,7 +13,7 @@
  *     order). Products/stock/branch data must exist for the E2E user.
  *
  * Env vars (optional): `E2E_BASE_URL` (default http://localhost:3000),
- * `E2E_USER`/`E2E_PASSWORD` (defaults `e2e`/`e2e-password`, see spec).
+ * `E2E_USER`/`E2E_PASSWORD` (defaults `E2E-automation`/`e2e-password`, see spec).
  */
 
 import { defineConfig, devices } from "@playwright/test";

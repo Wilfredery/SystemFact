@@ -383,6 +383,66 @@ describe("getCurrentUser — resolution by sub, NOT by email", () => {
   });
 });
 
+describe("loginWithCredenciales — prefixed usernames (multi-company C4)", () => {
+  const fila = {
+    id: 42,
+    activo: true,
+    empresaId: 7,
+    roles: [{ rol: { nombre: "Administrador" } }],
+  };
+
+  it("builds the synthetic email from the FULL name and looks the row up by that same name", async () => {
+    const supabase = supabaseWithUser({ id: SUB_A, email: "x@users.systemfact.internal" });
+    usuario.findUnique.mockResolvedValueOnce(fila).mockResolvedValueOnce({ authUserId: SUB_A });
+
+    const res = await loginWithCredenciales(asSupabase(supabase), "SOL-jperez", "pw");
+
+    expect(res.ok).toBe(true);
+    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+      email: "SOL-jperez@users.systemfact.internal",
+      password: "pw",
+    });
+    expect(usuario.findUnique.mock.calls[0]?.[0]).toMatchObject({
+      where: { nombreUsuario: "SOL-jperez" },
+    });
+  });
+
+  it("a legacy unprefixed name keeps the same email derivation and lookup", async () => {
+    const supabase = supabaseWithUser({ id: SUB_A, email: "x@users.systemfact.internal" });
+    usuario.findUnique.mockResolvedValueOnce(fila).mockResolvedValueOnce({ authUserId: SUB_A });
+
+    await loginWithCredenciales(asSupabase(supabase), "admin", "pw");
+
+    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+      email: "admin@users.systemfact.internal",
+      password: "pw",
+    });
+    expect(usuario.findUnique.mock.calls[0]?.[0]).toMatchObject({
+      where: { nombreUsuario: "admin" },
+    });
+  });
+
+  it("an unknown prefix / user fails with the uniform credential failure and reads nothing", async () => {
+    const supabase = supabaseWithUser(null);
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { status: 400, code: "invalid_credentials", message: "Invalid login credentials" },
+    });
+
+    const a = await loginWithCredenciales(asSupabase(supabase), "ZZZ-nadie", "pw");
+    const b = await loginWithCredenciales(asSupabase(supabase), "nadie", "pw");
+
+    expect(a).toStrictEqual({
+      ok: false,
+      code: AUTH_CREDENCIALES_INVALIDAS,
+      message: messageFor(AUTH_CREDENCIALES_INVALIDAS),
+      cuentaComoIntento: true,
+    });
+    expect(b).toStrictEqual(a);
+    expect(usuario.findUnique).not.toHaveBeenCalled();
+  });
+});
+
 describe("loginWithCredenciales — lazy binding of authUserId", () => {
   // Design D2: the login bootstrap now also fetches the roles (esAdmin verdict).
   const fila = {

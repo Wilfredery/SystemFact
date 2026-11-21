@@ -49,6 +49,7 @@ async function deepCheck() {
       await tx.empresa.create({
         data: {
           id: 99002,
+          codigo: "BYP002",
           nombreComercial: "Test Bypass Check",
           rnc: "TEST-BYPASS-99002",
           razonSocial: "Test",

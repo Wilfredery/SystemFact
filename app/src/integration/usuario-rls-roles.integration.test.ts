@@ -18,9 +18,18 @@ import { withTenantTransaction } from "@/modules/tenant/infrastructure/withTenan
 import { setLoginFlow } from "@/modules/tenant/infrastructure/login-flow";
 import { enlazarAuthSub } from "@/modules/auth/infrastructure/auth-identity";
 import type { TenantCtx } from "@/modules/tenant/domain/tenant";
-import { getHarnessDb, seedTenantFixture, type TenantFixture } from "./setup/fixtures";
+import {
+  getHarnessDb,
+  nombreUsuarioConCodigo,
+  seedTenantFixture,
+  type TenantFixture,
+} from "./setup/fixtures";
 
 const RLS_VIOLATION = /row-level security|violates|policy/i;
+// A cross-empresa INSERT is refused by RLS, but the BEFORE INSERT prefix guard
+// (usuario_nombre_prefijo_guard) fires first and fails closed because the other
+// empresa's row is unreadable to the session. Either wall is a valid refusal.
+const RLS_O_PREFIJO = /row-level security|violates|policy|USUARIO\.nombreUsuario/i;
 
 describe("USUARIO / USUARIO_ROL role-aware RLS (real DB)", () => {
   let fx: TenantFixture;
@@ -46,14 +55,13 @@ describe("USUARIO / USUARIO_ROL role-aware RLS (real DB)", () => {
     }
     rolOperadorId = rolOperador.id;
 
-    const suffix = randomUUID();
     const crear = (empresaId: number, sucursalId: number, tag: string) =>
       db.usuario.create({
         data: {
           empresaId,
           sucursalId,
           nombre: tag,
-          nombreUsuario: `${tag}-${suffix}`,
+          nombreUsuario: nombreUsuarioConCodigo(fx.empresaA.codigo, tag),
           passwordHash: "test-hash",
           roles: { create: { rolId: rolOperador.id } },
         },
@@ -166,7 +174,7 @@ describe("USUARIO / USUARIO_ROL role-aware RLS (real DB)", () => {
               empresaId: fx.empresaA.id,
               sucursalId: fx.sucursalA1.id,
               nombre: "intruso",
-              nombreUsuario: `intruso-${randomUUID()}`,
+              nombreUsuario: nombreUsuarioConCodigo(fx.empresaA.codigo, "intruso"),
               passwordHash: "x",
             },
           }),
@@ -221,7 +229,11 @@ describe("USUARIO / USUARIO_ROL role-aware RLS (real DB)", () => {
             data: { empresaId: fx.empresaB.id, sucursalId: fx.sucursalB1.id },
           }),
         ),
-      ).rejects.toThrow(RLS_VIOLATION);
+      ).rejects.toThrow(
+        // Two walls, either one refuses: the prefix trigger (BEFORE UPDATE, fires first since
+        // multi-company C3: the session cannot read the other empresa's code) or the RLS WITH CHECK.
+        new RegExp(`${RLS_VIOLATION.source}|empresa code not readable`, RLS_VIOLATION.flags),
+      );
       const stored = await getHarnessDb().usuario.findUniqueOrThrow({ where: { id: objetivoId } });
       expect(stored.empresaId).toBe(fx.empresaA.id);
       expect(stored.sucursalId).toBe(fx.sucursalA1.id);
@@ -236,12 +248,12 @@ describe("USUARIO / USUARIO_ROL role-aware RLS (real DB)", () => {
               empresaId: fx.empresaB.id,
               sucursalId: fx.sucursalB1.id,
               nombre: "cross",
-              nombreUsuario: `cross-${randomUUID()}`,
+              nombreUsuario: nombreUsuarioConCodigo(fx.empresaB.codigo, "cross"),
               passwordHash: "x",
             },
           }),
         ),
-      ).rejects.toThrow(RLS_VIOLATION);
+      ).rejects.toThrow(RLS_O_PREFIJO);
       expect(await getHarnessDb().usuario.count()).toBe(before);
     });
   });
@@ -345,7 +357,7 @@ describe("USUARIO / USUARIO_ROL role-aware RLS (real DB)", () => {
   describe("bootstrap exception", () => {
     it("is_bootstrap can still INSERT / UPDATE / DELETE USUARIO and USUARIO_ROL (no tenant, no admin)", async () => {
       const db = getHarnessDb();
-      const nombreUsuario = `boot-${randomUUID()}`;
+      const nombreUsuario = nombreUsuarioConCodigo(fx.empresaB.codigo, "boot");
       const creadoId = await prisma.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT set_config('app.is_bootstrap', 'true', true)`;
         const u = await tx.usuario.create({

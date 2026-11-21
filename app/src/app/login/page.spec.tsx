@@ -41,6 +41,15 @@ describe("login board 01 (auth-login-restyle)", () => {
     expect(screen.queryByLabelText(/correo|email/i)).toBeNull();
   });
 
+  it("shows the CODIGO-usuario shape as placeholder and keeps the label (multi-company C4)", () => {
+    render(<LoginPage />);
+
+    const campo = screen.getByLabelText("Usuario");
+    expect(campo).toHaveAttribute("placeholder", "CODIGO-usuario");
+    // Lenient login: no client-side format constraint that would act as a format oracle.
+    expect(campo).not.toHaveAttribute("pattern");
+  });
+
   it("LOG-02-A: the single alert renders the typed error VERBATIM (no transform, no wrap copy)", () => {
     // The visible copy is owned by the catalog (pinned exactly in
     // errors.test.ts). At the unit level we pin that the page's ONLY error
