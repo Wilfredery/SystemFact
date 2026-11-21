@@ -54,6 +54,19 @@ export function tabDesdeParam(valor: string): TabAdministracion {
   return TABS_ADMINISTRACION.find((t) => t.valor === valor)?.valor ?? TAB_ADMINISTRACION_DEFAULT;
 }
 
+/**
+ * Tab to open for a request (`odd/tasks/uiux-board-08-followup.md` S2). A link
+ * WITHOUT `tab` but WITH `busqueda`/`activo`/`page` predates board 08 and only
+ * ever meant Usuarios; an explicit `tab` (even an unknown one) always wins.
+ */
+export function resolverTabAdministracion(
+  tabParam: string,
+  tieneParamsDeUsuarios: boolean,
+): TabAdministracion {
+  if (tabParam === "" && tieneParamsDeUsuarios) return "usuarios";
+  return tabDesdeParam(tabParam);
+}
+
 export type ActivoParam = "" | "true" | "false";
 
 /** Tri-state `activo`: `""` = all users, otherwise the two URL spellings. */
