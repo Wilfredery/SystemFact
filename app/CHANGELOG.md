@@ -1,3 +1,9 @@
+## [0.42.2](https://github.com/Wilfredery/SystemFact/compare/v0.42.1...v0.42.2) (2026-11-21)
+
+### Fixed
+
+* **security (tenant kill switch):** `Empresa.activa` was declared but never enforced. Login now refuses a user of an inactive company (new stable code `AUTH_EMPRESA_INACTIVA`, session signed out, not counted as a throttle attempt) and every per-request session resolves to no session for an inactive or unreadable company (fail closed). A new database trigger (`empresa_activa_guard`) makes `EMPRESA.activa` changeable only in bootstrap mode, closing the hole where any tenant session could flip its own company's flag through `empresa_modify`. Production has one company and it is active, so no tenant is affected. The migration is applied to production separately, on the owner's approval.
+
 ## [0.42.1](https://github.com/Wilfredery/SystemFact/compare/v0.42.0...v0.42.1) (2026-11-21)
 
 ### Fixed

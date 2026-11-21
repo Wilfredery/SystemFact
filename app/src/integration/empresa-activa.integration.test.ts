@@ -91,6 +91,13 @@ describe("EMPRESA.activa kill switch (real DB)", () => {
   });
 
   describe("database trigger (S3)", () => {
+    it("a session that never set app.is_bootstrap cannot change activa (fail closed)", async () => {
+      await expect(
+        getHarnessDb().$executeRaw`UPDATE "EMPRESA" SET "activa" = false WHERE id = ${fx.empresaA.id}`,
+      ).rejects.toThrow(GUARD_REFUSAL);
+      expect((await leerEmpresa(fx.empresaA.id)).activa).toBe(true);
+    });
+
     it.each([
       ["Administrador", () => ctxAdmin],
       ["non-admin", () => ctxOperador],
