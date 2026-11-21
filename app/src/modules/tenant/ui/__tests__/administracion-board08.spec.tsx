@@ -19,6 +19,7 @@ import {
 import {
   TAB_ADMINISTRACION_DEFAULT,
   TABS_ADMINISTRACION,
+  resolverTabAdministracion,
   tabDesdeParam,
   type TabAdministracion,
 } from "../administracion-tabs";
@@ -354,5 +355,77 @@ describe("Board 08 — F0 token retrofit (S7)", () => {
       /\bdark:/.test(readFileSync(path.isAbsolute(archivo) ? archivo : path.join(RAIZ, archivo), "utf8")),
     );
     expect(ofensas).toEqual([]);
+  });
+});
+
+describe("Board 08 follow-up — resolverTabAdministracion (S2)", () => {
+  it("opens Usuarios for a legacy link: no tab, usuarios params present", () => {
+    expect(resolverTabAdministracion("", true)).toBe("usuarios");
+  });
+
+  it("opens the default (Empresas) with no tab and no usuarios params", () => {
+    expect(resolverTabAdministracion("", false)).toBe("empresas");
+  });
+
+  it("keeps a known tab regardless of usuarios params", () => {
+    expect(resolverTabAdministracion("roles", true)).toBe("roles");
+    expect(resolverTabAdministracion("sucursales", false)).toBe("sucursales");
+  });
+
+  it("falls back to the default for an unknown non-empty tab, even with usuarios params", () => {
+    expect(resolverTabAdministracion("bogus", true)).toBe("empresas");
+    expect(resolverTabAdministracion("bogus", false)).toBe("empresas");
+  });
+});
+
+describe("Board 08 follow-up — tab keyboard (S1)", () => {
+  const nombres = ["Empresas", "Sucursales", "Usuarios", "Roles", "Configuración"];
+  const tabPorNombre = (n: string) => screen.getByRole("tab", { name: n });
+
+  it("uses roving tabindex: 0 on the selected tab, -1 on the others", () => {
+    montar({ tab: "roles", roles: ROLES });
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("tabindex"))).toEqual(["-1", "-1", "-1", "0", "-1"]);
+  });
+
+  it("ArrowRight/ArrowLeft move focus with wrap-around and never navigate", () => {
+    montar();
+    tabPorNombre("Empresas").focus();
+    fireEvent.keyDown(tabPorNombre("Empresas"), { key: "ArrowRight" });
+    expect(tabPorNombre("Sucursales")).toHaveFocus();
+    fireEvent.keyDown(tabPorNombre("Sucursales"), { key: "ArrowLeft" });
+    expect(tabPorNombre("Empresas")).toHaveFocus();
+    fireEvent.keyDown(tabPorNombre("Empresas"), { key: "ArrowLeft" });
+    expect(tabPorNombre("Configuración")).toHaveFocus();
+    fireEvent.keyDown(tabPorNombre("Configuración"), { key: "ArrowRight" });
+    expect(tabPorNombre("Empresas")).toHaveFocus();
+    expect(push).not.toHaveBeenCalled();
+    expect(tabPorNombre("Empresas")).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("Home/End move focus to the first/last tab without navigating", () => {
+    montar();
+    tabPorNombre("Usuarios").focus();
+    fireEvent.keyDown(tabPorNombre("Usuarios"), { key: "End" });
+    expect(tabPorNombre(nombres[4])).toHaveFocus();
+    fireEvent.keyDown(tabPorNombre(nombres[4]), { key: "Home" });
+    expect(tabPorNombre(nombres[0])).toHaveFocus();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("prevents default on handled keys only; Enter/Space stay native", () => {
+    montar();
+    const tab = tabPorNombre("Empresas");
+    expect(fireEvent.keyDown(tab, { key: "ArrowRight" })).toBe(false);
+    expect(fireEvent.keyDown(tab, { key: "Enter" })).toBe(true);
+    expect(fireEvent.keyDown(tab, { key: " " })).toBe(true);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("activating a focused non-selected tab (native click) navigates exactly once to that tab", () => {
+    montar();
+    fireEvent.keyDown(tabPorNombre("Empresas"), { key: "ArrowRight" });
+    fireEvent.click(document.activeElement as HTMLElement);
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith("/administracion?tab=sucursales");
   });
 });

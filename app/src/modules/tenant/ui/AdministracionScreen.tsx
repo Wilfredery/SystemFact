@@ -24,7 +24,7 @@
  * rows (the `ultimaSolicitud` stale guard, same rule as Compras).
  */
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   listarSucursalesAdministracionAction,
@@ -403,6 +403,33 @@ export function AdministracionScreen({
     );
   }
 
+  const refsTabs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  /** WAI-ARIA tabs, manual activation: arrows/Home/End move FOCUS only (S1). */
+  function moverFocoTabs(evento: KeyboardEvent<HTMLButtonElement>, indice: number): void {
+    const total = TABS_ADMINISTRACION.length;
+    const { key: tecla } = evento;
+    let destino: number;
+    switch (tecla) {
+      case "ArrowRight":
+        destino = (indice + 1) % total;
+        break;
+      case "ArrowLeft":
+        destino = (indice - 1 + total) % total;
+        break;
+      case "Home":
+        destino = 0;
+        break;
+      case "End":
+        destino = total - 1;
+        break;
+      default:
+        return;
+    }
+    evento.preventDefault();
+    refsTabs.current[destino]?.focus();
+  }
+
   function cambiarTab(destino: TabAdministracion): void {
     if (destino === tab) return;
     iniciarNavegacion(async () => {
@@ -413,9 +440,14 @@ export function AdministracionScreen({
   return (
     <div className="flex flex-col gap-6">
       <div role="tablist" aria-label="Secciones de Administración" className="flex flex-wrap gap-2">
-        {TABS_ADMINISTRACION.map((t) => (
+        {TABS_ADMINISTRACION.map((t, indice) => (
           <button
             key={t.valor}
+            ref={(el) => {
+              refsTabs.current[indice] = el;
+            }}
+            tabIndex={t.valor === tab ? 0 : -1}
+            onKeyDown={(e) => moverFocoTabs(e, indice)}
             type="button"
             role="tab"
             id={`tab-${t.valor}`}

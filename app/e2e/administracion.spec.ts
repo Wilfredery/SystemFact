@@ -299,6 +299,12 @@ test.describe("/administracion (administracion T3)", () => {
       "true",
     );
     await expect(page.getByRole("columnheader", { name: "Empresa", exact: true })).toBeVisible();
+    // Keyboard (follow-up S1): the selected tab is the Tab stop and an arrow moves focus only.
+    const urlAntes = page.url();
+    await page.getByRole("tab", { name: "Empresas" }).focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(page.getByRole("tab", { name: "Sucursales" })).toBeFocused();
+    expect(page.url()).toBe(urlAntes);
     await abrirTabUsuarios(page);
     await expect(page.getByRole("tab", { name: "Usuarios" })).toHaveAttribute(
       "aria-selected",

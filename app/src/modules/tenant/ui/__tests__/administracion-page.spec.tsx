@@ -336,6 +336,34 @@ describe("AdministracionPage — URL contract (S6)", () => {
   });
 });
 
+describe("AdministracionPage — legacy links without tab (board 08 follow-up S2)", () => {
+  it.each([
+    [{ busqueda: "x" }, { page: 1, pageSize: 25, buscar: "x" }],
+    [{ activo: "false" }, { page: 1, pageSize: 25, activo: false }],
+    [{ page: "2" }, { page: 2, pageSize: 25 }],
+  ])("opens Usuarios for %j", async (params, query) => {
+    await renderizarPagina(params);
+
+    expect(mockListar).toHaveBeenCalledWith(query);
+    expect(mockSucursales).not.toHaveBeenCalled();
+    expect(screen.getByTestId("usuario-fila-10")).toBeInTheDocument();
+  });
+
+  it("still opens Empresas with no params", async () => {
+    await renderizarPagina({});
+
+    expect(mockListar).not.toHaveBeenCalled();
+    expect(mockSucursales).toHaveBeenCalled();
+  });
+
+  it("an explicit unknown tab wins over legacy params and falls back to Empresas", async () => {
+    await renderizarPagina({ tab: "bogus", busqueda: "x" });
+
+    expect(mockListar).not.toHaveBeenCalled();
+    expect(mockSucursales).toHaveBeenCalled();
+  });
+});
+
 describe("AdministracionPage — Empresas and Roles are Administrador-only (S9)", () => {
   it.each(["empresas", "roles"])(
     "renders only the access alert and no data on tab=%s when the server denies",

@@ -1,3 +1,9 @@
+## [0.42.1](https://github.com/Wilfredery/SystemFact/compare/v0.42.0...v0.42.1) (2026-11-21)
+
+### Fixed
+
+* **administracion:** the tab bar follows the WAI-ARIA tabs pattern — roving tabindex, ArrowLeft/ArrowRight (wrap), Home and End move focus only, Enter/Space activate; and a link to `/administracion` without `tab` but with `busqueda`, `activo` or `page` opens the Usuarios tab again, so old bookmarks keep their filters.
+
 ## [0.42.0](https://github.com/Wilfredery/SystemFact/compare/v0.41.0...v0.42.0) (2026-11-21)
 
 ### Added

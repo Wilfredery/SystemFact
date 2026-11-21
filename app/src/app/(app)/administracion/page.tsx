@@ -48,7 +48,7 @@ import {
 import {
   activoDesdeParam,
   construirQueryUsuarios,
-  tabDesdeParam,
+  resolverTabAdministracion,
   type FiltrosUsuarios,
 } from "@/modules/tenant/ui/administracion-tabs";
 
@@ -75,7 +75,9 @@ export default async function AdministracionPage({
   }
 
   const params = await searchParams;
-  const tab = tabDesdeParam(primero(params.tab));
+  const tieneParamsDeUsuarios =
+    primero(params.busqueda) !== "" || primero(params.activo) !== "" || primero(params.page) !== "";
+  const tab = resolverTabAdministracion(primero(params.tab), tieneParamsDeUsuarios);
   const page = enteroPositivo(params.page) ?? 1;
   const filtros: FiltrosUsuarios = {
     busqueda: primero(params.busqueda).trim().slice(0, 100),
