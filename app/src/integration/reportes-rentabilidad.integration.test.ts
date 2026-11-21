@@ -739,6 +739,7 @@ describe("REN-4 — rentabilidad data-layer page cut (real DB, RLS on)", () => {
       unidadesVendidas: referencia.data.resumen.unidadesVendidas,
       unidadesCompradas: referencia.data.resumen.unidadesCompradas,
       ventas: referencia.data.resumen.ventas,
+      costo: referencia.data.resumen.costo,
       inversion: referencia.data.resumen.inversion,
       capital: referencia.data.resumen.capital,
       margen: referencia.data.resumen.margen,
