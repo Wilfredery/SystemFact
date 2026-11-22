@@ -1,3 +1,9 @@
+## [0.47.3](https://github.com/Wilfredery/SystemFact/compare/v0.47.2...v0.47.3) (2026-11-22)
+
+### Changed
+
+* **clientes, productos, proveedores (screen audit, T4):** the three master-data screens, their create/edit forms and their deactivate dialogs use the design-system tokens of the wireframe-aligned boards instead of raw Tailwind colors: primary buttons on the accent green, inputs and tables on `line`/`surface`, table headers on `surface-muted`, the Activo badge on the `success` pair, the Inactivo badge muted, error notices on `danger` and the success notice on `success`. The unused `dark:` variants are gone. One guard test covers all nine files. Layout and copy are unchanged.
+
 ## [0.47.2](https://github.com/Wilfredery/SystemFact/compare/v0.47.1...v0.47.2) (2026-11-22)
 
 ### Changed

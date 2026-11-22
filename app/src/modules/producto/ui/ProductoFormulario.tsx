@@ -39,9 +39,9 @@ import {
 
 const MENSAJE_FALLO_ACCION = "No se pudo guardar el producto. Intente de nuevo.";
 const CLASE_CONTROL =
-  "min-h-11 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
+  "min-h-11 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink";
 const CLASE_ALERTA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+  "rounded-md bg-danger/10 px-4 py-2 text-sm text-danger";
 
 /**
  * Options of the rate select: the company's list in config order, plus the
@@ -194,7 +194,7 @@ export function ProductoFormulario({
               ))}
             </select>
             {categorias.length === 0 && (
-              <p className="text-sm text-amber-700 dark:text-amber-300">
+              <p className="text-sm text-warn">
                 No hay categorías activas.
               </p>
             )}
@@ -243,7 +243,7 @@ export function ProductoFormulario({
           </div>
           <p id="producto-precio-detalle" aria-live="polite" className="min-h-5 text-sm">
             {precioInvalido && (
-              <span className="text-red-700 dark:text-red-300">{MENSAJE_PRECIO_INVALIDO}</span>
+              <span className="text-danger">{MENSAJE_PRECIO_INVALIDO}</span>
             )}
           </p>
 

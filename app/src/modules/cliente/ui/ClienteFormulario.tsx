@@ -51,9 +51,9 @@ import {
 const MENSAJE_FALLO_ACCION = "No se pudo guardar el cliente. Intente de nuevo.";
 const MENSAJE_FISCAL_INVALIDO = messageFor(IDENTIFICACION_FISCAL_INVALIDA);
 const CLASE_CONTROL =
-  "min-h-11 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
+  "min-h-11 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink";
 const CLASE_ALERTA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+  "rounded-md bg-danger/10 px-4 py-2 text-sm text-danger";
 
 export interface ClienteFormularioProps {
   readonly cliente: ClienteDto | null;
@@ -191,7 +191,7 @@ export function ClienteFormulario({
           </div>
           <p id="cliente-rnc-detalle" aria-live="polite" className="min-h-5 text-sm">
             {fiscalInvalido && (
-              <span className="text-red-700 dark:text-red-300">
+              <span className="text-danger">
                 {MENSAJE_FISCAL_INVALIDO}
               </span>
             )}
@@ -237,11 +237,11 @@ export function ClienteFormulario({
           </div>
 
           {puedeVerCredito && (
-            <fieldset className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-              <legend className="px-1 text-sm font-medium text-zinc-900 dark:text-zinc-50">
+            <fieldset className="flex flex-col gap-3 rounded-lg border border-line p-4">
+              <legend className="px-1 text-sm font-medium text-ink">
                 Crédito
               </legend>
-              <label className="flex min-h-11 items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+              <label className="flex min-h-11 items-center gap-2 text-sm text-ink">
                 <input
                   type="checkbox"
                   checked={credito}
@@ -277,12 +277,12 @@ export function ClienteFormulario({
               </div>
               <p id="cliente-limite-detalle" aria-live="polite" className="min-h-5 text-sm">
                 {limiteInvalido && (
-                  <span className="text-red-700 dark:text-red-300">
+                  <span className="text-danger">
                     {MENSAJE_MONTO_INVALIDO}
                   </span>
                 )}
                 {!limiteInvalido && plazoInvalido && (
-                  <span className="text-red-700 dark:text-red-300">
+                  <span className="text-danger">
                     El plazo debe ser un número entero de días mayor que cero.
                   </span>
                 )}
