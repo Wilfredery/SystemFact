@@ -10,9 +10,11 @@
  * stable venta-catalog codes; zod is NEVER the authorization authority
  * (R-V8/R-V13, same discipline as `venta/http/validations.ts`).
  *
- * The three codes below are the HTTP/transport rejections (auth + malformed
- * payload). They are deliberately NOT in a domain business catalog — they live
- * at the boundary, mirroring the venta convention.
+ * The codes below are the HTTP/transport rejections (auth + malformed
+ * payload) plus two that only the client form raises (`CONEXION_FALLIDA`,
+ * `RESULTADO_INCIERTO`: the server never sends them). They are deliberately
+ * NOT in a domain business catalog — they live at the boundary, mirroring the
+ * venta convention.
  */
 
 import { z } from "@/lib/zod";
@@ -22,11 +24,26 @@ import { TIPO_REPOSICION } from "../domain/devolucion";
 export const VALIDATION_ERROR = "VALIDATION_ERROR";
 export const SESION_INVALIDA = "SESION_INVALIDA";
 export const NO_AUTORIZADO = "NO_AUTORIZADO";
+/** Client-side only: the action call itself failed (network, server crash). */
+export const CONEXION_FALLIDA = "CONEXION_FALLIDA";
+/**
+ * Client-side only: the submit call failed, so the credit note MAY have been
+ * issued (the response, not the write, may have been lost).
+ */
+export const RESULTADO_INCIERTO = "RESULTADO_INCIERTO";
+
+/** Client form text for `VALIDATION_ERROR` (the generic catalog text is too vague for a form). */
+export const MENSAJE_FORMULARIO_INCOMPLETO =
+  "Complete el motivo y una cantidad válida en al menos una línea.";
 
 const MENSAJES_TRANSPORTE: Record<string, string> = {
   [VALIDATION_ERROR]: "Datos de entrada inválidos",
   [SESION_INVALIDA]: "Sesión no válida o expirada",
   [NO_AUTORIZADO]: "No tiene permisos para realizar esta acción",
+  [CONEXION_FALLIDA]:
+    "No se pudo completar la operación. Revise su conexión e intente de nuevo.",
+  [RESULTADO_INCIERTO]:
+    "No se pudo confirmar si la nota de crédito fue emitida. Revise las devoluciones de esta venta antes de reintentar.",
 };
 
 export function mensajeTransporte(code: string): string {

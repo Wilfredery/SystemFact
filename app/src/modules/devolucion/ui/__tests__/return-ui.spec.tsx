@@ -263,6 +263,7 @@ describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Devolver venta 7" }));
 
     const status = await screen.findByRole("status");
+    expect(status.textContent).toContain("[CONEXION_FALLIDA]");
     expect(status.textContent).toContain("No se pudo completar la operación");
     expect(status.textContent).not.toContain("network down");
     expect(screen.queryByText(/Cargando las líneas/)).toBeNull();
@@ -281,6 +282,7 @@ describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
     fireEvent.click(submit);
 
     const status = await screen.findByRole("status");
+    expect(status.textContent).toContain("[RESULTADO_INCIERTO]");
     expect(status.textContent).toContain("No se pudo confirmar si la nota de crédito fue emitida");
     expect(status.textContent).not.toContain("boom");
     await waitFor(() => expect(submit).toBeEnabled());
