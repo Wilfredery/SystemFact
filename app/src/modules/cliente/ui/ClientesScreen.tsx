@@ -43,11 +43,11 @@ const MENSAJE_FALLO_LECTURA = "No se pudo abrir el cliente. Intente de nuevo.";
 const MENSAJE_FALLO_ACCION = "No se pudo completar la acción. Intente de nuevo.";
 
 const CLASE_CONTROL =
-  "min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
+  "min-h-11 rounded-md border border-line bg-surface px-3 text-sm text-ink";
 const CLASE_BOTON =
-  "min-h-11 rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300";
+  "min-h-11 rounded-md border border-line px-4 text-sm font-medium text-ink disabled:opacity-40";
 const CLASE_ALERTA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+  "rounded-md bg-danger/10 px-4 py-2 text-sm text-danger";
 
 export type ClientesInicial =
   | {
@@ -198,7 +198,7 @@ export function ClientesScreen({
       {mensaje !== null && (
         <p
           role="status"
-          className="rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+          className="rounded-md bg-success-bg px-4 py-2 text-sm text-success-fg"
         >
           {mensaje}
         </p>
@@ -234,7 +234,7 @@ export function ClientesScreen({
           <button
             type="button"
             onClick={abrirCreacion}
-            className="min-h-11 rounded-md bg-zinc-900 px-5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900"
+            className="min-h-11 rounded-md bg-accent px-5 text-sm font-medium text-accent-fg"
           >
             + Nuevo cliente
           </button>
@@ -242,16 +242,16 @@ export function ClientesScreen({
       </div>
 
       {data.items.length === 0 ? (
-        <p className="rounded-md border border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+        <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
           No hay clientes que coincidan con los filtros.
         </p>
       ) : (
         <div
-          className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800"
+          className="overflow-x-auto rounded-lg border border-line"
           aria-busy={cargando}
         >
           <table className="w-full text-left text-sm">
-            <thead className="bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+            <thead className="bg-surface-muted text-xs uppercase text-ink-muted">
               <tr>
                 <th scope="col" className="px-4 py-2">Nombre</th>
                 <th scope="col" className="px-4 py-2">RNC / Cédula</th>
@@ -268,10 +268,10 @@ export function ClientesScreen({
                 {puedeGestionar && <th scope="col" className="px-4 py-2">Acciones</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <tbody className="divide-y divide-line">
               {data.items.map((c) => (
                 <tr key={c.id} data-testid={`cliente-fila-${c.id}`}>
-                  <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">
+                  <td className="px-4 py-2 font-medium text-ink">
                     {c.nombre}
                   </td>
                   <td className="px-4 py-2 font-mono text-xs">
@@ -294,8 +294,8 @@ export function ClientesScreen({
                     <span
                       className={`rounded px-2 py-1 text-xs font-medium ${
                         c.activo
-                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                          : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                          ? "bg-success-bg text-success-fg"
+                          : "bg-surface-muted text-ink-muted"
                       }`}
                     >
                       {c.activo ? "Activo" : "Inactivo"}
@@ -342,7 +342,7 @@ export function ClientesScreen({
         >
           Anterior
         </button>
-        <span className="text-sm text-zinc-500">
+        <span className="text-sm text-ink-muted">
           Página {data.page} de {totalPaginas}
         </span>
         <button

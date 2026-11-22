@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 
 const CLASE_ALERTA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+  "rounded-md bg-danger/10 px-4 py-2 text-sm text-danger";
 
 export interface ConfirmarDesactivacionProveedorProps {
   readonly proveedor: ProveedorDto;
@@ -53,7 +53,7 @@ export function ConfirmarDesactivacionProveedor({
             {proveedor.rnc === null ? "" : ` — ${proveedor.rnc}`}
           </DialogDescription>
         </DialogHeader>
-        <p className="text-sm text-zinc-700 dark:text-zinc-300">
+        <p className="text-sm text-ink">
           No se elimina: el proveedor queda inactivo y deja de aparecer en las listas y en la
           búsqueda de compra. Su historial, sus compras y su RNC se conservan.
         </p>

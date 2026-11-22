@@ -39,11 +39,11 @@ const MENSAJE_FALLO_LECTURA = "No se pudo abrir el producto. Intente de nuevo.";
 const MENSAJE_FALLO_ACCION = "No se pudo completar la acción. Intente de nuevo.";
 
 const CLASE_CONTROL =
-  "min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
+  "min-h-11 rounded-md border border-line bg-surface px-3 text-sm text-ink";
 const CLASE_BOTON =
-  "min-h-11 rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300";
+  "min-h-11 rounded-md border border-line px-4 text-sm font-medium text-ink disabled:opacity-40";
 const CLASE_ALERTA =
-  "rounded-md bg-red-50 px-4 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200";
+  "rounded-md bg-danger/10 px-4 py-2 text-sm text-danger";
 
 export type ProductosInicial =
   | { readonly ok: true; readonly data: ConsultarProductosOutput }
@@ -182,7 +182,7 @@ export function ProductosScreen({
       {mensaje !== null && (
         <p
           role="status"
-          className="rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+          className="rounded-md bg-success-bg px-4 py-2 text-sm text-success-fg"
         >
           {mensaje}
         </p>
@@ -244,7 +244,7 @@ export function ProductosScreen({
           <button
             type="button"
             onClick={abrirCreacion}
-            className="min-h-11 rounded-md bg-zinc-900 px-5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900"
+            className="min-h-11 rounded-md bg-accent px-5 text-sm font-medium text-accent-fg"
           >
             + Nuevo producto
           </button>
@@ -252,16 +252,16 @@ export function ProductosScreen({
       </div>
 
       {data.items.length === 0 ? (
-        <p className="rounded-md border border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+        <p className="rounded-md border border-line px-4 py-6 text-center text-sm text-ink-muted">
           No hay productos que coincidan con los filtros.
         </p>
       ) : (
         <div
-          className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800"
+          className="overflow-x-auto rounded-lg border border-line"
           aria-busy={cargando}
         >
           <table className="w-full text-left text-sm">
-            <thead className="bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+            <thead className="bg-surface-muted text-xs uppercase text-ink-muted">
               <tr>
                 <th scope="col" className="px-4 py-2">Código</th>
                 <th scope="col" className="px-4 py-2">Nombre</th>
@@ -275,11 +275,11 @@ export function ProductosScreen({
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <tbody className="divide-y divide-line">
               {data.items.map((p) => (
                 <tr key={p.id} data-testid={`producto-fila-${p.id}`}>
                   <td className="px-4 py-2 font-mono text-xs">{p.codigo}</td>
-                  <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">
+                  <td className="px-4 py-2 font-medium text-ink">
                     {p.nombre}
                   </td>
                   <td className="px-4 py-2">{p.categoria}</td>
@@ -287,7 +287,7 @@ export function ProductosScreen({
                   <td className="px-4 py-2">
                     {p.tasaItbis}%
                     {!p.tasaVigente && (
-                      <span className="text-xs text-amber-700 dark:text-amber-300">
+                      <span className="text-xs text-warn">
                         {" "}(retirada)
                       </span>
                     )}
@@ -299,8 +299,8 @@ export function ProductosScreen({
                     <span
                       className={`rounded px-2 py-1 text-xs font-medium ${
                         p.activo
-                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                          : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                          ? "bg-success-bg text-success-fg"
+                          : "bg-surface-muted text-ink-muted"
                       }`}
                     >
                       {p.activo ? "Activo" : "Inactivo"}
@@ -347,7 +347,7 @@ export function ProductosScreen({
         >
           Anterior
         </button>
-        <span className="text-sm text-zinc-500">
+        <span className="text-sm text-ink-muted">
           Página {data.page} de {totalPaginas}
         </span>
         <button
