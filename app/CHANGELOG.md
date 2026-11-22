@@ -8,6 +8,13 @@
 
 * **auditoria:** the raw `valorAnterior`/`valorNuevo` columns no longer leave the repository. Before this release they were sent to the browser in every audit row (hidden by the UI but readable in the response by an administrator); now the row carries only the allowlisted, server-built display text, and a malformed or unexpected payload yields no text at all.
 
+## [0.46.1](https://github.com/Wilfredery/SystemFact/compare/v0.46.0...v0.46.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **tools:** scope provision-empresa to the new company so RETURNING passes RLS as a non-superuser role ([#272](https://github.com/Wilfredery/SystemFact/issues/272)) ([b530de5](https://github.com/Wilfredery/SystemFact/commit/b530de59b72f3c3d7f5ea06a3718fde040168ecf))
+
 ## [0.45.0](https://github.com/Wilfredery/SystemFact/compare/v0.44.0...v0.45.0) (2026-11-21)
 
 ### Added
@@ -1206,4 +1213,4 @@ eportes/domain/reporte-resultado.ts (D7) — the duplicated copies in operaciona
 
 * **ncf:** compute seed vigencia year on the Santo Domingo business calendar ([85f86b2](https://github.com/Wilfredery/SystemFact/commit/85f86b202b00ef8635ed04d9ffc66eeb785981e1))
 
-* **security:** CSP violations are now observable: the enforced policy gained `report-uri /api/security/csp-report` and the app serves that endpoint (POST-only, 204 either way, bounded 32 KB reads, one structured `csp_violation` log line per report — visible in Vercel logs; nothing is written to the database, CSP reports are an observability signal, never audit data). The endpoint is reachable before login in both directions and never throws on malformed input. Deliberate choices, documented in code: no `'self'` token inside `report-uri` (it takes URLs, not source expressions) and no `report-to` directive — the proxy does not advertise `Reporting-Endpoints`, and a CSP naming a group the origin never advertises silently reports nothing. Every CSP directive value is now frozen by test, so a future loosening fails loudly. No policy directive was loosened; scripts stay nonce-only with no `'unsafe-eval'`.
+* **security:** CSP violations are now observable: the enforced policy gained `report-uri /api/security/csp-report` and the app serves that endpoint (POST-only, 204 either way, bounded 32 KB reads, one structured `csp_violation` log line per report — visible in Vercel logs; nothing is written to the database, CSP reports are an observability signal, never audit data). The endpoint is reachable before login in both directions and never throws on malformed input. Deliberate choices, documented in code: no `'self'` token inside `report-uri` (it takes URLs, not source expressions) and no `report-to` directive — the proxy does not advertise `Reporting-Endpoints`, and a CSP naming a group the origin never advertises silently reports nothing. Every CSP directive value is now frozen by test, so a future loosening fails loudly. No policy directive was loosened; scripts stay nonce-only with no `'unsafe-eval'`.
