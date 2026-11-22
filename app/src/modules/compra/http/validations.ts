@@ -53,6 +53,9 @@ const zLineaInput = z.object({
   costoUnitario: zCostoUnitario,
 });
 
+/** Upper bound of lines in one purchase (same as devolucion): keeps the `id IN (...)` lookups bounded. */
+export const MAX_LINEAS_COMPRA = 100;
+
 export const zCrearCompraInput = z.object({
   proveedorId: z.number().int().positive(),
   tipoCompra: zTipoCompra,
@@ -65,7 +68,7 @@ export const zCrearCompraInput = z.object({
   // characters (CR/LF/TAB) that would desync the 606 fixed-width record layout.
   ncf: z.string().trim().regex(NCF_COMPRA_REGEX, "ncf inválido").nullish(),
   tipoNcf: zTipoNcfCompra.nullish(),
-  lineas: z.array(zLineaInput).min(1),
+  lineas: z.array(zLineaInput).min(1).max(MAX_LINEAS_COMPRA),
 });
 export type CrearCompraInputDto = z.infer<typeof zCrearCompraInput>;
 
@@ -75,7 +78,7 @@ export const zActualizarCompraInput = z.object({
   // Same NCF grammar as the create schema (draft edit); null/omitted keeps the field absent.
   ncf: z.string().trim().regex(NCF_COMPRA_REGEX, "ncf inválido").nullable().optional(),
   tipoNcf: zTipoNcfCompra.nullable().optional(),
-  lineas: z.array(zLineaInput).min(1),
+  lineas: z.array(zLineaInput).min(1).max(MAX_LINEAS_COMPRA),
 });
 export type ActualizarCompraInputDto = z.infer<typeof zActualizarCompraInput>;
 

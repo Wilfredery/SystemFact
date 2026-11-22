@@ -193,3 +193,23 @@ describe("zListarComprasQuery — filters", () => {
     expect(zListarComprasQuery.safeParse({ limit: 101 }).success).toBe(false);
   });
 });
+
+describe("compra lineas — upper bound (screen audit S7)", () => {
+  const linea = { productoId: 10, cantidad: "1.000", costoUnitario: "100.00" } as const;
+  const lineas = (n: number) => Array.from({ length: n }, () => linea);
+
+  it("accepts exactly 100 lines on create and on draft edit", () => {
+    expect(zCrearCompraInput.safeParse({ ...CREAR_MINIMO, lineas: lineas(100) }).success).toBe(true);
+    expect(zActualizarCompraInput.safeParse({ ...ACTUALIZAR_MINIMO, lineas: lineas(100) }).success).toBe(true);
+  });
+
+  it("rejects 101 lines on create and on draft edit (same bound as devolucion)", () => {
+    expect(zCrearCompraInput.safeParse({ ...CREAR_MINIMO, lineas: lineas(101) }).success).toBe(false);
+    expect(zActualizarCompraInput.safeParse({ ...ACTUALIZAR_MINIMO, lineas: lineas(101) }).success).toBe(false);
+  });
+
+  it("still rejects an empty lines array (previous behavior)", () => {
+    expect(zCrearCompraInput.safeParse({ ...CREAR_MINIMO, lineas: [] }).success).toBe(false);
+  });
+});
+

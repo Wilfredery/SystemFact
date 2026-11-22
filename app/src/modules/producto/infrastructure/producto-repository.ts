@@ -239,7 +239,10 @@ export async function obtenerProductoDetalleEnTx(
   return row === null ? null : toProductoConsultaFila(row);
 }
 
-/** Active categories of the company, for the screen's category selector. */
+/**
+ * Active categories of the company, for the screen's category selector. Capped at 200 (same value
+ * as the inventory category filter): it is a dropdown feed, not a list that must page.
+ */
 export async function listarCategoriasProductoEnTx(
   tx: PrismaTx,
   ctx: TenantCtx,
@@ -248,6 +251,7 @@ export async function listarCategoriasProductoEnTx(
     where: { empresaId: ctx.empresaId, activa: true },
     select: { id: true, nombre: true },
     orderBy: { nombre: "asc" },
+    take: 200,
   });
 }
 

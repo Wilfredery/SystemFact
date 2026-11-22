@@ -1,3 +1,10 @@
+## [0.47.1](https://github.com/Wilfredery/SystemFact/compare/v0.47.0...v0.47.1) (2026-11-22)
+
+### Fixed
+
+* **compra:** a purchase (create and draft edit) now accepts at most 100 lines, the same bound as returns. The lines feed `id IN (...)` lookups and had no upper limit.
+* **producto:** the category selector of the products screen is capped at 200 rows (the value the inventory category filter already uses). Audit of the other five `findMany` without a limit found them bounded by their input or a calculation input where a cap would silently corrupt the result (balances, mora, reversed-payment audit rows, role validation), so they stay as they are.
+
 ## [0.47.0](https://github.com/Wilfredery/SystemFact/compare/v0.46.1...v0.47.0) (2026-11-22)
 
 ### Added
