@@ -1,3 +1,9 @@
+## [0.46.1](https://github.com/Wilfredery/SystemFact/compare/v0.46.0...v0.46.1) (2026-11-22)
+
+### Changed
+
+* **e2e:** the local Playwright config no longer offers the opt-in Vercel protection-bypass header (`E2E_PROTECTION_BYPASS`). It contradicted the project rule of no protection-bypass option at all; no workflow or document used it. A guard test now pins that the config never offers one. Nothing the deployed app serves changed.
+
 ## [0.46.0](https://github.com/Wilfredery/SystemFact/compare/v0.45.0...v0.46.0) (2026-11-21)
 
 ### Added
