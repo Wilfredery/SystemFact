@@ -17,10 +17,10 @@ import "dotenv/config";
 import { login } from "./utils/login";
 import { requireEnv } from "./utils/env";
 
-const COLUMNAS = ["Fecha-Hora", "Usuario", "Acción", "Entidad", "Sucursal", "Detalle"];
+const COLUMNAS = ["Fecha-Hora", "Usuario", "Acción", "Entidad", "Sucursal", "Detalle", "Anterior → Nuevo"];
 
 test.describe("/auditoria", () => {
-  test("Administrador sees the header, badge, footer note and six columns, read-only", async ({
+  test("Administrador sees the header, badge, footer note and seven columns, read-only", async ({
     page,
   }) => {
     await login(page, {
