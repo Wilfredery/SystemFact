@@ -231,4 +231,43 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     expect(printSpy).toHaveBeenCalledTimes(1);
     printSpy.mockRestore();
   });
+
+  it("prints grouped money exactly and keeps a 0.01 balance/discount visible (Decimal-safe zero checks)", async () => {
+    mockAction.mockResolvedValue({
+      ok: true,
+      data: {
+        ...VISTA_BASE,
+        total: "123456789.10",
+        subtotalGravado: "123456789.10",
+        descuento: "0.01",
+        saldo: { total: "123456789.10", cobrosAplicados: "123456789.09", saldoPendiente: "0.01" },
+      },
+    });
+    render(<FacturaPrintScreen facturaId={77} />);
+    await screen.findByTestId("factura-print");
+
+    expect(screen.getByTestId("factura-total").textContent).toBe("RD$ 123,456,789.10");
+    expect(screen.getByTestId("factura-descuento").textContent).toBe("−RD$ 0.01");
+    expect(screen.getByTestId("factura-saldo-pendiente").textContent).toBe("RD$ 0.01");
+    expect(screen.getByTestId("factura-forma-pago").textContent).toBe("Crédito — saldo pendiente");
+  });
+
+  it("hides zero discount, exempt subtotal and balance written as 0, 0.0 or 0.00", async () => {
+    mockAction.mockResolvedValue({
+      ok: true,
+      data: {
+        ...VISTA_BASE,
+        descuento: "0.0",
+        subtotalExento: "0",
+        saldo: { total: "294.00", cobrosAplicados: "294.00", saldoPendiente: "0.00" },
+      },
+    });
+    render(<FacturaPrintScreen facturaId={77} />);
+    await screen.findByTestId("factura-print");
+
+    expect(screen.queryByTestId("factura-descuento")).toBeNull();
+    expect(screen.queryByTestId("factura-subtotal-exento")).toBeNull();
+    expect(screen.queryByTestId("factura-saldo-pendiente")).toBeNull();
+    expect(screen.getByTestId("factura-forma-pago").textContent).toBe("Contado — pagada");
+  });
 });
