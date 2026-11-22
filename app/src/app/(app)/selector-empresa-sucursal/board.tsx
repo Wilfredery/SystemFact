@@ -39,7 +39,9 @@ export function SelectorEmpresaSucursal({
     <div className="flex flex-1 flex-col items-center px-4 py-8">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Selector de sucursal</CardTitle>
+          <CardTitle>
+            <h1 className="contents">Selector de sucursal</h1>
+          </CardTitle>
           <CardDescription>
             Elige la sucursal donde vas a operar.
           </CardDescription>

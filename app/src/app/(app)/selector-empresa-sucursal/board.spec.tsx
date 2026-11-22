@@ -84,6 +84,15 @@ describe("SelectorEmpresaSucursal (board 02)", () => {
   });
 });
 
+describe("selector page heading (screen audit T8)", () => {
+  it("has exactly one level-1 heading: the page title", () => {
+    renderBoard();
+    const h1 = screen.getAllByRole("heading", { level: 1 });
+    expect(h1).toHaveLength(1);
+    expect(h1[0]).toHaveTextContent("Selector de sucursal");
+  });
+});
+
 describe("SEL-RENDER-02-C — primitives/tokens-only review hook", () => {
   const sources = [
     readFileSync(path.join(__dirname, "board.tsx"), "utf8"),

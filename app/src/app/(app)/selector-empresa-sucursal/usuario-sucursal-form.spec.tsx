@@ -60,6 +60,13 @@ describe("UsuarioSucursalForm (SEL-NAV-06-A/B)", () => {
     });
   });
 
+  it("shows the branch NAME in the trigger, never its database id (screen audit T8)", () => {
+    renderForm(10);
+    const disparador = screen.getByTestId("selector-branch-select");
+    expect(disparador).toHaveTextContent("B1 Matriz (actual)");
+    expect(disparador.textContent).not.toMatch(/10/);
+  });
+
   it("is double-submit SAFE while pending: the confirm stays disabled", async () => {
     actionMock.mockImplementation(
       () => new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 50)),
