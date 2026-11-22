@@ -149,4 +149,9 @@ describe("playwright.prod-demo.config.ts — sin trace, captura ni video", () =>
   it("no hay bypass de protección de Vercel", () => {
     expect(JSON.stringify(demoConfig)).not.toMatch(/protection-bypass/i);
   });
+
+  it("la config E2E local tampoco ofrece bypass de protección de Vercel (AGENTS.md)", () => {
+    const texto = fs.readFileSync(path.join(__dirname, "..", "..", "playwright.config.ts"), "utf8");
+    expect(texto).not.toMatch(/protection[-_]bypass/i);
+  });
 });
