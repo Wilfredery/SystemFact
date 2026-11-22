@@ -167,12 +167,11 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
   const denominacion = DENOMINACION_POR_TIPO[data.tipoNcf] ?? "Factura";
   const esB01 = data.tipoNcf === "B01";
   const saldo = data.saldo;
+  // Only what the data proves: the sale's payment condition (contado/crédito) is not
+  // stored anywhere (ADR-017: balances are derived), so a settled credit sale must not
+  // read "Contado" and a refunded cash sale must not read "Crédito".
   const formaPago =
-    saldo === null
-      ? "—"
-      : esCero(saldo.saldoPendiente)
-        ? "Contado — pagada"
-        : "Crédito — saldo pendiente";
+    saldo === null ? "—" : esCero(saldo.saldoPendiente) ? "Pagada" : "Saldo pendiente";
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -299,7 +298,7 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
             <span data-testid="factura-total">{formatearMonto(data.total)}</span>
           </div>
           <div className="flex w-64 justify-between">
-            <span>Forma de pago</span>
+            <span>Estado del pago</span>
             <span data-testid="factura-forma-pago">{formaPago}</span>
           </div>
           {saldo !== null && !esCero(saldo.saldoPendiente) ? (

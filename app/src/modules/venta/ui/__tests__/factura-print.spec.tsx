@@ -132,12 +132,12 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     expect(screen.getByTestId("factura-subtotal-gravado").textContent).toMatch(/250\.00/);
   });
 
-  it("derives forma de pago from the canonical balance (paid → Contado)", async () => {
+  it("derives the payment status from the canonical balance (paid → Pagada)", async () => {
     mockAction.mockResolvedValue({ ok: true, data: VISTA_BASE });
     render(<FacturaPrintScreen facturaId={77} />);
     await screen.findByTestId("factura-print");
 
-    expect(screen.getByTestId("factura-forma-pago").textContent).toBe("Contado — pagada");
+    expect(screen.getByTestId("factura-forma-pago").textContent).toBe("Pagada");
     expect(screen.queryByTestId("factura-saldo-pendiente")).toBeNull();
   });
 
@@ -152,7 +152,7 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     render(<FacturaPrintScreen facturaId={77} />);
     await screen.findByTestId("factura-print");
 
-    expect(screen.getByTestId("factura-forma-pago").textContent).toContain("Crédito");
+    expect(screen.getByTestId("factura-forma-pago").textContent).toBe("Saldo pendiente");
     expect(screen.getByTestId("factura-saldo-pendiente").textContent).toMatch(/200\.00/);
   });
 
@@ -168,6 +168,24 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     await screen.findByTestId("factura-print");
 
     expect(screen.getByTestId("factura-saldo-pendiente").textContent).toBe("RD$ -50.00");
+  });
+
+  it("never claims Contado or Crédito: the data does not store the sale's payment condition", async () => {
+    // A settled credit sale (partial cobro, refund, credit note => balance 0) used to print "Contado".
+    mockAction.mockResolvedValue({
+      ok: true,
+      data: {
+        ...VISTA_BASE,
+        tipoNcf: "B01",
+        saldo: { total: "47.20", cobrosAplicados: "23.60", saldoPendiente: "0.00" },
+      },
+    });
+    render(<FacturaPrintScreen facturaId={92} />);
+    await screen.findByTestId("factura-print");
+
+    const fila = screen.getByTestId("factura-forma-pago").parentElement as HTMLElement;
+    expect(fila.textContent).toContain("Estado del pago");
+    expect(fila.textContent).not.toMatch(/Contado|Crédito|Forma de pago/);
   });
 
   it("a CANCELLED invoice renders the no-fiscal-effect banner INSIDE the printed article", async () => {
@@ -263,7 +281,7 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     expect(screen.getByTestId("factura-total").textContent).toBe("RD$ 123,456,789.10");
     expect(screen.getByTestId("factura-descuento").textContent).toBe("−RD$ 0.01");
     expect(screen.getByTestId("factura-saldo-pendiente").textContent).toBe("RD$ 0.01");
-    expect(screen.getByTestId("factura-forma-pago").textContent).toBe("Crédito — saldo pendiente");
+    expect(screen.getByTestId("factura-forma-pago").textContent).toBe("Saldo pendiente");
   });
 
   it("hides zero discount, exempt subtotal and balance written as 0, 0.0 or 0.00", async () => {
@@ -282,6 +300,6 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     expect(screen.queryByTestId("factura-descuento")).toBeNull();
     expect(screen.queryByTestId("factura-subtotal-exento")).toBeNull();
     expect(screen.queryByTestId("factura-saldo-pendiente")).toBeNull();
-    expect(screen.getByTestId("factura-forma-pago").textContent).toBe("Contado — pagada");
+    expect(screen.getByTestId("factura-forma-pago").textContent).toBe("Pagada");
   });
 });

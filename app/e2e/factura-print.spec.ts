@@ -66,10 +66,10 @@ test.describe("printable fiscal invoice (factura-print.md)", () => {
     // VIGENTE invoices always carry a governing range expiry (S3).
     expect(await page.getByTestId("factura-ncf-vigencia").textContent()).toMatch(/\d{4}-\d{2}-\d{2}/);
 
-    // Money: total present; forma de pago derived (Contado or Crédito).
+    // Money: total present; payment status derived from the balance (Pagada or Saldo pendiente).
     expect(await page.getByTestId("factura-total").textContent()).toMatch(/RD\$/);
     const formaPago = await page.getByTestId("factura-forma-pago").textContent();
-    expect(formaPago).toMatch(/Contado|Crédito/);
+    expect(formaPago).toMatch(/^(Pagada|Saldo pendiente)$/);
 
     // Reprint contract (S4): clicking Imprimir mints NOTHING. Count invoices
     // (and NCF-adjacent state) after the click — unchanged, and the print
