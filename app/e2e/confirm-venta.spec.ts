@@ -117,7 +117,7 @@ test.describe("confirm smoke (R-V15)", () => {
     const receipt = page.getByTestId("factura-print");
     await expect(receipt).toBeVisible();
     await expect(page.getByTestId("factura-ncf")).toContainText(saleNcf);
-    await expect(page.getByTestId("factura-forma-pago")).toHaveText("Contado — pagada");
+    await expect(page.getByTestId("factura-forma-pago")).toHaveText("Pagada");
 
     // Observable chain in the LOCAL dev DB (assertions only, superuser reads).
     const venta = await pool.query(

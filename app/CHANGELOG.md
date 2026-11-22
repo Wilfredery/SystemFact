@@ -1,3 +1,9 @@
+## [0.47.9](https://github.com/Wilfredery/SystemFact/compare/v0.47.8...v0.47.9) (2026-11-22)
+
+### Fixed
+
+* **factura impresa:** the invoice no longer claims "Contado" or "Crédito". The system does not store a sale's payment condition (balances are derived, ADR-017), so the old label was a guess from the balance: a settled credit sale printed "Contado — pagada" and a refunded cash sale would print "Crédito". The row is now "Estado del pago" and shows only what the data proves: "Pagada" (balance zero) or "Saldo pendiente". Amounts, NCF and taxes are unchanged. Storing the payment condition on the invoice stays a possible follow-up (needs a migration and a decision on old invoices).
+
 ## [0.47.8](https://github.com/Wilfredery/SystemFact/compare/v0.47.7...v0.47.8) (2026-11-22)
 
 ### Fixed
