@@ -46,7 +46,7 @@ export function DevolverButton({ ventaId }: { readonly ventaId: number }) {
         aria-label={`Return sale ${ventaId}`}
         aria-expanded={abierto}
         data-testid={`devolucion-boton-${ventaId}`}
-        className="rounded border border-amber-300 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-zinc-800"
+        className="rounded border border-warn px-2 py-1 text-xs font-medium text-warn hover:bg-warn-bg disabled:cursor-not-allowed disabled:opacity-50"
       >
         Return
       </button>

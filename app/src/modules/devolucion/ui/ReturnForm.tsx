@@ -127,17 +127,17 @@ export function ReturnForm({
   return (
     <div
       data-testid={`devolucion-form-${ventaId}`}
-      className="absolute right-0 top-full z-10 mt-1 max-h-[32rem] w-96 max-w-full overflow-y-auto rounded-lg border border-zinc-200 bg-white p-4 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+      className="absolute right-0 top-full z-10 mt-1 max-h-[32rem] w-96 max-w-full overflow-y-auto rounded-lg border border-line bg-surface p-4 shadow-lg"
     >
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        <h3 className="text-sm font-semibold text-ink">
           Return sale #{ventaId} (Nota de Crédito B04)
         </h3>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close return form"
-          className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"
+          className="rounded border border-line px-2 py-1 text-xs text-ink-muted"
         >
           Close
         </button>
@@ -149,8 +149,8 @@ export function ReturnForm({
           aria-live="polite"
           className={
             mensaje.kind === "ok"
-              ? "mt-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
-              : "mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+              ? "mt-2 rounded-md bg-success-bg px-3 py-2 text-sm text-success-fg"
+              : "mt-2 rounded-md bg-danger/10 px-3 py-2 text-sm text-danger"
           }
         >
           {mensaje.kind === "error" && (
@@ -161,7 +161,7 @@ export function ReturnForm({
       )}
 
       {cargando ? (
-        <p className="mt-2 text-sm text-zinc-500">Loading sale lines…</p>
+        <p className="mt-2 text-sm text-ink-muted">Loading sale lines…</p>
       ) : (
         lineas.length > 0 && (
           <form
@@ -174,7 +174,7 @@ export function ReturnForm({
             <div>
               <label
                 htmlFor={`devolucion-motivo-${ventaId}`}
-                className="block text-xs font-medium text-zinc-700 dark:text-zinc-300"
+                className="block text-xs font-medium text-ink"
               >
                 Reason for return
               </label>
@@ -183,7 +183,7 @@ export function ReturnForm({
                 value={motivo}
                 maxLength={255}
                 onChange={(e) => setMotivo(e.target.value)}
-                className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                className="mt-1 w-full rounded border border-line px-2 py-1 text-sm"
               />
             </div>
 
@@ -192,7 +192,7 @@ export function ReturnForm({
                 <li
                   key={l.productoId}
                   data-testid={`devolucion-linea-${l.productoId}`}
-                  className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 px-2 py-2 text-xs dark:border-zinc-800"
+                  className="flex flex-wrap items-center gap-2 rounded border border-line px-2 py-2 text-xs"
                 >
                   <label className="flex items-center gap-1">
                     <input
@@ -203,10 +203,10 @@ export function ReturnForm({
                       }
                       aria-label={`Include line ${l.productoNombre}`}
                     />
-                    <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                    <span className="font-medium text-ink">
                       {l.productoNombre}
                     </span>
-                    <span className="text-zinc-500">
+                    <span className="text-ink-muted">
                       (sold {l.cantidadOriginal})
                     </span>
                   </label>
@@ -219,7 +219,7 @@ export function ReturnForm({
                       onChange={(e) =>
                         editarLinea(l.productoId, { cantidad: e.target.value })
                       }
-                      className="w-20 rounded border border-zinc-300 px-1 py-0.5 dark:border-zinc-700 dark:bg-zinc-800"
+                      className="w-20 rounded border border-line px-1 py-0.5"
                     />
                   </label>
                   <label className="flex items-center gap-1">
@@ -232,7 +232,7 @@ export function ReturnForm({
                           tipoReposicion: e.target.value as "VENDIBLE" | "DANADO",
                         })
                       }
-                      className="rounded border border-zinc-300 px-1 py-0.5 dark:border-zinc-700 dark:bg-zinc-800"
+                      className="rounded border border-line px-1 py-0.5"
                     >
                       <option value="VENDIBLE">VENDIBLE (restock)</option>
                       <option value="DANADO">DANADO (loss)</option>
@@ -246,7 +246,7 @@ export function ReturnForm({
               type="submit"
               disabled={bloqueado}
               aria-label="Emit credit note"
-              className="rounded bg-amber-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded bg-warn px-3 py-2 text-sm font-semibold text-accent-fg disabled:cursor-not-allowed disabled:opacity-50"
             >
               {enviando ? "Issuing…" : "Emit credit note"}
             </button>
