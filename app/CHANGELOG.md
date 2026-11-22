@@ -1,3 +1,9 @@
+## [0.47.14](https://github.com/Wilfredery/SystemFact/compare/v0.47.13...v0.47.14) (2026-11-22)
+
+### Fixed
+
+* **factura impresa:** the banner of a cancelled (CANCELADA) document now reads "no se reporta en el 607 ni en el 608". It used to say "606/607", but the 606 is purchases and never applies to a sale, and a cancelled sale is not reported in the 607 either. Annulled (ANULADA) documents are unchanged and still say they are reported in the 608.
+
 ## [0.47.13](https://github.com/Wilfredery/SystemFact/compare/v0.47.12...v0.47.13) (2026-11-22)
 
 ### Fixed
