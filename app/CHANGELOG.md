@@ -1,3 +1,9 @@
+## [0.47.5](https://github.com/Wilfredery/SystemFact/compare/v0.47.4...v0.47.5) (2026-11-22)
+
+### Fixed
+
+* **selector de sucursal:** the branch dropdown showed the branch's database id (for example `4`) instead of its name; it now shows the name, with `(actual)` on the current branch, the same text as in the open list. The page title is now a real level-1 heading (the page had none). Found by the final production crawl of the screen audit; covered by two new unit tests.
+
 ## [0.47.4](https://github.com/Wilfredery/SystemFact/compare/v0.47.3...v0.47.4) (2026-11-22)
 
 ### Changed

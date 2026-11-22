@@ -57,9 +57,16 @@ export function UsuarioSucursalForm({
     setPendiente(false);
   }
 
+  // base-ui shows the raw value (the branch id) unless the root knows each value's label.
+  const items = sucursales.map((s) => ({
+    value: s.id,
+    label: s.id === sucursalActualId ? `${s.nombre} (actual)` : s.nombre,
+  }));
+
   return (
     <div className="flex flex-col gap-4">
       <Select
+        items={items}
         value={sucursalId}
         onValueChange={(value) => setSucursalId(Number(value))}
       >
