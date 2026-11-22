@@ -156,7 +156,7 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     expect(screen.getByTestId("factura-saldo-pendiente").textContent).toMatch(/200\.00/);
   });
 
-  it("prints a negative balance (credit note after full payment) with the RD$ prefix, as before", async () => {
+  it("labels a negative balance (credit note after full payment) as Saldo a favor, never as pending", async () => {
     mockAction.mockResolvedValue({
       ok: true,
       data: {
@@ -167,7 +167,12 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     render(<FacturaPrintScreen facturaId={77} />);
     await screen.findByTestId("factura-print");
 
-    expect(screen.getByTestId("factura-saldo-pendiente").textContent).toBe("RD$ -50.00");
+    // The customer owes nothing: the status and the amount row both say "a favor"
+    // and the amount is the credit itself (positive), with the RD$ prefix.
+    expect(screen.getByTestId("factura-forma-pago").textContent).toBe("Saldo a favor");
+    expect(screen.getByTestId("factura-saldo-pendiente").textContent).toBe("RD$ 50.00");
+    expect(screen.getAllByText("Saldo a favor")).toHaveLength(2);
+    expect(screen.queryByText("Saldo pendiente")).toBeNull();
   });
 
   it("never claims Contado or Crédito: the data does not store the sale's payment condition", async () => {

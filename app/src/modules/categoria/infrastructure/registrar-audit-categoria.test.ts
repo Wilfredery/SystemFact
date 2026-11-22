@@ -62,6 +62,32 @@ describe("registrarAuditCategoriaEnTx", () => {
     expect(JSON.parse(nuevo as string)).toEqual({ nombre: "Cereales" });
   });
 
+  it("marks a cut name with an ellipsis so a truncated audit copy is never mistaken for the full value", async () => {
+    const { tx, create } = makeTx();
+    const largo = "N".repeat(150);
+
+    await registrarAuditCategoriaEnTx(tx, ctx, "ACTUALIZAR", 7, { nombre: largo }, { nombre: largo + "X" });
+
+    const { anterior, nuevo } = valoresEscritos(create);
+    const copiaAnterior = (JSON.parse(anterior as string) as { nombre: string }).nombre;
+    const copiaNueva = (JSON.parse(nuevo as string) as { nombre: string }).nombre;
+    expect(copiaAnterior).toBe("N".repeat(100) + "…");
+    expect(copiaNueva).toBe("N".repeat(100) + "…");
+  });
+
+  it("never splits an emoji (surrogate pair) at the cut point", async () => {
+    const { tx, create } = makeTx();
+    // 99 chars + one 2-unit emoji straddling the 100-unit boundary.
+    const nombre = "A".repeat(99) + "😀" + "B".repeat(50);
+
+    await registrarAuditCategoriaEnTx(tx, ctx, "CREAR", 7, null, { id: 7, nombre });
+
+    const { nuevo } = valoresEscritos(create);
+    const copia = (JSON.parse(nuevo as string) as { nombre: string }).nombre;
+    expect(copia).toBe("A".repeat(99) + "…");
+    expect(copia).not.toMatch(/[�-�](?![�-�])|(?<![�-�])[�-�]/);
+  });
+
   it("keeps non-string values (booleans, counts) untouched", async () => {
     const { tx, create } = makeTx();
 

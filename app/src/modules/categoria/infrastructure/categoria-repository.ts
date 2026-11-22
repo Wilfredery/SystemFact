@@ -238,6 +238,20 @@ export async function tieneRolPermitidoEnTx(
  */
 const MAX_CHARS_COLUMNA_AUDITORIA = 255;
 const MAX_CHARS_TEXTO_AUDITADO = 100;
+const MARCA_TEXTO_CORTADO = "…";
+
+/**
+ * Cuts `valor` to `limite` UTF-16 units and marks the cut, so a truncated audit
+ * copy is never mistaken for the full value. A surrogate pair is never split:
+ * a lone half would be stored as a garbled \udXXX escape.
+ */
+function cortarTexto(valor: string, limite: number): string {
+  if (valor.length <= limite) return valor;
+  let corte = valor.slice(0, limite);
+  const ultimo = corte.charCodeAt(corte.length - 1);
+  if (ultimo >= 0xd800 && ultimo <= 0xdbff) corte = corte.slice(0, -1);
+  return corte + MARCA_TEXTO_CORTADO;
+}
 
 function acotarParaAuditoria(
   valores: Record<string, unknown> | null,
@@ -249,7 +263,7 @@ function acotarParaAuditoria(
       Object.fromEntries(
         Object.entries(valores).map(([clave, valor]) => [
           clave,
-          typeof valor === "string" ? valor.slice(0, limite) : valor,
+          typeof valor === "string" ? cortarTexto(valor, limite) : valor,
         ]),
       ),
     );
