@@ -50,8 +50,7 @@ function fila(over: Partial<AuditoriaRegistro> & { id: number }): AuditoriaRegis
     accion: "CREAR" as AccionAuditoria,
     entidad: "Producto",
     idEntidad: "77",
-    valorAnterior: null,
-    valorNuevo: null,
+    cambio: null,
     motivo: null,
     usuario: null,
     sucursal: null,
@@ -86,6 +85,7 @@ describe("Board 09 S3 — columns and Detalle", () => {
       "Entidad",
       "Sucursal",
       "Detalle",
+      "Anterior → Nuevo",
     ]);
     for (const th of ths) expect(th).toHaveAttribute("scope", "col");
   });
@@ -102,7 +102,7 @@ describe("Board 09 S3 — columns and Detalle", () => {
       />,
     );
     const celdas = within(screen.getByTestId("auditoria-fila-1")).getAllByRole("cell");
-    expect(celdas).toHaveLength(6);
+    expect(celdas).toHaveLength(7);
     expect(celdas[1].textContent).toBe("#10");
     expect(celdas[2].textContent).toBe("Crear");
     expect(celdas[3].textContent).toBe("Producto");
@@ -117,19 +117,22 @@ describe("Board 09 S3 — columns and Detalle", () => {
     );
   });
 
-  it("never renders the JSON payloads", () => {
+  it("renders only the projected cambio, with a dash when absent", () => {
     render(
       <AuditTable
         filtro={{}}
         pagina={pagina({
-          filas: [fila({ id: 1, valorAnterior: '{"secreto":"AAA"}', valorNuevo: '{"secreto":"BBB"}' })],
-          total: 1,
+          filas: [
+            fila({ id: 1, cambio: { anterior: "Activo", nuevo: "Inactivo" } }),
+            fila({ id: 2, cambio: null }),
+          ],
+          total: 2,
           totalPages: 1,
         })}
       />,
     );
-    expect(document.body.textContent).not.toContain("AAA");
-    expect(document.body.textContent).not.toContain("BBB");
+    expect(screen.getByTestId("auditoria-cambio-1").textContent).toBe("Activo → Inactivo");
+    expect(screen.getByTestId("auditoria-cambio-2").textContent).toBe("—");
   });
 });
 

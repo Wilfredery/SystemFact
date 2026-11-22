@@ -102,6 +102,33 @@ describe("consultarAuditoriaConOpcionesEnTx", () => {
     expect(r.opciones.sucursales).toEqual([{ id: 9, nombre: "Norte", activa: true }]);
   });
 
+  it("never returns the raw valorAnterior/valorNuevo to the caller (slice C)", async () => {
+    const e = crearTx();
+    e.findManyAud.mockImplementationOnce(async () => [
+      {
+        id: 2,
+        empresaId: 7,
+        sucursalId: null,
+        usuarioId: 5,
+        fechaHora: new Date("2026-01-01T00:00:00Z"),
+        accion: "ACTUALIZAR",
+        entidad: "Cliente",
+        idEntidad: "3",
+        valorAnterior: '{"telefono":"ALPHA-secret-payload"}',
+        valorNuevo: '{"telefono":"ALPHA-new"}',
+        motivo: null,
+        usuario: null,
+        sucursal: null,
+      },
+    ] as never);
+    const r = await consultarAuditoriaConOpcionesEnTx(e.tx, ctx, { page: 1, pageSize: 25 }, async () => []);
+    const fila = r.filas[0]!;
+    expect(fila.cambio).toBeNull();
+    expect(Object.keys(fila)).not.toContain("valorAnterior");
+    expect(Object.keys(fila)).not.toContain("valorNuevo");
+    expect(JSON.stringify(r)).not.toContain("ALPHA-");
+  });
+
   it("selects name fields only on the relations (never email/passwordHash/rol)", async () => {
     const e = crearTx();
     await consultarAuditoriaConOpcionesEnTx(e.tx, ctx, { page: 1, pageSize: 25 }, async () => []);

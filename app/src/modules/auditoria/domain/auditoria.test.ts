@@ -13,6 +13,7 @@ import {
   normalizarFiltro,
   AccionAuditoriaNoRepresentableError,
   type AuditoriaRegistro,
+  proyectarCambioAuditoria,
 } from "./auditoria";
 import {
   TAMANO_PAGINA_MAXIMO,
@@ -154,8 +155,7 @@ describe("mapearAPagina (AC-2)", () => {
     accion: "CREAR",
     entidad: "Factura",
     idEntidad: `NCF-${id}`,
-    valorAnterior: null,
-    valorNuevo: null,
+    cambio: null,
     motivo: null,
     usuario: null,
     sucursal: null,
@@ -182,5 +182,45 @@ describe("mapearAPagina (AC-2)", () => {
     const p = mapearAPagina({ filas: [], total: 0, filtro: { page: 1, pageSize: 25 } });
     expect(p.totalPages).toBe(0);
     expect(p.filas).toEqual([]);
+  });
+});
+
+describe("proyectarCambioAuditoria (slice C allowlist)", () => {
+  const base = { entidad: "Producto", valorAnterior: null, valorNuevo: null } as const;
+
+  it("projects Producto CREAR, CANCELAR and LEER", () => {
+    expect(
+      proyectarCambioAuditoria({ ...base, accion: "CREAR", valorNuevo: '{"codigo":"A1","tasa":18}' }),
+    ).toEqual({ anterior: null, nuevo: "Código A1 · ITBIS 18" });
+    expect(
+      proyectarCambioAuditoria({
+        ...base,
+        accion: "CANCELAR",
+        valorAnterior: '{"activo":true}',
+        valorNuevo: '{"activo":false}',
+      }),
+    ).toEqual({ anterior: "Activo", nuevo: "Inactivo" });
+    expect(
+      proyectarCambioAuditoria({ ...base, accion: "LEER", valorNuevo: '{"count":42}' }),
+    ).toEqual({ anterior: null, nuevo: "42 resultados" });
+  });
+
+  it("denies everything else, including sensitive entities and other Producto actions", () => {
+    const sensible = '{"telefono":"8095551234","monto":"100.00"}';
+    for (const entidad of ["Cliente", "Proveedor", "Pago", "NotaCredito", "Sucursal", "Inventario"]) {
+      expect(
+        proyectarCambioAuditoria({ entidad, accion: "CREAR", valorAnterior: sensible, valorNuevo: sensible }),
+      ).toBeNull();
+    }
+    expect(
+      proyectarCambioAuditoria({ ...base, accion: "ACTUALIZAR", valorAnterior: '{"precio":"5"}', valorNuevo: '{"precio":"6"}' }),
+    ).toBeNull();
+  });
+
+  it("returns null for malformed or wrongly typed Producto payloads (never raw text)", () => {
+    expect(proyectarCambioAuditoria({ ...base, accion: "CREAR", valorNuevo: '{"codigo":"A1","ta' })).toBeNull();
+    expect(proyectarCambioAuditoria({ ...base, accion: "CREAR", valorNuevo: '{"codigo":{"x":1},"tasa":18}' })).toBeNull();
+    expect(proyectarCambioAuditoria({ ...base, accion: "LEER", valorNuevo: '{"count":"SECRET"}' })).toBeNull();
+    expect(proyectarCambioAuditoria({ ...base, accion: "CANCELAR", valorNuevo: '{"activo":false}' })).toBeNull();
   });
 });

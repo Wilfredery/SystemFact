@@ -1,3 +1,13 @@
+## [0.46.0](https://github.com/Wilfredery/SystemFact/compare/v0.45.0...v0.46.0) (2026-11-21)
+
+### Added
+
+* **auditoria (UI/UX board 09, slice C):** the audit table has an `Anterior → Nuevo` column. It shows values only for a hard, default-deny allowlist: Producto CREAR (code and ITBIS rate), Producto CANCELAR (Activo/Inactivo) and Producto LEER (result count); every other row shows a dash, because the other writers store personal data, amounts, NCFs, costs or free text.
+
+### Security
+
+* **auditoria:** the raw `valorAnterior`/`valorNuevo` columns no longer leave the repository. Before this release they were sent to the browser in every audit row (hidden by the UI but readable in the response by an administrator); now the row carries only the allowlisted, server-built display text, and a malformed or unexpected payload yields no text at all.
+
 ## [0.45.0](https://github.com/Wilfredery/SystemFact/compare/v0.44.0...v0.45.0) (2026-11-21)
 
 ### Added
