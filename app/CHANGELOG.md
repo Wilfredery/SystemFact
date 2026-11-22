@@ -1,3 +1,9 @@
+## [0.47.10](https://github.com/Wilfredery/SystemFact/compare/v0.47.9...v0.47.10) (2026-11-22)
+
+### Fixed
+
+* **categorías:** creating or renaming a category with a very long name (about 240+ characters) no longer fails. The audit entry stores the name inside a 255-character column, so the database rejected it and the whole operation was rolled back. The audit copy of the name is now capped at 100 characters; the category keeps its full name.
+
 ## [0.47.9](https://github.com/Wilfredery/SystemFact/compare/v0.47.8...v0.47.9) (2026-11-22)
 
 ### Fixed

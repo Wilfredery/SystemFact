@@ -145,21 +145,22 @@ describe("categoria-repository", () => {
   });
 
   describe("categoriaPerteneceAEmpresa (relocated from producto)", () => {
-    it("returns false for a foreign tenant", async () => {
+    it("returns false for a foreign tenant and filters by empresaId in the query", async () => {
       const tx = makeTx();
-      (tx.categoria.findUnique as jest.Mock).mockResolvedValue({
-        empresaId: 2,
+      (tx.categoria.findFirst as jest.Mock).mockResolvedValue(null);
+      expect(await categoriaPerteneceAEmpresa(tx, 2, 4)).toBe(false);
+      expect(tx.categoria.findFirst).toHaveBeenCalledWith({
+        where: { id: 4, empresaId: 2 },
+        select: { id: true },
       });
-      expect(await categoriaPerteneceAEmpresa(tx, 1, 4)).toBe(false);
+      expect(tx.categoria.findUnique).not.toHaveBeenCalled();
     });
 
     it("returns true for the owning tenant and false for a missing id", async () => {
       const tx = makeTx();
-      (tx.categoria.findUnique as jest.Mock).mockResolvedValue({
-        empresaId: 1,
-      });
+      (tx.categoria.findFirst as jest.Mock).mockResolvedValue({ id: 4 });
       expect(await categoriaPerteneceAEmpresa(tx, 1, 4)).toBe(true);
-      (tx.categoria.findUnique as jest.Mock).mockResolvedValue(null);
+      (tx.categoria.findFirst as jest.Mock).mockResolvedValue(null);
       expect(await categoriaPerteneceAEmpresa(tx, 1, 404)).toBe(false);
     });
   });

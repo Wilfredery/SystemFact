@@ -229,6 +229,36 @@ export async function tieneRolPermitidoEnTx(
 }
 
 /**
+ * MOVIMIENTO_AUDITORIA.valorAnterior / valorNuevo are VarChar(255) and Postgres
+ * rejects a longer value (22001), which aborts the owning transaction. JSON
+ * escaping can multiply a string (a quote doubles, a control character becomes
+ * \u00XX = 6 chars), so the limit is applied to the SERIALIZED value: every
+ * string is cut to 100 chars first, then halved until the JSON fits. The full
+ * name lives in CATEGORIA; the audit row is evidence, not the system of record.
+ */
+const MAX_CHARS_COLUMNA_AUDITORIA = 255;
+const MAX_CHARS_TEXTO_AUDITADO = 100;
+
+function acotarParaAuditoria(
+  valores: Record<string, unknown> | null,
+): string | null {
+  if (valores === null) return null;
+  let limite = MAX_CHARS_TEXTO_AUDITADO;
+  for (;;) {
+    const json = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(valores).map(([clave, valor]) => [
+          clave,
+          typeof valor === "string" ? valor.slice(0, limite) : valor,
+        ]),
+      ),
+    );
+    if (json.length <= MAX_CHARS_COLUMNA_AUDITORIA || limite === 0) return json;
+    limite = Math.floor(limite / 2);
+  }
+}
+
+/**
  * Append-only audit row for a category mutation (CAT-001/CAT-004/CAT-005).
  * Runs inside the same tenant transaction as the mutation, so a rolled-back
  * write rolls the event back with it. Entity "Categoria" reuses the frozen
@@ -247,9 +277,8 @@ export async function registrarAuditCategoriaEnTx(
     accion,
     entidad: "Categoria",
     idEntidad: String(categoriaId),
-    valorAnterior:
-      valoresAnteriores === null ? null : JSON.stringify(valoresAnteriores),
-    valorNuevo: valoresNuevos === null ? null : JSON.stringify(valoresNuevos),
+    valorAnterior: acotarParaAuditoria(valoresAnteriores),
+    valorNuevo: acotarParaAuditoria(valoresNuevos),
     motivo,
   });
 }
@@ -264,9 +293,11 @@ export async function categoriaPerteneceAEmpresa(
   empresaId: number,
   categoriaId: number,
 ): Promise<boolean> {
-  const row = await tx.categoria.findUnique({
-    where: { id: categoriaId },
-    select: { empresaId: true },
+  // The tenant filter lives in the query itself (AGENTS.md multi-tenancy rule),
+  // not in a JS comparison after reading a row that may belong to another company.
+  const row = await tx.categoria.findFirst({
+    where: { id: categoriaId, empresaId },
+    select: { id: true },
   });
-  return row !== null && row.empresaId === empresaId;
+  return row !== null;
 }
