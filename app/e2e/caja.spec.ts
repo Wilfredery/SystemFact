@@ -171,7 +171,7 @@ test.describe("/caja (caja T5)", () => {
 
     // Self-seed the day's cash receipt through the POS (a CONTADO sale settles with one COBRO).
     await page.goto("/venta");
-    await page.getByRole("heading", { name: "Point of sale" }).waitFor();
+    await page.getByRole("heading", { name: "Punto de venta" }).waitFor();
     await buscarYAgregar(page, E2E_PRODUCT);
     const { ventaId } = await guardarYConfirmar(page, pool);
     const pagos = await pagosDeLaVenta(ventaId);

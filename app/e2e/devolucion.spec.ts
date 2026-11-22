@@ -82,7 +82,7 @@ async function checkPreconditions(): Promise<void> {
 /** Draft + confirm a one-line sale (fase-5c harness) to obtain a RETURNABLE row. */
 async function crearVentaConfirmada(page: Page): Promise<{ ventaId: number; ncf: string }> {
   await page.goto("/venta");
-  await page.getByRole("heading", { name: "Point of sale" }).waitFor();
+  await page.getByRole("heading", { name: "Punto de venta" }).waitFor();
 
   await buscarYAgregar(page, E2E_PRODUCT);
   const { ventaId, ncf } = await guardarYConfirmar(page, pool);
@@ -91,7 +91,7 @@ async function crearVentaConfirmada(page: Page): Promise<{ ventaId: number; ncf:
   // leaves the POS on the invoice receipt. The Return control lives on the
   // CONFIRMADA row of /venta, so go back and re-expand the draft list (S6).
   await page.goto("/venta");
-  await page.getByRole("heading", { name: "Point of sale" }).waitFor();
+  await page.getByRole("heading", { name: "Punto de venta" }).waitFor();
   await page.getByRole("button", { name: /My drafts/ }).click();
   await page.getByTestId(`venta-fila-${ventaId}`).waitFor();
   return { ventaId, ncf };

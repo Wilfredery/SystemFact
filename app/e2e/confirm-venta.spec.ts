@@ -104,7 +104,7 @@ test.describe("confirm smoke (R-V15)", () => {
     await login(page, { user: E2E_USER, password: E2E_PASSWORD });
 
     await page.goto("/venta");
-    await page.getByRole("heading", { name: "Point of sale" }).waitFor();
+    await page.getByRole("heading", { name: "Punto de venta" }).waitFor();
 
     // Build a one-line cart (no client → CONTADO) and save the draft.
     await buscarYAgregar(page, E2E_PRODUCT);
@@ -177,7 +177,7 @@ test.describe("confirm smoke (R-V15)", () => {
     await login(page, { user: E2E_USER, password: E2E_PASSWORD });
 
     await page.goto("/venta");
-    await page.getByRole("heading", { name: "Point of sale" }).waitFor();
+    await page.getByRole("heading", { name: "Punto de venta" }).waitFor();
     await page.getByRole("combobox", { name: "Client selection" }).selectOption({
       label: CLIENTE_CREDITO_DEMO_NOMBRE,
     });

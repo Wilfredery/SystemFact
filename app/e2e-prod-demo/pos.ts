@@ -26,7 +26,7 @@ export const UNITS_PER_RUN = 2;
 
 export async function openPos(page: Page): Promise<void> {
   await page.goto("/venta");
-  await expect(page.getByRole("heading", { name: "Point of sale" })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "Punto de venta" })).toBeVisible({
     timeout: SLOW,
   });
 }

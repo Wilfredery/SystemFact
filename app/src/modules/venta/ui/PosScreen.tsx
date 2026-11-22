@@ -405,7 +405,7 @@ export function PosScreen({
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 md:p-6">
       <h1 className="text-2xl font-semibold text-ink">
-        Point of sale
+        Punto de venta
       </h1>
       <p className="text-sm text-ink-muted">
         Build a cart and save it as a draft, then confirm it to emit its fiscal
