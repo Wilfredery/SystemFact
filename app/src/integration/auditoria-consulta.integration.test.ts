@@ -501,6 +501,24 @@ describe("auditoria consultation read path (real DB, RLS on, fase-7a slice B)", 
       );
     });
 
+    it("a foreign-empresa audit row is absent and a foreign user id filter returns empty with no names", async () => {
+      const f = fixture!;
+      await crearAuditoria({
+        empresaId: f.empresaB.id,
+        sucursalId: f.sucursalB1.id,
+        usuarioId: f.usuarios.adminB.id,
+        accion: "CREAR",
+        fechaHora: new Date("2026-03-01T13:00:00.000Z"),
+      });
+
+      const r = await leerConOpciones(adminA1(f), { usuarioId: f.usuarios.adminB.id });
+
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.data.pagina.total).toBe(0);
+      expect(JSON.stringify(r.data)).not.toContain(f.usuarios.adminB.nombreUsuario);
+    });
+
     it("a non-admin is refused with AUDITORIA_NO_AUTORIZADO and receives no data", async () => {
       const f = fixture!;
       const r = await leerConOpciones(
