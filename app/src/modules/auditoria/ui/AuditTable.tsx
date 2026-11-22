@@ -128,7 +128,7 @@ export function AuditTable({
                     </td>
                     <td
                       data-testid={`auditoria-cambio-${f.id}`}
-                      className="px-3 py-2 text-ink-muted"
+                      className="max-w-xs truncate px-3 py-2 text-ink-muted"
                     >
                       {f.cambio === null ? (
                         "—"
