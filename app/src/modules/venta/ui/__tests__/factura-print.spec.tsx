@@ -175,6 +175,21 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     expect(screen.queryByText("Saldo pendiente")).toBeNull();
   });
 
+  it("treats a negative zero balance as settled (Pagada), not as a credit in favour", async () => {
+    mockAction.mockResolvedValue({
+      ok: true,
+      data: {
+        ...VISTA_BASE,
+        saldo: { total: "294.00", cobrosAplicados: "294.00", saldoPendiente: "-0.00" },
+      },
+    });
+    render(<FacturaPrintScreen facturaId={77} />);
+    await screen.findByTestId("factura-print");
+
+    expect(screen.getByTestId("factura-forma-pago").textContent).toBe("Pagada");
+    expect(screen.queryByTestId("factura-saldo-pendiente")).toBeNull();
+  });
+
   it("never claims Contado or Crédito: the data does not store the sale's payment condition", async () => {
     // A settled credit sale (partial cobro, refund, credit note => balance 0) used to print "Contado".
     mockAction.mockResolvedValue({

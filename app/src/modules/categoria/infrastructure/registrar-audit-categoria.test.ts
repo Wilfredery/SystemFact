@@ -85,7 +85,10 @@ describe("registrarAuditCategoriaEnTx", () => {
     const { nuevo } = valoresEscritos(create);
     const copia = (JSON.parse(nuevo as string) as { nombre: string }).nombre;
     expect(copia).toBe("A".repeat(99) + "…");
-    expect(copia).not.toMatch(/[�-�](?![�-�])|(?<![�-�])[�-�]/);
+    // Lone surrogate halves: a high one not followed by a low one, or a low one not preceded by a high one.
+    const alto = `[${String.fromCharCode(0xd800)}-${String.fromCharCode(0xdbff)}]`;
+    const bajo = `[${String.fromCharCode(0xdc00)}-${String.fromCharCode(0xdfff)}]`;
+    expect(copia).not.toMatch(new RegExp(`${alto}(?!${bajo})|(?<!${alto})${bajo}`));
   });
 
   it("keeps non-string values (booleans, counts) untouched", async () => {
