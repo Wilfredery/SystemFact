@@ -62,6 +62,18 @@ function esCero(valor: string): boolean {
   return new Decimal(valor).isZero();
 }
 
+/**
+ * The pending balance can be negative (a credit note issued after the invoice was
+ * fully paid): keep the "RD$" prefix like the previous printout. The shared
+ * formatter returns negatives verbatim, so the sign is handled here.
+ */
+function formatearSaldo(valor: string): string {
+  const t = valor.trim();
+  if (!t.startsWith("-")) return formatearMonto(t);
+  const f = formatearMonto(t.slice(1));
+  return f.startsWith("RD$ ") ? f.replace("RD$ ", "RD$ -") : t;
+}
+
 export function FacturaPrintScreen({ facturaId }: { readonly facturaId: number }) {
   const [estado, setEstado] = useState<Estado>({ kind: "cargando" });
 
@@ -293,7 +305,7 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
           {saldo !== null && !esCero(saldo.saldoPendiente) ? (
             <div className="flex w-64 justify-between">
               <span>Saldo pendiente</span>
-              <span data-testid="factura-saldo-pendiente">{formatearMonto(saldo.saldoPendiente)}</span>
+              <span data-testid="factura-saldo-pendiente">{formatearSaldo(saldo.saldoPendiente)}</span>
             </div>
           ) : null}
         </section>

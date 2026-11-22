@@ -281,7 +281,7 @@ describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
     fireEvent.click(submit);
 
     const status = await screen.findByRole("status");
-    expect(status.textContent).toContain("No se pudo completar la operación");
+    expect(status.textContent).toContain("No se pudo confirmar si la nota de crédito fue emitida");
     expect(status.textContent).not.toContain("boom");
     await waitFor(() => expect(submit).toBeEnabled());
   });
@@ -300,6 +300,23 @@ describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Cerrar formulario de devolución" })).toBeDisabled(),
     );
+  });
+
+  it("keeps the form mounted when the opener is clicked while the credit note is being issued", async () => {
+    await renderPos();
+    const opener = await screen.findByRole("button", { name: "Devolver venta 7" });
+    fireEvent.click(opener);
+    await screen.findByRole("heading", { name: /Devolver venta #7/ });
+
+    mockDevolver.mockImplementation(() => new Promise(() => {}));
+    fireEvent.change(screen.getByLabelText("Motivo de la devolución"), {
+      target: { value: "Devolucion" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Emitir nota de crédito" }));
+
+    await waitFor(() => expect(opener).toBeDisabled());
+    fireEvent.click(opener);
+    expect(screen.getByRole("heading", { name: /Devolver venta #7/ })).toBeInTheDocument();
   });
 
   // Board 02 remediation (JD-A, MEDIUM): a role ROLES_DEVOLUCION denies

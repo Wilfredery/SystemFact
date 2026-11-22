@@ -1,3 +1,10 @@
+## [0.47.8](https://github.com/Wilfredery/SystemFact/compare/v0.47.7...v0.47.8) (2026-11-22)
+
+### Fixed
+
+* **devolución:** the "Devolver venta" opener is locked while a credit note is being issued, so it can no longer close the form and hide the NC/NCF result. If the submit call itself fails, the message now says it could not be confirmed whether the credit note was issued and asks to check the sale's returns before retrying. The "Cerrar" button looks disabled while sending.
+* **factura impresa:** a negative pending balance (a credit note issued after full payment) prints again with the "RD$" prefix ("RD$ -50.00"), as before v0.47.6.
+
 ## [0.47.7](https://github.com/Wilfredery/SystemFact/compare/v0.47.6...v0.47.7) (2026-11-22)
 
 ### Fixed
