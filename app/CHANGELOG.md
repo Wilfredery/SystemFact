@@ -1,3 +1,9 @@
+## [0.47.2](https://github.com/Wilfredery/SystemFact/compare/v0.47.1...v0.47.2) (2026-11-22)
+
+### Changed
+
+* **dashboard (screen audit, T3):** the dashboard header, greeting, alerts and KPI tiles (also shown on `/reportes`) use the design-system tokens of the wireframe-aligned boards instead of raw Tailwind colors: logo tile on the accent green, text on `ink`/`ink-muted`, borders on `line`, the role notice on the `warn` pair and the error notice on `danger`. The unused `dark:` variants are gone (the design system is light-only). A source-level guard test keeps raw palette, arbitrary colors and `dark:` out of both files. Layout and copy are unchanged.
+
 ## [0.47.1](https://github.com/Wilfredery/SystemFact/compare/v0.47.0...v0.47.1) (2026-11-22)
 
 ### Fixed
