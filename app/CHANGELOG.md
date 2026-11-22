@@ -1,3 +1,9 @@
+## [0.47.11](https://github.com/Wilfredery/SystemFact/compare/v0.47.10...v0.47.11) (2026-11-22)
+
+### Fixed
+
+* **auditoría:** the "Anterior → Nuevo" column now also shows three pure state changes for administrators: a category deactivated (Activa → Inactiva), a sale cancelled (Borrador or Confirmada → Cancelada) and an invoice voided (Vigente → Anulada). Other Venta, Factura and Categoria rows (totals, client ids, typed names) stay hidden: the list is default-deny and the raw stored values never leave the server.
+
 ## [0.47.10](https://github.com/Wilfredery/SystemFact/compare/v0.47.9...v0.47.10) (2026-11-22)
 
 ### Fixed
