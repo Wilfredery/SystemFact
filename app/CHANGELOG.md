@@ -6,7 +6,7 @@
 
 ### Changed
 
-* **root:** `/` redirects to the login (an authenticated user is bounced to the dashboard by the proxy). The create-next-app starter page and its five unused `public/*.svg` files are gone.
+* **root:** `/` redirects to the login (an authenticated user is bounced to the dashboard by the proxy). The create-next-app starter page and its five starter `public/*.svg` files are gone; the security-headers e2e that used `/next.svg` as its static-asset probe now uses a dedicated `public/asset-probe.svg`.
 * **venta:** the POS heading is now "Punto de venta" (was "Point of sale"); the e2e specs and the production smoke/demo lanes that wait for it follow.
 
 ### Fixed
