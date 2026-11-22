@@ -72,7 +72,8 @@ test.describe("cabeceras de seguridad (T1 stage 1)", () => {
     // respuesta la sirve el sistema de archivos y NUNCA pasa por el proxy:
     // sólo la capa de config puede ponerle las cabeceras. Sin este caso, la
     // cobertura de assets queda afirmada en el CHANGELOG pero sin pin real.
-    const response = await request.get("/next.svg");
+    // `public/asset-probe.svg` existe sólo para este caso (antes se usaba /next.svg, del starter).
+    const response = await request.get("/asset-probe.svg");
 
     expect(response.status()).toBe(200);
     for (const [nombre, valor] of Object.entries(CABECERAS_REQUERIDAS)) {

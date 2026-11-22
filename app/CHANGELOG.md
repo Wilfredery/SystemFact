@@ -1,3 +1,18 @@
+## [0.47.0](https://github.com/Wilfredery/SystemFact/compare/v0.46.1...v0.47.0) (2026-11-22)
+
+### Added
+
+* **boundaries (screen audit, PR-A):** branded Spanish pages on the design-system tokens for a page that does not exist (`not-found`, 44px targets, link home), for a failed screen (`error`, inside the app shell for the authenticated area, plus a `global-error` last resort; they show only an opaque reference code, never the error message) and for a screen that is loading (`loading`, announced as a busy status). The 404 renders per request, so Next can stamp the CSP nonce on its scripts: the default 404 logged two Content-Security-Policy script violations in the browser console.
+
+### Changed
+
+* **root:** `/` redirects to the login (an authenticated user is bounced to the dashboard by the proxy). The create-next-app starter page and its five starter `public/*.svg` files are gone; the security-headers e2e that used `/next.svg` as its static-asset probe now uses a dedicated `public/asset-probe.svg`.
+* **venta:** the POS heading is now "Punto de venta" (was "Point of sale"); the e2e specs and the production smoke/demo lanes that wait for it follow.
+
+### Fixed
+
+* **caja:** the "Exportar PDF" link no longer triggers Next's viewport prefetch. That prefetch fired a `_rsc` request at the PDF route handler on every page view and it never completed, so the page never went network-idle on desktop.
+
 ## [0.46.1](https://github.com/Wilfredery/SystemFact/compare/v0.46.0...v0.46.1) (2026-11-22)
 
 ### Changed

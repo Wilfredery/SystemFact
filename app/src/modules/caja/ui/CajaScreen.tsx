@@ -248,6 +248,9 @@ export function CajaScreen({
           </span>
           <Link
             href={RUTA_CIERRE_PDF}
+            // A route handler, not a page: Next's viewport prefetch would fire a hanging `_rsc`
+            // request at the PDF generator on every page view.
+            prefetch={false}
             className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink"
           >
             Exportar PDF

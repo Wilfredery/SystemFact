@@ -250,7 +250,7 @@ const PAGES: readonly PageCheck[] = [
   {
     route: "/venta",
     path: "/venta",
-    heading: "Point of sale",
+    heading: "Punto de venta",
     // The POS opens for an Operador (ROLES_VENTA); the smoke only LOOKS at it.
   },
 ];

@@ -70,7 +70,7 @@ async function crearVentaCreditoPendiente(page: Page): Promise<number> {
     );
   }
   await page.goto("/venta");
-  await page.getByRole("heading", { name: "Point of sale" }).waitFor();
+  await page.getByRole("heading", { name: "Punto de venta" }).waitFor();
   await page.getByRole("combobox", { name: "Client selection" }).selectOption({
     label: CLIENTE_CREDITO_DEMO_NOMBRE,
   });
