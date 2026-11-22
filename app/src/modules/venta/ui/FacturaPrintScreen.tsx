@@ -62,16 +62,20 @@ function esCero(valor: string): boolean {
   return new Decimal(valor).isZero();
 }
 
+function esNegativo(valor: string): boolean {
+  const d = new Decimal(valor);
+  return !d.isZero() && d.isNegative();
+}
+
 /**
  * The pending balance can be negative (a credit note issued after the invoice was
- * fully paid): keep the "RD$" prefix like the previous printout. The shared
- * formatter returns negatives verbatim, so the sign is handled here.
+ * fully paid): the customer owes nothing, the business does, so it prints as
+ * "Saldo a favor" with the credit amount itself (positive). The shared formatter
+ * returns negatives verbatim, so the magnitude is formatted here.
  */
 function formatearSaldo(valor: string): string {
   const t = valor.trim();
-  if (!t.startsWith("-")) return formatearMonto(t);
-  const f = formatearMonto(t.slice(1));
-  return f.startsWith("RD$ ") ? f.replace("RD$ ", "RD$ -") : t;
+  return formatearMonto(t.startsWith("-") ? t.slice(1) : t);
 }
 
 export function FacturaPrintScreen({ facturaId }: { readonly facturaId: number }) {
@@ -170,8 +174,15 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
   // Only what the data proves: the sale's payment condition (contado/crédito) is not
   // stored anywhere (ADR-017: balances are derived), so a settled credit sale must not
   // read "Contado" and a refunded cash sale must not read "Crédito".
+  const aFavor = saldo !== null && esNegativo(saldo.saldoPendiente);
   const formaPago =
-    saldo === null ? "—" : esCero(saldo.saldoPendiente) ? "Pagada" : "Saldo pendiente";
+    saldo === null
+      ? "—"
+      : esCero(saldo.saldoPendiente)
+        ? "Pagada"
+        : aFavor
+          ? "Saldo a favor"
+          : "Saldo pendiente";
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -303,7 +314,7 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
           </div>
           {saldo !== null && !esCero(saldo.saldoPendiente) ? (
             <div className="flex w-64 justify-between">
-              <span>Saldo pendiente</span>
+              <span>{aFavor ? "Saldo a favor" : "Saldo pendiente"}</span>
               <span data-testid="factura-saldo-pendiente">{formatearSaldo(saldo.saldoPendiente)}</span>
             </div>
           ) : null}

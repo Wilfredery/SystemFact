@@ -1,3 +1,10 @@
+## [0.47.13](https://github.com/Wilfredery/SystemFact/compare/v0.47.12...v0.47.13) (2026-11-22)
+
+### Fixed
+
+* **factura impresa:** a negative pending balance (a credit note issued after the invoice was fully paid) now prints as "Saldo a favor" (status row and amount row, amount shown as the credit, e.g. RD$ 50.00) instead of "Saldo pendiente RD$ -50.00", which read as if the customer owed money. Other statuses are unchanged.
+* **categorías (auditoría):** the capped audit copy of a very long category name now ends with "…" so a truncated value is never mistaken for the full one, and the cut never splits an emoji.
+
 ## [0.47.12](https://github.com/Wilfredery/SystemFact/compare/v0.47.11...v0.47.12) (2026-11-22)
 
 ### Fixed
