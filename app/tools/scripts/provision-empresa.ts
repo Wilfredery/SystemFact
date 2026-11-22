@@ -185,6 +185,11 @@ export async function provisionarEmpresa(
           activa: true,
         },
       });
+      // `INSERT ... RETURNING` also needs the SELECT policy, and several tables (for
+      // example CONFIGURACION_EMPRESA) only let the CURRENT tenant read its rows (bootstrap
+      // mode is not enough). Scope the rest of this transaction to the new company, as a
+      // non-superuser privileged role (the production `postgres`) requires.
+      await tx.$executeRaw`select set_config('app.current_empresa_id', ${String(empresa.id)}, true)`;
       const sucursal = await tx.sucursal.create({
         data: { empresaId: empresa.id, nombre: args.sucursal, direccion: "", telefono: "" },
       });
