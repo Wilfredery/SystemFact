@@ -1,3 +1,9 @@
+## [0.47.12](https://github.com/Wilfredery/SystemFact/compare/v0.47.11...v0.47.12) (2026-11-22)
+
+### Fixed
+
+* **devolución:** when loading the sale for a return fails because of a connection problem, the message now carries a stable error code ([CONEXION_FALLIDA]) like the other return errors, so it can be quoted to support. The text is the same catalog message; the raw error is still never shown. The "could not confirm the credit note" message after a failed submit now carries [RESULTADO_INCIERTO] too, with the same wording (it still asks to check the sale's returns before retrying). Both messages now live in the error catalog instead of the component.
+
 ## [0.47.11](https://github.com/Wilfredery/SystemFact/compare/v0.47.10...v0.47.11) (2026-11-22)
 
 ### Fixed

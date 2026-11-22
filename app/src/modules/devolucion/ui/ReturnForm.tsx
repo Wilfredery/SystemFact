@@ -27,22 +27,15 @@ import { devolverVentaAction } from "@/modules/devolucion/http/actions";
 import {
   zDevolverVentaInput,
   VALIDATION_ERROR,
+  CONEXION_FALLIDA,
+  RESULTADO_INCIERTO,
+  MENSAJE_FORMULARIO_INCOMPLETO,
+  mensajeTransporte,
   type DevolverVentaInputDto,
 } from "@/modules/devolucion/http/validations";
 
 /** Restock type derived from the shared transport schema (no hand-copied enum). */
 type TipoReposicion = DevolverVentaInputDto["lineas"][number]["tipoReposicion"];
-
-/** Shown when an action call itself fails (network, server crash): no code, no internals. */
-const MENSAJE_FALLO_CONEXION =
-  "No se pudo completar la operación. Revise su conexión e intente de nuevo.";
-
-/**
- * A rejected submit may have committed on the server (the response, not the
- * write, was lost): never invite a blind retry.
- */
-const MENSAJE_RESULTADO_INCIERTO =
-  "No se pudo confirmar si la nota de crédito fue emitida. Revise las devoluciones de esta venta antes de reintentar.";
 
 /** One editable row: the ORIGINAL persisted sale line + the user's intent. */
 interface LineaFormulario {
@@ -100,7 +93,12 @@ export function ReturnForm({
         }
       })
       .catch(() => {
-        setMensaje({ kind: "error", text: MENSAJE_FALLO_CONEXION });
+        // Stable code + catalog message: the raw error (network, stack) is never shown.
+        setMensaje({
+          kind: "error",
+          code: CONEXION_FALLIDA,
+          text: mensajeTransporte(CONEXION_FALLIDA),
+        });
       })
       .finally(() => {
         setCargando(false);
@@ -130,7 +128,7 @@ export function ReturnForm({
       setMensaje({
         kind: "error",
         code: VALIDATION_ERROR,
-        text: "Complete el motivo y una cantidad válida en al menos una línea.",
+        text: MENSAJE_FORMULARIO_INCOMPLETO,
       });
       return;
     }
@@ -152,7 +150,11 @@ export function ReturnForm({
         setMensaje({ kind: "error", code: r.error.code, text: r.error.message });
       }
     } catch {
-      setMensaje({ kind: "error", text: MENSAJE_RESULTADO_INCIERTO });
+      setMensaje({
+        kind: "error",
+        code: RESULTADO_INCIERTO,
+        text: mensajeTransporte(RESULTADO_INCIERTO),
+      });
     } finally {
       enCurso.current = false;
       setEnviando(false);
