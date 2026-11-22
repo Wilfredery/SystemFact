@@ -51,6 +51,12 @@ test.describe("/auditoria", () => {
     await expect(cabeceras).toHaveCount(COLUMNAS.length);
     await expect(cabeceras).toHaveText(COLUMNAS);
 
+    // Slice B: Usuario and Sucursal are selects with a "Todos"/"Todas" first option.
+    await expect(page.getByLabel("Usuario")).toHaveJSProperty("tagName", "SELECT");
+    await expect(page.getByLabel("Sucursal")).toHaveJSProperty("tagName", "SELECT");
+    await expect(page.getByLabel("Usuario").locator("option").first()).toHaveText("Todos");
+    await expect(page.getByLabel("Sucursal").locator("option").first()).toHaveText("Todas");
+
     // Read-only: the only buttons on the page are the two filter controls.
     const principal = page.getByRole("main");
     await expect(principal.getByRole("button")).toHaveCount(2);

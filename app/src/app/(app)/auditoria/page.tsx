@@ -59,9 +59,9 @@ export default async function AuditoriaPage({ searchParams }: PageProps) {
 
       {resultado.ok ? (
         <>
-          <AuditFilters filtroInicial={filtro} />
+          <AuditFilters filtroInicial={filtro} opciones={resultado.data.opciones} />
           <div className="mt-6">
-            <AuditTable pagina={resultado.data} filtro={filtro} />
+            <AuditTable pagina={resultado.data.pagina} filtro={filtro} />
           </div>
         </>
       ) : (

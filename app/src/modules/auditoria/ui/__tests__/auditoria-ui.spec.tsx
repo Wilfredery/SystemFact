@@ -25,6 +25,7 @@ import { AuditTable } from "@/modules/auditoria/ui/AuditTable";
 import { AuditFilters } from "@/modules/auditoria/ui/AuditFilters";
 import type {
   AccionAuditoria,
+  AuditoriaOpciones,
   AuditoriaPagina,
   AuditoriaRegistro,
 } from "@/modules/auditoria/domain/auditoria";
@@ -66,9 +67,16 @@ function fila(
     valorAnterior: null,
     valorNuevo: null,
     motivo: null,
+    usuario: null,
+    sucursal: null,
     ...over,
   };
 }
+
+const OPC: AuditoriaOpciones = {
+  usuarios: [{ id: 5, nombreUsuario: "AB-ana", nombre: "Ana Pérez", activo: true }],
+  sucursales: [{ id: 3, nombre: "Norte", activa: true }],
+};
 
 function pagina(over: Partial<AuditoriaPagina> = {}): AuditoriaPagina {
   return {
@@ -180,7 +188,7 @@ describe("AuditTable pagination (cobros-style, filters preserved)", () => {
 
 describe("AuditFilters (AC-3 combinable dispatch, submit disable while busy)", () => {
   it("dispatches the combined facets onto the URL and resets to page 1", async () => {
-    render(<AuditFilters filtroInicial={{ accion: "CREAR" }} />);
+    render(<AuditFilters filtroInicial={{ accion: "CREAR" }} opciones={OPC} />);
 
     const accion = screen.getByLabelText("Acción") as HTMLSelectElement;
     expect(accion.value).toBe("CREAR"); // back-filled from the active filter
@@ -204,7 +212,7 @@ describe("AuditFilters (AC-3 combinable dispatch, submit disable while busy)", (
   });
 
   it("drops a blank or non-positive locator id from the dispatched query", async () => {
-    render(<AuditFilters filtroInicial={{}} />);
+    render(<AuditFilters filtroInicial={{}} opciones={OPC} />);
     fireEvent.change(screen.getByLabelText("Sucursal"), {
       target: { value: "abc" },
     });
@@ -215,8 +223,8 @@ describe("AuditFilters (AC-3 combinable dispatch, submit disable while busy)", (
   });
 
   it("'Limpiar' clears the fields AND navigates to the base URL (never optimistic local-only)", async () => {
-    render(<AuditFilters filtroInicial={{ usuarioId: 5 }} />);
-    const usuario = screen.getByLabelText("Usuario") as HTMLInputElement;
+    render(<AuditFilters filtroInicial={{ usuarioId: 5 }} opciones={OPC} />);
+    const usuario = screen.getByLabelText("Usuario") as HTMLSelectElement;
     expect(usuario.value).toBe("5"); // back-filled from the active server filter
 
     fireEvent.click(screen.getByRole("button", { name: "Limpiar filtros" }));
@@ -226,7 +234,7 @@ describe("AuditFilters (AC-3 combinable dispatch, submit disable while busy)", (
     // clear that would leave the URL/table showing stale active filters.
     expect(push).toHaveBeenCalledTimes(1);
     expect(push).toHaveBeenCalledWith("/auditoria");
-    expect((screen.getByLabelText("Usuario") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Usuario") as HTMLSelectElement).value).toBe("");
   });
 
   it("disables submit while the navigation transition is pending (no stacked pushes)", async () => {
@@ -239,7 +247,7 @@ describe("AuditFilters (AC-3 combinable dispatch, submit disable while busy)", (
           soltar = resolve;
         }),
     );
-    render(<AuditFilters filtroInicial={{}} />);
+    render(<AuditFilters filtroInicial={{}} opciones={OPC} />);
     const submit = screen.getByRole("button", { name: "Aplicar filtros" });
     expect(submit).toBeEnabled();
     fireEvent.click(submit);

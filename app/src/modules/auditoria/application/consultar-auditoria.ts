@@ -31,11 +31,17 @@ import {
 import {
   mapearAPagina,
   normalizarFiltro,
+  type AuditoriaConsulta,
   type AuditoriaFiltro,
   type AuditoriaFiltroEntrada,
   type AuditoriaPagina,
+  type AuditoriaSucursalOpcion,
 } from "../domain/auditoria";
-import { consultarAuditoriaEnTx } from "../infrastructure/consultar-auditoria.repository";
+import {
+  consultarAuditoriaConOpcionesEnTx,
+  consultarAuditoriaEnTx,
+} from "../infrastructure/consultar-auditoria.repository";
+import { listarSucursalesAdministracion } from "@/modules/tenant/application/listarSucursalesAdministracion";
 
 /**
  * Typed use-case result (19-directivas §9). Mirrors `CobroResult` /
@@ -83,4 +89,70 @@ export async function consultarAuditoria(
 
   const { filas, total } = await consultarAuditoriaEnTx(tx, ctx, filtro);
   return { ok: true, data: mapearAPagina({ filas, total, filtro }) };
+}
+
+const defaultDeps = {
+  consultarConOpciones: consultarAuditoriaConOpcionesEnTx,
+  listarSucursales: listarSucursalesAdministracion,
+};
+
+/**
+ * Same gate and normalisation as {@link consultarAuditoria}, but returns the page
+ * AND the Usuario/Sucursal filter option lists from ONE transaction and ONE
+ * widened-branch window (Board 09 slice B, S2-S4). The admin gate and the filter
+ * validation run BEFORE any query, so a denied or invalid call reads no row and no
+ * option. Branch options come from the tenant admin-gated lister (active AND
+ * inactive), reduced here to `{ id, nombre, activa }` — nothing else leaves.
+ */
+export async function consultarAuditoriaConOpciones(
+  tx: PrismaTx,
+  ctx: TenantCtx,
+  entrada: AuditoriaFiltroEntrada,
+  deps: {
+    readonly consultarConOpciones: typeof consultarAuditoriaConOpcionesEnTx;
+    readonly listarSucursales: typeof listarSucursalesAdministracion;
+  } = defaultDeps,
+): Promise<AuditoriaResult<AuditoriaConsulta>> {
+  if (!ctx.esAdmin) {
+    return {
+      ok: false,
+      code: AUDITORIA_NO_AUTORIZADO,
+      message: messageFor(AUDITORIA_NO_AUTORIZADO),
+    };
+  }
+
+  let filtro: AuditoriaFiltro;
+  try {
+    filtro = normalizarFiltro(entrada);
+  } catch (e) {
+    if (e instanceof AuditoriaDomainError) {
+      return { ok: false, code: e.code, message: e.message };
+    }
+    throw e;
+  }
+
+  const leerSucursales = async (): Promise<readonly AuditoriaSucursalOpcion[]> => {
+    const r = await deps.listarSucursales(ctx, tx);
+    // Unreachable for an admin (same `esAdmin` flag), but fail closed if it ever is.
+    if (!r.ok) throw new AuditoriaDomainError(AUDITORIA_NO_AUTORIZADO);
+    return r.sucursales.map((s) => ({ id: s.id, nombre: s.nombre, activa: s.activa }));
+  };
+
+  try {
+    const { filas, total, opciones } = await deps.consultarConOpciones(
+      tx,
+      ctx,
+      filtro,
+      leerSucursales,
+    );
+    return {
+      ok: true,
+      data: { pagina: mapearAPagina({ filas, total, filtro }), opciones },
+    };
+  } catch (e) {
+    if (e instanceof AuditoriaDomainError) {
+      return { ok: false, code: e.code, message: e.message };
+    }
+    throw e;
+  }
 }

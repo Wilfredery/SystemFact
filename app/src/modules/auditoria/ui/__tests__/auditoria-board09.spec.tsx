@@ -15,6 +15,7 @@ import { AuditFilters } from "@/modules/auditoria/ui/AuditFilters";
 import { detalleFila, tonoAccion } from "@/modules/auditoria/ui/format";
 import type {
   AccionAuditoria,
+  AuditoriaOpciones,
   AuditoriaPagina,
   AuditoriaRegistro,
 } from "@/modules/auditoria/domain/auditoria";
@@ -52,9 +53,16 @@ function fila(over: Partial<AuditoriaRegistro> & { id: number }): AuditoriaRegis
     valorAnterior: null,
     valorNuevo: null,
     motivo: null,
+    usuario: null,
+    sucursal: null,
     ...over,
   };
 }
+
+const OPC: AuditoriaOpciones = {
+  usuarios: [{ id: 5, nombreUsuario: "AB-ana", nombre: "Ana Pérez", activo: true }],
+  sucursales: [{ id: 3, nombre: "Norte", activa: true }],
+};
 
 function pagina(over: Partial<AuditoriaPagina> = {}): AuditoriaPagina {
   return { filas: [], total: 0, page: 1, pageSize: 25, totalPages: 0, ...over };
@@ -141,7 +149,7 @@ describe("Board 09 S2 — footer note", () => {
 
 describe("Board 09 S4/S6 — filters", () => {
   it("uses the new free-text placeholder", () => {
-    render(<AuditFilters filtroInicial={{}} />);
+    render(<AuditFilters filtroInicial={{}} opciones={OPC} />);
     expect(screen.getByLabelText("Texto libre")).toHaveAttribute(
       "placeholder",
       "Buscar en auditoría (texto libre)...",
@@ -149,7 +157,7 @@ describe("Board 09 S4/S6 — filters", () => {
   });
 
   it("primary / outline recipes with min-h-11 on every control", () => {
-    render(<AuditFilters filtroInicial={{}} />);
+    render(<AuditFilters filtroInicial={{}} opciones={OPC} />);
     const aplicar = screen.getByRole("button", { name: "Aplicar filtros" });
     expect(aplicar.className).toContain("bg-accent");
     expect(aplicar.className).toContain("text-accent-fg");
@@ -171,7 +179,7 @@ describe("Board 09 S4/S6 — filters", () => {
   });
 
   it("accessible names equal the visible labels (no overriding aria-label)", () => {
-    render(<AuditFilters filtroInicial={{}} />);
+    render(<AuditFilters filtroInicial={{}} opciones={OPC} />);
     expect(screen.getByLabelText("Desde")).toHaveAccessibleName("Desde");
     expect(screen.getByLabelText("Hasta")).toHaveAccessibleName("Hasta");
     expect(screen.queryByLabelText("Fecha desde")).toBeNull();

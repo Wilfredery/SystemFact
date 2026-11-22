@@ -11,7 +11,9 @@
  * It renders the SAME six facets the use case ANDs together (AC-3): `accion` select
  * (including the incidental `LEER` value as an ordinary option), usuario, sucursal,
  * a Santo-Domingo date range (interpreted downstream by `rangoFechasAUTC`), and free
- * text (targeting only `entidad`/`idEntidad`/`motivo` server-side). The submit control
+ * text (targeting only `entidad`/`idEntidad`/`motivo` server-side). Usuario and Sucursal are
+ * `<select>`s fed by the option lists the server read in the same transaction as the page
+ * (slice B); a URL id missing from the list renders as a selected `#<id>` fallback option. The submit control
  * is DISABLED while a transition is in flight (the "disabled submit while busy" rule)
  * so a double-click cannot stack two navigations. Nothing here mutates data — the form
  * is a navigation-only affordance (AC-5).
@@ -25,6 +27,7 @@ import {
   ACCION_AUDITORIA,
   type AccionAuditoria,
   type AuditoriaFiltroEntrada,
+  type AuditoriaOpciones,
 } from "../domain/auditoria";
 import { ETIQUETA_ACCION } from "./format";
 
@@ -91,10 +94,22 @@ function aQuery(val: EstadoFormulario): string {
   return qs === "" ? "/auditoria" : `/auditoria?${qs}`;
 }
 
+/** Option label for a user: `<nombreUsuario> — <nombre>`, `(inactivo)` when disabled. */
+function etiquetaUsuario(u: AuditoriaOpciones["usuarios"][number]): string {
+  const base = `${u.nombreUsuario} — ${u.nombre}`;
+  return u.activo ? base : `${base} (inactivo)`;
+}
+
+function etiquetaSucursal(s: AuditoriaOpciones["sucursales"][number]): string {
+  return s.activa ? s.nombre : `${s.nombre} (inactiva)`;
+}
+
 export function AuditFilters({
   filtroInicial,
+  opciones,
 }: {
   readonly filtroInicial: AuditoriaFiltroEntrada;
+  readonly opciones: AuditoriaOpciones;
 }) {
   const router = useRouter();
   const [pendiente, iniciar] = useTransition();
@@ -106,6 +121,20 @@ export function AuditFilters({
   ): void {
     setVal((prev) => ({ ...prev, [campo]: valor }));
   }
+
+  // A URL id that is not in the option list (stale or foreign) stays visible and selected.
+  const usuarioHuerfano =
+    filtroInicial.usuarioId !== undefined &&
+    filtroInicial.usuarioId !== null &&
+    !opciones.usuarios.some((u) => u.id === filtroInicial.usuarioId)
+      ? filtroInicial.usuarioId
+      : null;
+  const sucursalHuerfana =
+    filtroInicial.sucursalId !== undefined &&
+    filtroInicial.sucursalId !== null &&
+    !opciones.sucursales.some((s) => s.id === filtroInicial.sucursalId)
+      ? filtroInicial.sucursalId
+      : null;
 
   return (
     <form
@@ -144,28 +173,44 @@ export function AuditFilters({
         <label htmlFor="aud-usuario" className={CLASE_ETIQUETA}>
           Usuario
         </label>
-        <input
+        <select
           id="aud-usuario"
-          inputMode="numeric"
           value={val.usuarioId}
           onChange={(e) => onCambio("usuarioId", e.target.value)}
-          className={`w-24 ${CLASE_CAMPO}`}
-          placeholder="#"
-        />
+          className={CLASE_CAMPO}
+        >
+          <option value="">Todos</option>
+          {usuarioHuerfano !== null && (
+            <option value={String(usuarioHuerfano)}>#{usuarioHuerfano}</option>
+          )}
+          {opciones.usuarios.map((u) => (
+            <option key={u.id} value={String(u.id)}>
+              {etiquetaUsuario(u)}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex flex-col gap-1">
         <label htmlFor="aud-sucursal" className={CLASE_ETIQUETA}>
           Sucursal
         </label>
-        <input
+        <select
           id="aud-sucursal"
-          inputMode="numeric"
           value={val.sucursalId}
           onChange={(e) => onCambio("sucursalId", e.target.value)}
-          className={`w-24 ${CLASE_CAMPO}`}
-          placeholder="#"
-        />
+          className={CLASE_CAMPO}
+        >
+          <option value="">Todas</option>
+          {sucursalHuerfana !== null && (
+            <option value={String(sucursalHuerfana)}>#{sucursalHuerfana}</option>
+          )}
+          {opciones.sucursales.map((s) => (
+            <option key={s.id} value={String(s.id)}>
+              {etiquetaSucursal(s)}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex flex-col gap-1">

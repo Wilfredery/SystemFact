@@ -206,6 +206,46 @@ export function normalizarFiltro(entrada: AuditoriaFiltroEntrada): AuditoriaFilt
   return filtro;
 }
 
+/**
+ * Resolved display identity of the acting user (Board 09 slice B). ONLY these three
+ * fields ever leave the server for a user — never email, hash, auth id or role.
+ */
+export interface AuditoriaUsuarioRef {
+  readonly nombreUsuario: string;
+  readonly nombre: string;
+  readonly activo: boolean;
+}
+
+/** Resolved display identity of the row's branch (`null` on the row = company-level). */
+export interface AuditoriaSucursalRef {
+  readonly nombre: string;
+  readonly activa: boolean;
+}
+
+/** One entry of the Usuario filter `<select>`. */
+export interface AuditoriaUsuarioOpcion {
+  readonly id: number;
+  readonly nombreUsuario: string;
+  readonly nombre: string;
+  readonly activo: boolean;
+}
+
+/** One entry of the Sucursal filter `<select>`. */
+export interface AuditoriaSucursalOpcion {
+  readonly id: number;
+  readonly nombre: string;
+  readonly activa: boolean;
+}
+
+/** Option lists feeding the two filter selects (same transaction as the page). */
+export interface AuditoriaOpciones {
+  readonly usuarios: readonly AuditoriaUsuarioOpcion[];
+  readonly sucursales: readonly AuditoriaSucursalOpcion[];
+}
+
+/** Hard cap of the user option list (no pagination, S3). */
+export const MAX_OPCIONES_USUARIOS = 500;
+
 /** A single audit row as surfaced to the consultation DTO (all columns the log carries). */
 export interface AuditoriaRegistro {
   readonly id: number;
@@ -219,6 +259,9 @@ export interface AuditoriaRegistro {
   readonly valorAnterior: string | null;
   readonly valorNuevo: string | null;
   readonly motivo: string | null;
+  /** Resolved names; `null` when the relation could not be resolved (UI falls back to `#id`). */
+  readonly usuario: AuditoriaUsuarioRef | null;
+  readonly sucursal: AuditoriaSucursalRef | null;
 }
 
 /** The paginated result shape returned across the use-case / action boundary. */
@@ -228,6 +271,12 @@ export interface AuditoriaPagina {
   readonly page: number;
   readonly pageSize: number;
   readonly totalPages: number;
+}
+
+/** What the consultation action returns: one page plus the filter option lists. */
+export interface AuditoriaConsulta {
+  readonly pagina: AuditoriaPagina;
+  readonly opciones: AuditoriaOpciones;
 }
 
 /**

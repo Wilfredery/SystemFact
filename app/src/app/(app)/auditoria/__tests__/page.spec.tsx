@@ -36,7 +36,10 @@ describe("/auditoria page (Board 09)", () => {
   it("S1: title, admin badge and the exact subtitle", async () => {
     accion.mockResolvedValue({
       ok: true,
-      data: { filas: [], total: 0, page: 1, pageSize: 25, totalPages: 0 },
+      data: {
+        pagina: { filas: [], total: 0, page: 1, pageSize: 25, totalPages: 0 },
+        opciones: { usuarios: [], sucursales: [] },
+      },
     });
     render(await AuditoriaPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByRole("heading", { level: 1, name: /Auditoría/ })).toBeInTheDocument();
@@ -46,6 +49,24 @@ describe("/auditoria page (Board 09)", () => {
     expect(
       screen.getByText("Consulta el registro de movimientos del sistema"),
     ).toBeInTheDocument();
+  });
+
+  it("slice B: renders the Usuario and Sucursal selects from the action options", async () => {
+    accion.mockResolvedValue({
+      ok: true,
+      data: {
+        pagina: { filas: [], total: 0, page: 1, pageSize: 25, totalPages: 0 },
+        opciones: {
+          usuarios: [{ id: 5, nombreUsuario: "AB-ana", nombre: "Ana Pérez", activo: true }],
+          sucursales: [{ id: 3, nombre: "Norte", activa: true }],
+        },
+      },
+    });
+    render(await AuditoriaPage({ searchParams: Promise.resolve({}) }));
+    expect(screen.getByLabelText("Usuario").tagName).toBe("SELECT");
+    expect(screen.getByLabelText("Sucursal").tagName).toBe("SELECT");
+    expect(screen.getByRole("option", { name: "AB-ana — Ana Pérez" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Norte" })).toBeInTheDocument();
   });
 
   it("S6: a denied user sees only the access alert, no filters or table", async () => {
