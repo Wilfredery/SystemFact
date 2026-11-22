@@ -53,6 +53,7 @@ import {
   type AuditoriaRegistro,
   type AuditoriaSucursalOpcion,
   type AuditoriaUsuarioOpcion,
+  proyectarCambioAuditoria,
 } from "../domain/auditoria";
 import { calcularOffset } from "@/shared/domain/pagination";
 import { accionAuditoriaADb } from "./prisma-accion";
@@ -174,8 +175,12 @@ async function leerPaginaEnVentana(
       accion: accionAuditoriaDesdeDb(r.accion),
       entidad: r.entidad,
       idEntidad: r.idEntidad,
-      valorAnterior: r.valorAnterior,
-      valorNuevo: r.valorNuevo,
+      cambio: proyectarCambioAuditoria({
+        entidad: r.entidad,
+        accion: accionAuditoriaDesdeDb(r.accion),
+        valorAnterior: r.valorAnterior,
+        valorNuevo: r.valorNuevo,
+      }),
       motivo: r.motivo,
       usuario:
         r.usuario === null || r.usuario === undefined

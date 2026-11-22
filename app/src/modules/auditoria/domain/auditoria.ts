@@ -246,6 +246,61 @@ export interface AuditoriaOpciones {
 /** Hard cap of the user option list (no pagination, S3). */
 export const MAX_OPCIONES_USUARIOS = 500;
 
+/** Display-safe old/new texts of an allowlisted audit row (either side may be absent). */
+export interface AuditoriaCambio {
+  readonly anterior: string | null;
+  readonly nuevo: string | null;
+}
+
+function leerJsonObjeto(texto: string | null): Record<string, unknown> | null {
+  if (texto === null) return null;
+  try {
+    const v: unknown = JSON.parse(texto);
+    return typeof v === "object" && v !== null && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Hard allowlist of the audit rows whose stored values are safe to show a tenant admin
+ * (slice C audit, 2026-11-21): Producto CREAR (`{codigo, tasa}`), Producto CANCELAR
+ * (`{activo}`) and Producto LEER (`{count}`). EVERYTHING else returns `null` (default
+ * deny): other writers store PII, amounts, NCFs, costs, config or free text. Only the
+ * known keys are read, and only with the expected primitive types; any other shape
+ * (truncated JSON, unexpected keys' values) yields `null` rather than raw text.
+ */
+export function proyectarCambioAuditoria(fila: {
+  readonly entidad: string;
+  readonly accion: AccionAuditoria;
+  readonly valorAnterior: string | null;
+  readonly valorNuevo: string | null;
+}): AuditoriaCambio | null {
+  if (fila.entidad !== "Producto") return null;
+  const nuevo = leerJsonObjeto(fila.valorNuevo);
+  if (fila.accion === ACCION_AUDITORIA.CREAR) {
+    const codigo = nuevo?.codigo;
+    const tasa = nuevo?.tasa;
+    if (typeof codigo !== "string" || codigo.length > 60) return null;
+    if (typeof tasa !== "number" && typeof tasa !== "string") return null;
+    return { anterior: null, nuevo: `Código ${codigo} · ITBIS ${String(tasa).slice(0, 10)}` };
+  }
+  if (fila.accion === ACCION_AUDITORIA.CANCELAR) {
+    const antes = leerJsonObjeto(fila.valorAnterior)?.activo;
+    if (typeof antes !== "boolean" || typeof nuevo?.activo !== "boolean") return null;
+    const texto = (a: boolean) => (a ? "Activo" : "Inactivo");
+    return { anterior: texto(antes), nuevo: texto(nuevo.activo) };
+  }
+  if (fila.accion === ACCION_AUDITORIA.LEER) {
+    const count = nuevo?.count;
+    if (typeof count !== "number" || !Number.isInteger(count) || count < 0) return null;
+    return { anterior: null, nuevo: `${count} resultados` };
+  }
+  return null;
+}
+
 /** A single audit row as surfaced to the consultation DTO (all columns the log carries). */
 export interface AuditoriaRegistro {
   readonly id: number;
@@ -256,8 +311,12 @@ export interface AuditoriaRegistro {
   readonly accion: AccionAuditoria;
   readonly entidad: string;
   readonly idEntidad: string;
-  readonly valorAnterior: string | null;
-  readonly valorNuevo: string | null;
+  /**
+   * Display-safe "Anterior → Nuevo" projection. `null` unless the row's (entidad, accion)
+   * is on the hard allowlist (`proyectarCambioAuditoria`). The raw `valorAnterior` /
+   * `valorNuevo` columns NEVER leave the repository.
+   */
+  readonly cambio: AuditoriaCambio | null;
   readonly motivo: string | null;
   /** Resolved names; `null` when the relation could not be resolved (UI falls back to `#id`). */
   readonly usuario: AuditoriaUsuarioRef | null;

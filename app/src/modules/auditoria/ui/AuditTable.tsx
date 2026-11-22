@@ -16,6 +16,8 @@
  * the total matching the ACTIVE filter is always shown (AC-2) and a page past the last
  * simply renders an empty body rather than an error (AC-2).
  *
+ * Cambio (slice C): only the allowlisted, server-projected `cambio` texts; never raw JSON.
+ *
  * Names (Board 09 slice B): the Usuario cell shows `nombreUsuario` with the person's full
  * `nombre` in `title`; the Sucursal cell shows the branch `nombre` (`Empresa` stays for a
  * NULL branch). A name that could not be resolved falls back to `#<id>`, never blank.
@@ -37,6 +39,7 @@ const CABECERA = [
   "Entidad",
   "Sucursal",
   "Detalle",
+  "Anterior → Nuevo",
 ] as const;
 
 const NOTA_PIE = "Registro de auditoría — Solo lectura · Inmutable (append-only)";
@@ -122,6 +125,18 @@ export function AuditTable({
                       title={detalle}
                     >
                       {detalle}
+                    </td>
+                    <td
+                      data-testid={`auditoria-cambio-${f.id}`}
+                      className="px-3 py-2 text-ink-muted"
+                    >
+                      {f.cambio === null ? (
+                        "—"
+                      ) : (
+                        <>
+                          {f.cambio.anterior ?? "—"} → {f.cambio.nuevo ?? "—"}
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
