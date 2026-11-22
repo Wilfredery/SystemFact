@@ -149,7 +149,7 @@ function BannerEstadoFiscal({ estado }: { readonly estado: FacturaParaImpresionD
         data-testid="factura-banner-estado"
         className="rounded-md border-2 border-danger px-4 py-3 text-center text-sm font-bold uppercase text-danger"
       >
-        Documento cancelado — sin efecto fiscal; no se reporta en el 606/607
+        Documento cancelado — sin efecto fiscal; no se reporta en el 607 ni en el 608
       </p>
     );
   }

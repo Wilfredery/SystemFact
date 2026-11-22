@@ -219,6 +219,10 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     const article = screen.getByTestId("factura-print");
     expect(article.contains(banner)).toBe(true);
     expect(banner.textContent).toContain("sin efecto fiscal");
+    // A cancelled sale is reported nowhere: not in the 607 (sales) and not in the 608
+    // (only ANULADA is), and the 606 is purchases so it never applies to a sale.
+    expect(banner.textContent).toContain("no se reporta en el 607 ni en el 608");
+    expect(banner.textContent).not.toContain("606");
     expect(screen.queryByTestId("factura-forma-pago")).not.toBeNull();
     expect(screen.getByTestId("factura-forma-pago").textContent).toBe("—");
   });
