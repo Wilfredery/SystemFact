@@ -15,10 +15,10 @@ import { formatearCantidad, formatearEntero } from "./format";
 import { formatearMonto } from "@/shared/ui/format";
 
 const CLASE_TILE =
-  "rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900";
-const CLASE_TITULO = "text-sm font-medium text-zinc-500 dark:text-zinc-400";
-const CLASE_VALOR = "mt-1 text-2xl font-semibold text-zinc-900 dark:text-zinc-50";
-const CLASE_SUB = "mt-1 text-xs text-zinc-500 dark:text-zinc-400";
+  "rounded-lg border border-line bg-surface p-5";
+const CLASE_TITULO = "text-sm font-medium text-ink-muted";
+const CLASE_VALOR = "mt-1 text-2xl font-semibold text-ink";
+const CLASE_SUB = "mt-1 text-xs text-ink-muted";
 
 export function DashboardKpis({ vista }: { readonly vista: DashboardVista }) {
   return (
@@ -75,7 +75,7 @@ export function DashboardKpis({ vista }: { readonly vista: DashboardVista }) {
             <p className={CLASE_SUB}>Sin ventas confirmadas en el período.</p>
           ) : (
             <table className="mt-3 w-full text-left text-sm">
-              <thead className="text-zinc-500 dark:text-zinc-400">
+              <thead className="text-ink-muted">
                 <tr>
                   <th className="py-1 font-medium">Producto</th>
                   <th className="py-1 text-right font-medium">Unidades</th>
@@ -84,12 +84,12 @@ export function DashboardKpis({ vista }: { readonly vista: DashboardVista }) {
               </thead>
               <tbody>
                 {vista.topVendedores.map((p) => (
-                  <tr key={p.productoId} className="border-t border-zinc-100 dark:border-zinc-800">
-                    <td className="py-1 text-zinc-900 dark:text-zinc-50">{p.nombre}</td>
-                    <td className="py-1 text-right text-zinc-700 dark:text-zinc-300">
+                  <tr key={p.productoId} className="border-t border-line">
+                    <td className="py-1 text-ink">{p.nombre}</td>
+                    <td className="py-1 text-right text-ink">
                       {formatearCantidad(p.unidades)}
                     </td>
-                    <td className="py-1 text-right text-zinc-700 dark:text-zinc-300">
+                    <td className="py-1 text-right text-ink">
                       {formatearMonto(p.monto)}
                     </td>
                   </tr>
@@ -103,7 +103,7 @@ export function DashboardKpis({ vista }: { readonly vista: DashboardVista }) {
       <div className="sm:col-span-2 lg:col-span-3">
         <Link
           href="/reportes"
-          className="inline-flex items-center justify-center rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          className="inline-flex items-center justify-center rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink transition hover:bg-surface-muted"
         >
           Ir a Reportes →
         </Link>

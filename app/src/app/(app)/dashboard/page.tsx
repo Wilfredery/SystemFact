@@ -33,12 +33,12 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <header className="flex items-center justify-between border-b border-line bg-surface px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-sm font-bold text-accent-fg">
             SF
           </div>
-          <span className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+          <span className="text-lg font-semibold text-ink">
             SystemFact
           </span>
         </div>
@@ -46,7 +46,7 @@ export default async function DashboardPage() {
         <form action={logoutAction}>
           <button
             type="submit"
-            className="flex h-11 items-center justify-center rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            className="flex h-11 items-center justify-center rounded-lg border border-line px-4 text-sm font-medium text-ink transition hover:bg-surface-muted"
           >
             Cerrar sesión
           </button>
@@ -55,10 +55,10 @@ export default async function DashboardPage() {
 
       <main className="flex flex-1 flex-col items-start gap-6 px-6 py-10">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-2xl font-semibold text-ink">
             Hola, {user.nombre}
           </h1>
-          <p className="text-zinc-500 dark:text-zinc-400">
+          <p className="text-ink-muted">
             {user.empresa?.nombreComercial ?? "Empresa"}
             {user.sucursal ? ` · ${user.sucursal.nombre}` : ""}
           </p>
@@ -69,14 +69,14 @@ export default async function DashboardPage() {
         ) : resultado.error.code === REPORTE_NO_AUTORIZADO ? (
           <p
             role="alert"
-            className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+            className="rounded-md bg-warn-bg px-3 py-2 text-sm text-warn"
           >
             Su rol no incluye paneles de reporte.
           </p>
         ) : (
           <p
             role="alert"
-            className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+            className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger"
           >
             {resultado.error.message}
           </p>

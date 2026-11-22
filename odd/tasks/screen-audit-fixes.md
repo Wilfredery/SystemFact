@@ -35,7 +35,7 @@ Resume: `mem_search` topic `odd/screen-audit-fixes/tasks`, then this file; recon
 
 - [x] T1 S1,S2,S3,S5,S8(console.log) — PR-A: `/` redirect, not-found/error/global-error/loading, caja prefetch, Spanish heading, csp log. Route: inline. Commit: 576adf0 (v0.47.0, PR #275; deployed, smoke 10/0, demo 5/0, release v0.47.0)
 - [x] T2 S7 — audit the six findMany, bound the growing ones with tests. Route: explorer audit + inline fix. Commit: PR-B v0.47.1 (see L4)
-- [ ] T3 S6 — dashboard + token mapping check + guard test. Route: inline. Commit: -
+- [x] T3 S6 — dashboard + token mapping check + guard test. Route: inline. Commit: PR-C v0.47.2 (dashboard/page.tsx + reportes/ui/dashboard-kpis.tsx; mapping: zinc-900/50->ink, zinc-500/400->ink-muted, zinc-200/300/800->line, white/zinc-900->surface, indigo-600->accent+accent-fg, amber alert->warn-bg+warn, red alert->danger/10+danger, hover zinc-100->surface-muted, dark: removed)
 - [ ] T4 S6 — Clientes, Productos, Proveedores (screens, forms, confirm dialogs) + guards. Commit: -
 - [ ] T5 S6 — FacturaPrintScreen, ReturnForm/DevolverButton, reportes panels, inventario guard. Commit: -
 - [ ] T6 S8 — E2E for dashboard, reportes, cobros sub-screens. Commit: -
