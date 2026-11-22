@@ -37,6 +37,13 @@ type TipoReposicion = DevolverVentaInputDto["lineas"][number]["tipoReposicion"];
 const MENSAJE_FALLO_CONEXION =
   "No se pudo completar la operación. Revise su conexión e intente de nuevo.";
 
+/**
+ * A rejected submit may have committed on the server (the response, not the
+ * write, was lost): never invite a blind retry.
+ */
+const MENSAJE_RESULTADO_INCIERTO =
+  "No se pudo confirmar si la nota de crédito fue emitida. Revise las devoluciones de esta venta antes de reintentar.";
+
 /** One editable row: the ORIGINAL persisted sale line + the user's intent. */
 interface LineaFormulario {
   readonly productoId: number;
@@ -56,9 +63,12 @@ type Mensaje =
 export function ReturnForm({
   ventaId,
   onClose,
+  onOcupado,
 }: {
   readonly ventaId: number;
   readonly onClose: () => void;
+  /** Tells the opener a submission is in flight so it cannot unmount the form mid-send. */
+  readonly onOcupado?: (ocupado: boolean) => void;
 }) {
   const [cargando, setCargando] = useState(true);
   const [lineas, setLineas] = useState<readonly LineaFormulario[]>([]);
@@ -126,6 +136,7 @@ export function ReturnForm({
     }
     enCurso.current = true;
     setEnviando(true);
+    onOcupado?.(true);
     setMensaje(null);
     try {
       const r = await devolverVentaAction(parsed.data);
@@ -141,10 +152,11 @@ export function ReturnForm({
         setMensaje({ kind: "error", code: r.error.code, text: r.error.message });
       }
     } catch {
-      setMensaje({ kind: "error", text: MENSAJE_FALLO_CONEXION });
+      setMensaje({ kind: "error", text: MENSAJE_RESULTADO_INCIERTO });
     } finally {
       enCurso.current = false;
       setEnviando(false);
+      onOcupado?.(false);
     }
   }
 
@@ -164,7 +176,7 @@ export function ReturnForm({
           onClick={onClose}
           disabled={enviando}
           aria-label="Cerrar formulario de devolución"
-          className="rounded border border-line px-2 py-1 text-xs text-ink-muted"
+          className="rounded border border-line px-2 py-1 text-xs text-ink-muted disabled:cursor-not-allowed disabled:opacity-50"
         >
           Cerrar
         </button>

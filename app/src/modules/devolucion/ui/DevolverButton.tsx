@@ -22,6 +22,8 @@ export function DevolverButton({ ventaId }: { readonly ventaId: number }) {
   // While a dialog toggle is in flight (a click already processed), the button
   // stays disabled so a same-cycle double event cannot flip it twice.
   const [cerrando, setCerrando] = useState(false);
+  // A credit note is being issued: the opener must not unmount the form and hide the result.
+  const [ocupado, setOcupado] = useState(false);
 
   function alternar(): void {
     setAbierto((prev) => !prev);
@@ -42,7 +44,7 @@ export function DevolverButton({ ventaId }: { readonly ventaId: number }) {
       <button
         type="button"
         onClick={alternar}
-        disabled={cerrando}
+        disabled={cerrando || ocupado}
         aria-label={`Devolver venta ${ventaId}`}
         aria-expanded={abierto}
         data-testid={`devolucion-boton-${ventaId}`}
@@ -50,7 +52,7 @@ export function DevolverButton({ ventaId }: { readonly ventaId: number }) {
       >
         Devolver
       </button>
-      {abierto && <ReturnForm ventaId={ventaId} onClose={cerrar} />}
+      {abierto && <ReturnForm ventaId={ventaId} onClose={cerrar} onOcupado={setOcupado} />}
     </div>
   );
 }

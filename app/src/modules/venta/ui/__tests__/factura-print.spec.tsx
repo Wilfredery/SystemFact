@@ -156,6 +156,20 @@ describe("FacturaPrintScreen (factura-print.md T2)", () => {
     expect(screen.getByTestId("factura-saldo-pendiente").textContent).toMatch(/200\.00/);
   });
 
+  it("prints a negative balance (credit note after full payment) with the RD$ prefix, as before", async () => {
+    mockAction.mockResolvedValue({
+      ok: true,
+      data: {
+        ...VISTA_BASE,
+        saldo: { total: "294.00", cobrosAplicados: "294.00", saldoPendiente: "-50.00" },
+      },
+    });
+    render(<FacturaPrintScreen facturaId={77} />);
+    await screen.findByTestId("factura-print");
+
+    expect(screen.getByTestId("factura-saldo-pendiente").textContent).toBe("RD$ -50.00");
+  });
+
   it("a CANCELLED invoice renders the no-fiscal-effect banner INSIDE the printed article", async () => {
     mockAction.mockResolvedValue({ ok: true, data: { ...VISTA_BASE, estado: "CANCELADA", saldo: null } });
     render(<FacturaPrintScreen facturaId={77} />);
