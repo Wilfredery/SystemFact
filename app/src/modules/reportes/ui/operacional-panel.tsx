@@ -54,12 +54,12 @@ export type PanelOperativoProps =
       readonly seleccion: SeleccionReporte;
     };
 
-const TH = "py-1 font-medium text-zinc-500 dark:text-zinc-400";
+const TH = "py-1 font-medium text-ink-muted";
 const TH_R = `${TH} text-right`;
-const TD = "py-1 text-zinc-900 dark:text-zinc-50";
+const TD = "py-1 text-ink";
 const TD_R = `${TD} text-right`;
 const BOTON =
-  "inline-flex items-center rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800";
+  "inline-flex items-center rounded-md border border-line px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-surface-muted disabled:opacity-40";
 
 /** Render the shared panel chrome: title, summary strip, table (children), pagination + export. */
 function Marco({
@@ -80,12 +80,12 @@ function Marco({
   return (
     <section
       aria-label={titulo}
-      className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
+      className="rounded-lg border border-line bg-surface p-5"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{titulo}</h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">{resumen}</p>
+          <h2 className="text-lg font-semibold text-ink">{titulo}</h2>
+          <p className="text-sm text-ink-muted">{resumen}</p>
         </div>
         <Link href={construirHrefExportar(seleccion)} className={BOTON}>
           Exportar CSV
@@ -93,7 +93,7 @@ function Marco({
       </div>
 
       {pagina.filas.length === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-ink-muted">
           Sin resultados para el filtro seleccionado.
         </p>
       ) : (
@@ -117,7 +117,7 @@ function Marco({
             Siguiente →
           </Link>
         )}
-        <span className="text-zinc-500 dark:text-zinc-400">
+        <span className="text-ink-muted">
           Página {formatearEntero(pagina.page)} de {formatearEntero(Math.max(1, pagina.totalPages))}{" "}
           · {formatearEntero(pagina.total)} resultados
         </span>
@@ -151,7 +151,7 @@ export function PanelOperativo(props: PanelOperativoProps) {
         </thead>
         <tbody>
           {pagina.filas.map((f) => (
-            <tr key={f.fechaSD} className="border-t border-zinc-100 dark:border-zinc-800">
+            <tr key={f.fechaSD} className="border-t border-line">
               <td className={TD}>{f.fechaSD}</td>
               <td className={TD_R}>{formatearEntero(f.operaciones)}</td>
               <td className={TD_R}>{formatearMonto(f.neto)}</td>
@@ -182,7 +182,7 @@ export function PanelOperativo(props: PanelOperativoProps) {
         </thead>
         <tbody>
           {pagina.filas.map((f) => (
-            <tr key={f.productoId} className="border-t border-zinc-100 dark:border-zinc-800">
+            <tr key={f.productoId} className="border-t border-line">
               <td className={TD}>{f.nombre}</td>
               <td className={TD_R}>{formatearCantidad(f.unidades)}</td>
               <td className={TD_R}>{formatearMonto(f.monto)}</td>
@@ -218,7 +218,7 @@ export function PanelOperativo(props: PanelOperativoProps) {
         </thead>
         <tbody>
           {pagina.filas.map((f) => (
-            <tr key={f.inventarioId} className="border-t border-zinc-100 dark:border-zinc-800">
+            <tr key={f.inventarioId} className="border-t border-line">
               <td className={TD}>{f.sucursalNombre}</td>
               <td className={TD}>{f.productoNombre}</td>
               <td className={TD_R}>{formatearCantidad(f.cantidad)}</td>
@@ -260,7 +260,7 @@ export function PanelOperativo(props: PanelOperativoProps) {
         {pagina.filas.map((c) => (
           <tr
             key={`${c.estado}:${c.tipoNcf}`}
-            className="border-t border-zinc-100 dark:border-zinc-800"
+            className="border-t border-line"
           >
             <td className={TD}>{c.estado}</td>
             <td className={TD}>{c.tipoNcf}</td>

@@ -90,7 +90,8 @@ export function FacturaPrintScreen({ facturaId }: { readonly facturaId: number }
           .factura-print-doc { position: absolute; inset: 0; margin: 0; background: #ffffff !important; color: #18181b !important; }
           /* Browsers do not print background colors: force light-on-white so a
              dark-OS user still gets a legible document (JD rounds 1-2). The
-             blanket descendant reset beats every dark: utility on children; the
+             blanket descendant reset beats every color utility on children (the screen
+             uses only light F0 tokens, but paper output must never depend on a theme); the
              banner rule AFTER it restores its red identity (later rule wins). */
           .factura-print-doc * { color: #18181b !important; border-color: #d4d4d8 !important; }
           .factura-print-doc [role="alert"] { color: #b91c1c !important; background: transparent !important; border-color: #b91c1c !important; }
@@ -99,17 +100,17 @@ export function FacturaPrintScreen({ facturaId }: { readonly facturaId: number }
         @page { margin: 12mm; }
       `}</style>
 
-      {estado.kind === "cargando" ? <p className="text-sm text-zinc-500">Cargando factura…</p> : null}
+      {estado.kind === "cargando" ? <p className="text-sm text-ink-muted">Cargando factura…</p> : null}
 
       {estado.kind === "error" ? (
         <div className="flex flex-col gap-3">
           <p
             role="alert"
-            className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+            className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger"
           >
             {estado.mensaje}
           </p>
-          <Link href="/venta" className="text-xs text-indigo-600 hover:underline dark:text-indigo-400">
+          <Link href="/venta" className="text-xs text-link hover:underline">
             Volver a Venta
           </Link>
         </div>
@@ -127,7 +128,7 @@ function BannerEstadoFiscal({ estado }: { readonly estado: string }) {
       <p
         role="alert"
         data-testid="factura-banner-estado"
-        className="rounded-md border-2 border-red-600 px-4 py-3 text-center text-sm font-bold uppercase text-red-700"
+        className="rounded-md border-2 border-danger px-4 py-3 text-center text-sm font-bold uppercase text-danger"
       >
         Documento cancelado — sin efecto fiscal; no se reporta en el 606/607
       </p>
@@ -137,7 +138,7 @@ function BannerEstadoFiscal({ estado }: { readonly estado: string }) {
     <p
       role="alert"
       data-testid="factura-banner-estado"
-      className="rounded-md border-2 border-red-600 bg-red-50 px-4 py-3 text-center text-sm font-bold uppercase text-red-700"
+      className="rounded-md border-2 border-danger bg-danger/10 px-4 py-3 text-center text-sm font-bold uppercase text-danger"
     >
       Documento anulado — con efecto fiscal; reportado en el 608
     </p>
@@ -160,7 +161,7 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
       <div className="no-print flex items-center justify-between">
         <Link
           href="/venta"
-          className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+          className="rounded border border-line px-2 py-1 text-xs font-medium text-ink"
         >
           Volver a Venta
         </Link>
@@ -172,15 +173,15 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
           }}
           aria-label="Imprimir factura"
           data-testid="factura-boton-imprimir"
-          className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white"
+          className="rounded bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg"
         >
           Imprimir
         </button>
       </div>
 
-<article data-testid="factura-print" className="factura-print-doc rounded-lg border border-zinc-200 bg-white p-6 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100">
+<article data-testid="factura-print" className="factura-print-doc rounded-lg border border-line bg-surface p-6 text-ink">
         <BannerEstadoFiscal estado={data.estado} />
-        <header className="flex items-start justify-between gap-4 border-b border-dashed border-zinc-300 pb-3 dark:border-zinc-700">
+        <header className="flex items-start justify-between gap-4 border-b border-dashed border-line pb-3">
           <div className="flex flex-col gap-0.5 text-sm">
             <span className="text-base font-bold" data-testid="factura-empresa-nombre">
               {data.empresa.nombreComercial}
@@ -229,7 +230,7 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
         <table className="w-full text-sm">
           <caption className="sr-only">Detalle de la venta</caption>
           <thead>
-            <tr className="border-b border-zinc-300 text-left dark:border-zinc-700">
+            <tr className="border-b border-line text-left">
               <th scope="col" className="py-1 pr-2 font-semibold">Descripción</th>
               <th scope="col" className="py-1 pr-2 text-right font-semibold">Cant.</th>
               <th scope="col" className="py-1 pr-2 text-right font-semibold">Precio</th>
@@ -240,7 +241,7 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
           </thead>
           <tbody>
             {data.lineas.map((l, i) => (
-              <tr key={`${l.productoNombre}-${i}`} className="border-b border-zinc-100 dark:border-zinc-800">
+              <tr key={`${l.productoNombre}-${i}`} className="border-b border-line">
                 <td className="py-1 pr-2">{l.productoNombre}</td>
                 <td className="py-1 pr-2 text-right">{Number(l.cantidad)}</td>
                 <td className="py-1 pr-2 text-right">{formatoMoney(l.precioUnitario)}</td>
@@ -275,7 +276,7 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
               <span>{formatoMoney(r.itbis)}</span>
             </div>
           ))}
-          <div className="flex w-64 justify-between border-t border-zinc-300 pt-1 text-base font-bold dark:border-zinc-700">
+          <div className="flex w-64 justify-between border-t border-line pt-1 text-base font-bold">
             <span>TOTAL</span>
             <span data-testid="factura-total">{formatoMoney(data.total)}</span>
           </div>
@@ -291,7 +292,7 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
           ) : null}
         </section>
 
-        <footer className="mt-4 border-t border-dashed border-zinc-300 pt-2 text-center text-xs text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+        <footer className="mt-4 border-t border-dashed border-line pt-2 text-center text-xs text-ink-muted">
           Comprobante sujeto a la normativa fiscal de la DGII (Decreto 254-06). Reimpresión de un
           documento ya emitido; no genera un nuevo NCF.
         </footer>

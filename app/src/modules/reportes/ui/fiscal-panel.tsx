@@ -31,14 +31,14 @@ import { construirHrefExportar, construirHrefExportarTxt } from "./url";
 import { formatearMonto } from "@/shared/ui/format";
 
 const BOTON =
-  "inline-flex items-center rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800";
+  "inline-flex items-center rounded-md border border-line px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-surface-muted disabled:opacity-40";
 
 /** A frozen, honest notice that a generated DGII TXT still needs the official pre-validation tool. */
 function AvisoPrevalidacion() {
   return (
     <p
       role="note"
-      className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+      className="rounded-md border border-warn bg-warn-bg px-3 py-2 text-sm text-warn"
     >
       Aviso (U1–U5): el archivo DGII se genera con el diseño de columnas e idioma UTF-8/ASCII
       especificados, pero el ancho exacto de bytes, la codificación, la tabla de “Tipo de Ingreso”,
@@ -52,9 +52,9 @@ function AvisoPrevalidacion() {
 /** A two-column money row for the summary tables. */
 function FilaMonto({ etiqueta, monto }: { readonly etiqueta: string; readonly monto: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-t border-zinc-100 py-1.5 text-sm dark:border-zinc-800">
-      <span className="text-zinc-600 dark:text-zinc-300">{etiqueta}</span>
-      <span className="font-mono text-zinc-900 dark:text-zinc-50">{formatearMonto(monto)}</span>
+    <div className="flex items-center justify-between gap-4 border-t border-line py-1.5 text-sm">
+      <span className="text-ink-muted">{etiqueta}</span>
+      <span className="font-mono text-ink">{formatearMonto(monto)}</span>
     </div>
   );
 }
@@ -70,10 +70,10 @@ export function PanelResumenITBIS({
   return (
     <section
       aria-label="Resumen ITBIS"
-      className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
+      className="rounded-lg border border-line bg-surface p-5"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Resumen ITBIS del período</h2>
+        <h2 className="text-lg font-semibold text-ink">Resumen ITBIS del período</h2>
         <Link href={construirHrefExportar(seleccion)} className={BOTON}>
           Exportar CSV
         </Link>
@@ -82,7 +82,7 @@ export function PanelResumenITBIS({
       <FilaMonto etiqueta="Crédito fiscal / ITBIS por adelantar (Σ606)" monto={resumen.creditoFiscal} />
       <FilaMonto etiqueta="ITBIS retenido (Σ606)" monto={resumen.itbisRetenido} />
       <FilaMonto etiqueta="ISR retenido (Σ606)" monto={resumen.isrRetenido} />
-      <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">{NOTA_B11_SIN_CREDITO_FISCAL}</p>
+      <p className="mt-4 text-xs text-ink-muted">{NOTA_B11_SIN_CREDITO_FISCAL}</p>
     </section>
   );
 }
@@ -98,10 +98,10 @@ export function PanelCasillasIT1({
   return (
     <section
       aria-label="IT-1 casillas"
-      className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
+      className="rounded-lg border border-line bg-surface p-5"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">IT-1 — casillas (resumen)</h2>
+        <h2 className="text-lg font-semibold text-ink">IT-1 — casillas (resumen)</h2>
         <Link href={construirHrefExportar(seleccion)} className={BOTON}>
           Exportar CSV
         </Link>
@@ -115,18 +115,18 @@ export function PanelCasillasIT1({
       {casillas.avisoValidacion !== null ? (
         <p
           role="alert"
-          className="mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+          className="mt-4 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
         >
           {casillas.avisoValidacion}
         </p>
       ) : (
-        <p className="mt-4 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
+        <p className="mt-4 rounded-md border border-success-fg/30 bg-success-bg px-3 py-2 text-sm text-success-fg">
           Cuadre: el ITBIS retenido (casilla 60) coincide con la Σ del 606.
         </p>
       )}
 
-      <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">{NOTA_VENCIMIENTO_IT1}</p>
-      <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+      <p className="mt-4 text-xs text-ink-muted">{NOTA_VENCIMIENTO_IT1}</p>
+      <p className="mt-2 text-xs text-ink-muted">
         IT-1 se declara en la Oficina Virtual (formulario interactivo). La DGII <strong>no</strong>{" "}
         acepta un archivo TXT del IT-1: esta pantalla es un resumen de casillas.
       </p>
@@ -169,17 +169,17 @@ export function PanelDgiiTxt({
   return (
     <section
       aria-label={info.titulo}
-      className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
+      className="rounded-lg border border-line bg-surface p-5"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{info.titulo}</h2>
+        <h2 className="text-lg font-semibold text-ink">{info.titulo}</h2>
         <Link href={construirHrefExportarTxt(seleccion)} className={BOTON}>
           Descargar TXT DGII
         </Link>
       </div>
-      <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-300">{info.detalle}</p>
+      <p className="mb-4 text-sm text-ink-muted">{info.detalle}</p>
       <AvisoPrevalidacion />
-      <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+      <p className="mt-3 text-xs text-ink-muted">
         Si el período supera el tope de registros por archivo, la exportación produce varios TXT
         determinísticos (cada uno dentro del tope); descargue cada parte desde aquí.
       </p>

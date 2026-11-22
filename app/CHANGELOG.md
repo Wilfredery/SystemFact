@@ -1,3 +1,10 @@
+## [0.47.4](https://github.com/Wilfredery/SystemFact/compare/v0.47.3...v0.47.4) (2026-11-22)
+
+### Changed
+
+* **design system (screen audit, T5):** the last screens on raw Tailwind colors move to the design-system tokens of the wireframe-aligned boards: the printable invoice screen, the return form and its button, the fiscal and operational report panels, the dialog backdrop and the page titles of Clientes, Productos and Proveedores. The unused `dark:` variants are gone. The invoice's print stylesheet keeps its own literal colors on purpose (paper output must not depend on a theme).
+* **guard:** one app-wide test now scans every component and page under `app/src` and fails on any raw palette class, arbitrary color or `dark:` variant, so a new file is covered the moment it exists. It replaces the need to keep per-screen lists.
+
 ## [0.47.3](https://github.com/Wilfredery/SystemFact/compare/v0.47.2...v0.47.3) (2026-11-22)
 
 ### Changed
