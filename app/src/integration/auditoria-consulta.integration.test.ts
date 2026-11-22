@@ -18,6 +18,10 @@
  *   - pagination: page 2 = rows 26–50 (25/page), 500 → 100 clamp over 250 rows.
  *   - a page past the end returns an empty page, total intact, no error.
  *   - empty result → total 0, totalPages 0.
+ *   - Board 09 slice B: names in rows and filter options come from the SAME widened
+ *     window (admin of A1 sees users/branches of A2, never another empresa's), inactive
+ *     users/branches stay listed, a non-admin gets no data, the branch GUC is restored,
+ *     and the user option list honours the 500 cap with active users first.
  *   - append-only: an app-role UPDATE/DELETE is rejected with AUDITORIA_INMUTABLE
  *     by the statement-level append-only trigger (migration 20260918).
  */
@@ -30,9 +34,11 @@ import {
 } from "@/modules/auditoria/domain/errors";
 import {
   consultarAuditoria,
+  consultarAuditoriaConOpciones,
   type AuditoriaResult,
 } from "@/modules/auditoria/application/consultar-auditoria";
 import type {
+  AuditoriaConsulta,
   AuditoriaFiltroEntrada,
   AuditoriaPagina,
 } from "@/modules/auditoria/domain/auditoria";
@@ -102,6 +108,14 @@ function leer(
   entrada: AuditoriaFiltroEntrada,
 ): Promise<AuditoriaResult<AuditoriaPagina>> {
   return withTenantTransaction(ctx, (tx) => consultarAuditoria(tx, ctx, entrada));
+}
+
+/** Page + option lists through the app role inside a real tenant tx. */
+function leerConOpciones(
+  ctx: TenantCtx,
+  entrada: AuditoriaFiltroEntrada = {},
+): Promise<AuditoriaResult<AuditoriaConsulta>> {
+  return withTenantTransaction(ctx, (tx) => consultarAuditoriaConOpciones(tx, ctx, entrada));
 }
 
 describe("auditoria consultation read path (real DB, RLS on, fase-7a slice B)", () => {
@@ -377,6 +391,194 @@ describe("auditoria consultation read path (real DB, RLS on, fase-7a slice B)", 
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe(AUDITORIA_VALIDACION);
+  });
+
+  describe("slice B — names and filter options (Board 09)", () => {
+    it("admin of A1 sees names of A2 in rows AND options; empresa B never appears", async () => {
+      const f = fixture!;
+      const db = getHarnessDb();
+      const luisA2 = await db.usuario.create({
+        data: {
+          empresaId: f.empresaA.id,
+          sucursalId: f.sucursalA2.id,
+          nombre: "Luis Segundo",
+          nombreUsuario: nombreUsuarioConCodigo(f.empresaA.codigo, "luis"),
+          passwordHash: "test-hash",
+        },
+        select: { id: true, nombreUsuario: true },
+      });
+      await crearAuditoria({
+        empresaId: f.empresaA.id,
+        sucursalId: f.sucursalA2.id,
+        usuarioId: luisA2.id,
+        accion: "CREAR",
+        fechaHora: new Date("2026-03-01T12:00:00.000Z"),
+      });
+      await crearAuditoria({
+        empresaId: f.empresaB.id,
+        sucursalId: f.sucursalB1.id,
+        usuarioId: f.usuarios.adminB.id,
+        accion: "CREAR",
+        fechaHora: new Date("2026-03-01T13:00:00.000Z"),
+      });
+
+      const r = await leerConOpciones(adminA1(f));
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.data.pagina.total).toBe(1);
+      const fila = r.data.pagina.filas[0]!;
+      expect(fila.usuario).toEqual({
+        nombreUsuario: luisA2.nombreUsuario,
+        nombre: "Luis Segundo",
+        activo: true,
+      });
+      expect(fila.sucursal).toEqual({ nombre: "A2", activa: true });
+
+      const idsUsuarios = r.data.opciones.usuarios.map((u) => u.id);
+      expect(idsUsuarios).toEqual(expect.arrayContaining([luisA2.id, f.usuarios.adminA.id]));
+      expect(idsUsuarios).not.toContain(f.usuarios.adminB.id);
+      const idsSucursales = r.data.opciones.sucursales.map((s) => s.id);
+      expect(idsSucursales).toEqual(
+        expect.arrayContaining([f.sucursalA1.id, f.sucursalA2.id]),
+      );
+      expect(idsSucursales).not.toContain(f.sucursalB1.id);
+
+      // Nothing of empresa B leaks anywhere in the payload, and only the name fields cross.
+      const json = JSON.stringify(r.data);
+      expect(json).not.toContain(f.usuarios.adminB.nombreUsuario);
+      expect(json).not.toContain("passwordHash");
+      expect(json).not.toContain("email");
+      for (const u of r.data.opciones.usuarios) {
+        expect(Object.keys(u).sort()).toEqual(["activo", "id", "nombre", "nombreUsuario"]);
+      }
+      for (const s of r.data.opciones.sucursales) {
+        expect(Object.keys(s).sort()).toEqual(["activa", "id", "nombre"]);
+      }
+    });
+
+    it("an inactive user and an inactive branch still resolve in rows and stay listed", async () => {
+      const f = fixture!;
+      const db = getHarnessDb();
+      const sucursalVieja = await db.sucursal.create({
+        data: {
+          empresaId: f.empresaA.id,
+          nombre: "Vieja",
+          direccion: "x",
+          telefono: "0",
+          activa: false,
+        },
+        select: { id: true },
+      });
+      const usuarioViejo = await db.usuario.create({
+        data: {
+          empresaId: f.empresaA.id,
+          sucursalId: f.sucursalA1.id,
+          nombre: "Pedro Viejo",
+          nombreUsuario: nombreUsuarioConCodigo(f.empresaA.codigo, "viejo"),
+          passwordHash: "test-hash",
+          activo: false,
+        },
+        select: { id: true },
+      });
+      await crearAuditoria({
+        empresaId: f.empresaA.id,
+        sucursalId: sucursalVieja.id,
+        usuarioId: usuarioViejo.id,
+        accion: "CREAR",
+        fechaHora: new Date("2026-03-01T12:00:00.000Z"),
+      });
+
+      const r = await leerConOpciones(adminA1(f));
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      const fila = r.data.pagina.filas[0]!;
+      expect(fila.usuario?.activo).toBe(false);
+      expect(fila.usuario?.nombre).toBe("Pedro Viejo");
+      expect(fila.sucursal).toEqual({ nombre: "Vieja", activa: false });
+      expect(r.data.opciones.usuarios.find((u) => u.id === usuarioViejo.id)?.activo).toBe(false);
+      expect(r.data.opciones.sucursales.find((s) => s.id === sucursalVieja.id)?.activa).toBe(
+        false,
+      );
+    });
+
+    it("a foreign-empresa audit row is absent and a foreign user id filter returns empty with no names", async () => {
+      const f = fixture!;
+      await crearAuditoria({
+        empresaId: f.empresaB.id,
+        sucursalId: f.sucursalB1.id,
+        usuarioId: f.usuarios.adminB.id,
+        accion: "CREAR",
+        fechaHora: new Date("2026-03-01T13:00:00.000Z"),
+      });
+
+      const r = await leerConOpciones(adminA1(f), { usuarioId: f.usuarios.adminB.id });
+
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.data.pagina.total).toBe(0);
+      expect(JSON.stringify(r.data)).not.toContain(f.usuarios.adminB.nombreUsuario);
+    });
+
+    it("a non-admin is refused with AUDITORIA_NO_AUTORIZADO and receives no data", async () => {
+      const f = fixture!;
+      const r = await leerConOpciones(
+        ctxDe(f, {
+          sucursalId: f.sucursalA1.id,
+          usuarioId: f.usuarios.adminA.id,
+          esAdmin: false,
+        }),
+      );
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.code).toBe(AUDITORIA_NO_AUTORIZADO);
+      expect("data" in r).toBe(false);
+    });
+
+    it("restores the caller's branch GUC after the read", async () => {
+      const f = fixture!;
+      const ctx = adminA1(f);
+      const guc = await withTenantTransaction(ctx, async (tx) => {
+        const r = await consultarAuditoriaConOpciones(tx, ctx, {});
+        expect(r.ok).toBe(true);
+        const filas = await tx.$queryRaw<
+          { v: string }[]
+        >`SELECT current_setting('app.current_sucursal_id', true) AS v`;
+        return filas[0]!.v;
+      });
+      expect(guc).toBe(String(f.sucursalA1.id));
+    });
+
+    it("the user option list is capped at 500, active users first", async () => {
+      const f = fixture!;
+      const db = getHarnessDb();
+      const base = {
+        empresaId: f.empresaA.id,
+        sucursalId: f.sucursalA1.id,
+        passwordHash: "test-hash",
+      };
+      // Two inactive users whose names sort FIRST alphabetically: they must still lose to actives.
+      await db.usuario.createMany({
+        data: ["0", "1"].map((n) => ({
+          ...base,
+          nombre: `Inactivo ${n}`,
+          nombreUsuario: `${f.empresaA.codigo}-0inactivo-${n}`,
+          activo: false,
+        })),
+      });
+      await db.usuario.createMany({
+        data: Array.from({ length: 500 }, (_, i) => ({
+          ...base,
+          nombre: `Activo ${i}`,
+          nombreUsuario: `${f.empresaA.codigo}-zactivo-${String(i).padStart(4, "0")}`,
+        })),
+      });
+
+      const r = await leerConOpciones(adminA1(f));
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.data.opciones.usuarios).toHaveLength(500);
+      expect(r.data.opciones.usuarios.every((u) => u.activo)).toBe(true);
+    });
   });
 
   it("append-only: an app-role UPDATE/DELETE is RLS-denied (0 rows affected)", async () => {

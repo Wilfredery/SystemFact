@@ -157,6 +157,8 @@ describe("mapearAPagina (AC-2)", () => {
     valorAnterior: null,
     valorNuevo: null,
     motivo: null,
+    usuario: null,
+    sucursal: null,
   });
 
   it("echoes the page and size and computes total pages", () => {

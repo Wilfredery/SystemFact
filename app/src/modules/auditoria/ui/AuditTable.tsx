@@ -15,6 +15,10 @@
  * Pagination is the cobros-style control (Anterior / Siguiente + "Página X de Y"):
  * the total matching the ACTIVE filter is always shown (AC-2) and a page past the last
  * simply renders an empty body rather than an error (AC-2).
+ *
+ * Names (Board 09 slice B): the Usuario cell shows `nombreUsuario` with the person's full
+ * `nombre` in `title`; the Sucursal cell shows the branch `nombre` (`Empresa` stays for a
+ * NULL branch). A name that could not be resolved falls back to `#<id>`, never blank.
  */
 
 import Link from "next/link";
@@ -88,7 +92,11 @@ export function AuditTable({
                       {formatearFechaHoraSD(f.fechaHora)}
                     </td>
                     <td className="px-3 py-2 text-ink">
-                      #{f.usuarioId}
+                      {f.usuario === null ? (
+                        <>#{f.usuarioId}</>
+                      ) : (
+                        <span title={f.usuario.nombre}>{f.usuario.nombreUsuario}</span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <span
@@ -103,8 +111,10 @@ export function AuditTable({
                         <span className="text-ink-muted" title="Sin sucursal (evento a nivel empresa)">
                           Empresa
                         </span>
-                      ) : (
+                      ) : f.sucursal === null ? (
                         <>#{f.sucursalId}</>
+                      ) : (
+                        <>{f.sucursal.nombre}</>
                       )}
                     </td>
                     <td

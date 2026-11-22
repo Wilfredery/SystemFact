@@ -11,7 +11,7 @@
  *      tenant-DB access, so it precedes the wrapper (venta/devolucion convention).
  *   3. Inside `withTenantTransaction`: enforce the server-side Admin role gate via
  *      `tieneRolPermitidoEnTx` (AC-1 — hiding the UI is NOT the control), then
- *      delegate to the `consultarAuditoria` use case and forward its typed result.
+ *      delegate to the `consultarAuditoriaConOpciones` use case and forward its typed result.
  *
  * A non-admin is refused BEFORE the use case runs, so no row is ever read for a
  * denied actor (AC-1). Every query is tenant-pinned + RLS-scoped inside the wrapper
@@ -33,8 +33,8 @@ import {
   messageFor,
   type AuditoriaErrorCode,
 } from "../domain/errors";
-import type { AuditoriaPagina } from "../domain/auditoria";
-import { consultarAuditoria } from "../application/consultar-auditoria";
+import type { AuditoriaConsulta } from "../domain/auditoria";
+import { consultarAuditoriaConOpciones } from "../application/consultar-auditoria";
 import {
   SESION_INVALIDA,
   VALIDATION_ERROR,
@@ -79,13 +79,15 @@ async function resolverCtx() {
 }
 
 /**
- * Reads one paginated, filtered page of the tenant's audit log for an Administrator.
- * The payload is the raw consultation filter (from the URL/client form); the returned
- * DTO is already ordered newest-first and carries the active-filter total (AC-2/AC-3).
+ * Reads one paginated, filtered page of the tenant's audit log for an Administrator,
+ * plus the Usuario/Sucursal filter option lists, from ONE transaction (slice B, S4).
+ * The payload is the raw consultation filter (from the URL/client form); the page is
+ * already ordered newest-first and carries the active-filter total (AC-2/AC-3). The
+ * role gate above runs BEFORE the use case, so a denied actor triggers no option query.
  */
 export async function consultarAuditoriaAction(
   input: unknown,
-): Promise<ActionResult<AuditoriaPagina>> {
+): Promise<ActionResult<AuditoriaConsulta>> {
   const parsed = zConsultarAuditoriaInput.safeParse(input ?? {});
   if (!parsed.success) {
     return fail(VALIDATION_ERROR, mensajeTransporte(VALIDATION_ERROR));
@@ -111,7 +113,7 @@ export async function consultarAuditoriaAction(
         messageFor(AUDITORIA_NO_AUTORIZADO),
       );
     }
-    const result = await consultarAuditoria(tx, ctx, parsed.data);
+    const result = await consultarAuditoriaConOpciones(tx, ctx, parsed.data);
     if (!result.ok) return fail(result.code, result.message);
     return ok(result.data);
   });
