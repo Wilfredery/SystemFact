@@ -20,6 +20,7 @@ import {
   type VentaResult,
 } from "@/modules/venta/domain/errors";
 import { desglosarItbisPorTasa } from "@/modules/venta/domain/itbis-desglose";
+import type { EstadoDocumento } from "@/generated/prisma/client";
 import { leerFacturaParaImpresionEnTx } from "@/modules/venta/infrastructure/venta-repository";
 
 export interface FacturaParaImpresionInput {
@@ -32,7 +33,7 @@ export interface FacturaParaImpresionVista {
   readonly tipoNcf: string;
   readonly ncf: string;
   readonly correlativoInterno: string;
-  readonly estado: string;
+  readonly estado: EstadoDocumento;
   readonly fechaEmision: string;
   readonly ventaFecha: string;
   readonly ncfVigenciaFin: string | null;

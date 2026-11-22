@@ -1,3 +1,9 @@
+## [0.47.6](https://github.com/Wilfredery/SystemFact/compare/v0.47.5...v0.47.6) (2026-11-22)
+
+### Fixed
+
+* **factura impresa:** the printable invoice no longer formats or compares money through floating-point numbers. Amounts print through the shared money formatter and zero checks (discount, exempt subtotal, pending balance, line discount) use exact decimals. The printed document is unchanged for normal values. The invoice state is now typed from the schema (VIGENTE/CANCELADA/ANULADA), so a new state cannot silently print the "anulado" banner.
+
 ## [0.47.5](https://github.com/Wilfredery/SystemFact/compare/v0.47.4...v0.47.5) (2026-11-22)
 
 ### Fixed

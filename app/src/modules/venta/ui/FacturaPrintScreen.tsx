@@ -26,6 +26,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Decimal } from "decimal.js";
+import { formatearMonto } from "@/shared/ui/format";
 import {
   consultarFacturaParaImpresionAction,
   type FacturaParaImpresionDto,
@@ -55,8 +57,9 @@ function formatoFecha(iso: string): string {
   }).format(new Date(iso));
 }
 
-function formatoMoney(valor: string): string {
-  return `RD$ ${new Intl.NumberFormat("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(valor))}`;
+function esCero(valor: string): boolean {
+  // Money is a Decimal string (AGENTS.md): compare exactly, never through a float.
+  return new Decimal(valor).isZero();
 }
 
 export function FacturaPrintScreen({ facturaId }: { readonly facturaId: number }) {
@@ -121,7 +124,7 @@ export function FacturaPrintScreen({ facturaId }: { readonly facturaId: number }
   );
 }
 
-function BannerEstadoFiscal({ estado }: { readonly estado: string }) {
+function BannerEstadoFiscal({ estado }: { readonly estado: FacturaParaImpresionDto["estado"] }) {
   if (estado === "VIGENTE") return null;
   if (estado === "CANCELADA") {
     return (
@@ -134,6 +137,9 @@ function BannerEstadoFiscal({ estado }: { readonly estado: string }) {
       </p>
     );
   }
+  // ANULADA is the only remaining state; the type makes a new one a compile error.
+  const _exhaustivo: "ANULADA" = estado;
+  void _exhaustivo;
   return (
     <p
       role="alert"
@@ -152,7 +158,7 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
   const formaPago =
     saldo === null
       ? "—"
-      : Number(saldo.saldoPendiente) === 0
+      : esCero(saldo.saldoPendiente)
         ? "Contado — pagada"
         : "Crédito — saldo pendiente";
 
@@ -179,7 +185,7 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
         </button>
       </div>
 
-<article data-testid="factura-print" className="factura-print-doc rounded-lg border border-line bg-surface p-6 text-ink">
+      <article data-testid="factura-print" className="factura-print-doc rounded-lg border border-line bg-surface p-6 text-ink">
         <BannerEstadoFiscal estado={data.estado} />
         <header className="flex items-start justify-between gap-4 border-b border-dashed border-line pb-3">
           <div className="flex flex-col gap-0.5 text-sm">
@@ -243,11 +249,11 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
             {data.lineas.map((l, i) => (
               <tr key={`${l.productoNombre}-${i}`} className="border-b border-line">
                 <td className="py-1 pr-2">{l.productoNombre}</td>
-                <td className="py-1 pr-2 text-right">{Number(l.cantidad)}</td>
-                <td className="py-1 pr-2 text-right">{formatoMoney(l.precioUnitario)}</td>
-                <td className="py-1 pr-2 text-right">{Number(l.descuentoLinea) === 0 ? "—" : formatoMoney(l.descuentoLinea)}</td>
-                <td className="py-1 pr-2 text-right">{formatoMoney(l.itbisLinea)}</td>
-                <td className="py-1 text-right">{formatoMoney(l.subtotalLinea)}</td>
+                <td className="py-1 pr-2 text-right">{new Decimal(l.cantidad).toString()}</td>
+                <td className="py-1 pr-2 text-right">{formatearMonto(l.precioUnitario)}</td>
+                <td className="py-1 pr-2 text-right">{esCero(l.descuentoLinea) ? "—" : formatearMonto(l.descuentoLinea)}</td>
+                <td className="py-1 pr-2 text-right">{formatearMonto(l.itbisLinea)}</td>
+                <td className="py-1 text-right">{formatearMonto(l.subtotalLinea)}</td>
               </tr>
             ))}
           </tbody>
@@ -256,38 +262,38 @@ function FacturaDocumento({ data }: { readonly data: FacturaParaImpresionDto }) 
         <section className="mt-3 flex flex-col items-end gap-0.5 text-sm">
           <div className="flex w-64 justify-between">
             <span>Subtotal gravado</span>
-            <span data-testid="factura-subtotal-gravado">{formatoMoney(data.subtotalGravado)}</span>
+            <span data-testid="factura-subtotal-gravado">{formatearMonto(data.subtotalGravado)}</span>
           </div>
-          {Number(data.subtotalExento) !== 0 ? (
+          {!esCero(data.subtotalExento) ? (
             <div className="flex w-64 justify-between">
               <span>Subtotal exento</span>
-              <span data-testid="factura-subtotal-exento">{formatoMoney(data.subtotalExento)}</span>
+              <span data-testid="factura-subtotal-exento">{formatearMonto(data.subtotalExento)}</span>
             </div>
           ) : null}
-          {Number(data.descuento) !== 0 ? (
+          {!esCero(data.descuento) ? (
             <div className="flex w-64 justify-between">
               <span>Descuento</span>
-              <span data-testid="factura-descuento">−{formatoMoney(data.descuento)}</span>
+              <span data-testid="factura-descuento">−{formatearMonto(data.descuento)}</span>
             </div>
           ) : null}
           {data.desgloseItbis.map((r) => (
             <div key={r.tasa} className="flex w-64 justify-between" data-testid={`factura-itbis-${r.tasa.replace(".", "_")}`}>
-              <span>ITBIS {Number(r.tasa)}%</span>
-              <span>{formatoMoney(r.itbis)}</span>
+              <span>ITBIS {new Decimal(r.tasa).toString()}%</span>
+              <span>{formatearMonto(r.itbis)}</span>
             </div>
           ))}
           <div className="flex w-64 justify-between border-t border-line pt-1 text-base font-bold">
             <span>TOTAL</span>
-            <span data-testid="factura-total">{formatoMoney(data.total)}</span>
+            <span data-testid="factura-total">{formatearMonto(data.total)}</span>
           </div>
           <div className="flex w-64 justify-between">
             <span>Forma de pago</span>
             <span data-testid="factura-forma-pago">{formaPago}</span>
           </div>
-          {saldo !== null && Number(saldo.saldoPendiente) !== 0 ? (
+          {saldo !== null && !esCero(saldo.saldoPendiente) ? (
             <div className="flex w-64 justify-between">
               <span>Saldo pendiente</span>
-              <span data-testid="factura-saldo-pendiente">{formatoMoney(saldo.saldoPendiente)}</span>
+              <span data-testid="factura-saldo-pendiente">{formatearMonto(saldo.saldoPendiente)}</span>
             </div>
           ) : null}
         </section>
