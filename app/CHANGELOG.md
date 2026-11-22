@@ -1,3 +1,9 @@
+## [0.45.0](https://github.com/Wilfredery/SystemFact/compare/v0.44.0...v0.45.0) (2026-11-21)
+
+### Added
+
+* **auditoria (UI/UX board 09, slice B):** the audit table shows the user's login name (with the company-code prefix, full name on hover) and the branch name instead of numeric ids, and the Usuario and Sucursal filters are now selects ("Todos" / "Todas" first) fed by the company's users (capped at 500, active first) and branches. Inactive users and branches stay selectable and are labelled, because old audit rows reference them. The names come from the same page query inside the existing company-wide read window, behind the same admin gate; only login name, full name and active flag leave the server. The old → new values stay hidden (separate decision).
+
 ## [0.44.0](https://github.com/Wilfredery/SystemFact/compare/v0.43.1...v0.44.0) (2026-11-21)
 
 ### Added
