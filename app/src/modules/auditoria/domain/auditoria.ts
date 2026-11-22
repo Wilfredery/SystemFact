@@ -264,13 +264,71 @@ function leerJsonObjeto(texto: string | null): Record<string, unknown> | null {
   }
 }
 
+const TRANSICIONES_ESTADO: ReadonlyMap<
+  string,
+  {
+    readonly anterior: ReadonlyMap<string, string>;
+    readonly nuevo: ReadonlyMap<string, string>;
+  }
+> = new Map([
+  [
+    "Venta:CANCELAR",
+    {
+      anterior: new Map([
+        ["BORRADOR", "Borrador"],
+        ["CONFIRMADA", "Confirmada"],
+      ]),
+      nuevo: new Map([["CANCELADA", "Cancelada"]]),
+    },
+  ],
+  [
+    "Factura:ANULAR",
+    {
+      anterior: new Map([["VIGENTE", "Vigente"]]),
+      nuevo: new Map([["ANULADA", "Anulada"]]),
+    },
+  ],
+]);
+
+function proyectarTransicionEstado(fila: {
+  readonly entidad: string;
+  readonly accion: AccionAuditoria;
+  readonly valorAnterior: string | null;
+  readonly valorNuevo: string | null;
+}): AuditoriaCambio | null {
+  const tabla = TRANSICIONES_ESTADO.get(`${fila.entidad}:${fila.accion}`);
+  if (tabla === undefined) return null;
+  const antes = leerJsonObjeto(fila.valorAnterior)?.estado;
+  const despues = leerJsonObjeto(fila.valorNuevo)?.estado;
+  if (typeof antes !== "string" || typeof despues !== "string") return null;
+  const anterior = tabla.anterior.get(antes);
+  const nuevo = tabla.nuevo.get(despues);
+  return anterior === undefined || nuevo === undefined ? null : { anterior, nuevo };
+}
+
+function proyectarCategoriaCancelada(fila: {
+  readonly valorAnterior: string | null;
+  readonly valorNuevo: string | null;
+}): AuditoriaCambio | null {
+  const antes = leerJsonObjeto(fila.valorAnterior)?.activa;
+  const despues = leerJsonObjeto(fila.valorNuevo)?.activa;
+  return antes === true && despues === false
+    ? { anterior: "Activa", nuevo: "Inactiva" }
+    : null;
+}
+
 /**
  * Hard allowlist of the audit rows whose stored values are safe to show a tenant admin
  * (slice C audit, 2026-11-21): Producto CREAR (`{codigo, tasa}`), Producto CANCELAR
- * (`{activo}`) and Producto LEER (`{count}`). EVERYTHING else returns `null` (default
- * deny): other writers store PII, amounts, NCFs, costs, config or free text. Only the
- * known keys are read, and only with the expected primitive types; any other shape
- * (truncated JSON, unexpected keys' values) yields `null` rather than raw text.
+ * (`{activo}`) and Producto LEER (`{count}`); and, from the 2026-11-22 follow-up, three
+ * pure state changes: Categoria CANCELAR (`{activa}` true -> false), Venta CANCELAR
+ * (`{estado}` BORRADOR|CONFIRMADA -> CANCELADA) and Factura ANULAR (`{estado}` VIGENTE ->
+ * ANULADA). EVERYTHING else returns `null` (default deny): other writers store PII,
+ * amounts, NCFs, costs, config, client ids or free text (Venta CREAR/ACTUALIZAR carry the
+ * total and clienteId; Categoria CREAR/ACTUALIZAR carry the typed name). Only the known
+ * keys are read, and only with the expected primitive types; states are mapped through
+ * fixed label tables, so any other shape or value (truncated JSON, unexpected strings)
+ * yields `null` rather than raw text.
  */
 export function proyectarCambioAuditoria(fila: {
   readonly entidad: string;
@@ -278,6 +336,12 @@ export function proyectarCambioAuditoria(fila: {
   readonly valorAnterior: string | null;
   readonly valorNuevo: string | null;
 }): AuditoriaCambio | null {
+  if (fila.entidad === "Categoria" && fila.accion === ACCION_AUDITORIA.CANCELAR) {
+    return proyectarCategoriaCancelada(fila);
+  }
+  if (fila.entidad === "Venta" || fila.entidad === "Factura") {
+    return proyectarTransicionEstado(fila);
+  }
   if (fila.entidad !== "Producto") return null;
   const nuevo = leerJsonObjeto(fila.valorNuevo);
   if (fila.accion === ACCION_AUDITORIA.CREAR) {

@@ -224,3 +224,66 @@ describe("proyectarCambioAuditoria (slice C allowlist)", () => {
     expect(proyectarCambioAuditoria({ ...base, accion: "CANCELAR", valorNuevo: '{"activo":false}' })).toBeNull();
   });
 });
+
+describe("proyectarCambioAuditoria (state changes: Categoria, Venta, Factura)", () => {
+  const fila = (
+    entidad: string,
+    accion: "CANCELAR" | "ANULAR" | "CREAR" | "ACTUALIZAR" | "LEER",
+    valorAnterior: string | null,
+    valorNuevo: string | null,
+  ) => ({ entidad, accion, valorAnterior, valorNuevo });
+
+  it("projects Categoria CANCELAR as Activa -> Inactiva", () => {
+    expect(
+      proyectarCambioAuditoria(fila("Categoria", "CANCELAR", '{"activa":true}', '{"activa":false}')),
+    ).toEqual({ anterior: "Activa", nuevo: "Inactiva" });
+  });
+
+  it("projects Venta CANCELAR from a draft or a confirmed sale", () => {
+    expect(
+      proyectarCambioAuditoria(fila("Venta", "CANCELAR", '{"estado":"BORRADOR"}', '{"estado":"CANCELADA"}')),
+    ).toEqual({ anterior: "Borrador", nuevo: "Cancelada" });
+    expect(
+      proyectarCambioAuditoria(fila("Venta", "CANCELAR", '{"estado":"CONFIRMADA"}', '{"estado":"CANCELADA"}')),
+    ).toEqual({ anterior: "Confirmada", nuevo: "Cancelada" });
+  });
+
+  it("projects Factura ANULAR as Vigente -> Anulada", () => {
+    expect(
+      proyectarCambioAuditoria(fila("Factura", "ANULAR", '{"estado":"VIGENTE"}', '{"estado":"ANULADA"}')),
+    ).toEqual({ anterior: "Vigente", nuevo: "Anulada" });
+  });
+
+  it("denies every other Categoria, Venta and Factura action (money, client ids, names)", () => {
+    const venta = '{"id":1,"estado":"CONFIRMADA","clienteId":9,"total":"1180.00"}';
+    for (const accion of ["CREAR", "ACTUALIZAR", "LEER"] as const) {
+      expect(proyectarCambioAuditoria(fila("Venta", accion, venta, venta))).toBeNull();
+      expect(proyectarCambioAuditoria(fila("Factura", accion, venta, venta))).toBeNull();
+      expect(proyectarCambioAuditoria(fila("Categoria", accion, '{"nombre":"Granos"}', '{"nombre":"Granos"}'))).toBeNull();
+    }
+    expect(proyectarCambioAuditoria(fila("Venta", "ANULAR", '{"estado":"CONFIRMADA"}', '{"estado":"ANULADA"}'))).toBeNull();
+    expect(proyectarCambioAuditoria(fila("Factura", "CANCELAR", '{"estado":"VIGENTE"}', '{"estado":"CANCELADA"}'))).toBeNull();
+  });
+
+  it("never echoes raw text: unknown, malformed or wrongly typed states return null", () => {
+    expect(proyectarCambioAuditoria(fila("Venta", "CANCELAR", '{"estado":"<script>"}', '{"estado":"CANCELADA"}'))).toBeNull();
+    expect(proyectarCambioAuditoria(fila("Venta", "CANCELAR", '{"estado":"CONFIRMADA"}', '{"estado":"BORRADOR"}'))).toBeNull();
+    expect(proyectarCambioAuditoria(fila("Venta", "CANCELAR", '{"estado":"CONFIRMADA"', '{"estado":"CANCELADA"}'))).toBeNull();
+    expect(proyectarCambioAuditoria(fila("Venta", "CANCELAR", null, '{"estado":"CANCELADA"}'))).toBeNull();
+    expect(proyectarCambioAuditoria(fila("Factura", "ANULAR", '{"estado":"VIGENTE"}', '{"estado":"VIGENTE"}'))).toBeNull();
+    expect(proyectarCambioAuditoria(fila("Factura", "ANULAR", '{"estado":5}', '{"estado":"ANULADA"}'))).toBeNull();
+    expect(proyectarCambioAuditoria(fila("Categoria", "CANCELAR", '{"activa":"si"}', '{"activa":false}'))).toBeNull();
+    expect(proyectarCambioAuditoria(fila("Categoria", "CANCELAR", '{"activa":false}', '{"activa":false}'))).toBeNull();
+  });
+
+  it("ignores prototype keys, extra keys and non-object JSON", () => {
+    for (const k of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+      expect(proyectarCambioAuditoria(fila("Venta", "CANCELAR", `{"estado":"${k}"}`, '{"estado":"CANCELADA"}'))).toBeNull();
+      expect(proyectarCambioAuditoria(fila("Factura", "ANULAR", '{"estado":"VIGENTE"}', `{"estado":"${k}"}`))).toBeNull();
+    }
+    expect(proyectarCambioAuditoria(fila("Venta", "CANCELAR", '[{"estado":"CONFIRMADA"}]', '{"estado":"CANCELADA"}'))).toBeNull();
+    expect(
+      proyectarCambioAuditoria(fila("Venta", "CANCELAR", '{"estado":"CONFIRMADA","total":"9.00"}', '{"estado":"CANCELADA","clienteId":3}')),
+    ).toEqual({ anterior: "Confirmada", nuevo: "Cancelada" });
+  });
+});
