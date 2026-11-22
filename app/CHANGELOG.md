@@ -1,3 +1,9 @@
+## [0.47.7](https://github.com/Wilfredery/SystemFact/compare/v0.47.6...v0.47.7) (2026-11-22)
+
+### Fixed
+
+* **devolución:** the return form no longer hangs or locks when the server call itself fails. If reading the sale rejects, the form shows a connection error instead of "Loading…" forever; if issuing the credit note rejects, the error is shown and the submit button is enabled again. The form and its opener are now in Spanish ("Devolver venta", "Motivo de la devolución", "Emitir nota de crédito", "Nota de crédito NC #… emitida"). Business rules, payload and the single-flight guard are unchanged.
+
 ## [0.47.6](https://github.com/Wilfredery/SystemFact/compare/v0.47.5...v0.47.6) (2026-11-22)
 
 ### Fixed

@@ -21,10 +21,21 @@
  * no stack traces or Prisma internals.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { obtenerVentaAction } from "@/modules/venta/http/actions";
 import { devolverVentaAction } from "@/modules/devolucion/http/actions";
-import { zDevolverVentaInput, VALIDATION_ERROR } from "@/modules/devolucion/http/validations";
+import {
+  zDevolverVentaInput,
+  VALIDATION_ERROR,
+  type DevolverVentaInputDto,
+} from "@/modules/devolucion/http/validations";
+
+/** Restock type derived from the shared transport schema (no hand-copied enum). */
+type TipoReposicion = DevolverVentaInputDto["lineas"][number]["tipoReposicion"];
+
+/** Shown when an action call itself fails (network, server crash): no code, no internals. */
+const MENSAJE_FALLO_CONEXION =
+  "No se pudo completar la operación. Revise su conexión e intente de nuevo.";
 
 /** One editable row: the ORIGINAL persisted sale line + the user's intent. */
 interface LineaFormulario {
@@ -34,12 +45,12 @@ interface LineaFormulario {
   readonly cantidadOriginal: string;
   readonly incluida: boolean;
   readonly cantidad: string;
-  readonly tipoReposicion: "VENDIBLE" | "DANADO";
+  readonly tipoReposicion: TipoReposicion;
 }
 
 type Mensaje =
   | { readonly kind: "ok"; readonly text: string }
-  | { readonly kind: "error"; readonly code: string; readonly text: string }
+  | { readonly kind: "error"; readonly code?: string; readonly text: string }
   | null;
 
 export function ReturnForm({
@@ -53,29 +64,37 @@ export function ReturnForm({
   const [lineas, setLineas] = useState<readonly LineaFormulario[]>([]);
   const [motivo, setMotivo] = useState("");
   const [enviando, setEnviando] = useState(false);
+  // Set synchronously before the await: state alone is stale inside the same render cycle.
+  const enCurso = useRef(false);
   const [mensaje, setMensaje] = useState<Mensaje>(null);
 
   useEffect(() => {
     // Mount fetch settles state from the action's resolution callback (an
     // external-system boundary), never synchronously in the effect body
     // (same convention as `PosScreen`).
-    void obtenerVentaAction({ id: ventaId }).then((r) => {
-      if (r.ok) {
-        setLineas(
-          r.data.lineas.map((l) => ({
-            productoId: l.productoId,
-            productoNombre: l.productoNombre,
-            cantidadOriginal: l.cantidad,
-            incluida: true,
-            cantidad: "1",
-            tipoReposicion: "VENDIBLE" as const,
-          })),
-        );
-      } else {
-        setMensaje({ kind: "error", code: r.error.code, text: r.error.message });
-      }
-      setCargando(false);
-    });
+    void obtenerVentaAction({ id: ventaId })
+      .then((r) => {
+        if (r.ok) {
+          setLineas(
+            r.data.lineas.map((l) => ({
+              productoId: l.productoId,
+              productoNombre: l.productoNombre,
+              cantidadOriginal: l.cantidad,
+              incluida: true,
+              cantidad: "1",
+              tipoReposicion: "VENDIBLE" as const,
+            })),
+          );
+        } else {
+          setMensaje({ kind: "error", code: r.error.code, text: r.error.message });
+        }
+      })
+      .catch(() => {
+        setMensaje({ kind: "error", text: MENSAJE_FALLO_CONEXION });
+      })
+      .finally(() => {
+        setCargando(false);
+      });
   }, [ventaId]);
 
   const editarLinea = useCallback((productoId: number, cambios: Partial<LineaFormulario>) => {
@@ -87,7 +106,7 @@ export function ReturnForm({
   async function enviar(): Promise<void> {
     // Single-flight guard: disabled button PLUS this early return, so a double
     // event in the same render cycle never burns a second B04 (R-V15 pattern).
-    if (enviando) return;
+    if (enCurso.current) return;
     const candidatos = lineas
       .filter((l) => l.incluida)
       .map((l) => ({
@@ -101,25 +120,32 @@ export function ReturnForm({
       setMensaje({
         kind: "error",
         code: VALIDATION_ERROR,
-        text: "Complete the reason and a valid quantity for at least one line.",
+        text: "Complete el motivo y una cantidad válida en al menos una línea.",
       });
       return;
     }
+    enCurso.current = true;
     setEnviando(true);
     setMensaje(null);
-    const r = await devolverVentaAction(parsed.data);
-    if (r.ok) {
-      const aviso90 = r.warnings !== undefined && r.warnings.length > 0;
-      setMensaje({
-        kind: "ok",
-        text: aviso90
-          ? `Credit note NC #${r.data.id} issued — NCF ${r.data.ncf}. NCF range at 90%.`
-          : `Credit note NC #${r.data.id} issued — NCF ${r.data.ncf} (${r.data.monto} RD$).`,
-      });
-    } else {
-      setMensaje({ kind: "error", code: r.error.code, text: r.error.message });
+    try {
+      const r = await devolverVentaAction(parsed.data);
+      if (r.ok) {
+        const aviso90 = r.warnings !== undefined && r.warnings.length > 0;
+        setMensaje({
+          kind: "ok",
+          text: aviso90
+            ? `Nota de crédito NC #${r.data.id} emitida — NCF ${r.data.ncf}. Rango de NCF al 90%.`
+            : `Nota de crédito NC #${r.data.id} emitida — NCF ${r.data.ncf} (${r.data.monto} RD$).`,
+        });
+      } else {
+        setMensaje({ kind: "error", code: r.error.code, text: r.error.message });
+      }
+    } catch {
+      setMensaje({ kind: "error", text: MENSAJE_FALLO_CONEXION });
+    } finally {
+      enCurso.current = false;
+      setEnviando(false);
     }
-    setEnviando(false);
   }
 
   const bloqueado = enviando || cargando || lineas.length === 0;
@@ -131,15 +157,16 @@ export function ReturnForm({
     >
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-ink">
-          Return sale #{ventaId} (Nota de Crédito B04)
+          Devolver venta #{ventaId} (Nota de Crédito B04)
         </h3>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close return form"
+          disabled={enviando}
+          aria-label="Cerrar formulario de devolución"
           className="rounded border border-line px-2 py-1 text-xs text-ink-muted"
         >
-          Close
+          Cerrar
         </button>
       </div>
 
@@ -153,7 +180,7 @@ export function ReturnForm({
               : "mt-2 rounded-md bg-danger/10 px-3 py-2 text-sm text-danger"
           }
         >
-          {mensaje.kind === "error" && (
+          {mensaje.kind === "error" && mensaje.code !== undefined && (
             <span className="mr-2 font-mono text-xs">[{mensaje.code}]</span>
           )}
           {mensaje.text}
@@ -161,7 +188,7 @@ export function ReturnForm({
       )}
 
       {cargando ? (
-        <p className="mt-2 text-sm text-ink-muted">Loading sale lines…</p>
+        <p className="mt-2 text-sm text-ink-muted">Cargando las líneas de la venta…</p>
       ) : (
         lineas.length > 0 && (
           <form
@@ -176,7 +203,7 @@ export function ReturnForm({
                 htmlFor={`devolucion-motivo-${ventaId}`}
                 className="block text-xs font-medium text-ink"
               >
-                Reason for return
+                Motivo de la devolución
               </label>
               <input
                 id={`devolucion-motivo-${ventaId}`}
@@ -201,21 +228,21 @@ export function ReturnForm({
                       onChange={(e) =>
                         editarLinea(l.productoId, { incluida: e.target.checked })
                       }
-                      aria-label={`Include line ${l.productoNombre}`}
+                      aria-label={`Incluir la línea ${l.productoNombre}`}
                     />
                     <span className="font-medium text-ink">
                       {l.productoNombre}
                     </span>
                     <span className="text-ink-muted">
-                      (sold {l.cantidadOriginal})
+                      (vendidas {l.cantidadOriginal})
                     </span>
                   </label>
                   <label className="flex items-center gap-1">
-                    <span>Qty</span>
+                    <span>Cant.</span>
                     <input
                       value={l.cantidad}
                       inputMode="decimal"
-                      aria-label={`Qty to return for ${l.productoNombre}`}
+                      aria-label={`Cantidad a devolver de ${l.productoNombre}`}
                       onChange={(e) =>
                         editarLinea(l.productoId, { cantidad: e.target.value })
                       }
@@ -223,19 +250,19 @@ export function ReturnForm({
                     />
                   </label>
                   <label className="flex items-center gap-1">
-                    <span>Restock</span>
+                    <span>Reposición</span>
                     <select
                       value={l.tipoReposicion}
-                      aria-label={`Restock type for ${l.productoNombre}`}
+                      aria-label={`Tipo de reposición de ${l.productoNombre}`}
                       onChange={(e) =>
                         editarLinea(l.productoId, {
-                          tipoReposicion: e.target.value as "VENDIBLE" | "DANADO",
+                          tipoReposicion: e.target.value as TipoReposicion,
                         })
                       }
                       className="rounded border border-line px-1 py-0.5"
                     >
-                      <option value="VENDIBLE">VENDIBLE (restock)</option>
-                      <option value="DANADO">DANADO (loss)</option>
+                      <option value="VENDIBLE">VENDIBLE (reponer)</option>
+                      <option value="DANADO">DANADO (pérdida)</option>
                     </select>
                   </label>
                 </li>
@@ -245,10 +272,10 @@ export function ReturnForm({
             <button
               type="submit"
               disabled={bloqueado}
-              aria-label="Emit credit note"
+              aria-label="Emitir nota de crédito"
               className="rounded bg-warn px-3 py-2 text-sm font-semibold text-accent-fg disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {enviando ? "Issuing…" : "Emit credit note"}
+              {enviando ? "Emitiendo…" : "Emitir nota de crédito"}
             </button>
           </form>
         )
