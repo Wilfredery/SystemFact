@@ -178,15 +178,15 @@ test.describe("demo sales flow (S1: cash B02, credit B01 + partial cobro, return
     await openPos(page);
     // Board-02 S6: the drafts/confirmed-sells card is collapsed by default.
     await page.getByRole("button", { name: /My drafts/ }).click();
-    await page.getByRole("button", { name: `Return sale ${sale!.ventaId}` }).click();
+    await page.getByRole("button", { name: `Devolver venta ${sale!.ventaId}` }).click();
     await expect(
-      page.getByRole("heading", { name: new RegExp(`Return sale #${sale!.ventaId}`) }),
+      page.getByRole("heading", { name: new RegExp(`Devolver venta #${sale!.ventaId}`) }),
     ).toBeVisible({ timeout: SLOW });
-    await page.getByLabel("Reason for return").fill("Demo lane: return of the demo credit sale");
-    await page.getByLabel(new RegExp(`Qty to return for ${run.product}`)).fill("1");
-    await page.getByRole("button", { name: "Emit credit note" }).click();
+    await page.getByLabel("Motivo de la devolución").fill("Demo lane: return of the demo credit sale");
+    await page.getByLabel(new RegExp(`Cantidad a devolver de ${run.product}`)).fill("1");
+    await page.getByRole("button", { name: "Emitir nota de crédito" }).click();
 
-    const banner = page.getByText(/Credit note NC #\d+ issued — NCF B\d+/);
+    const banner = page.getByText(/Nota de crédito NC #\d+ emitida — NCF B\d+/);
     await expect(banner, "the credit note banner must appear (within the return window)").toBeVisible({
       timeout: SLOW,
     });

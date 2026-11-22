@@ -43,12 +43,12 @@ export function DevolverButton({ ventaId }: { readonly ventaId: number }) {
         type="button"
         onClick={alternar}
         disabled={cerrando}
-        aria-label={`Return sale ${ventaId}`}
+        aria-label={`Devolver venta ${ventaId}`}
         aria-expanded={abierto}
         data-testid={`devolucion-boton-${ventaId}`}
         className="rounded border border-warn px-2 py-1 text-xs font-medium text-warn hover:bg-warn-bg disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Return
+        Devolver
       </button>
       {abierto && <ReturnForm ventaId={ventaId} onClose={cerrar} />}
     </div>

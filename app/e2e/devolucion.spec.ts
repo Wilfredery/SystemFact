@@ -3,7 +3,7 @@
  *
  * Flow: login (remote Supabase) → POS → draft → confirm (reuses the fase-5c
  * harness so the fresh CONFIRMADA sale carries a VIGENTE FACTURA) → open the
- * Return control on the CONFIRMADA row → one VENDIBLE line, qty 1, with a
+ * Devolver control on the CONFIRMADA row → one VENDIBLE line, qty 1, with a
  * reason → submit → assert the VIGENTE NC + its B04 NCF on the screen → assert
  * the full observable chain in the LOCAL dev DB:
  *
@@ -88,7 +88,7 @@ async function crearVentaConfirmada(page: Page): Promise<{ ventaId: number; ncf:
   const { ventaId, ncf } = await guardarYConfirmar(page, pool);
 
   // Board-02 S5: this sale is CONTADO (no client selected), so the confirm
-  // leaves the POS on the invoice receipt. The Return control lives on the
+  // leaves the POS on the invoice receipt. The Devolver control lives on the
   // CONFIRMADA row of /venta, so go back and re-expand the draft list (S6).
   await page.goto("/venta");
   await page.getByRole("heading", { name: "Punto de venta" }).waitFor();
@@ -114,22 +114,22 @@ test.describe("devolucion smoke (fase-5d task 2.3)", () => {
 
     const { ventaId, ncf: ventaNcf } = await crearVentaConfirmada(page);
 
-    // Open the Return control mounted on the CONFIRMADA row.
-    const opener = page.getByRole("button", { name: `Return sale ${ventaId}` });
+    // Open the Devolver control mounted on the CONFIRMADA row.
+    const opener = page.getByRole("button", { name: `Devolver venta ${ventaId}` });
     await opener.waitFor();
     await opener.click();
-    await page.getByRole("heading", { name: new RegExp(`Return sale #${ventaId}`) }).waitFor();
+    await page.getByRole("heading", { name: new RegExp(`Devolver venta #${ventaId}`) }).waitFor();
 
-    await page.getByLabel("Reason for return").fill("Producto defectuoso devuelto por el cliente");
-    await page.getByLabel(new RegExp(`Qty to return for ${E2E_PRODUCT}`)).fill("1");
-    await page.getByRole("button", { name: "Emit credit note" }).click();
+    await page.getByLabel("Motivo de la devolución").fill("Producto defectuoso devuelto por el cliente");
+    await page.getByLabel(new RegExp(`Cantidad a devolver de ${E2E_PRODUCT}`)).fill("1");
+    await page.getByRole("button", { name: "Emitir nota de crédito" }).click();
 
     // The NC poster is the only status banner left on this fresh /venta render
     // (the sale's own confirm banner died with the receipt navigation), but
     // anchor to the NC copy anyway so a second banner can never be a
     // strict-mode violation.
-    const status = page.getByText(/Credit note NC #\d+ issued/);
-    await expect(status).toContainText(/Credit note NC #\d+ issued — NCF B0400000\d+/);
+    const status = page.getByText(/Nota de crédito NC #\d+ emitida/);
+    await expect(status).toContainText(/Nota de crédito NC #\d+ emitida — NCF B0400000\d+/);
     const statusText = (await status.textContent())!;
     const ncNcf = statusText.match(/NCF (B0400000\d+)/)![1];
     const ncId = Number(statusText.match(/NC #(\d+)/)![1]);

@@ -138,10 +138,10 @@ describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
 
   it("opens the return form for a CONFIRMADA row and submits once with the shared schema shape", async () => {
     await renderPos();
-    fireEvent.click(await screen.findByRole("button", { name: "Return sale 7" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Devolver venta 7" }));
 
     mockObtener.mockResolvedValue(DETALLE);
-    await screen.findByRole("heading", { name: /Return sale #7/ });
+    await screen.findByRole("heading", { name: /Devolver venta #7/ });
 
     // Controllable pending promise: the submit button disables on FIRST click.
     let resolver:
@@ -165,13 +165,13 @@ describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
         }),
     );
 
-    const motivo = screen.getByLabelText("Reason for return");
+    const motivo = screen.getByLabelText("Motivo de la devolución");
     fireEvent.change(motivo, { target: { value: "Producto dañado en traslado" } });
-    fireEvent.change(screen.getByLabelText("Qty to return for Arroz"), {
+    fireEvent.change(screen.getByLabelText("Cantidad a devolver de Arroz"), {
       target: { value: "1" },
     });
 
-    const submit = screen.getByRole("button", { name: "Emit credit note" });
+    const submit = screen.getByRole("button", { name: "Emitir nota de crédito" });
     fireEvent.click(submit);
     expect(submit).toBeDisabled();
     // Same-cycle double click must NOT fire a second consume (single-shot).
@@ -207,9 +207,9 @@ describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
 
   it("surfaces the stable action error code verbatim without stack traces", async () => {
     await renderPos();
-    fireEvent.click(await screen.findByRole("button", { name: "Return sale 7" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Devolver venta 7" }));
     mockObtener.mockResolvedValue(DETALLE);
-    await screen.findByRole("heading", { name: /Return sale #7/ });
+    await screen.findByRole("heading", { name: /Devolver venta #7/ });
 
     mockDevolver.mockResolvedValue({
       ok: false as const,
@@ -218,10 +218,10 @@ describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
         message: "La cantidad a devolver excede la cantidad original vendida",
       },
     });
-    fireEvent.change(screen.getByLabelText("Reason for return"), {
+    fireEvent.change(screen.getByLabelText("Motivo de la devolución"), {
       target: { value: "Devolución" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Emit credit note" }));
+    fireEvent.click(screen.getByRole("button", { name: "Emitir nota de crédito" }));
 
     const status = await screen.findByRole("status");
     expect(status.textContent).toContain("[CANTIDAD_EXCEDE_ORIGINAL]");
@@ -232,29 +232,74 @@ describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
 
   it("rejects an invalid payload client-side with VALIDATION_ERROR before calling the action", async () => {
     await renderPos();
-    const opener = await screen.findByRole("button", { name: "Return sale 7" });
+    const opener = await screen.findByRole("button", { name: "Devolver venta 7" });
     fireEvent.click(opener);
     mockObtener.mockResolvedValue(DETALLE);
-    await screen.findByRole("heading", { name: /Return sale #7/ });
+    await screen.findByRole("heading", { name: /Devolver venta #7/ });
 
     // Empty motivo fails the shared zDevolverVentaInput (min 1).
-    fireEvent.click(screen.getByRole("button", { name: "Emit credit note" }));
+    fireEvent.click(screen.getByRole("button", { name: "Emitir nota de crédito" }));
     await waitFor(() =>
-      expect(screen.getByText(/Complete the reason/)).toBeInTheDocument(),
+      expect(screen.getByText(/Complete el motivo/)).toBeInTheDocument(),
     );
     expect(mockDevolver).not.toHaveBeenCalled();
   });
 
   it("offers the frozen restock selector with exactly VENDIBLE and DANADO", async () => {
     await renderPos();
-    fireEvent.click(await screen.findByRole("button", { name: "Return sale 7" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Devolver venta 7" }));
     mockObtener.mockResolvedValue(DETALLE);
-    await screen.findByRole("heading", { name: /Return sale #7/ });
+    await screen.findByRole("heading", { name: /Devolver venta #7/ });
 
-    const select = screen.getByLabelText("Restock type for Arroz");
+    const select = screen.getByLabelText("Tipo de reposición de Arroz");
     expect(select).toBeInTheDocument();
     expect((select as unknown as HTMLSelectElement).textContent).toContain("VENDIBLE");
     expect((select as unknown as HTMLSelectElement).textContent).toContain("DANADO");
+  });
+
+  it("shows an error instead of loading forever when reading the sale rejects", async () => {
+    await renderPos();
+    mockObtener.mockRejectedValue(new Error("network down"));
+    fireEvent.click(await screen.findByRole("button", { name: "Devolver venta 7" }));
+
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toContain("No se pudo completar la operación");
+    expect(status.textContent).not.toContain("network down");
+    expect(screen.queryByText(/Cargando las líneas/)).toBeNull();
+  });
+
+  it("re-enables the submit button and shows an error when the return action rejects", async () => {
+    await renderPos();
+    fireEvent.click(await screen.findByRole("button", { name: "Devolver venta 7" }));
+    await screen.findByRole("heading", { name: /Devolver venta #7/ });
+
+    mockDevolver.mockRejectedValue(new Error("boom"));
+    fireEvent.change(screen.getByLabelText("Motivo de la devolución"), {
+      target: { value: "Devolucion" },
+    });
+    const submit = screen.getByRole("button", { name: "Emitir nota de crédito" });
+    fireEvent.click(submit);
+
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toContain("No se pudo completar la operación");
+    expect(status.textContent).not.toContain("boom");
+    await waitFor(() => expect(submit).toBeEnabled());
+  });
+
+  it("keeps the close button disabled while the credit note is being issued", async () => {
+    await renderPos();
+    fireEvent.click(await screen.findByRole("button", { name: "Devolver venta 7" }));
+    await screen.findByRole("heading", { name: /Devolver venta #7/ });
+
+    mockDevolver.mockImplementation(() => new Promise(() => {}));
+    fireEvent.change(screen.getByLabelText("Motivo de la devolución"), {
+      target: { value: "Devolucion" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Emitir nota de crédito" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Cerrar formulario de devolución" })).toBeDisabled(),
+    );
   });
 
   // Board 02 remediation (JD-A, MEDIUM): a role ROLES_DEVOLUCION denies
@@ -269,6 +314,6 @@ describe("Return-UI (fase-5d tasks 2.1–2.2)", () => {
     await settle();
     fireEvent.click(await screen.findByRole("button", { name: /My drafts/ }));
     expect(await screen.findByTestId("venta-fila-7")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Return sale 7" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Devolver venta 7" })).toBeNull();
   });
 });
